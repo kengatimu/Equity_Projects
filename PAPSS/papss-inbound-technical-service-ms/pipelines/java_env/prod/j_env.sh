@@ -1,0 +1,1 @@
+PATH=/app/home/upgtp/jdk-25.0.1/bin/java:$PATH

@@ -1,0 +1,654 @@
+package com.equitybank.gag.telco_b2c.entity;
+
+import com.equitybank.gag.telco_b2c.enums.RequestTypes;
+import jakarta.persistence.*;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+
+@Entity
+@Table(name = "Telco_B2C_Transaction_Details")
+//@Table(name = "Telco_B2C_Transaction_Details", indexes = {
+//        @Index(name = "index_rrn", columnList = "rrn"),
+//        @Index(name = "index_telco_name", columnList = "telco_name")
+//})
+public class TransactionDetails implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    @Id
+    @Column(name = "id")
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "transaction_seq")
+    @SequenceGenerator(name = "transaction_seq", sequenceName = "transaction_seq", allocationSize = 1)
+    private Long id;
+
+    @Version
+    @Column(name = "version")
+    private Long version;
+
+    @Column(name = "rrn", unique = true, nullable = false)
+    private String rrn;
+
+    @Column(name = "finacle_rrn")
+    private String finacleRrn;
+
+    @Column(name = "channel")
+    private String channel;
+
+    @Column(name = "bank_id")
+    private String bankId;
+
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "imt_status")
+    private String imtStatus;
+
+    @Column(name = "imt_status_description")
+    private String imtStatusDescription;
+
+    @Column(name = "tran_id")
+    private String tranId;
+
+    @Column(name = "status_code")
+    private String statusCode;
+
+    @Column(name = "status_message")
+    private String statusMessage;
+
+    @Column(name = "imt_transaction_date_time")
+    private String imtTransactionDateTime;
+
+    @Column(name = "imt_expected_delivery_date")
+    private String imtExpectedDateOfDelivery;
+
+    @Column(name = "imt_reference_number")
+    private String imtReferenceNumber;
+
+    @Column(name = "imt_msg_tran_session_id")
+    private String mgiTransactionSessionID;
+
+    @Column(name = "imt_product_type")
+    private String imtProductType;
+
+    @Column(name = "country_code")
+    private String countryCode;
+
+    @Column(name = "receive_country")
+    private String receiveCountry;
+
+    @Column(name = "originating_country")
+    private String originatingCountry;
+
+    @Column(name = "operation_type")
+    @Enumerated(EnumType.STRING)
+    private RequestTypes operationType;
+
+    @Column(name = "request_type")
+    private String requestType;
+
+    @Column(name = "imt_operation")
+    private String imtOperation;
+
+    @Column(name = "imt_delivery_option")
+    private String imtDeliveryOption;
+
+    @Column(name = "amount")
+    private BigDecimal amount;
+
+    @Column(name = "imt_total_fee_and_taxes")
+    private BigDecimal imtTotalFeeAndTaxes;
+
+    @Column(name = "imt_total_amount_to_collect")
+    private BigDecimal imtTotalAmountToCollect;
+
+    @Column(name = "imt_transaction_amended")
+    private String transactionAmended;
+
+    @Column(name = "charge_flag")
+    private String chargeFlag;
+
+    @Column(name = "total_fees")
+    private BigDecimal totalFees;
+
+    @Column(name = "sender_account")
+    private String senderAccount;
+
+    @Column(name = "sender_msisdn")
+    private String senderMsisdn;
+
+    @Column(name = "sender_name")
+    private String senderName;
+
+    @Column(name = "sender_id_type")
+    private String senderIdType;
+
+    @Column(name = "sender_id_number")
+    private String senderIdNumber;
+
+    @Column(name = "sender_dob")
+    private String senderDob;
+
+    @Column(name = "sender_currency")
+    private String senderCurrency;
+
+    @Column(name = "receiver_account")
+    private String receiverAccount;
+
+    @Column(name = "receive_currency")
+    private String receiveCurrency;
+
+    @Column(name = "receiver_msisdn")
+    private String receiverMsisdn;
+
+    @Column(name = "receiver_name")
+    private String receiverName;
+
+    @Column(name = "receiver_id_type")
+    private String receiverIdType;
+
+    @Column(name = "receiver_id_number")
+    private String receiverIdNumber;
+
+    @Column(name = "receiver_dob")
+    private String receiverDob;
+
+    @Column(name = "transaction_currency")
+    private String transactionCurrency;
+
+    @Column(name = "telco_name")
+    private String telcoName;
+
+    @Column(name = "opt_in")
+    private Boolean optIn;
+
+    @Column(name = "client_type")
+    private String clientType;
+
+    @Column(name = "narration")
+    private String narration;
+
+    @Column(name = "date_created")
+    private LocalDateTime dateCreated;
+
+    @Column(name = "date_updated")
+    private LocalDateTime dateUpdated;
+
+    //    @JsonIgnore // Add this annotation to ignore the field during serialization
+    @OneToOne(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH}, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JoinColumn(name = "payload_details_id", referencedColumnName = "id")
+    private PayloadDetails payloadDetails;
+
+    //    @JsonIgnore // Add this annotation to ignore the field during serialization
+    @OneToOne(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH}, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JoinColumn(name = "status_details_id", referencedColumnName = "id")
+    private StatusDetails statusDetails;
+
+    //    @JsonIgnore // Add this annotation to ignore the field during serialization
+    @OneToOne(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH}, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JoinColumn(name = "callback_id", referencedColumnName = "id")
+    private Callback callback;
+
+    //    @JsonIgnore // Add this annotation to ignore the field during serialization
+    @OneToOne(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH}, fetch = FetchType.LAZY, orphanRemoval = true)
+    @JoinColumn(name = "cbs_transaction_details_id", referencedColumnName = "id")
+    private CbsTransactionDetails cbsTransactionDetails;
+
+    @PrePersist
+    public void onCreate() {
+        LocalDateTime currentDateTime = LocalDateTime.now(ZoneId.of("GMT+3"));
+
+        // Assign the LocalDateTime to dateCreated and dateUpdated. Also truncate the nanoseconds
+        dateCreated = currentDateTime.truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    @PreUpdate
+    public void onUpdate() {
+        LocalDateTime currentDateTime = LocalDateTime.now(ZoneId.of("GMT+3"));
+
+        // Assign the LocalDateTime to dateCreated and dateUpdated. Also truncate the nanoseconds
+        dateUpdated = currentDateTime.truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getFinacleRrn() {
+        return finacleRrn;
+    }
+
+    public void setFinacleRrn(String finacleRrn) {
+        this.finacleRrn = finacleRrn;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    public String getRrn() {
+        return rrn;
+    }
+
+    public void setRrn(String rrn) {
+        this.rrn = rrn;
+    }
+
+    public String getChannel() {
+        return channel;
+    }
+
+    public void setChannel(String channel) {
+        this.channel = channel;
+    }
+
+    public String getBankId() {
+        return bankId;
+    }
+
+    public void setBankId(String bankId) {
+        this.bankId = bankId;
+    }
+
+    public String getImtTransactionDateTime() {
+        return imtTransactionDateTime;
+    }
+
+    public void setImtTransactionDateTime(String imtTransactionDateTime) {
+        this.imtTransactionDateTime = imtTransactionDateTime;
+    }
+
+    public String getImtExpectedDateOfDelivery() {
+        return imtExpectedDateOfDelivery;
+    }
+
+    public void setImtExpectedDateOfDelivery(String imtExpectedDateOfDelivery) {
+        this.imtExpectedDateOfDelivery = imtExpectedDateOfDelivery;
+    }
+
+    public String getImtReferenceNumber() {
+        return imtReferenceNumber;
+    }
+
+    public void setImtReferenceNumber(String imtReferenceNumber) {
+        this.imtReferenceNumber = imtReferenceNumber;
+    }
+
+    public String getCountryCode() {
+        return countryCode;
+    }
+
+    public void setCountryCode(String countryCode) {
+        this.countryCode = countryCode;
+    }
+
+    public String getRequestType() {
+        return requestType;
+    }
+
+    public void setRequestType(String requestType) {
+        this.requestType = requestType;
+    }
+
+    public RequestTypes getOperationType() {
+        return operationType;
+    }
+
+    public void setOperationType(RequestTypes operationType) {
+        this.operationType = operationType;
+    }
+
+    public String getImtOperation() {
+        return imtOperation;
+    }
+
+    public void setImtOperation(String imtOperation) {
+        this.imtOperation = imtOperation;
+    }
+
+    public BigDecimal getAmount() {
+        return amount;
+    }
+
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
+    public BigDecimal getImtTotalFeeAndTaxes() {
+        return imtTotalFeeAndTaxes;
+    }
+
+    public void setImtTotalFeeAndTaxes(BigDecimal imtTotalFeeAndTaxes) {
+        this.imtTotalFeeAndTaxes = imtTotalFeeAndTaxes;
+    }
+
+    public String getChargeFlag() {
+        return chargeFlag;
+    }
+
+    public void setChargeFlag(String chargeFlag) {
+        this.chargeFlag = chargeFlag;
+    }
+
+    public BigDecimal getTotalFees() {
+        return totalFees;
+    }
+
+    public void setTotalFees(BigDecimal totalFees) {
+        this.totalFees = totalFees;
+    }
+
+    public String getSenderAccount() {
+        return senderAccount;
+    }
+
+    public void setSenderAccount(String senderAccount) {
+        this.senderAccount = senderAccount;
+    }
+
+    public String getReceiverAccount() {
+        return receiverAccount;
+    }
+
+    public void setReceiverAccount(String receiverAccount) {
+        this.receiverAccount = receiverAccount;
+    }
+
+    public String getSenderMsisdn() {
+        return senderMsisdn;
+    }
+
+    public void setSenderMsisdn(String senderMsisdn) {
+        this.senderMsisdn = senderMsisdn;
+    }
+
+    public String getSenderName() {
+        return senderName;
+    }
+
+    public void setSenderName(String senderName) {
+        this.senderName = senderName;
+    }
+
+    public String getTransactionCurrency() {
+        return transactionCurrency;
+    }
+
+    public void setTransactionCurrency(String transactionCurrency) {
+        this.transactionCurrency = transactionCurrency;
+    }
+
+    public String getSenderCurrency() {
+        return senderCurrency;
+    }
+
+    public void setSenderCurrency(String senderCurrency) {
+        this.senderCurrency = senderCurrency;
+    }
+
+    public String getReceiveCountry() {
+        return receiveCountry;
+    }
+
+    public void setReceiveCountry(String receiveCountry) {
+        this.receiveCountry = receiveCountry;
+    }
+
+    public String getImtDeliveryOption() {
+        return imtDeliveryOption;
+    }
+
+    public void setImtDeliveryOption(String imtDeliveryOption) {
+        this.imtDeliveryOption = imtDeliveryOption;
+    }
+
+    public BigDecimal getImtTotalAmountToCollect() {
+        return imtTotalAmountToCollect;
+    }
+
+    public void setImtTotalAmountToCollect(BigDecimal imtTotalAmountToCollect) {
+        this.imtTotalAmountToCollect = imtTotalAmountToCollect;
+    }
+
+    public String getMgiTransactionSessionID() {
+        return mgiTransactionSessionID;
+    }
+
+    public void setMgiTransactionSessionID(String mgiTransactionSessionID) {
+        this.mgiTransactionSessionID = mgiTransactionSessionID;
+    }
+
+    public String getOriginatingCountry() {
+        return originatingCountry;
+    }
+
+    public void setOriginatingCountry(String originatingCountry) {
+        this.originatingCountry = originatingCountry;
+    }
+
+    public String getImtProductType() {
+        return imtProductType;
+    }
+
+    public void setImtProductType(String imtProductType) {
+        this.imtProductType = imtProductType;
+    }
+
+    public String getReceiverIdType() {
+        return receiverIdType;
+    }
+
+    public void setReceiverIdType(String receiverIdType) {
+        this.receiverIdType = receiverIdType;
+    }
+
+    public String getReceiverIdNumber() {
+        return receiverIdNumber;
+    }
+
+    public void setReceiverIdNumber(String receiverIdNumber) {
+        this.receiverIdNumber = receiverIdNumber;
+    }
+
+    public String getReceiverDob() {
+        return receiverDob;
+    }
+
+    public void setReceiverDob(String receiverDob) {
+        this.receiverDob = receiverDob;
+    }
+
+    public String getTransactionAmended() {
+        return transactionAmended;
+    }
+
+    public void setTransactionAmended(String transactionAmended) {
+        this.transactionAmended = transactionAmended;
+    }
+
+    public String getSenderIdType() {
+        return senderIdType;
+    }
+
+    public void setSenderIdType(String senderIdType) {
+        this.senderIdType = senderIdType;
+    }
+
+    public String getSenderIdNumber() {
+        return senderIdNumber;
+    }
+
+    public void setSenderIdNumber(String senderIdNumber) {
+        this.senderIdNumber = senderIdNumber;
+    }
+
+    public String getSenderDob() {
+        return senderDob;
+    }
+
+    public void setSenderDob(String senderDob) {
+        this.senderDob = senderDob;
+    }
+
+    public String getReceiveCurrency() {
+        return receiveCurrency;
+    }
+
+    public void setReceiveCurrency(String receiveCurrency) {
+        this.receiveCurrency = receiveCurrency;
+    }
+
+    public String getReceiverMsisdn() {
+        return receiverMsisdn;
+    }
+
+    public void setReceiverMsisdn(String receiverMsisdn) {
+        this.receiverMsisdn = receiverMsisdn;
+    }
+
+    public String getReceiverName() {
+        return receiverName;
+    }
+
+    public void setReceiverName(String receiverName) {
+        this.receiverName = receiverName;
+    }
+
+    public String getTelcoName() {
+        return telcoName;
+    }
+
+    public void setTelcoName(String telcoName) {
+        this.telcoName = telcoName;
+    }
+
+    public Boolean getOptIn() {
+        return optIn;
+    }
+
+    public void setOptIn(Boolean optIn) {
+        this.optIn = optIn;
+    }
+
+    public String getClientType() {
+        return clientType;
+    }
+
+    public void setClientType(String clientType) {
+        this.clientType = clientType;
+    }
+
+    public String getNarration() {
+        return narration;
+    }
+
+    public void setNarration(String narration) {
+        this.narration = narration;
+    }
+
+    public LocalDateTime getDateCreated() {
+        return dateCreated;
+    }
+
+    public void setDateCreated(LocalDateTime dateCreated) {
+        this.dateCreated = dateCreated;
+    }
+
+    public LocalDateTime getDateUpdated() {
+        return dateUpdated;
+    }
+
+    public void setDateUpdated(LocalDateTime dateUpdated) {
+        this.dateUpdated = dateUpdated;
+    }
+
+    public PayloadDetails getPayloadDetails() {
+        return payloadDetails;
+    }
+
+    public void setPayloadDetails(PayloadDetails payloadDetails) {
+        this.payloadDetails = payloadDetails;
+    }
+
+    public StatusDetails getStatusDetails() {
+        return statusDetails;
+    }
+
+    public void setStatusDetails(StatusDetails statusDetails) {
+        this.statusDetails = statusDetails;
+    }
+
+    public Callback getCallback() {
+        return callback;
+    }
+
+    public void setCallback(Callback callback) {
+        this.callback = callback;
+    }
+
+    public CbsTransactionDetails getCbsTransactionDetails() {
+        return cbsTransactionDetails;
+    }
+
+    public void setCbsTransactionDetails(CbsTransactionDetails cbsTransactionDetails) {
+        this.cbsTransactionDetails = cbsTransactionDetails;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getImtStatus() {
+        return imtStatus;
+    }
+
+    public void setImtStatus(String imtStatus) {
+        this.imtStatus = imtStatus;
+    }
+
+    public String getImtStatusDescription() {
+        return imtStatusDescription;
+    }
+
+    public void setImtStatusDescription(String imtStatusDescription) {
+        this.imtStatusDescription = imtStatusDescription;
+    }
+
+    public String getTranId() {
+        return tranId;
+    }
+
+    public void setTranId(String tranId) {
+        this.tranId = tranId;
+    }
+
+    public String getStatusCode() {
+        return statusCode;
+    }
+
+    public void setStatusCode(String statusCode) {
+        this.statusCode = statusCode;
+    }
+
+    public String getStatusMessage() {
+        return statusMessage;
+    }
+
+    public void setStatusMessage(String statusMessage) {
+        this.statusMessage = statusMessage;
+    }
+}

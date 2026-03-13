@@ -1,0 +1,210 @@
+trigger:
+  - develop
+  - release
+  - master
+  - tanuki
+
+variables:
+  dockerRegistryServiceConnection: 'crequitydevtest'
+  PRODdockerRegistryServiceConnection: 'crequity'
+  DEVImageRepository: 'transaction-processors-gag/tech-b2c-vodacom-cd-ms-dev'
+  UATImageRepository: 'transaction-processors-gag/tech-b2c-vodacom-cd-ms-uat'
+  PRODImageRepository: 'transaction-processors-gag/tech-b2c-vodacom-cd-ms-prod'
+  containerRegistry: 'crequitydevtest.azurecr.io'
+  dockerfilePath: '**/Dockerfile'
+  tag: '$(Build.BuildId)'
+
+  # Agent VM image name
+  # vmImageName: 'devops-ubuntu'
+  vmImageName: 'ubuntu-latest'
+  # vmImageName: 'Azure Pipelines'
+
+  azureSubscription: 'Enterprise Core'
+  azureSubscriptionProd: 'Enterprise Production'
+
+  devKeyVaultName: 'kv-dev-omnichannel'
+  uatKeyVaultName: 'kv-uat-omnichannel'
+  prodKeyVaultName: 'kv-preprod-omnichannel'
+
+stages:
+  - stage: BuildTANUKI
+    condition: and(always(), contains(variables['Build.SourceBranch'], 'refs/heads/tanuki'))
+    displayName: TANUKI
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          # name: $(vmImageName)
+          vmImage: $(vmImageName)
+        steps:
+          - script: 'rm -rf ~/.m2/repository'
+            displayName: 'Delete Maven Local Repository'
+
+          - task: Maven@3
+            displayName: 'Maven Install ojdbc dependency'
+            inputs:
+              mavenPomFile: 'pom.xml'  # Path to your pom.xml file
+              mavenOptions: '-Xmx3072m'
+              goals: 'install:install-file'
+              options: '-Dfile="ojdbc6-11.2.0.3.jar" -DgroupId="com.oracle" -DartifactId="ojdbc6" -Dversion="11.2.0.3" -Dpackaging=jar'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+              
+          - task: Maven@3
+            inputs:
+              mavenPomFile: 'pom.xml'
+              options: '-Dspring.profiles.active=$(DEV_SPRING_PROFILES_ACTIVE) -DskipTests'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+
+          - task: CmdLine@2
+            displayName: Pack tanuki files
+            inputs:
+              script: |
+                tar -czvf tech-b2c-vodacom-cd-ms.tar.gz tech-b2c-vodacom-cd-ms
+                pwd
+                ls -lart
+
+          - task: CmdLine@2
+            displayName: Pack lib folder
+            inputs:
+              script: |
+                tar -czvf lib.tar.gz lib
+                pwd
+                ls -lart
+              workingDirectory: '$(system.defaultworkingdirectory)/target'
+
+          - task: CopyFiles@2
+            inputs:
+              SourceFolder: '$(system.defaultworkingdirectory)'
+              Contents: |
+                **/*.tar.gz
+                **/target/*.tar.gz
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: CopyFiles@2
+            displayName: Copy lib folder
+            inputs:
+              SourceFolder: '$(system.defaultworkingdirectory)/target'
+              Contents: |
+                lib.tar.gz
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'tanuki_drop'
+              publishLocation: 'Container'
+
+  - stage: BuildUAT
+    condition: and(always(), contains(variables['Build.SourceBranch'], 'refs/heads/release'))
+    displayName: UAT
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          # name: $(vmImageName)
+          vmImage: $(vmImageName)
+        steps:
+          - task: AzureKeyVault@2
+            inputs:
+              azureSubscription: $(azureSubscription)
+              KeyVaultName: $(uatKeyVaultName)
+              SecretsFilter: '*'
+              RunAsPreJob: false
+          - task: replacetokens@3
+            inputs:
+              targetFiles: |
+                **/*uat.yml
+                **/*uat.yaml
+                **/*uat.properties
+                **/*dev.yml
+                **/*dev.yaml
+                **/*dev.properties
+                java_env/uat/*.sh
+              encoding: 'auto'
+              writeBOM: true
+              actionOnMissing: 'warn'
+              keepToken: false
+              tokenPrefix: '#{'
+              tokenSuffix: '}#'
+              useLegacyPattern: false
+              enableTransforms: false
+              enableTelemetry: true
+
+          - script: 'rm -rf ~/.m2/repository'
+            displayName: 'Delete Maven Local Repository'
+
+          - task: Maven@3
+            displayName: 'Maven Install ojdbc dependency'
+            inputs:
+              mavenPomFile: 'pom.xml'  # Path to your pom.xml file
+              mavenOptions: '-Xmx3072m'
+              goals: 'install:install-file'
+              options: '-Dfile="ojdbc6-11.2.0.3.jar" -DgroupId="com.oracle" -DartifactId="ojdbc6" -Dversion="11.2.0.3" -Dpackaging=jar'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+          - task: Maven@3
+            inputs:
+              mavenPomFile: 'pom.xml'
+              options: '-Dspring.profiles.active=uat -DskipTests'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+
+          - task: CmdLine@2
+            displayName: Pack lib folder
+            inputs:
+              script: |
+                tar -czvf lib.tar.gz lib
+                pwd
+                ls -lart
+              workingDirectory: '$(system.defaultworkingdirectory)/target'
+
+          - task: CopyFiles@2
+            displayName: Copy lib folder
+            inputs:
+              SourceFolder: '$(system.defaultworkingdirectory)/target'
+              Contents: |
+                lib.tar.gz
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: CopyFiles@2
+            inputs:
+              SourceFolder: '$(system.defaultworkingdirectory)'
+              Contents: |
+                **/*.jar
+                **/*.yaml
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: CopyFiles@2
+            inputs:
+              SourceFolder: '$(system.defaultworkingdirectory)'
+              Contents: |
+                **/java_env/uat/*.sh
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'uat_drop'
+              publishLocation: 'Container'
+
+
+
+

@@ -1,0 +1,89 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+      - etz
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build JAR with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Docker Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.LOGIN_ACTOR }}
+          password: ${{ secrets.LOGIN_TOKEN }}
+
+      - name: Build and tag Docker image
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF##*/}" | tr '/' '-')
+          docker build \
+            --build-arg JAR_FILE=./target/*.jar \
+            --build-arg GITHUB_BRANCH_NAME=$BRANCH_NAME \
+            -t ghcr.io/papssafrica/papss-middleware-service:${{ github.sha }} \
+            -t ghcr.io/papssafrica/papss-middleware-service:$BRANCH_NAME .
+
+      - name: Download twistcli
+        run: |
+          curl -fsSL -u "${{ secrets.PRISMA_USER }}:${{ secrets.PRISMA_PASSWORD }}" \
+            "${{ secrets.PRISMA_CONSOLE_URL }}/api/v1/util/twistcli" -o twistcli
+          chmod +x twistcli
+
+      - name: Scan Docker image and fail on critical CVEs
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF##*/}" | tr '/' '-')
+
+          ./twistcli images scan \
+            --address "${{ secrets.PRISMA_CONSOLE_URL }}" \
+            --user "${{ secrets.PRISMA_USER }}" \
+            --password "${{ secrets.PRISMA_PASSWORD }}" \
+            --details \
+            --output-file scan-results.json \
+            ghcr.io/papssafrica/papss-middleware-service:$BRANCH_NAME
+
+          CRITICAL_COUNT=$(jq -e '[.vulnerabilities[]? | select(.severity == "critical")] | length' scan-results.json || echo 0)
+
+          echo "🔍 Critical vulnerabilities found: $CRITICAL_COUNT"
+
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "❌ Critical vulnerabilities detected. Failing the build."
+            exit 1
+          else
+            echo "✅ No critical vulnerabilities found."
+          fi
+
+      - name: Push Docker image to GitHub Packages
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF##*/}" | tr '/' '-')
+          docker push ghcr.io/papssafrica/papss-middleware-service:${{ github.sha }}
+          docker push ghcr.io/papssafrica/papss-middleware-service:$BRANCH_NAME

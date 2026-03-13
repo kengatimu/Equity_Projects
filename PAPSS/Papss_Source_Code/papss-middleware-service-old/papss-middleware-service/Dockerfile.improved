@@ -1,0 +1,63 @@
+# Improved Dockerfile with best practices for Java applications
+
+# Stage 1: Build stage
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /build
+
+# Copy the Maven wrapper and pom.xml first to leverage Docker cache
+COPY mvnw mvnw.cmd ./
+COPY .mvn ./.mvn
+COPY pom.xml ./
+
+# Make the Maven wrapper executable
+RUN chmod +x ./mvnw
+
+# Download dependencies (this layer will be cached if pom.xml doesn't change)
+RUN ./mvnw dependency:go-offline -B
+
+# Copy source code
+COPY src ./src
+
+# Build the application
+RUN ./mvnw package -DskipTests
+
+# Stage 2: Runtime stage
+FROM eclipse-temurin:21-jre-alpine
+
+# Add metadata
+LABEL maintainer="PAPSS Team"
+LABEL version="1.0"
+LABEL description="PAPSS Middleware Service"
+
+# Install curl for healthcheck
+RUN apk update && apk add --no-cache curl
+
+# Create a non-root user and group
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Create directories with proper permissions
+RUN mkdir -p /app/config /var/papss/certs && \
+    chown -R appuser:appgroup /app /var/papss/certs
+
+# Switch to non-root user
+USER appuser
+
+# Set working directory
+WORKDIR /app
+
+# Copy the jar file from the builder stage
+COPY --from=builder --chown=appuser:appgroup /build/target/*.jar app.jar
+
+# Set environment variables with optimized JVM settings
+ENV JAVA_OPTS="-Djava.security.egd=file:/dev/./urandom -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Dspring.config.location=/app/config/application.yml"
+
+# Expose the application port
+EXPOSE 8080
+
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10s \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+# Run the application with proper entrypoint and cmd separation
+ENTRYPOINT ["java"]
+CMD ["-jar", "app.jar"]

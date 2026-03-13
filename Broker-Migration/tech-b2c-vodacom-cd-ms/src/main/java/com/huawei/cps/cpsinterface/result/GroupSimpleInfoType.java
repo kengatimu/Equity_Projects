@@ -1,0 +1,92 @@
+
+package com.huawei.cps.cpsinterface.result;
+
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlElement;
+import jakarta.xml.bind.annotation.XmlType;
+
+
+/**
+ * Customer加入的Group简要信息
+ * 
+ * <p>Java class for GroupSimpleInfoType complex type.
+ * 
+ * <p>The following schema fragment specifies the expected content contained within this class.
+ * 
+ * <pre>
+ * &lt;complexType name="GroupSimpleInfoType"&gt;
+ *   &lt;complexContent&gt;
+ *     &lt;restriction base="{http://www.w3.org/2001/XMLSchema}anyType"&gt;
+ *       &lt;sequence&gt;
+ *         &lt;element name="GroupCode" type="{http://www.w3.org/2001/XMLSchema}string"/&gt;
+ *         &lt;element name="GroupName" type="{http://www.w3.org/2001/XMLSchema}string"/&gt;
+ *       &lt;/sequence&gt;
+ *     &lt;/restriction&gt;
+ *   &lt;/complexContent&gt;
+ * &lt;/complexType&gt;
+ * </pre>
+ * 
+ * 
+ */
+@XmlAccessorType(XmlAccessType.FIELD)
+@XmlType(name = "GroupSimpleInfoType", propOrder = {
+    "groupCode",
+    "groupName"
+})
+public class GroupSimpleInfoType {
+
+    @XmlElement(name = "GroupCode", required = true)
+    protected String groupCode;
+    @XmlElement(name = "GroupName", required = true)
+    protected String groupName;
+
+    /**
+     * Gets the value of the groupCode property.
+     * 
+     * @return
+     *     possible object is
+     *     {@link String }
+     *     
+     */
+    public String getGroupCode() {
+        return groupCode;
+    }
+
+    /**
+     * Sets the value of the groupCode property.
+     * 
+     * @param value
+     *     allowed object is
+     *     {@link String }
+     *     
+     */
+    public void setGroupCode(String value) {
+        this.groupCode = value;
+    }
+
+    /**
+     * Gets the value of the groupName property.
+     * 
+     * @return
+     *     possible object is
+     *     {@link String }
+     *     
+     */
+    public String getGroupName() {
+        return groupName;
+    }
+
+    /**
+     * Sets the value of the groupName property.
+     * 
+     * @param value
+     *     allowed object is
+     *     {@link String }
+     *     
+     */
+    public void setGroupName(String value) {
+        this.groupName = value;
+    }
+
+}

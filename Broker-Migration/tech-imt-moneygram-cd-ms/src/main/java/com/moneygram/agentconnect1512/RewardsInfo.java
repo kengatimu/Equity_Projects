@@ -1,0 +1,118 @@
+
+package com.moneygram.agentconnect1512;
+
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlElement;
+import jakarta.xml.bind.annotation.XmlType;
+
+
+/**
+ * <p>Java class for RewardsInfo complex type.
+ * 
+ * <p>The following schema fragment specifies the expected content contained within this class.
+ * 
+ * <pre>
+ * &lt;complexType name="RewardsInfo"&gt;
+ *   &lt;complexContent&gt;
+ *     &lt;restriction base="{http://www.w3.org/2001/XMLSchema}anyType"&gt;
+ *       &lt;sequence&gt;
+ *         &lt;element name="programType" type="{http://www.moneygram.com/AgentConnect1512}stringMax3"/&gt;
+ *         &lt;element name="name" type="{http://www.moneygram.com/AgentConnect1512}stringMax64"/&gt;
+ *         &lt;element name="description" type="{http://www.moneygram.com/AgentConnect1512}stringMax40"/&gt;
+ *       &lt;/sequence&gt;
+ *     &lt;/restriction&gt;
+ *   &lt;/complexContent&gt;
+ * &lt;/complexType&gt;
+ * </pre>
+ * 
+ * 
+ */
+@XmlAccessorType(XmlAccessType.FIELD)
+@XmlType(name = "RewardsInfo", propOrder = {
+    "programType",
+    "name",
+    "description"
+})
+public class RewardsInfo {
+
+    @XmlElement(required = true)
+    protected String programType;
+    @XmlElement(required = true)
+    protected String name;
+    @XmlElement(required = true)
+    protected String description;
+
+    /**
+     * Gets the value of the programType property.
+     * 
+     * @return
+     *     possible object is
+     *     {@link String }
+     *     
+     */
+    public String getProgramType() {
+        return programType;
+    }
+
+    /**
+     * Sets the value of the programType property.
+     * 
+     * @param value
+     *     allowed object is
+     *     {@link String }
+     *     
+     */
+    public void setProgramType(String value) {
+        this.programType = value;
+    }
+
+    /**
+     * Gets the value of the name property.
+     * 
+     * @return
+     *     possible object is
+     *     {@link String }
+     *     
+     */
+    public String getName() {
+        return name;
+    }
+
+    /**
+     * Sets the value of the name property.
+     * 
+     * @param value
+     *     allowed object is
+     *     {@link String }
+     *     
+     */
+    public void setName(String value) {
+        this.name = value;
+    }
+
+    /**
+     * Gets the value of the description property.
+     * 
+     * @return
+     *     possible object is
+     *     {@link String }
+     *     
+     */
+    public String getDescription() {
+        return description;
+    }
+
+    /**
+     * Sets the value of the description property.
+     * 
+     * @param value
+     *     allowed object is
+     *     {@link String }
+     *     
+     */
+    public void setDescription(String value) {
+        this.description = value;
+    }
+
+}

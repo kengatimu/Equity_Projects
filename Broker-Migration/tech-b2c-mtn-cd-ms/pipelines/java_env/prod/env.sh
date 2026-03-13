@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Export the Jasypt secret key as an environment variable
+export CD_SPRING_DATASOURCE_URL="#{CD-SPRING-DATASOURCE-URL}#"
+export CD_SPRING_DATASOURCE_USERNAME="#{CD-SPRING-DATASOURCE-USERNAME}#"
+export CD_SPRING_DATASOURCE_PASSWORD="#{CD-SPRING-DATASOURCE-PASSWORD}#"
+export CD_SSL_KEYSTORE_LOCATION="#{CD-SSL-KEYSTORE-LOCATION}#"
+export CD_SSL_KEYSTORE_PASSWORD="#{CD-SSL-KEYSTORE-PASSWORD}#"
+export CD_SSL_KEYSTORE_ALIAS="#{CD-SSL-KEYSTORE-ALIAS}#"
+
+# Print a confirmation message
+echo "Environment variables have been set."

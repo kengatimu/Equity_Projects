@@ -1,0 +1,205 @@
+trigger:
+  - release
+  - main
+
+variables:
+  tag: '$(Build.BuildId)'
+  vmImageName: 'ubuntu-latest'
+  azureSubscription: 'Enterprise Core'
+  uatKeyVaultName: 'kv-uat-omnichannel'
+  prodKeyVaultName: 'kv-preprod-omnichannel'
+
+  # Change these values as required
+  JAVA_VERSION: '1.17'
+  APP_NAME: 'tech-b2c-vodacom-cd-ms-0.0.1-SNAPSHOT.jar'
+
+stages:
+  - stage: BuildUAT
+    condition: and(always(), contains(variables['Build.SourceBranch'], 'refs/heads/release'))
+    displayName: UAT
+    variables:
+      ENVIRONMENT: 'uat'
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: AzureKeyVault@2
+            displayName: 'Connect To Azure UAT KeyVault'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              KeyVaultName: $(uatKeyVaultName)
+              SecretsFilter: '*'
+              RunAsPreJob: false
+
+          - task: replacetokens@5
+            displayName: 'Replace Azure KeyVault Tokens'
+            inputs:
+              folderPath: '$(System.DefaultWorkingDirectory)'
+              targetFiles: |
+                # **/*uat.yml
+                # **/*uat.properties
+                # **/*dev.yml
+                # **/*dev.properties
+                pipelines/java_env/uat/*.sh
+              encoding: 'auto'
+              writeBOM: true
+              actionOnMissing: 'warn'
+              keepToken: false
+              tokenPrefix: '#{'
+              tokenSuffix: '}#'
+              useLegacyPattern: false
+              enableTransforms: false
+              enableTelemetry: true
+
+          - script: 'rm -rf ~/.m2/repository'
+            displayName: 'Delete Maven Local Repository'
+
+          # This task is optional. Comment if not needed
+          - task: Maven@4
+            displayName: 'Maven Install ojdbc dependency'
+            inputs:
+              mavenPomFile: 'pom.xml'
+              mavenOptions: '-Xmx3072m'
+              goals: 'install:install-file'
+              options: '-Dfile="ojdbc6-11.2.0.3.jar" -DgroupId="com.oracle" -DartifactId="ojdbc6" -Dversion="11.2.0.3" -Dpackaging=jar'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: $(JAVA_VERSION)
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+
+          - task: Maven@4
+            displayName: 'Maven Clean Install'
+            inputs:
+              mavenPomFile: 'pom.xml'
+              options: '-Dspring.profiles.active=uat -DskipTests'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: $(JAVA_VERSION)
+              mavenVersionOption: 'Default'
+              publishJUnitResults: false
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+              goals: clean install
+
+          - task: Bash@3
+            displayName: Running Azure-Pipelines-Helper Script
+            inputs:
+              targetType: 'filePath'
+              filePath: 'pipelines/scripts/azure-pipelines-helper.sh'
+            env:
+              APP_NAME: $(APP_NAME)
+              ENVIRONMENT: $(ENVIRONMENT)
+              BUILD_ARTIFACTS_STAGING_DIR: $(Build.ArtifactStagingDirectory)
+
+          - task: CopyFiles@2
+            displayName: Copy application-deployment.sh To Staging Directory
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)/pipelines/scripts'
+              Contents: |
+                application-deployment.sh
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'uat_drop'
+              publishLocation: 'Container'
+
+  - stage: BuildPROD
+    condition: and(always(), contains(variables['Build.SourceBranch'], 'refs/heads/main'))
+    displayName: PROD
+    variables:
+      ENVIRONMENT: 'prod'
+    jobs:
+      - job: Build
+        displayName: Build
+        pool:
+          vmImage: $(vmImageName)
+        steps:
+          - task: AzureKeyVault@2
+            displayName: 'Connect To Azure Prod KeyVault'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              KeyVaultName: $(prodKeyVaultName)
+              SecretsFilter: '*'
+              RunAsPreJob: false
+
+          - task: replacetokens@5
+            displayName: 'Replace Azure KeyVault Tokens'
+            inputs:
+              folderPath: '$(System.DefaultWorkingDirectory)'
+              targetFiles: |
+                # **/*uat.yml
+                # **/*uat.properties
+                # **/*dev.yml
+                # **/*dev.properties
+                pipelines/java_env/prod/*.sh
+              encoding: 'auto'
+              writeBOM: true
+              actionOnMissing: 'warn'
+              keepToken: false
+              tokenPrefix: '#{'
+              tokenSuffix: '}#'
+              useLegacyPattern: false
+              enableTransforms: false
+              enableTelemetry: true
+
+          - script: 'rm -rf ~/.m2/repository'
+            displayName: 'Delete Maven Local Repository'
+
+          # This task is optional. Comment if not needed
+          - task: Maven@4
+            displayName: 'Maven Install ojdbc dependency'
+            inputs:
+              mavenPomFile: 'pom.xml'
+              mavenOptions: '-Xmx3072m'
+              goals: 'install:install-file'
+              options: '-Dfile="ojdbc6-11.2.0.3.jar" -DgroupId="com.oracle" -DartifactId="ojdbc6" -Dversion="11.2.0.3" -Dpackaging=jar'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: $(JAVA_VERSION)
+              mavenVersionOption: 'Default'
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+
+          - task: Maven@4
+            displayName: 'Maven Clean Install'
+            inputs:
+              mavenPomFile: 'pom.xml'
+              options: '-Dspring.profiles.active=prod -DskipTests'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: $(JAVA_VERSION)
+              mavenVersionOption: 'Default'
+              publishJUnitResults: false
+              mavenAuthenticateFeed: false
+              effectivePomSkip: false
+              sonarQubeRunAnalysis: false
+              goals: clean install
+
+          - task: Bash@3
+            displayName: Running Azure-Pipelines-Helper Script
+            inputs:
+              targetType: 'filePath'
+              filePath: 'pipelines/scripts/azure-pipelines-helper.sh'
+            env:
+              APP_NAME: $(APP_NAME)
+              ENVIRONMENT: $(ENVIRONMENT)
+              BUILD_ARTIFACTS_STAGING_DIR: $(Build.ArtifactStagingDirectory)
+
+          - task: CopyFiles@2
+            displayName: Copy application-deployment.sh To Staging Directory
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)/pipelines/scripts'
+              Contents: |
+                application-deployment.sh
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'prod_drop'
+              publishLocation: 'Container'
