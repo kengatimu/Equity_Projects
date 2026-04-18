@@ -1,0 +1,376 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpOlTodRecov.scr 
+#  Description     : batch ROLTO
+#  Date            : 10-08-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-08-2021      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQOD")==0)then
+                createrep("EQOD")
+        endif
+        if(classexists("EQOD","GLBDATA")==0)then
+                createclass("EQOD","GLBDATA",5)
+        endif
+	EQOD.GLBDATA.TranId = ""
+	EQOD.GLBDATA.tranAmt = cdouble("0")
+        EQOD.GLBDATA.srvErrCode = ""
+        EQOD.GLBDATA.srvErrMsg = ""
+        EQOD.GLBDATA.srvSucFail = ""
+	EQOD.GLBDATA.isTranYN = "N"
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+		EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+		EQOD.GLBDATA.srvErrCode = "MTT"
+		EQOD.GLBDATA.srvSucFail = "F"
+		goto Endofscript
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "OD Recovery" 
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+	MTT.TranDetails.PrintAdviceInd  = "B"
+        sv_u = urhk_MTTS_DefineTransaction("ODLoanRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+		EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+		EQOD.GLBDATA.srvErrCode = "MTT"
+		EQOD.GLBDATA.srvSucFail = "F"
+		goto Endofscript
+        endif
+	lv_q = " gCifid,goAcid,goAcctId,goSchmType,goSchmcode,goclrBalAmt,goPoolId,gOperAcid | "
+	lv_q = lv_q + " select gam.cif_id,gam.acid,gam.foracid,gam.schm_type,gam.schm_code,gam.clr_bal_amt,gam.pool_id,gac.int_dr_acid "
+	lv_q = lv_q + " from tbaadm.gam,tbaadm.gac  "
+	lv_q = lv_q + " where gam.bank_id=?SVAR "
+	lv_q = lv_q + " and gac.bank_id=?SVAR "
+	lv_q = lv_q + " and gam.acid=gac.acid "
+	lv_q = lv_q + " and gam.sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR ) "
+	lv_q = lv_q + " and gam.schm_type='ODA' " 
+	lv_q = lv_q + " and gam.schm_code in ('OD501','OD503') "
+	lv_q = lv_q + " and gam.acct_cls_flg='N' " 
+	lv_q = lv_q + " and gam.entity_cre_flg='Y' " 
+	lv_q = lv_q + " and gam.del_flg='N' "
+	lv_q = lv_q + " and gam.clr_bal_amt <0 "
+	lv_q = lv_q + " and gam.allow_sweeps='Y' and gam.pool_id is not null "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.mySolId 
+        print(lv_q)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+                EQOD.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EQOD.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQOD.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQOD.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        EQOD.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQOD.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+                EQOD.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQOD.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQOD.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+               	EQOD.GLBDATA.gCifid = BANCS.OUTPARAM.gCifid
+                EQOD.GLBDATA.goAcid = BANCS.OUTPARAM.goAcid
+                EQOD.GLBDATA.crAcctId = BANCS.OUTPARAM.goAcctId
+                EQOD.GLBDATA.goSchmType = BANCS.OUTPARAM.goSchmType
+                EQOD.GLBDATA.goSchmcode = BANCS.OUTPARAM.goSchmcode
+                EQOD.GLBDATA.goclrBalAmt = BANCS.OUTPARAM.goclrBalAmt
+                EQOD.GLBDATA.goPoolId = BANCS.OUTPARAM.goPoolId
+                EQOD.GLBDATA.gOperAcid = BANCS.OUTPARAM.gOperAcid
+#LimitCheck
+		
+		lv_h = "limExpCnt | select count(*)  from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and lim_exp_date<=to_date(?SVAR,'DD-MM-YYYY') and serial_num in (select max(serial_num) from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and lim_exp_date<=to_date(?SVAR,'DD-MM-YYYY') and acid=?SVAR) and acid=?SVAR "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10)  + "|" + EQOD.GLBDATA.goAcid + "|" + EQOD.GLBDATA.goAcid 
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_h)
+		lv_h = urhk_dbSelectWithBind(lv_h)
+		if(lv_h==0)then
+		#{
+			EQOD.GLBDATA.limExpCnt = BANCS.OUTPARAM.limExpCnt
+		else
+			EQOD.GLBDATA.limExpCnt = "0"
+		#}
+		endif
+		print(EQOD.GLBDATA.limExpCnt)
+		if(cdouble(EQOD.GLBDATA.limExpCnt)<=0)then
+		#{
+                        ####goto NXTREC
+		#}
+		endif
+#Dr/Cr Account Derivation
+		print(EQOD.GLBDATA.gOperAcid)
+		if(EQOD.GLBDATA.gOperAcid!="")then
+		#{
+			sv_a= urhk_B2k_AcidToForacid(EQOD.GLBDATA.gOperAcid)
+			if(sv_a==0)then
+			#{
+				EQOD.GLBDATA.drAcctId = BANCS.OUTPARAM.Foracid
+			else
+				EQOD.GLBDATA.drAcctId = ""
+			#}
+			endif
+		#}
+		else
+		#{
+                        lv_o = " drAcctId | select foracid from tbaadm.gam where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and cif_id=?SVAR and allow_sweeps='Y' and schm_type<>'ODA' and pool_id is not null and rownum<=1 "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQOD.GLBDATA.gCifid
+			print(lv_o)
+			print(BANCS.INPARAM.BINDVARS)
+                        lv_u = urhk_dbSelectWithBind(lv_o)
+                        if(lv_u==0)then
+			#{
+                                EQOD.GLBDATA.drAcctId = BANCS.OUTPARAM.drAcctId
+                        else
+                                EQOD.GLBDATA.drAcctId = ""
+			#}
+                        endif
+		#}
+                endif
+                if(EQOD.GLBDATA.drAcctId=="")then
+		#{
+                        goto NXTREC
+		#}
+                endif
+		sv_u = urhk_getAcctDetailsInRepository(EQOD.GLBDATA.drAcctId)
+		if(sv_u == 0)then
+		#{
+			EQOD.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+			EQOD.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+			EQOD.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+			EQOD.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+			EQOD.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+			EQOD.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt 
+			print(BANCS.OUTPARAM.SystemReservedAmt)
+		#}
+		else
+		#{
+			EQOD.GLBDATA.drdrawingPower = 0
+			EQOD.GLBDATA.drEffBal = 0
+			EQOD.GLBDATA.drclearBalance = 0
+			EQOD.GLBDATA.drsanLim = 0
+			EQOD.GLBDATA.dravalAmt = 0
+			EQOD.GLBDATA.drlienamt = 0 
+		#}
+		endif
+		print(EQOD.GLBDATA.goclrBalAmt)
+		print(EQOD.GLBDATA.dravalAmt)
+		print(EQOD.GLBDATA.drclearBalance)
+		print(EQOD.GLBDATA.drlienamt)
+		if(cdouble(EQOD.GLBDATA.dravalAmt)<=0)then
+		#{
+			goto NXTREC
+		#}
+		endif
+		if(cdouble(EQOD.GLBDATA.dravalAmt)>1)then
+		#{
+			if(cdouble(EQOD.GLBDATA.goclrBalAmt)<0)then
+			#{
+				EQOD.GLBDATA.goclrBalAmt = -1 * cdouble(EQOD.GLBDATA.goclrBalAmt)
+			#}
+			endif
+			if(cdouble(EQOD.GLBDATA.goclrBalAmt)>0)then
+			#{
+				if(cdouble(EQOD.GLBDATA.goclrBalAmt)>cdouble(EQOD.GLBDATA.dravalAmt))then
+					EQOD.GLBDATA.tranAmt = cdouble(EQOD.GLBDATA.dravalAmt)
+					EQOD.GLBDATA.isTranYN = "Y"
+				else
+					EQOD.GLBDATA.tranAmt = cdouble(EQOD.GLBDATA.goclrBalAmt)
+					EQOD.GLBDATA.isTranYN = "Y"
+				endif
+			#}
+			else
+			#{
+				EQOD.GLBDATA.isTranYN = "N"
+				goto NXTREC
+			#}
+			endif
+		#}
+		else
+		#{
+			EQOD.GLBDATA.isTranYN = "N"
+			goto NXTREC
+		#}
+		endif
+#Tran Entry
+		print(EQOD.GLBDATA.drAcctId)
+		print(EQOD.GLBDATA.crAcctId)
+		print(EQOD.GLBDATA.tranAmt)
+		print(EQOD.GLBDATA.drclearBalance)	
+		print(EQOD.GLBDATA.dravalAmt)
+		print(EQOD.GLBDATA.drlienamt)
+		print(EQOD.GLBDATA.isTranYN)
+		if((EQOD.GLBDATA.drAcctId!="")and(EQOD.GLBDATA.crAcctId!="")and(cdouble(EQOD.GLBDATA.tranAmt)>0)and(EQOD.GLBDATA.isTranYN=="Y"))then
+		#{
+				MTT.PartTranDetails.Account = EQOD.GLBDATA.drAcctId
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.ValueDate   =  "0"
+				MTT.PartTranDetails.Particulars = "OD recovery for:" + EQOD.GLBDATA.crAcctId
+				MTT.PartTranDetails.RefAmount = -1*cdouble(EQOD.GLBDATA.tranAmt)
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = EQOD.GLBDATA.goPoolId 
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				##MTT.PartTranDetails.CarveAmtFlg = "Y"
+				MTT.PartTranDetails.Consolidate = "Y"
+				MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+				print(MTT.PartTranDetails.TranIdentifier)
+				MTT.PartTranDetails.PstFlg = "Y" 
+				MTT.PartTranDetails.ReportCode   = "ODLoan" 
+				sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+				print(sv_r)
+				if (sv_r != 0) then
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					print(MTT.Error.Description)
+					MTT.Error.Description="Debit Part Tran Definition failed "
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					sv_r = BANCS.OUTPARAM.MTTErrorDesc
+					EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+					EQOD.GLBDATA.srvErrCode = "MTT"
+					EQOD.GLBDATA.srvSucFail = "F"
+					goto NXTREC
+				#}
+				endif
+				MTT.PartTranDetails.Account = EQOD.GLBDATA.crAcctId
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.ValueDate           =  "0"
+				MTT.PartTranDetails.Particulars = "OD recovery from:" + EQOD.GLBDATA.drAcctId
+				MTT.PartTranDetails.RefAmount = 1 * cdouble(EQOD.GLBDATA.tranAmt)
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = EQOD.GLBDATA.goPoolId 
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "Y"
+				MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+				MTT.PartTranDetails.ReportCode   = "ODLoan" 
+				MTT.PartTranDetails.PstFlg = "Y" 
+				sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+				if (sv_r != 0) then
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					print(MTT.Error.Description)
+					MTT.Error.Description="Credit Part Tran Definition failed "
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					sv_r = BANCS.OUTPARAM.MTTErrorDesc
+					EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+					EQOD.GLBDATA.srvErrCode = "MTT"
+					EQOD.GLBDATA.srvSucFail = "F"
+					goto NXTREC
+				#}
+				endif
+				sv_u = urhk_MTTS_EndDefinition("")
+				print(sv_u)
+				if (sv_u != 0) then
+				#{
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					print (MTT.Error.Description)
+					EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+					EQOD.GLBDATA.srvErrCode = "MTT"
+					EQOD.GLBDATA.srvSucFail = "F"
+					goto NXTREC
+					EQOD.GLBDATA.TranId = ""
+				else
+					EQOD.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+					print(EQOD.GLBDATA.TranId)
+				#}
+				endif
+
+				print(MTT.XCPN.NumExceptions)
+				print(MTT.XCPN.NumWarnings)
+				if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+				#{
+					sv_u = urhk_MTTS_HandleExceptions("POST")
+					if (sv_u != 0) then
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						print (MTT.Error.Description)
+						EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+						EQOD.GLBDATA.srvErrCode = "MTT"
+						EQOD.GLBDATA.srvSucFail = "F"
+						goto NXTREC
+					endif
+				else
+					sv_u = urhk_MTTS_HandleExceptions("POST")
+					if (sv_u != 0) then
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						print (MTT.Error.Description)
+						EQOD.GLBDATA.srvErrMsg = MTT.Error.Description 
+						EQOD.GLBDATA.srvErrCode = "MTT"
+						EQOD.GLBDATA.srvSucFail = "F"
+						goto NXTREC
+					endif
+				#}
+				endif
+		#}
+		else
+		#{
+			goto NXTREC
+		#}
+		endif
+		NXTREC:
+			print(EQOD.GLBDATA.srvErrMsg)
+			print(EQOD.GLBDATA.srvErrCode)
+			print(EQOD.GLBDATA.srvSucFail)
+			sv_u = urhk_dbCursorFetch(EQOD.GLBDATA.schdlcurNum)
+			print(sv_u)
+			if(sv_u!=0)then
+				print("fetch failed")
+				sv_u = urhk_dbCursorClose(EQOD.GLBDATA.schdlcurNum)
+				print(sv_u)
+				EQOD.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+				EQOD.GLBDATA.srvErrCode = "DBCursor"
+				EQOD.GLBDATA.srvSucFail = "F"
+				goto Endofscript
+			endif
+			EQOD.GLBDATA.ddaRec = cint(EQOD.GLBDATA.ddaRec) + 1
+			EQOD.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQOD.GLBDATA.ddaRec
+			print(EQOD.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQOD.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+	print(EQOD.GLBDATA.srvErrCode)
+	print(EQOD.GLBDATA.srvErrMsg) 
+	print(EQOD.GLBDATA.srvSucFail)
+	exitscript
+trace off
+end-->

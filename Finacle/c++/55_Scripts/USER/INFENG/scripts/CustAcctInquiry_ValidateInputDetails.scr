@@ -1,0 +1,417 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       CustAcctInquiry_ValidateInputDetails.scr
+# Author                :       Venkatesh T R
+# Description           :       This script validates the value passed in Request XML
+# Input                 :       Customer ID, Account ID, National ID, Passport No
+# Output                :       Success or Failure
+# Called Script         :       CustAcctInquiry_main.scr
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           04-03-2012         Venkatesh          Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--start
+#trace on
+
+print(CUST.INTERFACE.customerID)
+print(CUST.INTERFACE.accountID)
+print(CUST.INTERFACE.nationalID)
+print(CUST.INTERFACE.passportNo)
+print(CUST.INTERFACE.bankID)
+print(CUST.INTERFACE.userID)
+print(CUST.INTERFACE.PhoneNo)
+print(CUST.INTERFACE.ALienID)
+CUST.INTERFACE.specialCase = "N"
+IF((CUST.INTERFACE.customerID == "") AND (CUST.INTERFACE.accountID == "") AND (CUST.INTERFACE.nationalID == "") AND (CUST.INTERFACE.passportNo == "") AND (CUST.INTERFACE.userID == "") AND (CUST.INTERFACE.bankID == "")AND (CUST.INTERFACE.PhoneNo == "")) THEN
+#{
+	CUST.INTERFACE.successOrFailure = "F"
+	CUST.INTERFACE.errorCode = "ERR001"
+	GOTO ERROREXIT
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Validation for Bank ID
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.bankID != "") THEN
+#{
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.bankID
+	sv_s = "count|SELECT COUNT(1) FROM TBAADM.GCT WHERE BANK_ID = ?SVAR"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(BANCS.OUTPARAM.count == 1) THEN
+	#{
+		print(CUST.INTERFACE.bankID)
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR033"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+#}
+ENDIF
+
+#========================================================
+# Validating User Id
+#========================================================
+IF(CUST.INTERFACE.userID!="")THEN
+#{
+	BANCS.INPARAM.BINDVARS=CUST.INTERFACE.userID + "|" + CUST.INTERFACE.bankID
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "valUserId|"
+	sv_s = sv_s + " SELECT count(1)"
+	sv_s = sv_s + " FROM TBAADM.UPR"
+	sv_s = sv_s + " WHERE USER_ID =?SVAR"
+	sv_s = sv_s + " AND ENTITY_CRE_FLG ='Y'"
+	sv_s = sv_s + " AND NVL(DEL_FLG, 'N') = ?SVAR"
+	print(sv_s)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d == 1 ) THEN
+	#{
+		CUST.INTERFACE.valUserId = BANCS.OUTPARAM.valUserId
+		print(CUST.INTERFACE.valUserId)
+		IF(CUST.INTERFACE.valUserId=="0")THEN
+		#{
+			print("Enter a valid UserID")
+			CUST.INTERFACE.successOrFailure="F"
+			CUST.INTERFACE.errorCode="ERR002"
+			GOTO ERROREXIT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+#}
+ENDIF
+
+
+#---------------------------------------------------------------------------------
+# Validation for Customer ID
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.customerID != "") THEN
+#{
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.customerID + "|" + CUST.INTERFACE.bankID
+	sv_s = "count|SELECT COUNT(1) FROM TBAADM.CMG WHERE CIF_ID = ?SVAR AND BANK_ID = ?SVAR"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(BANCS.OUTPARAM.count == 1) THEN
+	#{
+		print(CUST.INTERFACE.customerID)
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR002"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Validation for Account ID
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.accountID != "") THEN
+#{
+	sv_d=urhk_valAcctNumber(CUST.INTERFACE.accountID)
+	print(sv_d)
+	IF (sv_d!=0) THEN 
+	#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR003"
+		GOTO ERROREXIT
+	#}
+	ELSE
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.accountID)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR003"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.customerID = BANCS.OUTPARAM.cifId
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Validation for National ID
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.nationalID != "") THEN
+#{
+#-----------------------Edwin multiple cif check/suspended cif check
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.nationalID + "|" + CUST.INTERFACE.bankID
+	sv_s = "count|SELECT count(*) FROM TBAADM.CMG WHERE NAT_ID_CARD_NUM = ?SVAR AND BANK_ID = ?SVAR and DEL_FLG ='N'"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(BANCS.OUTPARAM.count > 1) THEN
+	#{
+		#CUST.INTERFACE.successOrFailure = "F"
+		#CUST.INTERFACE.errorCode = "ERR005"
+		sv_e=urhk_SetOrbOut("description|"+"Entered ID" +CUST.INTERFACE.nationalID+ " has mulitiple CIFS")
+		#print("Entered ID has mulitiple CIFS")
+		GOTO ERROREXIT
+
+	#}
+	ENDIF
+#--------------------
+
+		BANCS.INPARAM.BINDVARS = CUST.INTERFACE.nationalID + "|" + CUST.INTERFACE.bankID
+		sv_s = "cifId|SELECT CIF_ID FROM TBAADM.CMG WHERE NAT_ID_CARD_NUM = ?SVAR AND BANK_ID = ?SVAR and DEL_FLG ='N'"
+		IF(CUST.INTERFACE.customerID != "") THEN
+		#{
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.customerID
+			sv_s = sv_s + " AND CIF_ID = ?SVAR"
+		#}
+		ENDIF
+		sv_d = urhk_dbCursorOpenWithBind(sv_s)
+		sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(sv_n)
+		
+		sv_m = urhk_dbCursorFetch(sv_n)
+		print(sv_m)
+
+		sv_g = 0
+		CUST.INTERFACE.tempCifId = ""
+		WHILE(sv_m == 0)
+		#{
+			sv_g = sv_g + 1
+			CUST.INTERFACE.tempCifId = CUST.INTERFACE.tempCifId + BANCS.OUTPARAM.cifId + ","
+			sv_m = urhk_dbCursorFetch(sv_n)
+			print(sv_m)
+		#}
+		DO
+		sv_d = urhk_dbCursorClose(sv_n)
+		print(sv_d)
+		print(sv_g)
+		CUST.INTERFACE.cifCount = sv_g
+		print(CUST.INTERFACE.tempCifId)
+		
+		IF(sv_g != 0) THEN
+		#{
+			IF(sv_g > 1) THEN
+			#{
+				sv_a = urhk_GetChannelInfo("")
+				print(sv_a)
+				CUST.INTERFACE.DccId =BANCS.OUTPARAM.DccId
+				print(CUST.INTERFACE.DccId)
+				CUST.INTERFACE.specialCase = "Y"
+				print(CUST.INTERFACE.tempCifId)
+				#IF(CUST.INTERFACE.deliveryChannelId != "ESR") THEN
+				#{
+				#	CUST.INTERFACE.successOrFailure = "F"
+				#	CUST.INTERFACE.errorDesc = "Customer ID:" + CUST.INTERFACE.tempCifId + " are linked to the entered national id. Kindly pass Customer ID also as input"
+				#	sv_c = "ERRNAT" + "|" + CUST.INTERFACE.errorDesc
+				#	sv_u = urhk_SetOrbWarning(sv_c)
+				#	EXITSCRIPT
+				#}
+				#ELSE
+				#{
+				#	CUST.INTERFACE.specialCase = "Y"
+				#	print(CUST.INTERFACE.tempCifId)
+				#}
+				#ENDIF
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.tempCifId = MID$(CUST.INTERFACE.tempCifId,0, STRLEN(CUST.INTERFACE.tempCifId)-1)
+				print(CUST.INTERFACE.tempCifId)		
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR005"
+			GOTO ERROREXIT
+		#}
+		ENDIF
+		CUST.INTERFACE.customerID = CUST.INTERFACE.tempCifId
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Validation for Passport Number
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.passportNo != "") THEN
+#{
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.passportNo + "|" + CUST.INTERFACE.bankID
+	sv_s = "cifCount|SELECT COUNT(*) FROM crmuser.accounts WHERE passportno = ?SVAR AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		print(BANCS.OUTPARAM.cifCount)
+		IF((CINT(BANCS.OUTPARAM.cifCount) > 1) AND (CUST.INTERFACE.customerID == "")) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR047"
+			GOTO ERROREXIT
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.passportNo + "|" + CUST.INTERFACE.bankID
+	sv_s = "cifId|SELECT ORGKEY FROM crmuser.accounts WHERE passportno = ?SVAR AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		CUST.INTERFACE.customerID = BANCS.OUTPARAM.cifId
+		print(CUST.INTERFACE.customerID)
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR004"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+#}
+ENDIF
+#---------------------------------------------------------------------------------
+# Validation for Phone Number
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.PhoneNo != "") THEN
+#{
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.PhoneNo + "|" + CUST.INTERFACE.bankID
+	sv_s = "cifId|select orgkey from crmuser.phoneemail where phoneno = ?SVAR AND BANK_ID = ?SVAR and PREFERREDFLAG='Y' and rownum<2 "
+	IF(CUST.INTERFACE.customerID != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.customerID
+		sv_s = sv_s + " AND CIF_ID = ?SVAR"
+	#}
+	ENDIF
+	sv_d = urhk_dbCursorOpenWithBind(sv_s)
+	sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_n)
+	
+	sv_m = urhk_dbCursorFetch(sv_n)
+	print(sv_m)
+
+	sv_g = 0
+	CUST.INTERFACE.tempCifId = ""
+	WHILE(sv_m == 0)
+	#{
+		sv_g = sv_g + 1
+		CUST.INTERFACE.tempCifId = CUST.INTERFACE.tempCifId + BANCS.OUTPARAM.cifId + ","
+		sv_m = urhk_dbCursorFetch(sv_n)
+		print(sv_m)
+	#}
+	DO
+	sv_d = urhk_dbCursorClose(sv_n)
+	print(sv_d)
+	print(sv_g)
+	CUST.INTERFACE.cifCount = sv_g
+	print(CUST.INTERFACE.tempCifId)
+	
+	IF(sv_g != 0) THEN
+	#{
+		IF(sv_g > 1) THEN
+		#{
+			sv_a = urhk_GetChannelInfo("")
+			print(sv_a)
+			CUST.INTERFACE.DccId =BANCS.OUTPARAM.DccId
+			print(CUST.INTERFACE.DccId)
+			CUST.INTERFACE.specialCase = "Y"
+			print(CUST.INTERFACE.tempCifId)
+			
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.tempCifId = MID$(CUST.INTERFACE.tempCifId,0, STRLEN(CUST.INTERFACE.tempCifId)-1)
+			print(CUST.INTERFACE.tempCifId)		
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		#CUST.INTERFACE.successOrFailure = "F"
+		#CUST.INTERFACE.errorCode = "ERR005"
+		 sv_e=urhk_SetOrbOut("description|"+"Invalid Phone Number")
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	CUST.INTERFACE.customerID = CUST.INTERFACE.tempCifId
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Validation for AlienID Number
+#---------------------------------------------------------------------------------
+IF(CUST.INTERFACE.ALienID != "") THEN
+#{
+        BANCS.INPARAM.BINDVARS = CUST.INTERFACE.ALienID + "|" + CUST.INTERFACE.bankID
+        sv_s = "cifCount|SELECT COUNT(*) FROM crmuser.accounts WHERE IDTYPER1 = ?SVAR AND  BANK_ID = ?SVAR "
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+                print(BANCS.OUTPARAM.cifCount)
+                IF((CINT(BANCS.OUTPARAM.cifCount) > 1) AND (CUST.INTERFACE.customerID == "")) THEN
+                #{
+                        CUST.INTERFACE.successOrFailure = "F"
+                        CUST.INTERFACE.errorCode = "ERR047"
+                        GOTO ERROREXIT
+
+                #}
+                ENDIF
+        #}
+	ELSE
+	#{
+	sv_s=""
+        sv_s = "cifCount|SELECT COUNT(*) FROM crmuser.accounts WHERE UNIQUEID = ?SVAR AND  BANK_ID = ?SVAR "
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+                print(BANCS.OUTPARAM.cifCount)
+                IF((CINT(BANCS.OUTPARAM.cifCount) > 1) AND (CUST.INTERFACE.customerID == "")) THEN
+                #{
+                        CUST.INTERFACE.successOrFailure = "F"
+                        CUST.INTERFACE.errorCode = "ERR047"
+                        GOTO ERROREXIT
+
+                #}
+                ENDIF
+	#}
+	ENDIF
+	#}
+        ENDIF
+        BANCS.INPARAM.BINDVARS = CUST.INTERFACE.ALienID + "|" + CUST.INTERFACE.bankID
+        sv_s = "cifId|SELECT ORGKEY FROM crmuser.accounts WHERE IDTYPER1 = ?SVAR AND BANK_ID = ?SVAR "
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+                CUST.INTERFACE.customerID = BANCS.OUTPARAM.cifId
+                print(CUST.INTERFACE.customerID)
+        #}
+        ELSE
+        #{
+	sv_s=""
+        sv_s = "cifId|SELECT ORGKEY FROM crmuser.accounts WHERE UNIQUEID = ?SVAR AND BANK_ID = ?SVAR "
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+                CUST.INTERFACE.customerID = BANCS.OUTPARAM.cifId
+                print(CUST.INTERFACE.customerID)
+        #}
+        ELSE
+        #{
+                CUST.INTERFACE.successOrFailure = "F"
+                CUST.INTERFACE.errorCode = "ERR999"
+                GOTO ERROREXIT
+        #}
+        ENDIF
+
+        #}
+        ENDIF
+#}
+ENDIF
+
+#trace off
+end-->

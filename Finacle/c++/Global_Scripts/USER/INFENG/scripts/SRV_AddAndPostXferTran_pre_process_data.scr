@@ -1,0 +1,257 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: SRV_AddAndPostXferTran_pre_process_data.scr
+# Type: NA|default
+# Description: SRV_AddAndPostXferTran_pre_process_data.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#------------------------------------------------------------------------------------------------
+#    Name			 : SRV_AddAndPostXferTran_pre_process_data.scr
+#    Description     : This script is used to call s_tmschmblckdp001.scr
+#    Date            : 16-01-2013
+#    Author          : Prakash
+#    Input           : NA
+#    Output			 : NA
+#    Called Script	 : NA
+#    Calling Script	 : s_tmschmblckdp001.scr, s_tranvaldp001.scr, s_chargeratedp001.scr
+#    Menu Option	 : HTM
+#    Srl. No			Date			Author			Description.
+#    ------			----------			-------			---------------
+#    1.0			16-01-2013			Prakash			Original Version
+#    2.0			16-03-2013			Divya			Added new script file
+#    3.0            12-09-2013      Swati Ganjoo    Bypass script for CUBP
+#    4.0            09-12-2022      ManiKuttin    Basic negotiate rate/DFTRTrate.scr  CHG0031393
+#    5.0            15-11-2023      Irungu James	   Forex restriction CHG0033295
+#-----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="0638940e2297a98f1cc56799ee81e57d28d4daadf1fa1654a5618c5aaeb16745"
+	
+	TRACE ON
+	
+	IF(FIELDEXISTS(BANCS.STDIN.menuId))THEN
+	#{
+		IF(BANCS.STDIN.menuId == "CIETXN")THEN
+		#{
+			EXITSCRIPT
+		#}
+		ENDIF
+		#+++++++++++++++++++++++++++++++++++++++++++++Katumo M
+		if (BANCS.STDIN.contextBankId=="54") then 
+			IF(BANCS.STDIN.menuId=="HTM")THEN
+				sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid")
+				CUST.DATA.foracid = BANCS.OUTPARAM.srvValue
+				print (CUST.DATA.foracid)
+				sv_n=mid$(CUST.DATA.foracid,3,10)
+				print(sv_n)
+
+				sv_u = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranType")
+				CUST.DATA.tranType = BANCS.OUTPARAM.srvValue
+				print (CUST.DATA.tranType)
+
+				sv_u = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranSubType")
+				CUST.DATA.tranSubType = BANCS.OUTPARAM.srvValue
+				print (CUST.DATA.tranSubType)
+
+				IF ((CUST.DATA.tranType=="T") AND (CUST.DATA.tranSubType=="CI") and (sv_n=="1300100814")) THEN
+					sv_s = urhk_SRV_SetErr("Customer induced not allowed on imprest acct, use TBI")
+					print (sv_s)
+					GOTO END		
+				ENDIF
+				IF((CUST.DATA.tranSubType=="BI") and ((BANCS.STDIN.userWorkClass=="060") OR (BANCS.STDIN.userWorkClass=="062"))) THEN
+				#{
+						sv_s = urhk_SRV_SetErr("Bank induced Transaction not allowed For Your Workclass "+BANCS.STDIN.userWorkClass)
+						print (sv_s)
+						GOTO END
+				#}
+				ENDIF
+				
+			ENDIF
+	       endif
+	       #+++++++++++++++++++++++++++++++++++++++++++++Katumo M
+	       ########Restrict Digital loans from HTM to use CODLPAY - Chirchir D
+	       callscriptifexist("vpDigitalLNsHTMrest.scr")
+	       ########End
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.STDIN.menuId))THEN
+	#{
+		IF(BANCS.STDIN.menuId == "CUBP")THEN
+		#{
+			EXITSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (BANCS.STDIN.moduleIdentity == "FI") THEN
+	#{
+                sv_u = urhk_GetChannelInfo("")
+                if(sv_u==0)then
+                        BANCS.INPUT.dccIdd = BANCS.OUTPARAM.DccId
+                else
+                        BANCS.INPUT.dccIdd = ""
+                endif
+				
+                if(BANCS.INPUT.dccIdd=="RTD")then
+                        callscriptifexist("vptmRTDVal.scr")
+                      
+                endif
+                if(BANCS.INPUT.dccIdd=="UNH")then
+                if(BANCS.STDIN.contextBankId=="54")then
+                        callscriptifexist("ebUnhTranLimit.scr")
+                endif
+                endif
+                #vp UNHC Validation Ends
+                #+++++++++++++++++++++++++
+              
+              	CALL("FIratetmfxmn001.scr")
+               
+	        IF(BANCS.STDIN.contextBankId=="54")THEN
+		#{
+
+			IF (REPEXISTS("CUST") == 0) THEN
+				CREATEREP("CUST")
+			ENDIF
+			IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+			    CREATECLASS("CUST","RATE",5)
+			ENDIF
+			CUST.RATE.OPTION = "FITRAN"
+                        callscriptifexist("ForexLimitChk.scr")
+
+			callscriptifexist("ebSearch.scr")
+			if((BANCS.INPUT.dccIdd=="OMN") or (BANCS.INPUT.dccIdd=="H2H"))then
+				callscriptifexist("vptmCustParticulars.scr")
+			endif
+		#}
+	        ENDIF
+
+	#}
+	ENDIF
+	
+	IF(BANCS.STDIN.onlineOrBatch == "O") THEN
+	#{
+		CALL("s_tmschmblckdp001.scr")
+		#	CALL("s_tranvaldp002.scr")
+		
+		IF (BANCS.STDIN.moduleIdentity != "FI") THEN
+		#{
+			
+			CALL("s_tranvaldp002.scr")
+			CALL("ratetmfxmn001.scr")
+
+			IF(BANCS.STDIN.contextBankId=="54")THEN
+			#{
+				IF (REPEXISTS("CUST") == 0) THEN
+					CREATEREP("CUST")
+				ENDIF
+				IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+				    CREATECLASS("CUST","RATE",5)
+				ENDIF
+				CUST.RATE.OPTION = "FITRAN"
+				callscriptifexist("ForexLimitChk.scr")
+				callscriptifexist("ebSearch.scr")
+				callscriptifexist("ebCamlTmVal.scr")
+			#}
+			ENDIF
+			#--------------------------------------------Edwin for Holiday value date
+			if(BANCS.STDIN.contextBankId=="56")then
+				if(fieldexists(BANCS.STDIN.menuId))then
+					if(BANCS.STDIN.menuId == "HTM")then
+						callscriptifexist("eTMValueDate.scr")
+					endif
+				endif
+			endif
+			#---------------------------------------------End
+			IF(BANCS.STDIN.contextBankId=="54")THEN
+			#{
+				###########ODSME limit check
+				callscriptifexist("ODSMELimitUtilization.scr")
+				###########ODSME limit check
+			#}
+			ENDIF
+
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+        #+++++++++++++++++++++++++++++++++++++Agent Starts VP
+        if(BANCS.STDIN.contextBankId=="54")then
+        sv_u = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranType")
+        BANCS.INPUT.tranType=BANCS.OUTPARAM.srvValue
+        sv_u = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranSubType")
+        BANCS.INPUT.tranSubType=BANCS.OUTPARAM.srvValue
+        if(BANCS.INPUT.tranSubType=="CI")then
+                callscriptifexist("ebSafaricomTmVal.scr")
+        endif
+        endif
+        #+++++++++++++++++++++++++++++++++++++Ends
+
+	sv_u = urhk_SRV_NumOfRecs("tranDtl.partTranDetailLL")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		sv_a = BANCS.OUTPARAM.srvValue
+        	PRINT(sv_a)
+		IF(sv_a != 0)THEN
+		#{
+			sv_l = 0
+			PRINT(sv_l)
+			WHILE(sv_l < sv_a)
+			#{
+        			sv_v = Format$(sv_l,"%d")
+        			sv_r = "<rec_"+sv_v+">"
+				PRINT(sv_r)
+			        sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".treaRefNum")
+        			PRINT(sv_u)
+				sv_b = BANCS.OUTPARAM.srvValue
+				PRINT(sv_b)
+				IF(sv_b != "")THEN
+				#{
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".acctId.crncyCode")
+        				PRINT(sv_u)
+					sv_c = BANCS.OUTPARAM.srvValue
+					PRINT(sv_c)
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".refCrncyCode.crncyCode")
+        				PRINT(sv_u)
+					sv_d = BANCS.OUTPARAM.srvValue
+					PRINT(sv_d)
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".rateCode.refCode")
+        				PRINT(sv_u)
+					sv_e = BANCS.OUTPARAM.srvValue
+					PRINT(sv_e)
+			        	sv_u = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranType")
+        				PRINT(sv_u)
+					sv_f = BANCS.OUTPARAM.srvValue
+					PRINT(sv_f)
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".partTranType.code")
+        				PRINT(sv_u)
+					sv_g = BANCS.OUTPARAM.srvValue
+					PRINT(sv_g)
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".rate")
+        				PRINT(sv_u)
+					sv_h = BANCS.OUTPARAM.srvValue
+					PRINT(sv_h)
+			        	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".treaRate")
+        				PRINT(sv_u)
+					sv_i = BANCS.OUTPARAM.srvValue
+					PRINT(sv_i)
+					CALL("ratecodehtm001.scr")
+				#}
+				ENDIF
+
+                		sv_l= sv_l+1
+
+        		#}
+        		DO
+	#}
+	ENDIF
+TRACE OFF	
+END-->

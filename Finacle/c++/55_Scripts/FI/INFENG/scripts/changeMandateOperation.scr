@@ -1,0 +1,582 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : changeMandateOperation.scr
+#  Description     : change of mandate(Mode of operation) api
+#  Date            : 16-02-2022
+#  Author          : James Maina
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-03-2022      James Maina		Original Version
+#1.1                13-04-2022     Vincent Wabwoba
+#-----------------------------------------------------------------------------------------------
+
+<--start
+trace on
+
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUST","SIG") == 0) THEN
+        #{
+                CREATECLASS("CUST","SIG",5)
+        #}
+        ENDIF
+
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	print (sv_a)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("FORACID"))== 0) ) THEN
+	#{
+   		CUST.SIG.errMsg="ACCOUNT IS NULL"
+		sv_t = "executeFinacleScript_CustomData.ERROR | " +CUST.SIG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("MODEOFOPERATION"))== 0) ) THEN
+	#{
+   		CUST.SIG.errMsg="MODEOFOPERATION IS NULL"
+		sv_t = "executeFinacleScript_CustomData.ERROR | " +CUST.SIG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("USERID"))== 0) ) THEN
+	#{
+		#Error response
+   		CUST.SIG.errMsg="Kindly enter the USERID"
+		sv_t="ERROR| " + CUST.SIG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("checkerUSERID"))== 1) ) THEN
+	#{
+		CUST.SIG.checkerUSERID= BANCS.INPUT.checkerUSERID
+		PRINT(CUST.SIG.checkerUSERID)
+	#}
+	ELSE
+	#{
+		CUST.SIG.checkerUSERID=""
+		PRINT(CUST.SIG.checkerUSERID)
+	#}
+	ENDIF
+
+
+#--freeText
+
+	CUST.SIG.account = BANCS.INPUT.FORACID	
+	CUST.SIG.CODE = BANCS.INPUT.MODEOFOPERATION
+	CUST.SIG.USERID= BANCS.INPUT.USERID
+	CUST.SIG.RMKS1=""
+	
+	IF(CUST.SIG.CODE == "OTH") THEN 
+	#{
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("REMARKS"))== 0) ) THEN
+	#{
+   		CUST.SIG.errMsg="REMARKS IS NULL"
+		sv_t = "executeFinacleScript_CustomData.ERROR | " +CUST.SIG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+	
+	CUST.SIG.RMKS=BANCS.INPUT.REMARKS
+	#}
+	ELSE
+	#{
+	CUST.SIG.RMKS="NOT SPECIAL MANDATE"
+	#}
+	ENDIF
+
+	#-----------------------------------------------------------------------------
+	#Check if userid is valid
+	#-----------------------------------------------------------------------------
+	sv_s="USERID|"
+	sv_s = sv_s + " SELECT USER_ID FROM TBAADM.UPR WHERE  "
+	sv_s = sv_s + " USER_ID=?SVAR "
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS =  CUST.SIG.USERID
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+
+	IF(sv_d==0)THEN
+	#{
+		PRINT("valid user")
+	#}
+	ELSE
+	#{
+		CUST.SIG.errMsg="INVALID USERID " + CUST.SIG.USERID
+		sv_t = "ERROR| " +CUST.SIG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDOFSCRIPT
+
+	#}
+	ENDIF
+
+	IF(CUST.SIG.checkerUSERID !="")THEN
+	#{
+
+		#-----------------------------------------------------------------------------
+		#Check if checker userid is valid
+		#-----------------------------------------------------------------------------
+		sv_s="count1|"
+		sv_s = sv_s + " SELECT count(1) FROM TBAADM.UPR WHERE  "
+		sv_s = sv_s + " USER_ID=?SVAR "
+		print(sv_s)
+
+		BANCS.INPARAM.BINDVARS =  CUST.SIG.checkerUSERID
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d==0)THEN
+		#{
+			CUST.SIG.count1 = BANCS.OUTPARAM.count1
+			PRINT(CUST.SIG.count1)
+			IF (cint(CUST.SIG.count1)== 0) THEN
+			#{
+				CUST.SIG.errMsg="INVALID checkerUSERID " + CUST.SIG.checkerUSERID
+				sv_t = "ERROR| " +CUST.SIG.errMsg
+				sv_u = urhk_SetOrbOut(sv_t)
+   				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF	
+	#}
+	ENDIF
+
+	
+	############################################# GET SCHM_TYPE ###############################
+	sv_s = "ACID,STYPE, SOL,GLSUB|"
+	sv_s = sv_s + " SELECT ACID,SCHM_TYPE,SOL_ID,GL_SUB_HEAD_CODE FROM TBAADM.GAM WHERE "
+	sv_s = sv_s + "FORACID=?SVAR AND BANK_ID=?SVAR"
+
+	BANCS.INPARAM.BINDVARS = CUST.SIG.account +"|"+ BANCS.STDIN.contextBankId
+		
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d ==0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.ACID)	
+		CUST.SIG.acid = BANCS.OUTPARAM.ACID
+		PRINT(BANCS.OUTPARAM.STYPE)	
+		CUST.SIG.STYPE= BANCS.OUTPARAM.STYPE
+		PRINT(BANCS.OUTPARAM.SOL)	
+		CUST.SIG.SOL= BANCS.OUTPARAM.SOL
+		PRINT(BANCS.OUTPARAM.GLSUB)	
+		CUST.SIG.GLSUB= BANCS.OUTPARAM.GLSUB
+	#}
+	ENDIF	
+
+		#####Handle psnextprintDate not null
+		sv_s = "psflg|"
+		sv_s = sv_s + " SELECT PS_DIFF_FREQ_REL_PARTY_FLG FROM TBAADM.AST WHERE "
+		sv_s = sv_s + " ACID=?SVAR AND BANK_ID=?SVAR"
+
+		BANCS.INPARAM.BINDVARS = CUST.SIG.acid +"|"+ BANCS.STDIN.contextBankId
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d==0)THEN
+		#{
+			PRINT(BANCS.OUTPARAM.psflg)	
+			CUST.SIG.psflg= BANCS.OUTPARAM.psflg
+
+		#}
+		ELSE
+		#{
+			CUST.SIG.psflg=""			
+		#}
+		ENDIF
+
+
+			#######################serial num key
+			sv_s = "key|"
+			sv_s = sv_s + " SELECT COUNT(*) FROM TBAADM.AAS WHERE "
+			sv_s = sv_s + "ACID=?SVAR AND BANK_ID=?SVAR"
+
+			BANCS.INPARAM.BINDVARS = CUST.SIG.acid +"|"+ BANCS.STDIN.contextBankId
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)	
+			IF(sv_d == 0)THEN
+			#{				
+				print(BANCS.OUTPARAM.key)	
+				CUST.SIG.key= BANCS.OUTPARAM.key
+				PRINT(CUST.SIG.key)
+				sv_k = CUST.SIG.key
+				
+			#}
+			ENDIF
+
+
+	############################################## SBA ACCOUNTS##############################	
+	IF(CUST.SIG.STYPE == "SBA")THEN
+	#{
+
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.SIG.account)		
+		sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+		IF (sv_u == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")	
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.modeOfOperCode.refCode|"+ CUST.SIG.CODE)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.freeText|"+ CUST.SIG.RMKS)
+			sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+			IF(CUST.SIG.psflg=="Y")THEN
+			#{
+				sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+				sv_a = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_0>.psNextPrintDate|"+BANCS.STDIN.BODDate)
+
+				print(sv_k)
+				sv_y = cint(sv_k) - 1
+				sv_y = FORMAT$(sv_y,"%d")
+				PRINT(sv_y)
+				WHILE(sv_y!= 0)
+        			#{        				
+					PRINT(sv_y)
+					sv_a = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_"+sv_y+">.psNextPrintDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_"+sv_y+">.key.serial_num|"+ sv_y)						
+					sv_y = cint(sv_y)-1	
+					sv_y = FORMAT$(sv_y,"%d")
+					print(sv_y)
+				#}
+				DO
+			#}
+			ENDIF
+
+			sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+
+			IF (sv_u == 0) THEN
+			#{
+				print("SUCCESS")			
+				#sending response to the user
+				CUST.SIG.msg = "Account " +CUST.SIG.account + " has been modified successfully."
+				sv_t = "executeFinacleScript_CustomData.MSG | " +CUST.SIG.msg
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ELSE
+			#{
+					GOTO REMCHECKERROR
+			#}
+			ENDIF
+			#----------------------------------------------------------------------------------------------------------------------------
+			#get refnum
+			#-----------------------------------------------------------------------------------------------------------------------------
+			sv_s = "refnum |"
+			sv_s = sv_s + " SELECT TO_CHAR(TBAADM.TBA_ADT_REF_NUM_SEQ_54.NEXTVAL) FROM DUAL "
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+				PRINT(BANCS.OUTPARAM.refnum)	
+				CUST.SIG.refnum= BANCS.OUTPARAM.refnum 
+			#}
+			ELSE
+			#{
+	   			GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+ 			CUST.SIG.tablekey = CUST.SIG.acid +"/" + BANCS.STDIN.contextBankId
+			PRINT(CUST.SIG.tablekey)
+
+			#----------------------------------------------------------------------------------------------------------------------------
+			#get MODIFIED_FIELDS_DATA
+			#-----------------------------------------------------------------------------------------------------------------------------
+			sv_s="ENTEREDID, MFD|"
+			sv_s = sv_s + " SELECT ENTERER_ID,modified_fields_data  FROM TBAADM.ADT WHERE "
+			sv_s = sv_s + " ACID=?SVAR AND TABLE_NAME='GAM' ORDER BY AUDIT_DATE DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY "
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.SIG.acid
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+				CUST.SIG.ENTEREDID= BANCS.OUTPARAM.ENTEREDID
+				print(CUST.SIG.ENTEREDID)
+				CUST.SIG.MFD= BANCS.OUTPARAM.MFD
+				print(CUST.SIG.MFD)
+				IF(CUST.SIG.ENTEREDID =="FIVUSR54")THEN
+				#{
+					IF(CUST.SIG.checkerUSERID !="")THEN
+					#{
+                				sv_a = "INSERT INTO TBAADM.TBA_AUDIT_TBL (ref_num,table_name,table_key,audit_srl_num,bank_id,audit_sol_id,acid,gl_sub_head_code,enterer_id,auth_id,rmks,audit_date, "
+               					sv_a =sv_a+ " modified_fields_data,func_code,init_sol_id,audit_bod_date,caller_module,referral_id,auth_date,auth_bod_date,mop_id,calling_func_name,entity_id) "
+                				sv_a =sv_a+ " VALUES ( ?SVAR , 'GAM' , ?SVAR , '002' , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , 'Record Modified' ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), replace (q'["+CUST.SIG.MFD+"]',q'[|]',q'[/]'), 'M' , ?SVAR ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), 'O' , '' , "
+                				sv_a =sv_a+ " TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'),TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'), '' , 'NAPI_ExecOrbScr' , '!' )"	
+						PRINT(sv_a)		
+
+                				BANCS.INPARAM.BINDVARS = CUST.SIG.refnum +"|"+CUST.SIG.tablekey +"|"+BANCS.STDIN.contextBankId+"|"+CUST.SIG.SOL +"|"+CUST.SIG.acid+"|"+CUST.SIG.GLSUB+"|"+CUST.SIG.USERID+"|"+CUST.SIG.checkerUSERID+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.mySolId+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+                				sv_v = urhk_dbSQLWithBind(sv_a)   
+                				IF(sv_v == 0)then
+               	 				#{
+							sv_x = urhk_dbSQLWithBind("COMMIT")
+                				#}
+						ELSE
+						#{
+							PRINT("FAILED TO INSERT RECORD TO ADT")
+							GOTO ENDSCRIPT
+						#}
+               	 				ENDIF
+
+
+					#}
+					ELSE
+					#{
+                				sv_a = "INSERT INTO TBAADM.TBA_AUDIT_TBL (ref_num,table_name,table_key,audit_srl_num,bank_id,audit_sol_id,acid,gl_sub_head_code,enterer_id,auth_id,rmks,audit_date, "
+               					sv_a =sv_a+ " modified_fields_data,func_code,init_sol_id,audit_bod_date,caller_module,referral_id,auth_date,auth_bod_date,mop_id,calling_func_name,entity_id) "
+                				sv_a =sv_a+ " VALUES ( ?SVAR , 'AAS' , ?SVAR , '002' , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , 'Record Modified' ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), replace (q'["+CUST.SIG.MFD+"]',q'[|]',q'[/]') , 'M' , ?SVAR ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), 'O' , '' , "
+                				sv_a =sv_a+ " TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'),TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'), '' , 'NAPI_ExecOrbScr' , '!' )"	
+						PRINT(sv_a)		
+
+                				BANCS.INPARAM.BINDVARS = CUST.SIG.refnum +"|"+CUST.SIG.tablekey +"|"+BANCS.STDIN.contextBankId+"|"+CUST.SIG.SOL +"|"+CUST.SIG.acid+"|"+CUST.SIG.GLSUB+"|"+CUST.SIG.USERID+"|"+CUST.SIG.checkerUSERID+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.mySolId+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+                				sv_v = urhk_dbSQLWithBind(sv_a)
+                				IF(sv_v == 0)then
+               	 				#{
+							sv_x = urhk_dbSQLWithBind("COMMIT")
+                				#}
+						ELSE
+						#{
+							PRINT("FAILED TO INSERT RECORD TO ADT")
+							GOTO ENDSCRIPT
+						#}
+               	 				ENDIF
+
+					#}
+					ENDIF
+
+				#}
+				ENDIF
+			#}
+			ENDIF	
+
+
+		#}
+		ENDIF
+
+
+	#}
+	ENDIF
+
+	#####################################################CAA ACCOUNT#############################################
+	IF(CUST.SIG.STYPE == "CAA")THEN
+	#{
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.SIG.account)
+			
+		sv_u = urhk_ExecSrv("SRV_FetchCAAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+		PRINT(sv_u)
+
+
+		IF (sv_u == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.modeOfOperCode.refCode|"+ CUST.SIG.CODE)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.freeText|"+ CUST.SIG.RMKS)
+			sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+			IF(CUST.SIG.psflg=="Y")THEN
+			#{
+				sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+				sv_a = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_0>.psNextPrintDate|"+BANCS.STDIN.BODDate)
+
+				print(sv_k)
+				sv_y = cint(sv_k) - 1
+				sv_y = FORMAT$(sv_y,"%d")
+				PRINT(sv_y)
+				WHILE(sv_y!= 0)
+        			#{        				
+					PRINT(sv_y)
+					sv_a = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_"+sv_y+">.psNextPrintDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_"+sv_y+">.key.serial_num|"+ sv_y)						
+					sv_y = cint(sv_y)-1	
+					sv_y = FORMAT$(sv_y,"%d")
+					print(sv_y)
+				#}
+				DO
+			#}
+			ENDIF
+
+			sv_u = urhk_ExecSrv("SRV_ModifyCAAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+
+			IF (sv_u == 0) THEN
+			#{
+				print("SUCCESS")			
+				#sending response to the user
+				CUST.SIG.msg = "Account " +CUST.SIG.account + " has been modified successfully."
+
+				sv_t = "executeFinacleScript_CustomData.MSG | " +CUST.SIG.msg
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ELSE
+			#{
+					GOTO REMCHECKERROR
+			#}
+			ENDIF
+			#----------------------------------------------------------------------------------------------------------------------------
+			#get refnum
+			#-----------------------------------------------------------------------------------------------------------------------------
+			sv_s = "refnum |"
+			sv_s = sv_s + " SELECT TO_CHAR(TBAADM.TBA_ADT_REF_NUM_SEQ_54.NEXTVAL) FROM DUAL "
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+				PRINT(BANCS.OUTPARAM.refnum)	
+				CUST.SIG.refnum= BANCS.OUTPARAM.refnum 
+			#}
+			ELSE
+			#{
+	   			GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+ 			CUST.SIG.tablekey = CUST.SIG.acid +"/" + BANCS.STDIN.contextBankId
+			PRINT(CUST.SIG.tablekey)
+
+			#----------------------------------------------------------------------------------------------------------------------------
+			#get MODIFIED_FIELDS_DATA
+			#-----------------------------------------------------------------------------------------------------------------------------
+			sv_s="ENTEREDID, MFD|"
+			sv_s = sv_s + " SELECT ENTERER_ID,modified_fields_data  FROM TBAADM.ADT WHERE "
+			sv_s = sv_s + " ACID=?SVAR AND TABLE_NAME='GAM' ORDER BY AUDIT_DATE DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY "
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.SIG.acid
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+				CUST.SIG.ENTEREDID= BANCS.OUTPARAM.ENTEREDID
+				print(CUST.SIG.ENTEREDID)
+				CUST.SIG.MFD= BANCS.OUTPARAM.MFD
+				print(CUST.SIG.MFD)
+				IF(CUST.SIG.ENTEREDID =="FIVUSR54")THEN
+				#{
+					IF(CUST.SIG.checkerUSERID !="")THEN
+					#{
+                				sv_a = "INSERT INTO TBAADM.TBA_AUDIT_TBL (ref_num,table_name,table_key,audit_srl_num,bank_id,audit_sol_id,acid,gl_sub_head_code,enterer_id,auth_id,rmks,audit_date, "
+               					sv_a =sv_a+ " modified_fields_data,func_code,init_sol_id,audit_bod_date,caller_module,referral_id,auth_date,auth_bod_date,mop_id,calling_func_name,entity_id) "
+                				sv_a =sv_a+ " VALUES ( ?SVAR , 'GAM' , ?SVAR , '002' , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , 'Record Modified' ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), replace (q'["+CUST.SIG.MFD+"]',q'[|]',q'[/]'), 'M' , ?SVAR ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), 'O' , '' , "
+                				sv_a =sv_a+ " TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'),TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'), '' , 'NAPI_ExecOrbScr' , '!' )"	
+						PRINT(sv_a)		
+
+                				BANCS.INPARAM.BINDVARS = CUST.SIG.refnum +"|"+CUST.SIG.tablekey +"|"+BANCS.STDIN.contextBankId+"|"+CUST.SIG.SOL +"|"+CUST.SIG.acid+"|"+CUST.SIG.GLSUB+"|"+CUST.SIG.USERID+"|"+CUST.SIG.checkerUSERID+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.mySolId+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+                				sv_v = urhk_dbSQLWithBind(sv_a)   
+                				IF(sv_v == 0)then
+               	 				#{
+							sv_x = urhk_dbSQLWithBind("COMMIT")
+                				#}
+						ELSE
+						#{
+							PRINT("FAILED TO INSERT RECORD TO ADT")
+							GOTO ENDSCRIPT
+						#}
+               	 				ENDIF
+
+
+					#}
+					ELSE
+					#{
+                				sv_a = "INSERT INTO TBAADM.TBA_AUDIT_TBL (ref_num,table_name,table_key,audit_srl_num,bank_id,audit_sol_id,acid,gl_sub_head_code,enterer_id,auth_id,rmks,audit_date, "
+               					sv_a =sv_a+ " modified_fields_data,func_code,init_sol_id,audit_bod_date,caller_module,referral_id,auth_date,auth_bod_date,mop_id,calling_func_name,entity_id) "
+                				sv_a =sv_a+ " VALUES ( ?SVAR , 'AAS' , ?SVAR , '002' , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , ?SVAR , 'Record Modified' ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), replace (q'["+CUST.SIG.MFD+"]',q'[|]',q'[/]') , 'M' , ?SVAR ,TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS'), 'O' , '' , "
+                				sv_a =sv_a+ " TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'),TO_DATE( ?SVAR ,'DD-MM-YYYY HH24:MI:SS'), '' , 'NAPI_ExecOrbScr' , '!' )"	
+						PRINT(sv_a)		
+
+                				BANCS.INPARAM.BINDVARS = CUST.SIG.refnum +"|"+CUST.SIG.tablekey +"|"+BANCS.STDIN.contextBankId+"|"+CUST.SIG.SOL +"|"+CUST.SIG.acid+"|"+CUST.SIG.GLSUB+"|"+CUST.SIG.USERID+"|"+CUST.SIG.checkerUSERID+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.mySolId+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate+"|"+BANCS.STDIN.BODDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+                				sv_v = urhk_dbSQLWithBind(sv_a)
+                				IF(sv_v == 0)then
+               	 				#{
+							sv_x = urhk_dbSQLWithBind("COMMIT")
+                				#}
+						ELSE
+						#{
+							PRINT("FAILED TO INSERT RECORD TO ADT")
+							GOTO ENDSCRIPT
+						#}
+               	 				ENDIF
+
+					#}
+					ENDIF
+
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+
+	REMCHECKERROR:
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) then
+		#{
+			sv_u = system("echo 'Error for Acct:"+CUST.SIG.account+" '")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>MandateMgr.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "executeFinacleScript_CustomData.ERROR | " +sv_e
+				sv_u = urhk_SetOrbOut(sv_t)
+				GOTO ENDSCRIPT
+
+
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+
+
+
+
+ENDSCRIPT:
+
+
+trace off
+
+end-->

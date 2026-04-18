@@ -1,0 +1,329 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: calcAndPostChrgTran.scr
+# Type: NA|default
+# Description: Script to Calculate Charges
+# Author: Anshul_Singh04
+# Date: 9/26/18 5:41 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="e8742ae617a409a29c6543e8072b8dfb21da364e12e2fad18b7480464c937a55"
+	# Script body goes here
+	TRACE ON
+	sv_u = urhk_b2k_printrepos("BANCS")
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","TRAN") == 0) THEN
+	#{
+		CREATECLASS("CUST","TRAN",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	CUST.TRAN.errorFlg = "N"
+	CUST.TRAN.errorMsg = " "
+	CUST.TRAN.evntChrgCrncy = " "
+	CUST.TRAN.chrgAmt = " "
+	CUST.TRAN.evntVATCrncy = " "
+	CUST.TRAN.vatAmt = " "
+	CUST.GCHRG.chargeTranId = " "
+	CUST.GCHRG.chargeTranDate = " "
+	
+	IF(FIELDEXISTS(BANCS.INPUT.origTranId))THEN
+	#{
+		
+		IF(TRIM(BANCS.INPUT.origTranId) != "")THEN
+		#{
+			CUST.TRAN.origTranId = TOUPPER(BANCS.INPUT.origTranId)
+			PRINT(CUST.TRAN.origTranId)
+			#}
+		ELSE
+			#{
+			CUST.TRAN.errorFlg ="Y"
+			CUST.TRAN.errorMsg ="Transaction Id not passed!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.TRAN.errorFlg ="Y"
+		CUST.TRAN.errorMsg ="Transaction Id not passed!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.INPUT.origTranDate))THEN
+	#{
+		
+		IF(TRIM(BANCS.INPUT.origTranDate) != "")THEN
+		#{
+			CUST.TRAN.origTranDate = TOUPPER(BANCS.INPUT.origTranDate)
+			PRINT(CUST.TRAN.origTranDate)
+			#}
+		ELSE
+			#{
+			CUST.TRAN.errorFlg ="Y"
+			CUST.TRAN.errorMsg ="Transaction Date not passed!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.TRAN.errorFlg ="Y"
+		CUST.TRAN.errorMsg ="Transaction Date not passed!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------#
+	#      	    Fetching Account Details             #
+	#------------------------------------------------#
+	
+	sv_s = "acid, instmntType, acctCrncy |select acid, instrmnt_type, tran_crncy_code from"
+	sv_s = sv_s + " tbaadm.dtd where tran_id = ?SVAR and tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + "	and bank_id = ?SVAR and cust_id is not null and rownum = 1 "
+	
+	BANCS.INPARAM.BINDVARS = CUST.TRAN.origTranId + "|" + MID$(CUST.TRAN.origTranDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.acid)
+		PRINT(BANCS.OUTPARAM.acctCrncy)
+		PRINT(BANCS.OUTPARAM.instmntType)
+		
+		IF(BANCS.OUTPARAM.acid == "")THEN
+		#{
+			CUST.TRAN.errorFlg = "Y"
+			CUST.TRAN.errorMsg = "Unable to fetch the Customer Account Details for Charge Collection!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.TRAN.acctCrncy = BANCS.OUTPARAM.acctCrncy
+		CUST.TRAN.instmntType = BANCS.OUTPARAM.instmntType
+		
+		BANCS.OUTPARAM.Foracid = "0"
+		sv_z = urhk_B2k_AcidToForacid(BANCS.OUTPARAM.acid)
+		PRINT(sv_z)
+		PRINT(BANCS.OUTPARAM.Foracid)
+		
+		IF(BANCS.OUTPARAM.Foracid == "0")THEN
+		#{
+			CUST.TRAN.errorFlg = "Y"
+			CUST.TRAN.errorMsg = "Unable to fetch the Customer Account Details for Charge Collection!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#}
+	ELSE
+		#{
+		CUST.TRAN.errorFlg = "Y"
+		CUST.TRAN.errorMsg = "Unable to fetch the Customer Account Details for Charge Collection!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.TRAN.foracid = BANCS.OUTPARAM.Foracid
+	
+	
+	#------------------------------------------------#
+	#          Fetching Event ID from CPARAM         #
+	#------------------------------------------------#
+	
+	IF(CUST.TRAN.instmntType != "")THEN
+	#{
+		BANCS.INPUT.moduleName = "OT"
+		BANCS.INPUT.parameterId = "CASHWD_INST_CHRG_EVNT_ID"
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.moduleName = "OT"
+		BANCS.INPUT.parameterId = "CASHWD_CHRG_EVNT_ID"
+	#}
+	ENDIF
+	
+	CALL("getCustomParamValue.scr")
+	
+	IF(sv_h =="Y")THEN
+	#{
+		CUST.TRAN.errorFlg = "Y"
+		CUST.TRAN.errorMsg = sv_i
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.parameterVal)
+	CUST.TRAN.chrgEvntId = BANCS.OUTPARAM.parameterVal
+	
+	#------------------------------------------------#
+	#        	  Validating Event ID                #
+	#------------------------------------------------#
+	
+	sv_s = "count|SELECT count(*) FROM tbaadm.PTT where ENTITY_CRE_FLG ='Y' and del_flg='N' "
+	sv_s = sv_s + " and  event_type ='GCHRG' and event_id =?SVAR and  bank_id= ?SVAR "
+	
+	BANCS.INPARAM.BINDVARS = CUST.TRAN.chrgEvntId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.count)
+		IF(BANCS.OUTPARAM.count == "0")THEN
+		#{
+			CUST.TRAN.errorFlg = "Y"
+			CUST.TRAN.errorMsg = "Invalid Event Id: "+CUST.TRAN.chrgEvntId+" for Charge Collection!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.TRAN.errorFlg = "Y"
+		CUST.TRAN.errorMsg = "Invalid Event Id: "+CUST.TRAN.chrgEvntId+" for Charge Collection!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------#
+	#      	    Calling GCHRG script for Charge Transaction             #
+	#-------------------------------------------------------------------#
+	
+	CUST.GCHRG.tranType				= "T"
+	CUST.GCHRG.tranSubType          = "CI"
+	CUST.GCHRG.drAcctId             = CUST.TRAN.foracid
+	CUST.GCHRG.acctCrncyCode        = CUST.TRAN.acctCrncy
+	CUST.GCHRG.eventId				= CUST.TRAN.chrgEvntId
+	CUST.GCHRG.chrgAmt				= ""
+	
+	CALL("gchrgcommon.scr")
+	
+	IF(CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		PRINT(CUST.GCHRG.chargeTranId)
+		PRINT(CUST.GCHRG.chargeTranDate)
+		#}
+	ELSE
+		#{
+		CUST.TRAN.errorFlg = "Y"
+		CUST.TRAN.errorMsg = CUST.GCHRG.gchrgErrMsg
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CHRG.TXN.evntChrgCrncy))THEN
+	#{
+		IF(TRIM(CHRG.TXN.evntChrgCrncy) != "")THEN
+		#{
+			CUST.TRAN.evntChrgCrncy = CHRG.TXN.evntChrgCrncy
+			PRINT(CUST.TRAN.evntChrgCrncy)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CHRG.TXN.chrgAmt))THEN
+	#{
+		IF(TRIM(CHRG.TXN.chrgAmt) != "")THEN
+		#{
+			CUST.TRAN.chrgAmt = CHRG.TXN.chrgAmt
+			PRINT(CUST.TRAN.chrgAmt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CHRG.TXN.evntVATCrncy))THEN
+	#{
+		IF(TRIM(CHRG.TXN.evntVATCrncy) != "")THEN
+		#{
+			CUST.TRAN.evntVATCrncy = CHRG.TXN.evntVATCrncy
+			PRINT(CUST.TRAN.evntVATCrncy)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CHRG.TXN.vatAmt))THEN
+	#{
+		IF(TRIM(CHRG.TXN.vatAmt) != "")THEN
+		#{
+			CUST.TRAN.vatAmt = CHRG.TXN.vatAmt
+			PRINT(CUST.TRAN.vatAmt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(TRIM(CUST.GCHRG.chargeTranId) == "")THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	sv_s = "Insert into CUSTOM.C_CTDT (PARENT_TRAN_ID, PARENT_TRAN_DATE, EVENT_TYPE, EVENT_ID, SERVICE_SOL_ID, CHRG_TRAN_ID, CHRG_TRAN_DATE, COLL_CRNCY_CODE, CHRG_AMT, VAT_AMT, RCRE_USER_ID"
+	sv_s = sv_s + " ,RCRE_TIME, BANK_ID) Values(?SVAR, TO_DATE(?SVAR,'DD-MM-YYYY'), ?SVAR, ?SVAR, ?SVAR, ?SVAR, TO_DATE(?SVAR,'DD-MM-YYYY'), ?SVAR, ?SVAR, ?SVAR, ?SVAR, sysdate , ?SVAR )"
+	
+	BANCS.INPARAM.BINDVARS = CUST.TRAN.origTranId + "|" + CUST.TRAN.origTranDate + "|" + "GCHRG" + "|" + CUST.TRAN.chrgEvntId  + "|" + BANCS.STDIN.mySolId + "|" + CUST.GCHRG.chargeTranId + "|" + CUST.GCHRG.chargeTranDate
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.TRAN.evntChrgCrncy + "|" + CUST.TRAN.chrgAmt + "|" + CUST.TRAN.vatAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSqlWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.TRAN.errorFlg ="Y"
+		CUST.TRAN.errorMsg ="Error in DB Operation!!"
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		
+		sv_u = urhk_SetOrbOut("errFlg|"+CUST.TRAN.errorFlg)
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("message|"+CUST.TRAN.errorMsg)
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("cxlTranId|"+CUST.GCHRG.chargeTranId)
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("cxlTranDate|"+CUST.GCHRG.chargeTranDate)
+		PRINT(sv_u)
+		
+		DELETECLASS("CUST","GCHRG")
+		DELETECLASS("CUST","TRAN")
+		DELETEREP("CUST")
+		
+		IF (CLASSEXISTS("CHRG","TXN") == 1) THEN
+		#{
+			DELETECLASS("CHRG","TXN")
+		#}
+		ENDIF
+		
+		IF (REPEXISTS("CHRG") == 1) THEN
+		#{
+			DELETEREP("CHRG")
+		#}
+		ENDIF
+END-->

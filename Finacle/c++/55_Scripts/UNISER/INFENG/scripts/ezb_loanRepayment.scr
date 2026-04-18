@@ -1,0 +1,246 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : loanRepayment.scr
+#  Description     : fetchs Term Deposit accounts attached to a CIF
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2023     Harrison Ruiru        Original Version
+#-----------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+    sv_u=REPEXISTS("CUST")
+    IF(sv_u==0) THEN
+    #{
+        CREATEREP("CUST")
+    #}
+    ENDIF
+
+    sv_u=CLASSEXISTS("CUST", "EZB")
+    IF(sv_u==0) THEN
+    #{
+        CREATECLASS("CUST", "EZB", 5)
+    #}
+    ENDIF
+
+    #BANCS.INPUT.AccountNo = "54312489116"
+
+    sv_t=urhk_b2k_printrepos("BANCS")
+    print(sv_t)
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNo"))== 0) ) THEN
+    #{
+        CUST.EZB.errMsg="please enter AccountNo"
+        sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+        sv_t = "MSG | " +CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+        GOTO ENDSCRIPT
+    ELSE 
+        CUST.EZB.AccountNo = BANCS.INPUT.AccountNo
+    print(CUST.EZB.AccountNo)
+    lv_u = urhk_B2k_ForacidToAcid(CUST.EZB.AccountNo)
+    print(lv_u)
+
+    if(lv_u == 0)then
+    #{
+        CUST.EZB.acid = BANCS.OUTPARAM.Acid
+        print(CUST.EZB.acid)
+    ELSE 
+        CUST.EZB.errMsg="Error Occured. Try Again or Contact Admin"
+        sv_t = "LoanRepaymentSchedule_RES.<rec_1>.Error| " + CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+    #}
+    ENDIF
+    #}
+    ENDIF
+
+    #---------------------------------------------------------------------------------------------------------------
+    # Variable Initialization
+    #---------------------------------------------------------------------------------------------------------------
+    CUST.EZB.schm_type = "TDA"
+    sv_z = " "
+    CUST.EZB.installmentStatus = ""
+
+
+    #----------------------------------------------------------------------------------------------
+    # validations
+    #----------------------------------------------------------------------------------------------
+
+    sv_q = "intDmdAmt,dmdDate,dmdDueDate,adjAmt,flowId |"
+    sv_q = sv_q + " SELECT DMD_AMT,DMD_DATE,DMD_EFF_DATE,TOT_ADJ_AMT, DMD_FLOW_ID  "
+    sv_q = sv_q + " FROM TBAADM.LDT "
+    sv_q = sv_q + " WHERE ACID =?SVAR AND DMD_FLOW_ID IN ('INDEM') AND BANK_ID=?SVAR ORDER BY DMD_EFF_DATE ASC "
+    print(sv_q)
+    
+    BANCS.INPARAM.BINDVARS =  CUST.EZB.acid +"|"+BANCS.STDIN.contextBankId
+    print(BANCS.INPARAM.BINDVARS)
+
+    sv_c = urhk_dbcursorOpenWithBind(sv_q)
+    PRINT(sv_c)
+
+    IF (sv_c == 0)THEN
+    #{
+        CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        PRINT(CUST.EZB.cursor_number)
+
+        sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+        print(sv_d)
+
+        sv_q = 0
+        print(sv_q)
+
+
+        IF(sv_d == 0)THEN
+        #{
+            WHILE (sv_d == 0)
+            #{
+                sv_q = sv_q + 1
+                print(sv_q)
+
+                CUST.EZB.dmdDueDate = BANCS.OUTPARAM.dmdDueDate
+                CUST.EZB.dmdDate = BANCS.OUTPARAM.dmdDate
+                print(CUST.EZB.dmdDate)
+                CUST.EZB.intDmdAmt = BANCS.OUTPARAM.intDmdAmt
+                print(CUST.EZB.intDmdAmt)
+                CUST.EZB.intAdjAmt = BANCS.OUTPARAM.adjAmt
+                print(CUST.EZB.intAdjAmt)
+
+                IF(BANCS.OUTPARAM.flowId != "")THEN
+                #{
+                    lv_q = "prDmdAmt,prAdjAmt,rate |SELECT * FROM (SELECT DMD_AMT,TOT_ADJ_AMT, "
+                    lv_q =  lv_q + " (SELECT  abs(INTEREST_RATE)  FROM TBAADM.EIT e WHERE e.entity_id =l.ACID) RATE "
+                    lv_q =  lv_q + " FROM TBAADM.LDT l "
+                    lv_q =  lv_q + " WHERE DMD_FLOW_ID IN ('PRDEM') AND ACID =?SVAR AND DMD_DATE=?SVAR  AND BANK_ID=?SVAR) "
+                            print(lv_q)
+                    BANCS.INPARAM.BINDVARS = CUST.EZB.acid +"|"+ CUST.EZB.dmdDate +"|"+ BANCS.STDIN.contextBankId
+                    print(BANCS.INPARAM.BINDVARS)
+
+                    sv_c = urhk_dbSelectWithBind(lv_q)
+                    PRINT(sv_c)
+
+                    IF(sv_c == 0)THEN
+                    #{
+                        CUST.EZB.prDmdAmt = BANCS.OUTPARAM.prDmdAmt
+                        print(CUST.EZB.prDmdAmt)
+
+                        CUST.EZB.prAdjAmt = BANCS.OUTPARAM.prAdjAmt
+                        print(CUST.EZB.prAdjAmt)
+
+                        CUST.EZB.intRate = BANCS.OUTPARAM.rate
+                        print(CUST.EZB.intRate)
+
+                        CUST.EZB.totDmdAmt = CDOUBLE(CUST.EZB.prDmdAmt) + CDOUBLE(CUST.EZB.intDmdAmt)
+                        print(CUST.EZB.totDmdAmt)
+
+                        CUST.EZB.totPaidAmt = CDOUBLE(CUST.EZB.intAdjAmt) + CDOUBLE(CUST.EZB.prAdjAmt)
+                        print(CUST.EZB.totPaidAmt)
+
+                        IF( (CDOUBLE(CUST.EZB.totDmdAmt) == CDOUBLE(CUST.EZB.totPaidAmt)) OR (CDOUBLE(CUST.EZB.totPaidAmt) > CDOUBLE(CUST.EZB.totDmdAmt)) )THEN
+                        #{
+                            CUST.EZB.installmentStatus = "SATISFIED"
+                        ELSE 
+                            CUST.EZB.installmentStatus = "UNSATISFIED"
+                        #}
+                        ENDIF 
+
+                        sv_v = "" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanAccountNumber| " + CUST.EZB.AccountNo
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "InstallmentNo_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = sv_q
+
+                        sv_v = "DueDate_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.dmdDueDate
+
+                        sv_v = "LoanOpeningBalance_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = sv_z
+
+                        sv_v = "PrincipalAmount_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.prDmdAmt
+
+                        sv_v = "InterestAmount_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.intDmdAmt
+
+                        sv_v = "InterestRate_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.intRate
+
+                        sv_v = "TotalAmount_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.totDmdAmt
+
+                        sv_v = "LoanClosingBalance_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = sv_z
+
+                        sv_v = "InstallmentPaymentStatus_" + FORMAT$(sv_q, "%d")
+                        ("CUST").("EZB").(sv_v) = CUST.EZB.installmentStatus
+
+                        sv_v = "InstallmentNo_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.InstallmentNo| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "DueDate_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DueDate| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "LoanOpeningBalance_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.LoanOpeningBalance| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "PrincipalAmount_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.PrincipalAmount| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "InterestAmount_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.InterestAmount| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "InterestRate_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.InterestRate| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "TotalAmount_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.TotalAmount| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "LoanClosingBalance_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.LoanClosingBalance| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_v = "InstallmentPaymentStatus_" + FORMAT$(sv_q, "%d")
+                        sv_t = "LoanRepaymentSchedule_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.InstallmentPaymentStatus| " + ("CUST").("EZB").(sv_v)
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+
+                    #}
+                    ENDIF 
+                #}
+                ENDIF 
+
+                sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+                print(sv_d)
+            #} 
+            DO 
+
+            sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+            print(sv_x)
+            print(CUST.EZB.cursor_number)
+        ELSE 
+            CUST.EZB.errMsg = "Unable to Fetch Records. Contact System Admin."
+            sv_t = "LoanRepaymentSchedule_RES.<rec_1>.message| " + CUST.EZB.errMsg
+            sv_u = urhk_SetOrbOut(sv_t)
+        #}
+        ENDIF 
+    #}
+    ENDIF
+ENDSCRIPT:
+trace off
+END-->
+

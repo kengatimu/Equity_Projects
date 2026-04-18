@@ -1,0 +1,210 @@
+#======================================================#
+#Source Name                    :eqFundRsrvBfrDmdDtOnConsmrLoans.scr
+#Menu                           :HBJE
+#Batch Name                     :RSRVF
+#Date                           :05-04-2023
+#Description                    :Mark Lien on Loan Operatives before 5 day's from demand date.
+#Author                         :Ranjith Palani
+#======================================================#
+<--start
+#trace on
+	if(repexists("CUST") == 0)then
+		createrep("CUST")
+	endif
+	if(classexists("CUST","RSRV") == 0)then
+		createclass("CUST","RSRV",5)
+	endif
+
+	sv_p = urhk_B2k_PrintRepos("BANCS")
+
+	sv_l = "loanAcid,loanAccnt,operAcid|"
+	sv_l = sv_l + " select gam.acid,gam.foracid,lam.op_acid from tbaadm.gam,tbaadm.lam" 
+	sv_l = sv_l + " where gam.acid=lam.acid" 
+	sv_l = sv_l + " and gam.bank_id=lam.bank_id"
+	sv_l = sv_l + " and gam.bank_id=?SVAR"
+	sv_l = sv_l + " and lam.bank_id=?SVAR"
+	sv_l = sv_l + " and gam.schm_type='LAA'"
+	sv_l = sv_l + " and gam.schm_code in(select regexp_substr((select listagg(parameter_value,'!') within group (order by parameter_value) from custom.c_cpvalue"
+	sv_l = sv_l + " 			where module_name='LARSRV' and parameter_id='LARSRV' and bank_id=?SVAR),'[^!]+',1,LEVEL) as schem_code_param from dual"
+	sv_l = sv_l + "				connect by level < regexp_count((select listagg(parameter_value,'!') within group (order by parameter_value)"
+	sv_l = sv_l + "								from custom.c_cpvalue where module_name='LARSRV' and parameter_id='LARSRV' and bank_id=?SVAR),'!')+0)"
+	sv_l = sv_l + " and gam.acct_ownership='C'" 
+	sv_l = sv_l + " and gam.entity_cre_flg!='N'" 
+	sv_l = sv_l + " and gam.del_flg!='Y'"
+	sv_l = sv_l + " and gam.acct_cls_flg!='Y'"
+	sv_l = sv_l + " and gam.acct_cls_date is null"
+	sv_l = sv_l + " and exists(select 1 from tbaadm.cmg where cmg.bank_id=?SVAR and cmg.bank_id=gam.bank_id and cmg.cif_id=gam.cif_id and cmg.corp_id is null)"
+	sv_l = sv_l + " and lam.op_acid is not null" 
+	sv_l = sv_l + " and lam.payoff_flg!='Y'"
+	sv_l = sv_l + " and gam.sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id=?SVAR)" 
+	sv_l = sv_l + " order by gam.schm_code,gam.acct_opn_date" 
+	print(sv_l)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId 
+	print(BANCS.INPARAM.BINDVARS)
+	sv_o = urhk_dbCursorOpenWithBind(sv_l)
+	if(sv_o == 0)then
+		CUST.RSRV.loanAcidCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	else
+		goto endofscript
+	endif
+
+	sv_f = urhk_dbCursorFetch(CUST.RSRV.loanAcidCurNum)
+	if(sv_f != 0)then
+		sv_c = urhk_dbCursorClose(CUST.RSRV.loanAcidCurNum)
+		goto endofscript
+	endif
+
+	while(sv_f == 0)
+	#{
+		print("Loop")
+		CUST.RSRV.loanAcid = BANCS.OUTPARAM.loanAcid
+		CUST.RSRV.loanAccnt = BANCS.OUTPARAM.loanAccnt
+		CUST.RSRV.operAcid = BANCS.OUTPARAM.operAcid
+		
+		sv_f = urhk_B2k_AcidToForacid(CUST.RSRV.operAcid)
+		if(sv_f == 0)then
+			CUST.RSRV.operAccnt = BANCS.OUTPARAM.Foracid
+		else
+			CUST.RSRV.operAccnt = ""
+		endif
+
+		sv_s = "lienFlowAmt|select sum(dmd_amt)-sum(tot_adj_amt) as lienFlowAmt from tbaadm.ldt where bank_id=?SVAR  and acid=?SVAR"
+		sv_s = sv_s + " and del_flg='N' and (dmd_amt - tot_adj_amt) > 0 and dmd_eff_date-5 <= (select db_stat_date from tbaadm.gct where bank_id=?SVAR)order by dmd_Date,dmd_flow_id"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.RSRV.loanAcid +"|"+ BANCS.STDIN.contextBankId  
+		sv_s = urhk_dbSelectWithBind(sv_s)
+		if(sv_s == 0)then
+			CUST.RSRV.lienFlowAmt = BANCS.OUTPARAM.lienFlowAmt
+			print(CUST.RSRV.lienFlowAmt)
+		else
+			CUST.RSRV.lienFlowAmt = "0"
+		endif
+	
+		sv_e =  mid$(BANCS.STDIN.BODDate,0,10) +"|"+ "0" +"|"+ "5"
+		sv_d = urhk_B2k_Add_MonthsDays_To_date(sv_e)
+		if(sv_d == 0)then
+			CUST.RSRV.lienExpDate = mid$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+			print(CUST.RSRV.lienExpDate)
+		endif
+
+		if(cdouble(CUST.RSRV.lienFlowAmt) > 0)then
+		#{
+                        #Exiting Lien Rec
+                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                        sv_s = sv_s + " where acid =?SVAR "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and lien_reason_code='RSRV' "
+                        sv_s = sv_s + " and b2k_id is not null "
+                        sv_s = sv_s + " and bank_id =?SVAR) "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and lien_reason_code='RSRV' "
+                        sv_s = sv_s + " and b2k_id is not null "
+                        sv_s = sv_s + " and acid =?SVAR "
+                        sv_s = sv_s + " and bank_id =?SVAR "
+                        BANCS.INPARAM.BINDVARS = CUST.RSRV.operAcid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.RSRV.operAcid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        if(sv_d == 0)then
+                        #{
+                                CUST.RSRV.amount1 = BANCS.OUTPARAM.amount1
+                                CUST.RSRV.acid = BANCS.OUTPARAM.acid
+                                CUST.RSRV.b2kid = BANCS.OUTPARAM.b2kid
+                                CUST.RSRV.Lib2kid = CUST.RSRV.b2kid
+                        #}
+                        else
+                        #{
+                                CUST.RSRV.amount1 = "0"
+                                CUST.RSRV.acid = ""
+                                CUST.RSRV.b2kid = ""
+                                CUST.RSRV.Lib2kid = ""
+                        #}
+                        endif
+		#}
+		else
+		#{
+			goto nextrec
+		#}
+		endif
+
+		if(cdouble(CUST.RSRV.amount1) <= 0 )then
+		#{
+
+			print("Mark Lien")
+			BANCS.INPARAM.acctNum = CUST.RSRV.operAccnt
+			BANCS.INPARAM.blockMode = "A"
+			BANCS.INPARAM.lienAmt = cdouble(CUST.RSRV.lienFlowAmt) * 1
+			BANCS.INPARAM.expiryDate = CUST.RSRV.lienExpDate 
+			BANCS.INPARAM.remarks = "ReserveFundOnDelayedLAARepayments:"+CUST.RSRV.loanAccnt
+			BANCS.INPARAM.reasonCode = "RSRV"
+			BANCS.INPARAM.bodDate = mid$(BANCS.STDIN.BODDate,0,10)
+			BANCS.INPARAM.lienValueDate = mid$(BANCS.STDIN.BODDate,0,10)
+			sv_u = urhk_updateLien("")
+			if(sv_u == 0)then
+				sv_s = BANCS.OUTPARAM.successOrFailure
+				if(sv_s == "S")then
+					sv_c = urhk_dbSqlWithBind("commit")
+					print(sv_c)
+					print("Lien Mark Success")
+					print("Lien Marked on Operative A/c.: "+CUST.RSRV.operAccnt +"And corresponding Loan A/c. is:"+ CUST.RSRV.loanAccnt)
+				else
+					print("Lien Mark Failed")
+					goto nextrec
+				endif
+			else
+				CUST.RSRV.srvErrMsg =  "Failed to Lien on operative account for loan recovery"
+				CUST.RSRV.srvErrCode = "Lien"
+				CUST.RSRV.srvSucFail = "S"
+				goto nextrec	
+			endif
+		#}
+		else
+		#{
+		print(CUST.RSRV.lienFlowAmt)
+		print(CUST.RSRV.amount1)
+		CUST.RSRV.lienFlowAmt = cdouble(CUST.RSRV.lienFlowAmt) + cdouble(CUST.RSRV.amount1)
+		print(CUST.RSRV.lienFlowAmt)
+			if(CUST.RSRV.b2kid!="")then
+			#{
+				BANCS.INPARAM.b2kId = CUST.RSRV.b2kid
+				BANCS.INPARAM.acctNum = CUST.RSRV.operAccnt
+				BANCS.INPARAM.blockMode = "M"
+				BANCS.INPARAM.lienAmt = cdouble(CUST.RSRV.lienFlowAmt) * 1
+				BANCS.INPARAM.expiryDate = CUST.RSRV.lienExpDate 
+				BANCS.INPARAM.remarks = "ReserveFundOnDelayedLAARepayments:"+CUST.RSRV.loanAccnt
+				BANCS.INPARAM.reasonCode = "RSRV"
+				BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+				BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+				sv_u = urhk_updateLien("")
+				if(sv_u!=0)then
+				#{
+					CUST.RSRV.srvErrMsg =  "Failed to Lien on operative account for loan recovery"
+					CUST.RSRV.srvErrCode = "Lien"
+					CUST.RSRV.srvSucFail = "S"
+					goto nextrec
+				#}
+				else
+				#{
+					CUST.RSRV.srvErrMsg =  "Lien on operative account for loan recovery"
+					CUST.RSRV.srvErrCode = "Lien"
+					CUST.RSRV.srvSucFail = "S"
+					lv_i = urhk_dbSqlWithBind("commit")
+					goto nextrec
+				#}
+				endif
+			#}
+			endif
+		#}
+		endif
+
+
+		nextrec:
+		sv_f = urhk_dbCursorFetch(CUST.RSRV.loanAcidCurNum)
+	#}
+	do
+	sv_c = urhk_dbCursorClose(CUST.RSRV.loanAcidCurNum)
+
+ 
+trace off
+end-->

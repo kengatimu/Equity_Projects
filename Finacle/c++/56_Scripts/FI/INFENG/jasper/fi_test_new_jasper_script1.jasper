@@ -1,0 +1,1 @@
+# This is a script file for testing ci/cd new file

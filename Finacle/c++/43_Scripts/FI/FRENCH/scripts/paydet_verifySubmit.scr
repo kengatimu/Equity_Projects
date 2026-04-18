@@ -1,0 +1,163 @@
+
+<--START
+	# Script body goes here
+	TRACE ON
+BANCS.OUTPARAM.MTTTranId=""
+#call transaction passing script
+
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+
+	sv_u=urhk_B2k_PrintRepos("CUST")
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+
+
+CUST.GCHRG.tranType=""
+CUST.GCHRG.tranSubType=""
+CUST.GCHRG.drAcctId=""
+CUST.GCHRG.acctCrncyCode=""
+CUST.GCHRG.eventId=""
+CUST.GCHRG.chrgAmt=""
+
+CUST.DATA.ChrgTranId=""
+CUST.DATA.chrgaccccy="CDF"
+
+if (CUST.DATA.chrgeventid== "EFTOUT") THEN
+
+		sv_a=urhk_getAcctDetailsInRepository(CUST.DATA.chrgacc)
+		if(sv_a == "0") then
+
+			CUST.DATA.chrgaccccy=BANCS.OUTPARAM.acctCrncyCode
+			CUST.DATA.cifid =BANCS.OUTPARAM.cifId
+
+			CUST.DATA.SchmCode=BANCS.OUTPARAM.schmCode
+			print(CUST.DATA.chrgaccccy)
+			print(CUST.DATA.cifid)
+		endif
+#convert remit to acc cy
+
+	if(CUST.DATA.chrgaccccy != CUST.DATA.tranccy) then
+
+			BANCS.INPARAM.InputAmount =cdouble(CUST.DATA.remitamt) 
+			BANCS.INPARAM.FromCurrency =  CUST.DATA.tranccy 
+			BANCS.INPARAM.ToCurrency = CUST.DATA.chrgaccccy
+			BANCS.INPARAM.RateCode = CUST.DATA.treaRate 
+			BANCS.INPARAM.Rate = CDOUBLE("0.0")
+			sv_f = urhk_B2k_ConvertAmount("")	
+			sv_f = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+
+				CUST.DATA.remiamtcchrg =sv_f
+				print(CUST.DATA.remiamtcchrg)
+ 				CUST.DATA.tranccy1=CUST.DATA.chrgaccccy
+
+
+		else
+
+		CUST.DATA.tranccy1=CUST.DATA.tranccy
+		print(CUST.DATA.tranccy)
+		CUST.DATA.remiamtcchrg =CUST.DATA.remitamt
+
+	endif
+
+#
+
+
+
+                #{
+        CUST.GCHRG.tranType                             = "T"
+        CUST.GCHRG.tranSubType          = "CI"
+        CUST.GCHRG.drAcctId             = CUST.DATA.chrgacc
+        CUST.GCHRG.acctCrncyCode        = CUST.DATA.chrgaccccy
+        CUST.GCHRG.eventId                              = CUST.DATA.chrgeventid
+       CUST.GCHRG.chrgAmt                              = CUST.DATA.remiamtcchrg +"|"+CUST.DATA.tranccy1
+
+        CALL("BCDC_gchrgcommon.scr")
+
+         IF(FIELDEXISTS(CUST.GCHRG.successOrFailure))THEN
+                #{
+
+	IF (FIELDEXISTS(CUST.GCHRG.chargeTranId)) THEN
+	#{
+		IF(TRIM(CUST.GCHRG.chargeTranId) != "")THEN
+		#{
+
+		CUST.DATA.ChrgTranId=CUST.GCHRG.chargeTranId
+		print(CUST.DATA.ChrgTranId)
+
+		 #}
+	    ENDIF
+    #}
+	ENDIF
+
+                #}
+        ENDIF
+                #}
+	ENDIF
+
+
+call("paydet_mtt.scr")	
+
+BANCS.INPUT.MTTTranId=""
+
+	IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		IF(TRIM(BANCS.OUTPARAM.MTTTranId) != "")THEN
+		#{
+
+	BANCS.INPUT.MTTTranId=BANCS.OUTPARAM.MTTTranId
+	BANCS.INPUT.Trandate =LEFT$(BANCS.STDIN.BODDate,10)
+	print(BANCS.INPUT.Trandate)
+
+	sv_a = "UPDATE CUSTOM.ECS_TRAN SET"
+	sv_a = sv_a + " LCHG_USER_ID = ?SVAR,LCHG_TIME = SYSDATE,ENTITY_CRE_FLG = 'Y',DEL_FLG = 'N',"
+	sv_a = sv_a + " TRAN_ID = ?SVAR,TRAN_DATE= to_date(?SVAR,'dd-mm-yyyy'),chrgtranid=?SVAR "
+	sv_a = sv_a + "  WHERE Ecstranrefnum =?SVAR "
+	sv_a = sv_a + " AND  REMITAMT=?SVAR and entity_cre_flg='N' and del_flg='N' "
+
+print(CUST.DATA.Ecstranrefnum)
+print(CUST.DATA.remitamt)
+print(BANCS.INPUT.Trandate)
+print(BANCS.INPUT.MTTTranId)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId +"|"+ BANCS.INPUT.MTTTranId +"|"+ BANCS.INPUT.Trandate+"|"+ CUST.DATA.ChrgTranId +"|"+ CUST.DATA.Ecstranrefnum +"|"+ CUST.DATA.remitamt 
+
+	sv_b = urhk_dbSQLWithBind(sv_a)
+			PRINT(sv_b)
+			IF (sv_b == 0) THEN
+			#{
+				sv_b = urhk_dbSQLWithBind("COMMIT")
+				#}
+			ELSE
+
+				sv_b = urhk_dbSQLWithBind("ROLLBACK")
+				
+			#}
+			ENDIF
+	
+	   #{		
+		ELSE
+   	   #}		
+		CUST.DATA.errMsg = "NO Transaction Created"
+	        #}
+		ENDIF
+	#}
+	ENDIF
+
+	IF (CUST.DATA.errMsg == "") THEN
+	#{
+		CUST.DATA.sucessMsg = "Records Verified successfully:" + " Tran Id: " + BANCS.INPUT.MTTTranId + " Charge Tran: "  + CUST.DATA.ChrgTranId
+	#}
+	ENDIF
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

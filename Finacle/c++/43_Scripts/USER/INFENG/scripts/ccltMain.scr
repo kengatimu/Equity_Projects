@@ -1,0 +1,809 @@
+#---------------------------------------------------------------------------------    
+#	Name			: ccltMain.scr
+#	Description		: Main Script for CCLT Custom Menu
+#	Date			: 03-12-2023
+#	Author			: Phelister Wanjiru
+#	Input			: NA
+#	Output			: NA
+#	Called Script	: jsp
+#	Menu Option		: CCLT
+#----------------------------------------------------------------------------------
+<--START
+TRACE ON   
+LIBNAME CUSTOMSO  
+            IF(REPEXISTS("CUST")==0)THEN
+            #{
+                    CREATEREP("CUST")
+            #}
+            ENDIF
+
+            IF(CLASSEXISTS("CUST","CCLT")==0)THEN
+            #{
+                CREATECLASS("CUST","CCLT",5)
+            #}
+            ENDIF
+
+            sv_a = urhk_b2k_printRepos("BANCS")
+	        print(sv_a)
+
+            PRINT("start")
+
+            CUST.CCLT.funCode = BANCS.INPUT.funCode
+            print(CUST.CCLT.funCode)
+
+            ##---Verification
+
+            IF(CUST.CCLT.funCode == "V")THEN
+            #{
+                CUST.CCLT.refcode = BANCS.INPUT.refnumber
+
+                #-----Report Generation------------------
+
+                CUST.CCLT.reportfile = "RPT_CIFMODE_"+CUST.CCLT.refcode+".lst"
+
+                sv_r = system("echo '\n\t\tVERIFICATION REPORT FOR CLT UPLOAD\n\n\t\tFILENAME:\t\n' >>"+CUST.CCLT.reportfile)
+                print(sv_r)
+
+                #--------------------------------------
+
+                 sv_s= " entryuserid | select RCRE_USER_ID from custom.CCLT where ref_code=?SVAR and rownum='1' and bank_id=?SVAR"
+                print(sv_s)
+                BANCS.INPARAM.BINDVARS = CUST.CCLT.refcode +"|"+BANCS.STDIN.contextBankId
+                print(BANCS.INPARAM.BINDVARS)
+                sv_q = urhk_dbselectWithBind(sv_s)
+                print(sv_q)
+
+                IF(sv_q != 0) THEN
+                #{
+                    sv_z = "SuccessOrFailure|N"
+                    sv_u = urhk_SetOrbOut(sv_z)
+                    sv_z = "Error_02|ERROR^Invalid  Reference number^"
+                    sv_u = urhk_SetOrbOut(sv_z)
+                    EXITSCRIPT
+                #}
+                ELSE
+                #{
+                    CUST.CCLT.entryuser = BANCS.OUTPARAM.entryuserid
+                    print(CUST.CCLT.entryuser)
+                    IF(CUST.CCLT.entryuser==BANCS.STDIN.userId)THEN
+                    #{
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_02|ERROR^Entry user cannnot verify^"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        EXITSCRIPT
+                    #}
+                    ENDIF
+                #}
+                ENDIF
+		
+		############################################################################
+		# Pushing Report to HPR
+		############################################################################
+			sv_a = "exebatch babx4040 $B2K_SESSION_ID "  +CUST.CCLT.reportfile+ " "+CUST.CCLT.reportfile+ " 1 N"
+			PRINT(sv_a)
+			
+			sv_i = SYSTEM(sv_a)
+			PRINT(sv_i)
+
+                sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+                sv_g = "RESULT_MSG|Verification successful for : "+CUST.CCLT.refcode+" code. Check status in HPR"
+                sv_z = urhk_SetOrbOut(sv_g)
+
+                PRINT(sv_z)
+
+                #===========Fetch data for verification  START
+		
+                    sv_s = "customerid,customertype | select CIF_ID,CUST_TYPE from custom.CCLT where ref_code=?SVAR and bank_id='"+BANCS.STDIN.contextBankId+"' and ENTITY_CRE_FLG='N' and VALID_FLG='Y' "
+                    BANCS.INPARAM.BINDVARS = CUST.CCLT.refcode
+                    print(BANCS.INPARAM.BINDVARS)
+                    sv_k = urhk_dbCursorOpenWithBind(sv_s)
+                    PRINT(sv_k)
+                    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                    PRINT(sv_m)
+                    sv_c = urhk_dbCursorFetch(sv_m)
+                    PRINT(sv_c)
+
+                    IF(sv_c != 0)THEN
+                    #{
+                            CUST.CCLT.SorFmessage = "No records found in the upload table for verification"
+                            sv_c=urhk_dbCursorClose(sv_m)
+                            
+                            sv_r = system("echo '\t"+CUST.CCLT.SorFmessage+"' >> "+CUST.CCLT.reportfile)
+                            print(sv_r)
+                            
+                            GOTO VERREPORTSECTION
+                    #}
+            ELSE
+                            sv_j = 0
+
+                            While(sv_c == 0)
+
+                                    CUST.CCLT.cust_id    = BANCS.OUTPARAM.customerid
+                                    CUST.CCLT.customertype    = BANCS.OUTPARAM.customertype
+                                    CUST.CCLT.verifyflg  = "F"
+                                    CUST.CCLT.entitycreflg = "N"
+
+                                    #--------------------------------------------------------------------
+                                    # Inputs for Account Modify services
+				                    # urhk_SetUrhkInp is used to set inputs
+                                    #--------------------------------------------------------------------
+
+                                    call("ccltVerifyReq.scr")
+
+                                    IF(FIELDEXISTS(CUST.CRRMVER.SuccessOrFailure) == 1)THEN	
+                                    #{
+                                            print(CUST.CRRMVER.SuccessOrFailure)
+                                            IF(trim(CUST.CRRMVER.SuccessOrFailure) == "S")THEN
+                                            #{
+                                                CUST.CCLT.ModSuccessflg ="M"
+                                                CUST.CCLT.verifyflg = "P"
+                                                CUST.CCLT.entitycreflg = "Y"
+                                                CUST.CCLT.SorFmessage = "CIF Verified successfully"
+                                                    
+                                            #}
+                                            ELSE
+                                            #{
+                                                IF(FIELDEXISTS(CUST.CRRMVER.errorDesc) == 1)THEN
+                                                #{
+                                                    CUST.CCLT.SorFmessage = CUST.CRRMVER.errorDesc
+                                                #}
+                                                ELSE
+                                                #{
+                                                    CUST.CCLT.SorFmessage = "CIF Verification failed,Manual verification required"
+                                                #}
+                                                ENDIF
+                                                CUST.CCLT.verifyflg = "F"
+                                            #}
+                                            ENDIF
+                                    #}
+                                    ENDIF
+
+                                    CUST.CCLT.SorFmessage = CUST.CCLT.cust_id +"   "+CUST.CCLT.SorFmessage 
+                                    print(CUST.CCLT.SorFmessage)
+                                    
+                                    sv_r = system("echo '   "+CUST.CCLT.SorFmessage+"' >> "+CUST.CCLT.reportfile)
+                                    print(sv_r)
+                                                    
+                                    #++++++++++Update the records after verification
+                                    
+                                    #------------------------------------------------------------
+                                    #-- Updating the CCLT table on the success condition  ---
+                                    #-- status U - uploaded no modifification done yet-----------
+                                    #-- status F - Failed to do modifification ------------------
+                                    #-- status V - modification done, pending verification ------
+                                    #-- status P - uploaded , modified done and verified --------
+                                    #------------------------------------------------------------            
+
+
+
+                                    sv_s = "update CUSTOM.CCLT set ENTITY_CRE_FLG=?SVAR,STATUS_CODE=?SVAR,LCHG_USER_ID=?SVAR,LCHG_TIME=sysdate where CIF_ID=?SVAR  and REF_CODE=?SVAR and bank_id=?SVAR"
+                                    print(sv_s)
+                                    BANCS.INPARAM.BINDVARS = CUST.CCLT.entitycreflg +"|"+  CUST.CCLT.verifyflg +"|"+ BANCS.STDIN.userId +"|"+ CUST.CCLT.cust_id  +"|"+ CUST.CCLT.refcode +"|"+BANCS.STDIN.contextBankId
+                                    print(BANCS.INPARAM.BINDVARS)
+                                    print(sv_s)
+                                    sv_d=urhk_dbSqlWithBind(sv_s)
+                                    IF (sv_d == 0)THEN
+                                        sv_d = urhk_dbSQLWithBind("COMMIT")
+                                    ENDIF
+                                    
+                                    sv_c = urhk_dbCursorFetch(sv_m)
+                                    PRINT(sv_c)    
+                            do 
+
+                            sv_c = urhk_dbCursorClose(sv_m)
+			                PRINT(sv_c)
+
+                    #}
+                    ENDIF
+
+
+            #--------------REPORT COMPILATION--------------------
+
+            VERREPORTSECTION:
+
+                sv_r = system("sleep 5")
+                #********* START 
+                
+                sv_a=urhk_getEnv("B2K_SESSION_ID")
+                IF(sv_a== 0)THEN
+                #{
+                    CUST.CCLT.session_id = BANCS.OUTPARAM.envValue
+                    print(CUST.CCLT.session_id)
+                    
+                #}
+                ELSE
+                #{
+                    CUST.CCLT.errorMsg = "No sesion available"
+                    EXITSCRIPT
+                #}
+                ENDIF
+
+
+                sv_r = system("sleep 5")
+                print(sv_r)
+                
+                sv_u = urhk_getFileLocation("COM|cclt.com")
+
+                IF(sv_u == 0)THEN
+                #{
+                        #Setting env variable
+                        #Session Id
+                        sv_a = "sessionid|" + CUST.CCLT.session_id
+                        sv_u = urhk_putEnvForCallShellScript(sv_a)
+                        PRINT(sv_u)
+                        IF (sv_u != 0) THEN
+                        #{
+                            CUST.CCLT.errorMsg = "Error in setting env variable "
+                            EXITSCRIPT
+                        #}
+                        ENDIF
+
+
+                        #userId
+                        print(BANCS.STDIN.userId)
+                        sv_a = "userid|" + BANCS.STDIN.userId
+                        sv_u = urhk_putEnvForCallShellScript(sv_a)
+                        PRINT(sv_u)
+                        IF (sv_u != 0) THEN
+                        #{
+                            CUST.CCLT.errorMsg = "Error in setting env variable "
+                            EXITSCRIPT
+                        #}
+                        ENDIF
+
+                        #Success file name
+                        sv_a = "successfile|" + CUST.CCLT.reportfile
+                        sv_u = urhk_putEnvForCallShellScript(sv_a)
+                        PRINT(sv_u)
+                        IF (sv_u != 0) THEN
+                        #{
+                            CUST.CCLT.errorMsg = "Error in setting env variable "
+                            EXITSCRIPT
+                        #}
+                        ENDIF
+
+
+                        #Execute the com file
+                        BANCS.INPARAM.scriptName = "cclt.com"
+                        BANCS.INPARAM.arguments = ""
+                        sv_u = urhk_CallShellScript("b")
+                        print(sv_u)
+                        IF (sv_u != 0) THEN
+                        #{
+                            CUST.CCLT.errorMsg = "Could not execute com file: Report generation failed"
+                            EXITSCRIPT
+                        #}
+                        ENDIF
+
+                        sv_r=system("rm -f"+ CUST.CCLT.reportfile)
+
+                 ELSE
+
+                         CUST.CCLT.errorMsg = "Unable to load the com file"
+  				         exitscript
+
+                #}
+                ENDIF
+
+                EXITSCRIPT
+        ENDIF
+
+        print("Breakpoint 1")
+
+        IF(CUST.CCLT.funCode == "U")THEN
+        #{
+                    #------------------------------------------------
+                    # Fetching a unique ref for uploadFileName
+                    #------------------------------------------------
+                    sv_m = "refnum|select CUSTOM.CCLT_SEQ_54.NEXTVAL FROM DUAL"
+                    print(sv_m)
+                    sv_q = urhk_dbselectWithBind(sv_m)
+                    print(sv_q)
+                    IF(sv_q != 0) THEN
+                    #{
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_02|ERROR^Unable to generate Ref number.Chech sequence.^"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        EXIT
+                    #}
+                    ELSE
+                    #{
+                        CUST.CCLT.refnumber = "REF" + BANCS.OUTPARAM.refnum
+                        print(CUST.CCLT.refnumber)
+                    #}
+                    ENDIF
+
+
+                    print("Start file upload")
+
+                    IF (FIELDEXISTS(BANCS.INPUT.uploadFileName)) THEN
+                    #{
+                        PRINT(BANCS.INPUT.uploadFileName)
+                        CUST.CCLT.UPLOADFILENAME=BANCS.INPUT.uploadFileName
+                        
+                        call("upldvat.scr")
+                    #}
+                    else
+                    #{
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_03|ERROR^Unable to get filename.^"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        EXITSCRIPT
+                        
+                    #}
+                    endif
+
+                    sv_s = "uplfilename |"
+                    sv_s = sv_s + " select substr('"+ CUST.CCLT.UPLOADFILENAME +"',instr('"+ CUST.CCLT.UPLOADFILENAME +"' ,'/',-1)+1) "
+                    sv_s = sv_s + " from dual "
+                    print(sv_s)
+                    sv_d = urhk_dbSelectWithBind(sv_s)
+                    print(sv_d)
+                    if(sv_d == 0) then
+                    #{
+                        CUST.CCLT.workfile = BANCS.OUTPARAM.uplfilename
+                        print(CUST.CCLT.workfile)
+                        
+                        
+                    #}
+                    endif
+
+                    #Sleep 5 seconds to allow file download
+                    sv_r=system("sleep 10")
+                    print(sv_r)
+
+                    #Access the file
+
+                    sv_a = "test -f "+ CUST.CCLT.workfile
+                    PRINT(sv_a)
+                    sv_r = SYSTEM(sv_a)
+                    PRINT(sv_r)
+                    IF(sv_r !=0 )THEN
+                    #{
+                        print("Error in gettting the file name")
+                        EXITSCRIPT
+                    #}
+                    endif
+
+                    CUST.CCLT.uploadPath1=""
+                    CUST.CCLT.uploadPath=""
+                    print(CUST.CCLT.workfile)
+
+                    sv_b = urhk_getEnv("ONS_LOG_DIR")
+                    PRINT(sv_b)
+
+                    IF(sv_b ==0) THEN
+                    #{
+                        CUST.CCLT.uploadPath1=BANCS.OUTPARAM.envValue
+                        PRINT(CUST.CCLT.uploadPath1)
+                        
+                        CUST.CCLT.uploadPath = CUST.CCLT.uploadPath1+"/"+BANCS.STDIN.userId+"/"+CUST.CCLT.workfile
+                        PRINT(CUST.CCLT.uploadPath)
+                    #}
+                    ENDIF
+                    print(CUST.CCLT.uploadPath)
+		
+                    CUST.CCLT.reportfile = "RPT_CIFMODE_"+CUST.CCLT.refnumber+".lst"
+		
+                    ##--------------------------------------------------------------------------
+		            ## ---------Create a file to spool the modification report success and fail.
+                    ##--------------------------------------------------------------------------
+
+                    sv_r = system("echo '\n\t\tREPORT FOR RISK RATING\n\n\t\tFILENAME:\t"+CUST.CCLT.workfile+"\n' >> "+CUST.CCLT.reportfile)
+                    print(sv_r)
+
+                    sv_r = urtn_fileAccess(CUST.CCLT.uploadPath)
+		            print(sv_r)
+
+                    IF ( sv_r != 0 ) THEN
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_03|ERROR^Unable to Access the file^fileName"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        EXITSCRIPT
+                    ENDIF
+
+
+                    #Read the file
+
+                    sv_t = urtn_fileOpen(CUST.CCLT.uploadPath+"|r")
+                    print(sv_t)
+
+                    IF(sv_t < 0)THEN
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_03|ERROR^Unable to open the file^fileName"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        GOTO ENDOFSCRIPT
+                    ELSE
+                        print("File Opened SuccessFully")
+                        CUST.CCLT.succIndex = sv_t
+                    ENDIF
+
+                    print(CUST.CCLT.succIndex)
+		
+                    #Read file
+                    CUST.CCLT.fileRec = urtn_fileOpen(CUST.CCLT.uploadPath + "|r")
+                    PRINT(CUST.CCLT.fileRec)
+                    
+                    sv_t = urtn_fileRead(CUST.CCLT.fileRec + "|CUST.CCLT.inputdata")
+                    print(sv_t)
+                    print(CUST.CCLT.inputdata)
+
+                    IF(sv_t != 0) THEN
+                        sv_z = "SuccessOrFailure|N"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        sv_z = "Error_03|ERROR^Upload file is empty^fileName"
+                        sv_u = urhk_SetOrbOut(sv_z)
+
+                        GOTO ENDOFSCRIPT
+
+                    ENDIF
+
+			############################################################################
+			# Pushing Report to HPR
+			############################################################################
+			sv_a = "exebatch babx4040 $B2K_SESSION_ID "  +CUST.CCLT.reportfile+ " "+CUST.CCLT.reportfile+ " 1 N"
+			PRINT(sv_a)
+			
+			sv_i = SYSTEM(sv_a)
+			PRINT(sv_i)
+
+                    sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+                    sv_g = "RESULT_MSG|Fileupload successful. Proceed with verification "+CUST.CCLT.refnumber+" code. Check status in HPR"
+                    sv_z = urhk_SetOrbOut(sv_g)
+
+                    PRINT(sv_z)
+
+                    #=============================================
+                    # Parsing the inputdata
+                    #==============================================
+                    CUST.CCLT.CIF_ID 				= ""
+                    CUST.CCLT.ACCT_NAME 			= ""
+                    CUST.CCLT.CLT_ID			= ""
+                    CUST.CCLT.VALID				= ""
+                    CUST.CCLT.STATUS_CODE			= ""
+                    CUST.CCLT.fileRead = sv_t
+
+                    sv_a = CUST.CCLT.fileRead
+                    print(sv_a)
+
+                    ############################################################################################
+                    #success report
+                    ############################################################################################
+                    sv_b = 0
+                    sv_d = 0
+
+                    WHILE(sv_a  == 0)
+
+                            IF(sv_d=="0")THEN
+                            #{
+                                print(sv_d)
+                                GOTO NEXTREC
+                            #}
+                            ENDIF
+                            sv_m = CUST.CCLT.inputdata+"|"
+                                print(sv_m)
+                            
+                            PRINT(CUST.CCLT.inputdata)
+
+                            CUST.CCLT.uploadstring = CUST.CCLT.inputdata
+                            print(CUST.CCLT.uploadstring)
+
+                            #1
+                            sv_c = STRLEN(CUST.CCLT.inputdata)
+                            print(sv_c)
+                            CUST.CCLT.inputdata = MID$(CUST.CCLT.inputdata,sv_b,sv_c-sv_b)
+                            print(CUST.CCLT.inputdata)
+                            sv_b = GETPOSITION(CUST.CCLT.inputdata, '|')
+                            print(sv_b)
+                            sv_a = MID$(CUST.CCLT.inputdata,0,sv_b-1)
+                            CUST.CCLT.CIF_ID = sv_a
+                            print(CUST.CCLT.CIF_ID)
+
+                            #2
+
+                            sv_c = STRLEN(CUST.CCLT.inputdata)
+                            print(sv_c)
+                            CUST.CCLT.inputdata = MID$(CUST.CCLT.inputdata,sv_b,sv_c-sv_b)
+                            print(CUST.CCLT.inputdata)
+                            sv_b = GETPOSITION(CUST.CCLT.inputdata, '|')
+                            print(sv_b)
+                            sv_a = MID$(CUST.CCLT.inputdata,0,sv_b-1)
+                            CUST.CCLT.ACCT_NAME = sv_a
+                            print(CUST.CCLT.ACCT_NAME)
+
+
+                            #3
+                            sv_c = STRLEN(CUST.CCLT.inputdata)
+                            print(sv_c)
+                            CUST.CCLT.inputdata = MID$(CUST.CCLT.inputdata,sv_b,sv_c-sv_b)
+                            print(CUST.CCLT.inputdata)
+                            sv_b = GETPOSITION(CUST.CCLT.inputdata, '|')
+                            print(sv_b)
+                            sv_a = MID$(CUST.CCLT.inputdata,0,sv_b-1)
+                            CUST.CCLT.CLT_ID = sv_a
+                            print(CUST.CCLT.CLT_ID)
+
+
+                            #--------------------------------------------------------
+                            #call the script for inserting data
+                            #--------------------------------------------------------
+                                CALLSCRIPTIFEXIST("cclt_insert.scr")
+
+                            #--------------------------------------------------------
+                            #--------------------------------------------------------
+
+
+
+                            NEXTREC:
+                        
+                            sv_d = sv_d + 1
+                            print(sv_d)
+                        	sv_a = urtn_fileRead(CUST.CCLT.fileRec + "|CUST.CCLT.inputdata")
+                            CUST.CCLT.fileread = sv_a
+                            print(sv_a)
+                        #}
+                    Do    
+
+                    #-------Closing the file
+
+                    sv_t = urtn_fileClose(CUST.CCLT.fileRec)
+		            PRINT(sv_t)
+
+                    #-------Fetching Records from the table start
+                    #Start of acct Modification
+
+			        print(CUST.CCLT.refnumber)
+
+                    sv_s = "CIF_ID,CLT_ID,CUST_TYPE| select CIF_ID,CLT_ID,cust_type from custom.cclt  where ENTITY_CRE_FLG='N' "
+                    sv_s = sv_s + " and VALID_FLG ='Y' and RCRE_USER_ID=?SVAR and bank_id=?SVAR and ref_code=?SVAR "
+                    print(sv_s)
+
+                    BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId +"|"+BANCS.STDIN.contextBankId+"|"+CUST.CCLT.refnumber
+                    print(BANCS.INPARAM.BINDVARS)
+                    sv_k = urhk_dbCursorOpenWithBind(sv_s)
+                    PRINT(sv_k)
+                    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                    PRINT(sv_m)
+                    sv_c = urhk_dbCursorFetch(sv_m)
+                    PRINT(sv_c)
+
+                    IF(sv_c != 0)THEN
+                    #{
+                            CUST.CCLT.SorFmessage = "No records found in the upload table"
+                            print(CUST.CCLT.SorFmessage)
+                            sv_c=urhk_dbCursorClose(sv_m)
+                            
+                            sv_r = system("echo '\t"+CUST.CCLT.SorFmessage+"' >> "+CUST.CCLT.reportfile)
+                            print(sv_r)
+
+                            GOTO UPDATERPT
+                    #}		
+                    ELSE
+                            sv_j = 0
+                            PRINT(sv_j)
+
+                            WHILE (sv_c == 0)
+
+                                    CUST.CCLT.customerId = BANCS.OUTPARAM.CIF_ID
+                                    print(CUST.CCLT.customerId)
+                                    CUST.CCLT.cltId      = BANCS.OUTPARAM.CLT_ID
+                                    print(CUST.CCLT.cltId)
+                                    CUST.CCLT.custType = BANCS.OUTPARAM.CUST_TYPE
+                                    print(CUST.CCLT.custType)
+                                    CUST.CCLT.ModSuccessflg = "F"
+                                    CUST.CCLT.SorFmessage = ""
+                                    CUST.CCLT.StatusCode   ="U"
+
+                                        IF ((CUST.CCLT.custType=="I") OR (CUST.CCLT.custType=="C") )THEN
+                                        #{
+                                            IF(CUST.CCLT.custType=="I")THEN
+                                            #{
+                                                PRINT("MODIFY RETAIL CIF")
+                                                call("ccltRetModReq.scr")	
+                                                
+                                            #}
+                                            ELSE
+                                            #{
+                                                PRINT("MODIFY COPRERATE CIF")
+                                                call("ccltCorpMod.scr")
+                                                
+                                                
+                                            #}
+                                            ENDIF
+                                            
+                                        #}
+                                        ELSE
+                                        #{
+
+                                            print("Invalid customer cif id")
+                                            ##-----Create a report for the failed and invalid cif_id
+                                            CUST.CCLT.SorFmessage = "Invalid CIF"
+                                            CUST.CCLT.ModSuccessflg = "F"
+                                            CUST.CCLT.Statuscode = "F"
+                                            
+                                            GOTO UPDATERPT
+                                        #}
+                                        ENDIF  
+
+                                        IF(FIELDEXISTS(CUST.CRMREQ.SuccessOrFailure) == 1)THEN
+                                        #{
+                                            print(CUST.CRMREQ.SuccessOrFailure)
+                                            IF(trim(CUST.CRMREQ.SuccessOrFailure) == "S")THEN
+                                            #{
+                                                CUST.CCLT.ModSuccessflg ="M"
+                                                CUST.CCLT.Statuscode = "V"
+                                                CUST.CCLT.SorFmessage = "CIF Modified successfully"
+                                                
+                                                    
+                                            #}ss
+                                            ELSE
+                                            #{
+                                                IF(FIELDEXISTS(CUST.CRMREQ.errorDesc) == 1)THEN
+                                                #{
+                                                    CUST.CCLT.SorFmessage = CUST.CRMREQ.errorDesc
+                                                #}
+                                                ELSE
+                                                #{
+                                                    CUST.CCLT.SorFmessage = "CIF Modification failed,Manual update required"
+                                                #}
+                                                ENDIF
+                                                CUST.CCLT.Statuscode = "F"
+                                            #}
+                                            ENDIF	
+                                        ENDIF  
+
+                                        ###----Update The Modification Flags
+
+                                        UPDATERPT:
+
+                                        print(CUST.CCLT.ModSuccessflg)
+                                        CUST.CCLT.SorFmessage = CUST.CCLT.customerId+"   "+CUST.CCLT.SorFmessage 
+                                        print(CUST.CCLT.SorFmessage)
+                                        
+                                        sv_r = system("echo '   "+CUST.CCLT.SorFmessage+"' >> "+CUST.CCLT.reportfile)
+                                        print(sv_r)
+
+                                        ##---------Start Update
+
+                                        #------------------------------------------------------------
+                                        #------Updating the CCLT table on the success condition  ---
+                                        #------status U - uploaded no modifification done yet----------
+                                        #------status F - Failed to do modifification 			  ---
+                                        #------status V - modification done, pending verification ---
+                                        #------status P - uploaded , modified done and verified -----
+                                        #------------------------------------------------------------
+					print(CUST.CCLT.Statuscode)
+					print(CUST.CCLT.customerId)
+					print(CUST.CCLT.refnumber)
+                                        sv_s = "update CUSTOM.CCLT set STATUS_CODE=?SVAR"
+                                        #sv_s = sv_s + "REMARKS= substr(replace (q'["+CUST.CCLT.SorFmessage+"]',q'[|]',q'[ ]'),0,200) "
+                                        sv_s = sv_s + " where CIF_ID=?SVAR "
+                                        sv_s = sv_s + " and REF_CODE=?SVAR "
+                                        sv_s = sv_s + " and bank_id=?SVAR"
+                                        print(sv_s)
+                                        BANCS.INPARAM.BINDVARS =  CUST.CCLT.Statuscode + "|" + CUST.CCLT.customerId +"|"+  CUST.CCLT.refnumber +"|"+ BANCS.STDIN.contextBankId
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        print(sv_s)
+                                        sv_d=urhk_dbSqlWithBind(sv_s)
+
+                                        IF (sv_d == 0)  THEN
+                                            sv_d = urhk_dbSQLWithBind("COMMIT")
+                                        ENDIF
+                                        
+                                    ##-------- End update 
+
+                                    sv_c = urhk_dbCursorFetch(sv_m)
+                                    print(sv_c)
+
+                             Do
+
+                             sv_c = urhk_dbCursorClose(sv_m)
+                             print(sv_c)
+
+
+
+
+                      ENDOFSCRIPT:
+
+                             #================ Report compilation
+
+                            sv_a=urhk_getEnv("B2K_SESSION_ID")
+                            IF(sv_a== 0)THEN
+                            #{
+                                CUST.CCLT.session_id = BANCS.OUTPARAM.envValue
+                                print(CUST.CCLT.session_id)
+                                
+                            #}
+                            ELSE
+                            #{
+                                CUST.CCLT.errorMsg = "No sesion available"
+                                EXITSCRIPT
+                            #}
+                            ENDIF
+                            
+                            sv_r = system("sleep 5")
+                            print(sv_r)
+                            
+                            sv_u = urhk_getFileLocation("COM|cclt.com")
+                            IF(sv_u==0)THEN
+                            #{
+                                #Setting env variable
+                                #Session Id
+                                sv_a = "sessionid|" + CUST.CCLT.session_id
+                                sv_u = urhk_putEnvForCallShellScript(sv_a)
+                                PRINT(sv_u)
+                                IF (sv_u != 0) THEN
+                                #{
+                                    CUST.CCLT.errorMsg = "Error in setting env variable "
+                                    EXITSCRIPT
+                                #}
+                                ENDIF
+                                
+                                #userId
+                                print(BANCS.STDIN.userId)
+                                sv_a = "userid|" + BANCS.STDIN.userId
+                                sv_u = urhk_putEnvForCallShellScript(sv_a)
+                                PRINT(sv_u)
+                                IF (sv_u != 0) THEN
+                                #{
+                                    CUST.CCLT.errorMsg = "Error in setting env variable "
+                                    EXITSCRIPT
+                                #}
+                                ENDIF
+                                
+                                #Success file name
+                                sv_a = "successfile|" + CUST.CCLT.reportfile
+                                sv_u = urhk_putEnvForCallShellScript(sv_a)
+                                PRINT(sv_u)
+                                IF (sv_u != 0) THEN
+                                #{
+                                    CUST.CCLT.errorMsg = "Error in setting env variable "
+                                    EXITSCRIPT
+                                #}
+                                ENDIF
+
+                                #Execute the com file
+                                BANCS.INPARAM.scriptName = "cclt.com"
+                                BANCS.INPARAM.arguments = ""
+                                sv_u = urhk_CallShellScript("b")
+                                print(sv_u)
+                                IF (sv_u != 0) THEN
+                                #{
+                                    CUST.CCLT.errorMsg = "Could not execute com file: Report generation failed"
+                                    EXITSCRIPT
+                                #}
+                                ENDIF
+                                
+                                
+                                
+                                sv_r=system("rm -f"+ CUST.CCLT.reportfile)
+                            #}
+                            ELSE
+                            #{
+                                CUST.CCLT.errorMsg = "Unable to load the com file"
+                                    exitscript
+                            #}
+                            ENDIF
+                            
+                            
+                        
+                        #}
+                        ENDIF
+                        
+                        print("Processing Ends")
+
+                    
+
+                    exitscript
+TRACE OFF
+END-->
+    
+
+
+		
+     

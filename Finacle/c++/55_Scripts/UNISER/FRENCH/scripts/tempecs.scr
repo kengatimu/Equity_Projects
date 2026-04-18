@@ -1,0 +1,164 @@
+#-------------------------------------------------------------------------------------
+#    Name               : tempecs.scr
+#    Description        : This script will give the foracid based on the payment receipt number
+#    Date               : 04-02-2013
+#    Author             : Chandrasekhar
+#    Input              : srlNum
+#    Output             : forAcid
+#    Called Script      : NA
+#    Calling Script     : NA
+#    Menu Option        :
+#    Srl. No        Date            Author          Description.
+#    -------        ----            ------          ----------------
+#    1.0            04-02-2013      Chandrasekhar   Original Version
+#    2.0	      17-06-2013	 Chandrasekhar   TRIM replaced with LPAD in Query
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="8c9c59a1e3fd17b41e9980ab9afe922dbf335b49ee44b219d0814bd8397661c5"
+	#TRACE ON
+	#sv_r = urhk_b2k_printrepos("BANCS")
+	#	sv_i = BANCS.INPUT.destn_acc_no
+	#	sv_j = BANCS.INPUT.mandate_srl_num
+	sv_r = REPEXISTS("CUST")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "ECS")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "ECS", 5)
+	#}
+	ENDIF
+	
+	CUST.ECS.srlnum = ""
+	CUST.ECS.errMsg = ""
+	CUST.ECS.bacid = ""
+	CUST.ECS.forAcid = ""
+	CUST.ECS.srlnum = BANCS.INPUT.mandate_srl_num
+	
+	BANCS.INPUT.moduleName="CLEARING"
+	BANCS.INPUT.parameterId="ECS_BACID"
+	call("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ECS.bacid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ECS.errMsg = BANCS.INPUT.parameterId+" setup is not done in CPARAM"
+		GOTO FINISH
+	#}
+	ENDIF
+	sv_s = "srlNum|"
+	sv_s = sv_s + " SELECT pr_b2k_id "
+	sv_s = sv_s + " FROM TBAADM.PYRD,TBAADM.PYRH "
+	sv_s = sv_s + " WHERE PYRD.pr_srl_num = PYRH.pr_srl_num "
+	sv_s = sv_s + " AND PYRH.pr_srl_num = LPAD(?SVAR,9) "
+	sv_s = sv_s + " AND PYRD.bank_id = ?SVAR "
+	sv_s = sv_s + " AND PYRH.bank_id = ?SVAR "
+	print (sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.ECS.srlnum + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	
+	IF ( sv_d == 0 ) THEN
+	#{
+		sv_b = BANCS.OUTPARAM.srlNum
+		print(sv_b)
+		#}
+	ELSE
+		#{
+		sv_b ="A"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	print(sv_b)
+	IF(sv_b !="A") THEN
+	#{
+		sv_s = " srlAcid|"
+		sv_s = sv_s+ " SELECT pr_srl_num"
+		sv_s = sv_s+ " FROM TBAADM.PYRD"
+		sv_s = sv_s+ " WHERE"
+		sv_s = sv_s+ " PYRD.pr_srl_num IN("
+		sv_s = sv_s+ " SELECT PYRH.pr_srl_num"
+		sv_s = sv_s+ " FROM TBAADM.PYRH, TBAADM.GAM,TBAADM.PYRD"
+		sv_s = sv_s+ " WHERE PYRH.pr_b2k_id = ?SVAR"
+		sv_s = sv_s+ " AND PYRD.acid = GAM.acid"
+		sv_s = sv_s+ " AND PYRD.acid NOT IN("
+		sv_s = sv_s+ " SELECT acid"
+		sv_s = sv_s+ " FROM TBAADM.GAM"
+		sv_s = sv_s+ " WHERE GAM.bacid = ?SVAR"
+		sv_s = sv_s+ " AND GAM.sol_id = ?SVAR"
+		sv_s = sv_s+ " AND GAM.acct_crncy_code = ?SVAR"
+		sv_s = sv_s+ " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s+ " AND GAM.del_flg = 'N'"
+		sv_s = sv_s+ " AND GAM.bank_id = ?SVAR)"
+		sv_s = sv_s+ " AND PYRH.pr_srl_num = PYRD.pr_srl_num"
+		sv_s = sv_s+ " AND pyrh.bank_id = ?SVAR"
+		sv_s = sv_s+ " AND PYRH.bank_id = PYRD.bank_id"
+		sv_s = sv_s+ " AND PYRH.bank_id = gam.bank_id )"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = sv_b + "|" + CUST.ECS.bacid + "|" + BANCS.STDIN.homeSolId + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		
+		IF ( sv_d == 0) THEN
+		#{
+			sv_a = BANCS.OUTPARAM.srlAcid
+			#}
+		ELSE
+			#{
+			sv_a ="B"
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.OUTPUT.forAcid = " "
+	#}
+	ENDIF
+	
+	print (sv_a)
+	
+	IF (sv_a != "B") THEN
+	#{
+		sv_s = "forAcid|"
+		sv_s = sv_s + "SELECT foracid"
+		sv_s = sv_s + " FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE acid = ?SVAR"
+		sv_s = sv_s + " AND entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND del_flg = 'N'"
+		sv_s = sv_s + " AND bank_id = ?SVAR"
+		BANCS.INPARAM.BINDVARS = sv_a + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		
+		IF ( sv_d == 0) THEN
+		#{
+			CUST.ECS.forAcid = BANCS.OUTPARAM.forAcid
+			#}
+		ELSE
+			#{
+			CUST.ECS.forAcid = ""
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.OUTPUT.forAcid = ""
+	#}
+	ENDIF
+	
+	FINISH :
+		BANCS.OUTPUT.forAcid = CUST.ECS.forAcid
+		BANCS.OUTPUT.successOrFailure = "S"
+		EXITSCRIPT
+		#TRACE OFF
+END-->

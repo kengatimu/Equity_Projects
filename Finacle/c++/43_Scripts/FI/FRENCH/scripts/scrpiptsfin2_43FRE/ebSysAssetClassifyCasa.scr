@@ -1,0 +1,163 @@
+<--start
+	trace on
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+	if (REPEXISTS("CUST") == 0) then
+		CREATEREP("CUST")
+	endif
+	if (CLASSEXISTS("CUST","ASSTCLASS") == 0) then
+		CREATECLASS("CUST","ASSTCLASS",5)
+	endif
+	sv_n = urhk_getAcctDetailsInRepository(BANCS.INPUT.foracid)
+	if(sv_n == 0)then
+		CUST.ASSTCLASS.acctSolId = BANCS.OUTPARAM.acctSolId
+		sv_d = "isEBC | select count(*) from tbaadm.sst where bank_id=?SVAR and set_id='EBC' and sol_id=?SVAR "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ASSTCLASS.acctSolId
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_d)
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+			CUST.ASSTCLASS.isEBC = BANCS.OUTPARAM.isEBC
+			print (CUST.ASSTCLASS.isEBC)
+		endif
+	endif
+	if(cdouble(CUST.ASSTCLASS.isEBC)>=1)then
+		BANCS.OUTPUT.trgEntityType = BANCS.INPUT.b2kType
+		BANCS.OUTPUT.trgEntityId = BANCS.INPUT.b2kId
+		BANCS.OUTPUT.mainClassificationSystem = BANCS.INPUT.mainClassificationSystem
+		BANCS.OUTPUT.subClassificationSystem = BANCS.INPUT.subClassificationSystem
+		BANCS.OUTPUT.maxDPDCounter = BANCS.INPUT.maxDPDCounter
+		BANCS.OUTPUT.assetClsReasonCode = ""
+		
+		print(BANCS.OUTPUT.trgEntityType)
+		print(BANCS.OUTPUT.trgEntityId)
+		
+		goto EXITSCR
+	endif
+	#---------------------------------------------------------------
+	# Initialization of output variables
+	#---------------------------------------------------------------
+	BANCS.OUTPUT.maxDPDCounter = ""
+	BANCS.OUTPUT.mainClassificationSystem = BANCS.INPUT.mainClassificationSystem
+	BANCS.OUTPUT.subClassificationSystem = BANCS.INPUT.subClassificationSystem
+	BANCS.OUTPUT.assetClsReasonCode = ""
+	BANCS.OUTPUT.trgEntityType = BANCS.INPUT.b2kType
+	BANCS.OUTPUT.trgEntityId = BANCS.INPUT.b2kId
+	CUST.ASSTCLASS.mainClassfn = ""
+	CUST.ASSTCLASS.subClassfn = ""
+	
+	# Fetching Details of the account
+	CUST.ASSTCLASS.foracid = BANCS.INPUT.foracid
+	PRINT(CUST.ASSTCLASS.foracid)
+	
+	sv_u = urhk_getAcctDetailsInRepository(CUST.ASSTCLASS.foracid)
+	PRINT(sv_u)
+	if(sv_u == 0 ) then
+	#{
+		CUST.ASSTCLASS.ACCTOPNDATE = LEFT$(BANCS.OUTPARAM.acctOpenDate,10)
+		CUST.ASSTCLASS.sanctLimit = CDOUBLE(BANCS.OUTPARAM.sanctionLimit)
+		CUST.ASSTCLASS.clrBalAmt = CDOUBLE(BANCS.OUTPARAM.clearBalance)
+		#}
+	ELSE
+		#{
+		CUST.ASSTCLASS.ACCTOPNDATE = LEFT$(BANCS.STDIN.BODDate,10)
+		CUST.ASSTCLASS.sanctLimit = "0"
+		CUST.ASSTCLASS.clrBalAmt = "0"
+	#}
+	endif
+	
+	BANCS.INPARAM.date1 = CUST.ASSTCLASS.ACCTOPNDATE
+	BANCS.INPARAM.date2 = "14-12-2020"
+	
+	sv_u = urhk_B2K_dateDiff("")
+	PRINT(sv_u)
+	if(sv_u == 0 ) then
+		CUST.ASSTCLASS.migdatediff = BANCS.OUTPARAM.dateDiff
+	ELSE
+		CUST.ASSTCLASS.migdatediff = "0"
+	endif
+	
+	print(CUST.ASSTCLASS.migdatediff)
+	
+	#------------------------------------------------------------------
+	# Calling below script to find DPD due to Int Overdue
+	#------------------------------------------------------------------
+	callscriptifexist("ebSysAssetClassify_dpdOnIntOvdu.scr")	
+	#------------------------------------------------------------------
+	# Calling below script to find DPD due to exceeding Sanction Limit
+	#------------------------------------------------------------------
+	callscriptifexist("ebSysAssetClassify_dpdOnLimTOD.scr")
+	
+	PRINT(CUST.ASSTCLASS.dpdOnSanctLim)
+	PRINT(CUST.ASSTCLASS.dpdOnIntOvdu)
+	
+	if(CINT(CUST.ASSTCLASS.dpdOnSanctLim) > CINT(CUST.ASSTCLASS.dpdOnIntOvdu)) then
+		CUST.ASSTCLASS.dpdCounter = CUST.ASSTCLASS.dpdOnSanctLim
+	ELSE
+		CUST.ASSTCLASS.dpdCounter = CUST.ASSTCLASS.dpdOnIntOvdu
+	endif
+	
+	PRINT(CUST.ASSTCLASS.dpdCounter)
+        ##0 days-Normal
+        if(cint(CUST.ASSTCLASS.dpdCounter)==0)then
+                print("normal")
+                CUST.ASSTCLASS.mainClassfn = "PA"
+                CUST.ASSTCLASS.subClassfn = "NORM"
+                goto ENDOFSCRIPT
+	endif
+        if((cint(CUST.ASSTCLASS.dpdCounter)>=1) and (cint(CUST.ASSTCLASS.dpdCounter)<=29))then
+
+                print("normal")
+                CUST.ASSTCLASS.mainClassfn = "PA"
+                CUST.ASSTCLASS.subClassfn = "NORM"
+                goto ENDOFSCRIPT
+        endif
+        ##1-89days Watch
+        if((cint(CUST.ASSTCLASS.dpdCounter) >=30 ) AND (cint(CUST.ASSTCLASS.dpdCounter) <= 89)) then
+                print("watch")
+                CUST.ASSTCLASS.mainClassfn = "PA"
+                CUST.ASSTCLASS.subClassfn = "WATC"
+                goto ENDOFSCRIPT
+        endif
+        ##90-179days Predoubtful
+        if((cint(CUST.ASSTCLASS.dpdCounter) >= 90) AND (cint(CUST.ASSTCLASS.dpdCounter) <= 179)) then
+                print("substandard")
+                CUST.ASSTCLASS.mainClassfn = "NPA"
+                CUST.ASSTCLASS.subClassfn = "SUBS"
+                goto ENDOFSCRIPT
+        endif
+        ##180-359days Doubtful
+        if((cint(CUST.ASSTCLASS.dpdCounter) >= 180) AND (cint(CUST.ASSTCLASS.dpdCounter) <= 359)) then
+                print("dobutfull")
+                CUST.ASSTCLASS.mainClassfn = "NPA"
+                CUST.ASSTCLASS.subClassfn = "DBTL"
+                goto ENDOFSCRIPT
+        endif
+        if(cint(CUST.ASSTCLASS.dpdCounter) >= 360) then
+                print("Loss")
+                CUST.ASSTCLASS.mainClassfn = "NPA"
+                CUST.ASSTCLASS.subClassfn = "LOSS"
+                goto ENDOFSCRIPT
+        endif
+
+	
+	ENDOFSCRIPT:
+		if((CUST.ASSTCLASS.subClassfn != "") AND (CUST.ASSTCLASS.mainClassfn != "")) then
+			print("classified")
+			BANCS.OUTPUT.maxDPDCounter = CUST.ASSTCLASS.dpdCounter
+			BANCS.OUTPUT.mainClassificationSystem = CUST.ASSTCLASS.mainClassfn
+			BANCS.OUTPUT.subClassificationSystem = CUST.ASSTCLASS.subClassfn
+		else	
+			print("not classified")	
+		endif
+		
+		PRINT(BANCS.OUTPUT.mainClassificationSystem)
+		PRINT(BANCS.OUTPUT.subClassificationSystem)
+		PRINT(BANCS.OUTPUT.maxDPDCounter)
+		PRINT(BANCS.OUTPUT.assetClsReasonCode)
+		PRINT(BANCS.OUTPUT.trgEntityType)
+		PRINT(BANCS.OUTPUT.trgEntityId)
+		
+	EXITSCR:
+#TRACE OFF
+end-->

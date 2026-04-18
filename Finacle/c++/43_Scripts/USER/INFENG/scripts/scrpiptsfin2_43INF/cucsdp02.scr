@@ -1,0 +1,402 @@
+<--START
+
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CUCS Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CUCS")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CUCS",5)
+	#}
+	ENDIF
+	
+	#==========================================================*
+	# Intilializing the Variables
+	#==========================================================*
+	
+	sv_s= "BACID|SELECT BACID FROM TBAADM.PTT WHERE EVENT_ID = 'BC' AND PART_TRAN_TYPE = 'C' AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N' AND BANK_ID =?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_q = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_q)
+	IF(sv_q == 0)THEN
+	#{
+		CUST.CUCS.creditBacid = BANCS.OUTPARAM.BACID
+		PRINT(CUST.CUCS.creditBacid)
+		#}
+	ELSE
+		#{
+		
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Credit Account details^status")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+
+	PRINT(CUST.CUCS.creditBacid)
+
+	#sv_e = CUST.CUCS.creditBacid + "|" + CUST.CUCS.acctCrncy + "|" + BANCS.STDIN.mySolId
+	sv_e = CUST.CUCS.creditBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+	sv_m = urhk_B2k_BacidToAcctId(sv_e)
+	PRINT(sv_m)
+	IF (sv_m == 0 ) THEN
+	#{
+		CUST.CUCS.creditAcct = BANCS.OUTPARAM.AcctId
+		PRINT(CUST.CUCS.creditAcct)
+	#}
+	ELSE
+	#{
+		
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Credit Account not Found^status")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT
+	
+	#}
+	ENDIF			
+	
+	print(CUST.CUCS.creditAcct)
+	print(CUST.CUCS.acctNo)
+	print(CUST.CUCS.paidAmt)
+	print(CUST.CUCS.chqNo)
+	
+	CUST.CUCS.bodDate =BANCS.STDIN.BODDate
+	#credit acct
+	CUST.CUCS.DoorStepAc = CUST.CUCS.creditAcct
+    CUST.CUCS.TranDate = BANCS.STDIN.BODDate
+	CUST.CUCS.glDate = BANCS.STDIN.BODDate
+	CUST.CUCS.valuedate = BANCS.STDIN.BODDate
+	CUST.CUCS.InstrDate = BANCS.STDIN.BODDate
+	CUST.CUCS.foracid = CUST.CUCS.acctNo
+	CUST.CUCS.amount  = CUST.CUCS.paidAmt
+	CUST.CUCS.ChequeNo = CUST.CUCS.chqNo
+	
+	print(BANCS.STDIN.mySolId)
+	
+
+#-----------------------------------------------------------------------------
+#	Checking for the validity of the Credit Account and the Debit Account.
+#-----------------------------------------------------------------------------
+
+# 1. Validation for Credit Account.
+    sv_a = urhk_B2k_ForacidToAcid(CUST.CUCS.DoorStepAc)
+    if(sv_a == 0) then
+	#{
+    	Print(BANCS.OUTPARAM.Acid)
+	#}
+    else
+	#{
+        CUST.CUCS.ErrorMesg = "Invalid Credit Account Id."
+        BANCS.OUTPUT.successOrFailure = "F"
+        BANCS.OUTPUT.ErrorMesg = CUST.CUCS.ErrorMesg
+        print(BANCS.OUTPUT.ErrorMesg)
+        sv_t = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+        sv_u = urhk_SetOrbOut(sv_t)
+        sv_t = "ErrorMesg|" + BANCS.OUTPUT.ErrorMesg
+        sv_u = urhk_SetOrbOut(sv_t)
+    	exitscript
+	#}
+    endif
+
+# 2. Validation for Debit Account.
+    sv_a = urhk_B2k_ForacidToAcid(CUST.CUCS.foracid)
+    if(sv_a == 0) then
+    Print(BANCS.OUTPARAM.Acid)
+    else
+       CUST.CUCS.ErrorMesg = "Invalid Debit Account Id."
+        BANCS.OUTPUT.successOrFailure = "F"
+        BANCS.OUTPUT.ErrorMesg = CUST.CUCS.ErrorMesg
+        sv_t = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+        sv_u = urhk_SetOrbOut(sv_t)
+        sv_t = "ErrorMesg|" + BANCS.OUTPUT.ErrorMesg
+        sv_u = urhk_SetOrbOut(sv_t)
+    exitscript
+    endif
+
+
+#------------------------------------------------------------------------------
+#	Checking for the validity of accounts ends.
+#-------------------------------------------------------------------------------
+
+	print(CUST.CUCS.TranDate)
+	print(CUST.CUCS.glDate)
+
+	
+#-------------------------------------------------------------------------------
+# The pay mode is being hardcoded as T as of now as per the requirements of E-Banking.
+# This is done in case in future Cash also needs to be supported. 
+#-------------------------------------------------------------------------------
+
+	CUST.CUCS.pay_mode = "T"
+	sv_z = CUST.CUCS.pay_mode
+
+
+#-------------------------------------------------------------------------------
+# The currency of the account is required, and check need to be done that the
+# two accounts are in same currenyc or not. If not then transaction can not 
+# be done as transaction in same currency is only supported as of now as per 
+# the requirements of E-banking.
+#-------------------------------------------------------------------------------
+
+# 1. Get the currency of the Doorstep Account.
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CUCS.DoorStepAc)
+	CUST.CUCS.doorstepacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+
+# 2. Get the currency of the Debit Account.
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CUCS.foracid)
+    CUST.CUCS.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+	CUST.CUCS.schmType = BANCS.OUTPARAM.schmType
+	
+
+# 3. Checing if the accounts are in same or different currency.
+	if (CUST.CUCS.doorstepacctCrncyCode == CUST.CUCS.acctCrncyCode) then
+	#{
+		print(CUST.CUCS.doorstepacctCrncyCode)
+		print(CUST.CUCS.acctCrncyCode)
+	#}
+	else
+	#{
+	
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.ErrorMesg = "Accounts are in different currency. Transaction not allowed."
+		print(BANCS.OUTPUT.ErrorMesg)
+		sv_t = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "ErrorMesg|" + BANCS.OUTPUT.ErrorMesg
+		sv_u = urhk_SetOrbOut(sv_t)
+		exitscript
+	#}
+	endif
+
+#-------------------------------------------------------------------------------
+# Setting up the inputs for the Credit and the debit part tran.
+#-------------------------------------------------------------------------------
+	if((sv_z == "T")) then  
+	#{
+		
+# 1. Setting inputs for the Debit part tran. Debit is to happen from the Debit Account id which is specified as an input.
+
+		#print("Transfer")
+		sv_a= urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+		sv_a= urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+		sv_a = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+		sv_a = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+
+		sv_a= urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|" + CUST.CUCS.TranDate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + CUST.CUCS.TranDate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + CUST.CUCS.valuedate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|" + CUST.CUCS.glDate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.partTranSrlNum|1")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|" + CUST.CUCS.acctCrncyCode)
+
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranAmt|" + CUST.CUCS.amount + "|" + CUST.CUCS.acctCrncyCode)
+
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|" + CUST.CUCS.amount + "|" + CUST.CUCS.acctCrncyCode)
+
+		
+		# The instrument date is to be = BOD as per E-Banking requirement.
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.instrmnt.instrmntDate|" + CUST.CUCS.InstrDate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.instrmnt.instrmntNum|" + CUST.CUCS.ChequeNo)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.instrmnt.instrmntType|CHQ")
+	
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|" + CUST.CUCS.foracid)
+		
+		# The Tran Particulars,tran remarks and tran report code were being defaulted as balnks/null at the E-banking side.
+		# The inputs are provided here catering for the future enhancements in case these need to be updated in the
+		# transaction being created. 
+		CUST.CUCS.tranParticulars = "Certified Chq"
+				sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|" + CUST.CUCS.tranParticulars)
+		#		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|" + CUST.CUCS.tranRmks)
+		#		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.rptCode|" + CUST.CUCS.rptCode)
+
+		# The refNum is being defaulted to the value BWYCASHRQST as required by E-Banking.
+		#sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refNum|BWYCASHRQST")
+
+
+# 2. Setting inputs for the Credit part tran.Credit is to happen to the Doorstep Account id which is hardcoded in the script.
+
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + CUST.CUCS.TranDate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + CUST.CUCS.valuedate)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|" + CUST.CUCS.glDate) 
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.partTranSrlNum|2")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|" + CUST.CUCS.doorstepacctCrncyCode)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranAmt|" + CUST.CUCS.amount + "|" + CUST.CUCS.doorstepacctCrncyCode)
+		#print(sv_a)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|" + CUST.CUCS.amount + "|" + CUST.CUCS.doorstepacctCrncyCode)
+		##print(sv_a)
+		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|" + CUST.CUCS.DoorStepAc)
+
+		# The Tran Particulars,tran remarks and tran report code were being defaulted as balnks/null at the E-banking side.
+		# The inputs are provided here catering for the future enhancements in case these need to be updated in the
+		# transaction being created. 
+				sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|" + CUST.CUCS.tranParticulars)
+		#		sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|" + CUST.CUCS.tranRmks)
+		#       sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rptCode|" + CUST.CUCS.rptCode)
+
+		#sv_a= urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refNum|BWYCASHRQST")
+
+#------------------------------------------------------------------------------------
+# Setting up the inputs for the Credit and the debit part tran ends.
+#------------------------------------------------------------------------------------
+		##print(sv_a)
+#------------------------------------------------------------------------------------
+# Setting up the Output from the service
+#------------------------------------------------------------------------------------
+		sv_a = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|TranId")
+		print(sv_a)
+
+		BANCS.OUTPUT.TranDate = CUST.CUCS.TranDate
+#--------------------------------------------------------------------------------------
+# Setting up the Output from the service ends.
+#--------------------------------------------------------------------------------------
+#
+
+#---------------------------------------------------------------------------------------
+# Execution of service 
+#------------------------------------------------------------------------
+		#sv_s = urhk_ExecSrv("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y") 
+		sv_s = urhk_ExecSrvNoCommit("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y")
+		print(sv_s)
+
+	# Checking for success or failure of the service.
+
+		if (sv_s != 0) then
+		#{ 
+			# Service has returned failure. 
+			#print("Error")
+			sv_c = BANCS.OUTPARAM.Error_num
+			print(sv_c)
+			CUST.CUCS.ErrorMesg ="~Amount not credited to Account"
+			BANCS.OUTPUT.successOrFailure   = "F"
+			if (sv_c > 0) then
+			#{
+				sv_d = 1
+				while (sv_d <= sv_c)
+					sv_f = FORMAT$(sv_d,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					print(sv_e)
+					BANCS.OUTPUT.ErrorMesg = sv_e
+					sv_m = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_m)
+					BANCS.OUTPUT.ErrorCode = sv_m 
+					sv_n = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					print(sv_n)
+					sv_c = sv_n + "|" + sv_e
+					print(sv_c)
+					sv_t = "ErrorMesg|" + BANCS.OUTPUT.ErrorMesg
+		            sv_u = urhk_SetOrbOut(sv_t)
+            		sv_l = "ErrorCode|" + BANCS.OUTPUT.ErrorCode
+            		sv_u = urhk_SetOrbOut(sv_l)
+            		sv_l = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+            		sv_u = urhk_SetOrbOut(sv_l)
+					sv_d = sv_d + 1
+				do
+			#}
+			endif
+        	print(BANCS.OUTPUT.successOrFailure)
+    	    print(BANCS.OUTPUT.ErrorMesg)
+			CUST.CUCS.remark = BANCS.OUTPUT.ErrorMesg
+			CUST.CUCS.chk_tran ="F"
+	        exitscript
+		#}
+		ELSE
+		#{
+			# Service has returned success. Transaction id would be sent back to be displayed.
+			print(BANCS.OUTPARAM.TranId)
+			BANCS.OUTPUT.TranId = BANCS.OUTPARAM.TranId
+			#sv_l = "TranId|" + BANCS.OUTPUT.TranId
+            #sv_u = urhk_SetOrbOut(sv_l)
+			#sv_l = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+            #sv_u = urhk_SetOrbOut(sv_l)
+			CUST.CUCS.TRAN_ID = BANCS.OUTPARAM.TranId
+		#}
+		ENDIF
+	#	sv_a = urhk_CopyOutToIn("")
+    #    PRINT(sv_a)
+
+	#	sv_s = urhk_ExecSrv("SRV_VerifyTran|same_user_verify = Y|retain_all_output = Y") 
+	#	print(sv_s)
+
+	# Checking for success or failure of the service.
+
+	#	if (sv_s != 0) then
+	#	#{ 
+	#		# Service has returned failure. 
+	#		#print("Error")
+	#		sv_c = BANCS.OUTPARAM.Error_num
+	#		print(sv_c)
+	#		CUST.CUCS.ErrorMesg ="~Amount not credited to Account"
+	#		BANCS.OUTPUT.successOrFailure   = "F"
+	#		if (sv_c > 0) then
+	#		#{
+	#			sv_d = 1
+	#			while (sv_d <= sv_c)
+	#				sv_f = FORMAT$(sv_d,"%d")
+	#				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+	#				print(sv_e)
+	#				BANCS.OUTPUT.ErrorMesg = sv_e
+	#				sv_m = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+	#				print(sv_m)
+	#				BANCS.OUTPUT.ErrorCode = sv_m 
+	#				sv_n = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+	#				print(sv_n)
+	#				sv_c = sv_n + "|" + sv_e
+	#				print(sv_c)
+	##				sv_t = "ErrorMesg|" + BANCS.OUTPUT.ErrorMesg
+	#	            sv_u = urhk_SetOrbOut(sv_t)
+    #        		sv_l = "ErrorCode|" + BANCS.OUTPUT.ErrorCode
+    #        		sv_u = urhk_SetOrbOut(sv_l)
+    #        		sv_l = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+     #       		sv_u = urhk_SetOrbOut(sv_l)
+	#				sv_d = sv_d + 1
+	#			do
+	#		#}
+	#		endif
+     #   	print(BANCS.OUTPUT.successOrFailure)
+    #	    print(BANCS.OUTPUT.ErrorMesg)
+	#		CUST.CUCS.remark = BANCS.OUTPUT.ErrorMesg
+	#		CUST.CUCS.chk_tran ="F"
+	#        exitscript
+	#	#}
+	#	ELSE
+	#	#{
+	#		# Service has returned success. Transaction id would be sent back to be displayed.
+	#		print(BANCS.OUTPARAM.TranId)
+	#		BANCS.OUTPUT.TranId = BANCS.OUTPARAM.TranId
+	#		#sv_l = "TranId|" + BANCS.OUTPUT.TranId
+     #       #sv_u = urhk_SetOrbOut(sv_l)
+	#		#sv_l = "successOrFailure|" + BANCS.OUTPUT.successOrFailure
+    #        #sv_u = urhk_SetOrbOut(sv_l)
+	#		CUST.CUCS.TRAN_ID = BANCS.OUTPARAM.TranId
+	#	#}
+	#	ENDIF
+	#}
+	endif
+	
+	
+
+#trace off
+exitscript
+end-->

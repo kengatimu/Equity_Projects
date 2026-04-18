@@ -1,0 +1,999 @@
+################################################################################################    
+#  Name			:  denomdp010.scr
+#  Date			:  23-JUL-2010
+#  Description		:  This script fetches the denomination details entered for the input tran id
+#				and sends it to the front end
+#  Input		:  Tran Id, Tran Date
+#  Author		:  Castro /  Sandeep Patil
+#  Calling JSP		:  denomdp003.jsp
+#  Menu Option		:
+#  MODULE CODE		:  DENOM
+#  Modification History	:
+#  ====================
+#  Serial No.	DATE		Author			Description
+#	0.2	26-AUG-2011	Arathilakshmi		Edited to include HGCHRG menu
+################################################################################################
+<--START
+CHECKSUM="90656ecaa776ad5c566142a9dc8c6d2fc33c291d0afffe83610fa6bd51ba56c3"
+	TRACE ON
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	sv_u = urhk_b2k_PrintRepos("BANCS")
+	
+	CUST.DENOM.TranDate = BANCS.INPUT.TranDate
+	CUST.DENOM.referralFlg = BANCS.INPUT.referralFlg
+	
+	IF (CUST.DENOM.referralFlg == "Y") THEN
+	#{
+		CUST.DENOM.TranId = BANCS.INPUT.TranId
+		#}
+	ELSE
+		#{
+		IF (BANCS.STDIN.menuId == "HGCHRG") THEN
+		#{
+			CUST.DENOM.TranId = LPAD(TRIM(BANCS.INPUT.TranId), 9)
+			#}
+		ELSE
+			#{
+			# Added check for HLASPAY menu - Kalyana_Bommisetti
+			IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.menuId == "HLASPAY")) THEN
+			#{
+				sv_s = "tranId|SELECT entity_details FROM rfh WHERE 	referral_id='" + TRIM(BANCS.INPUT.TranId)
+				sv_s = sv_s + "' AND bank_id = '" + BANCS.STDIN.contextBankId + "'"
+				print(sv_s)
+				sv_q = urhk_dbSelect(sv_s)
+				IF (sv_q == 0) THEN
+				#{
+					print(BANCS.OUTPARAM.tranId)
+					CUST.DENOM.TranId = LPAD(TRIM(BANCS.OUTPARAM.tranId), 9)
+					#}
+				ELSE
+					#{
+					CUST.DENOM.TranId = LPAD(BANCS.INPUT.TranId, 9)
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				CUST.DENOM.TranId = LPAD(BANCS.INPUT.TranId, 9)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	print(CUST.DENOM.TranId)
+	IF (TRIM(BANCS.INPUT.TranType) != "") THEN
+	#{
+		CUST.DENOM.TranType = BANCS.INPUT.TranType
+		#}
+	ELSE
+		#{
+		CUST.DENOM.TranType = ""
+	#}
+	ENDIF
+	IF ((BANCS.INPUT.Func == "R") AND (CUST.DENOM.referralFlg != "Y")) THEN
+	#{
+		CUST.DENOM.REVTellerID = BANCS.STDIN.EmployeeId
+		print(CUST.DENOM.REVTellerID)
+		CUST.DENOM.REVSOLID = BANCS.STDIN.mySolId
+		print(CUST.DENOM.REVSOLID)
+	#}
+	ENDIF
+	CUST.DENOM.bank_id = toUpper(BANCS.STDIN.contextBankId)
+	print(CUST.DENOM.bank_id)
+	PRINT(CUST.DENOM.TranId)
+	PRINT(CUST.DENOM.TranDate)
+	CUST.DENOM.counts = ""
+	CUST.DENOM.pageNames = ""
+	CUST.DENOM.ptranTypes = ""
+	CUST.DENOM.Crncy = ""
+	CUST.DENOM.CrncyDtls = ""
+	CUST.DENOM.PBCount = "0"
+	CUST.DENOM.GBCount = "0"
+	CUST.DENOM.Func = BANCS.INPUT.Func
+	sv_m = "N"
+	# Counter
+	sv_c = 0
+	sv_e = 0
+	sv_l = 0
+	sv_x = 0
+	CUST.DENOM.CursorCnt = "0"
+	IF (FIELDEXISTS(BANCS.INPUT.UniqCrncysLen)) THEN
+	#{
+		CUST.DENOM.UniqCrncysLen = BANCS.INPUT.UniqCrncysLen
+		PRINT(CUST.DENOM.UniqCrncysLen)
+		#}
+	ELSE
+		#{
+		CUST.DENOM.UniqCrncysLen = 0
+	#}
+	ENDIF
+	
+	CUST.DENOM.currCnt = "1"
+	CUST.DENOM.RndOffCnt = "1"
+	IF (CUST.DENOM.TranType != "") THEN
+	#{
+		sv_u = urhk_setOrbOut("tranType|" + CUST.DENOM.TranType)
+		#}
+	ELSE
+		#{
+		#--------------------------------------------------------------------------------------
+		#	Fetching tran type,crncy code and serial number for current tran id
+		#--------------------------------------------------------------------------------------
+		
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_q = "tranType|"
+		sv_q = sv_q + "SELECT CONCAT(tran_type,tran_sub_type) "
+		sv_q = sv_q + "FROM dctd_acli "
+		sv_q = sv_q + "WHERE tran_id = ?SVAR "
+		sv_q = sv_q + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') "
+		sv_q = sv_q + "AND part_tran_srl_num = 1 AND bank_id = ?SVAR "
+		sv_q = sv_q + "AND ROWNUM < 2 "
+		PRINT(sv_q)
+		sv_a = urhk_DBSelectWithBind(sv_q)
+		IF (sv_a != 0) THEN
+		#{
+			sv_u = urhk_setOrbOut("tranType|C")
+			#}
+		ELSE
+			#{
+			PRINT(BANCS.OUTPARAM.tranType)
+			sv_u = urhk_setOrbOut("tranType|" + BANCS.OUTPARAM.tranType)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------------------
+	#	Fetching tran type,crncy code and serial number for current tranid
+	#--------------------------------------------------------------------------------------
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_q = "ptranType,crncyCode,serialNo,tellerId,solId|"
+	sv_q = sv_q + "SELECT DISTINCT ptran_type, crncy_code,part_tran_srl_num,teller_id,sol_id "
+	sv_q = sv_q + "FROM c_detd "
+	sv_q = sv_q + "WHERE dxfer_id = ?SVAR "
+	sv_q = sv_q + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') AND bank_id = ?SVAR  "
+	sv_q = sv_q + "ORDER BY part_tran_srl_num "
+	PRINT(sv_q)
+	sv_a = urhk_dbCursorOpenWithBind(sv_q)
+	IF (sv_a != 0) THEN
+	#{
+		sv_u = urhk_setOrbOut("Message|N")
+		sv_u = urhk_setOrbOut("Details|DataBase Error")
+		GOTO FINISH
+	#}
+	ENDIF
+	IF (sv_a == 0) THEN
+	#{
+		CUST.DENOM.Cursor1 = (BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+		CUST.DENOM.CursorCnt = CINT(CUST.DENOM.CursorCnt) + 1
+		PRINT(CUST.DENOM.CursorCnt)
+		sv_r = urhk_dbCursorFetch(CUST.DENOM.Cursor1)
+		IF (sv_r != 0) THEN
+		#{
+			
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate + "|" + CUST.DENOM.bank_id
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_q = "cash|SELECT 1 "
+			sv_q = sv_q + "FROM dual "
+			sv_q = sv_q + "WHERE EXISTS ("
+			sv_q = sv_q + "SELECT 1 "
+			sv_q = sv_q + "FROM dctd_acli "
+			sv_q = sv_q + "WHERE tran_id = ?SVAR "
+			sv_q = sv_q + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') "
+			sv_q = sv_q + "AND part_tran_srl_num = 1 "
+			sv_q = sv_q + "AND tran_type = 'C' "
+			sv_q = sv_q + "AND bank_id = ?SVAR)"
+			PRINT(sv_q)
+			sv_r = urhk_DBSelectWithBind(sv_q)
+			IF (sv_r != 0) THEN
+			#{
+				sv_u = urhk_setOrbOut("Message|N")
+				sv_u = urhk_setOrbOut("Details|NOTCASH")
+				#}
+			ELSE
+				#{
+				sv_u = urhk_setOrbOut("Message|N")
+				sv_u = urhk_setOrbOut("Details|No denomination entries for this transaction")
+				PRINT(sv_u)
+			#}
+			ENDIF
+			GOTO FINISH
+			
+			#}
+		ELSE
+			#{
+			WHILE(sv_r == 0)
+			#{
+				CUST.DENOM.ptranType = BANCS.OUTPARAM.ptranType
+				CUST.DENOM.crncyCode = BANCS.OUTPARAM.crncyCode
+				CUST.DENOM.serialNo = BANCS.OUTPARAM.serialNo
+				CUST.DENOM.tranTellerId = BANCS.OUTPARAM.tellerId
+				CUST.DENOM.tranSolId = BANCS.OUTPARAM.solId
+				
+				BANCS.INPARAM.BINDVARS = CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate + "|" + CUST.DENOM.ptranType + "|" + CUST.DENOM.crncyCode + "|" + CUST.DENOM.serialNo + "|" + BANCS.STDIN.contextBankId
+				CUST.DENOM.bindVars = BANCS.INPARAM.BINDVARS
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_o = "count|SELECT NVL(SUM(LENGTH(denom_value)-LENGTH(REPLACE(denom_value,'-',''))),0) "
+				sv_o = sv_o + "FROM c_detd "
+				sv_q = " WHERE dxfer_id = ?SVAR "
+				sv_q = sv_q + " AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY')"
+				sv_q = sv_q + " AND ptran_type = ?SVAR "
+				sv_q = sv_q + " AND crncy_code = ?SVAR "
+				sv_q = sv_q + " AND part_tran_srl_num= ?SVAR AND bank_id = ?SVAR "
+				IF (CUST.DENOM.referralFlg == "Y") THEN
+				#{
+					sv_q = sv_q + " AND dxfer_flg = 'R'"
+					#}
+				ELSE
+					#{
+					sv_q = sv_q + " AND dxfer_flg != 'R'"
+				#}
+				ENDIF
+				sv_s = sv_o + sv_q + " AND denom_ind='C' AND type IS NULL"
+				sv_t = sv_o + sv_q + " AND denom_ind='N' AND type IS NULL"
+				PRINT(sv_s)
+				#--------------------------------------------------------------------------------------
+				#	Queries to get the Coin and Note counts of denom dtls
+				#--------------------------------------------------------------------------------------
+				sv_p = urhk_dbSelectWithBind(sv_s)
+				IF (sv_p == 0) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.count)
+					CUST.DENOM.coinCount = BANCS.OUTPARAM.count
+				#}
+				ENDIF
+				sv_p = urhk_dbSelectWithBind(sv_t)
+				IF (sv_p == 0) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.count)
+					CUST.DENOM.noteCount = BANCS.OUTPARAM.count
+				#}
+				ENDIF
+				CUST.DENOM.counts = CUST.DENOM.counts + CUST.DENOM.coinCount + "@" + CUST.DENOM.noteCount + "~"
+				CUST.DENOM.ptranTypes = CUST.DENOM.ptranTypes + CUST.DENOM.ptranType + "~"
+				#--------------------------------------------------------------------------------------
+				#	Queries to check the existence PAY BACK denom dtls
+				#--------------------------------------------------------------------------------------
+				sv_s = sv_o + sv_q + " AND type = 'PB'"
+				PRINT(sv_s)
+				sv_p = urhk_DBSelectWithBind(sv_s)
+				IF (sv_p == 0) THEN
+				#{
+					CUST.DENOM.PBCount = BANCS.OUTPARAM.count
+					sv_u = urhk_setOrbOut("PBCount" + CUST.DENOM.serialNo + "|" + CUST.DENOM.PBCount)
+					PRINT("PBCount" + CUST.DENOM.serialNo + "|" + CUST.DENOM.PBCount)
+				#}
+				ENDIF
+				#--------------------------------------------------------------------------------------
+				#	Queries to check the existence GET BACK denom dtls
+				#--------------------------------------------------------------------------------------
+				sv_s = sv_o + sv_q + " AND type = 'GB'"
+				PRINT(sv_s)
+				sv_p = urhk_dbSelectWithBind(sv_s)
+				IF (sv_p == 0) THEN
+				#{
+					CUST.DENOM.GBCount = BANCS.OUTPARAM.count
+					sv_u = urhk_setOrbOut("GBCount" + CUST.DENOM.serialNo + "|" + CUST.DENOM.GBCount)
+					PRINT("GBCount" + CUST.DENOM.serialNo + "|" + CUST.DENOM.GBCount)
+				#}
+				ENDIF
+				#-------------------------------------------------------------------
+				# Query to fetch the currency name and no. of decimal points
+				#-------------------------------------------------------------------
+				
+				BANCS.INPARAM.BINDVARS = CUST.DENOM.crncyCode + "|" + CUST.DENOM.bank_id
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_s = "CrncyName,NumOfDecPoints|SELECT crncy_name, num_of_dec_points "
+				sv_s = sv_s + "FROM tbaadm.cnc "
+				sv_s = sv_s + "WHERE crncy_code = ?SVAR "
+				sv_s = sv_s + " AND bank_id = ?SVAR "
+				print(sv_s)
+				sv_d = urhk_DBSelectWithBind(sv_s)
+				IF (sv_d != 0) THEN
+				#{
+					sv_u = urhk_setOrbOut("Message|N")
+					sv_u = urhk_setOrbOut("Details|DataBase Error")
+					GOTO FINISH
+				#}
+				ENDIF
+				CUST.DENOM.CrncyName = BANCS.OUTPARAM.CrncyName
+				CUST.DENOM.NumOfDecPoints = BANCS.OUTPARAM.NumOfDecPoints
+				CUST.DENOM.Crncy = CUST.DENOM.Crncy + CUST.DENOM.crncyCode + "~"
+				CUST.DENOM.CrncyDtls = CUST.DENOM.CrncyDtls + CUST.DENOM.CrncyName + "@" + CUST.DENOM.NumOfDecPoints + "~"
+				PRINT(CUST.DENOM.CrncyName)
+				PRINT(CUST.DENOM.NumOfDecPoints)
+				PRINT(CUST.DENOM.counts)
+				PRINT(CUST.DENOM.ptranTypes)
+				PRINT(CUST.DENOM.Crncy)
+				PRINT(CUST.DENOM.CrncyDtls)
+				# -----------------------------------------------------------------
+				# Cursor to fetch the denomination values entered for the Tran Id.
+				# -----------------------------------------------------------------
+				sv_v = "denomValue,denomCount,type|SELECT denom_value,denom_count,type "
+				sv_v = sv_v + "FROM c_detd "
+				sv_v = sv_v + sv_q
+				sv_s = sv_v + " AND denom_ind='C' AND type IS NULL ORDER BY denom_value DESC"
+				sv_t = sv_v + " AND denom_ind='N' AND type IS NULL ORDER BY denom_value DESC"
+				PRINT(sv_s)
+				PRINT(sv_t)
+				# -----------------------------------------------------------------
+				# Cursor to fetch the Coin denom details - MADE TO A QUERY
+				# -----------------------------------------------------------------
+				BANCS.INPARAM.BINDVARS = CUST.DENOM.bindVars
+				sv_w = urhk_DBSelectWithBind(sv_s)
+				IF (sv_w != 0) THEN
+				#{
+					sv_u = urhk_setOrbOut("Message|N")
+					sv_u = urhk_setOrbOut("Details|DataBase Error")
+					GOTO FINISH
+				#}
+				ENDIF
+				CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+				CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+				CUST.DENOM.type = BANCS.OUTPARAM.type
+				CUST.DENOM.DenomCoinVal = "DenomCoinVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+				CUST.DENOM.DenomCoinCnt = "DenomCoinCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+				PRINT(CUST.DENOM.DenomCoinVal)
+				PRINT(CUST.DENOM.DenomCoinCnt)
+				sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinVal)
+				sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinCnt)
+				sv_e = sv_e + 1
+				PRINT(sv_e)
+				# -----------------------------------------------------------------
+				# Cursor to fetch the Note denom details - MADE TO A QUERY
+				# -----------------------------------------------------------------
+				sv_w = urhk_DBSelectWithBind(sv_t)
+				IF (sv_w != 0) THEN
+				#{
+					sv_u = urhk_setOrbOut("Message|N")
+					PRINT(sv_u)
+					sv_u = urhk_setOrbOut("Details|DataBase Error")
+					PRINT(sv_u)
+					GOTO FINISH
+				#}
+				ENDIF
+				CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+				CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+				CUST.DENOM.type = BANCS.OUTPARAM.type
+				CUST.DENOM.DenomNoteVal = "DenomNoteVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+				CUST.DENOM.DenomNoteCnt = "DenomNoteCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+				PRINT(CUST.DENOM.DenomNoteVal)
+				PRINT(CUST.DENOM.DenomNoteCnt)
+				sv_u = urhk_setOrbOut(CUST.DENOM.DenomNoteVal)
+				sv_u = urhk_setOrbOut(CUST.DENOM.DenomNoteCnt)
+				sv_e = sv_e + 1
+				PRINT(sv_e)
+				IF (CUST.DENOM.PBCount > 0) THEN
+				#{
+					sv_s = sv_v + " AND denom_ind='C' AND type = 'PB' ORDER BY denom_value DESC"
+					sv_t = sv_v + " AND denom_ind='N' AND type = 'PB' ORDER BY denom_value DESC"
+					PRINT(sv_s)
+					PRINT(sv_t)
+					# -----------------------------------------------------------------
+					# Cursor to fetch the Coin denom details - MADE TO A QUERY - PB
+					# -----------------------------------------------------------------
+					sv_w = urhk_DBSelectWithBind(sv_s)
+					IF (sv_w != 0) THEN
+					#{
+						sv_u = urhk_setOrbOut("Message|N")
+						sv_u = urhk_setOrbOut("Details|DataBase Error")
+						GOTO FINISH
+					#}
+					ENDIF
+					CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+					CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+					CUST.DENOM.type = BANCS.OUTPARAM.type
+					CUST.DENOM.DenomCoinVal = "PBDenomCoinVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+					CUST.DENOM.DenomCoinCnt = "PBDenomCoinCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+					PRINT(CUST.DENOM.DenomCoinVal)
+					PRINT(CUST.DENOM.DenomCoinCnt)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinVal)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinCnt)
+					sv_e = sv_e + 1
+					PRINT(sv_e)
+					# -----------------------------------------------------------------
+					# Cursor to fetch the Note denom details - MADE TO A QUERY - PB
+					# -----------------------------------------------------------------
+					sv_w = urhk_DBSelectWithBind(sv_t)
+					IF (sv_w != 0) THEN
+					#{
+						sv_u = urhk_setOrbOut("Message|N")
+						sv_u = urhk_setOrbOut("Details|DataBase Error")
+						GOTO FINISH
+					#}
+					ENDIF
+					CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+					CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+					CUST.DENOM.type = BANCS.OUTPARAM.type
+					CUST.DENOM.DenomNoteVal = "PBDenomNoteVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+					CUST.DENOM.DenomNoteCnt = "PBDenomNoteCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+					PRINT(CUST.DENOM.DenomNoteVal)
+					PRINT(CUST.DENOM.DenomNoteCnt)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomNoteCnt)
+					sv_e = sv_e + 1
+					PRINT(sv_e)
+				#}
+				ENDIF
+				IF (CUST.DENOM.GBCount > 0) THEN
+				#{
+					sv_s = sv_v + " AND denom_ind='C' AND type = 'GB' ORDER BY denom_value DESC"
+					sv_t = sv_v + " AND denom_ind='N' AND type = 'GB' ORDER BY denom_value DESC"
+					PRINT(sv_s)
+					PRINT(sv_t)
+					# -----------------------------------------------------------------
+					# Cursor to fetch the Coin denom details - MADE TO A QUERY - PB
+					# -----------------------------------------------------------------
+					sv_w = urhk_DBSelectWithBind(sv_s)
+					IF (sv_w != 0) THEN
+					#{
+						sv_u = urhk_setOrbOut("Message|N")
+						sv_u = urhk_setOrbOut("Details|DataBase Error")
+						GOTO FINISH
+					#}
+					ENDIF
+					CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+					CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+					CUST.DENOM.type = BANCS.OUTPARAM.type
+					CUST.DENOM.DenomCoinVal = "GBDenomCoinVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+					CUST.DENOM.DenomCoinCnt = "GBDenomCoinCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+					PRINT(CUST.DENOM.DenomCoinVal)
+					PRINT(CUST.DENOM.DenomCoinCnt)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinVal)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomCoinCnt)
+					sv_e = sv_e + 1
+					PRINT(sv_e)
+					# -----------------------------------------------------------------
+					# Cursor to fetch the Note denom details - MADE TO A QUERY - GB
+					# -----------------------------------------------------------------
+					sv_w = urhk_DBSelectWithBind(sv_t)
+					IF (sv_w != 0) THEN
+					#{
+						sv_u = urhk_setOrbOut("Message|N")
+						sv_u = urhk_setOrbOut("Details|DataBase Error")
+						GOTO FINISH
+					#}
+					ENDIF
+					CUST.DENOM.denomValue = BANCS.OUTPARAM.denomValue
+					CUST.DENOM.denomCount = BANCS.OUTPARAM.denomCount
+					CUST.DENOM.type = BANCS.OUTPARAM.type
+					CUST.DENOM.DenomNoteVal = "GBDenomNoteVal" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomValue
+					CUST.DENOM.DenomNoteCnt = "GBDenomNoteCnt" + CUST.DENOM.currCnt + "|" + CUST.DENOM.denomCount
+					PRINT(CUST.DENOM.DenomNoteVal)
+					PRINT(CUST.DENOM.DenomNoteCnt)
+					sv_u = urhk_setOrbOut(CUST.DENOM.DenomNoteCnt)
+					sv_e = sv_e + 1
+					PRINT(sv_e)
+				#}
+				ENDIF
+				# -----------------------------------------------------------------
+				# Fetch the Round Off Amount
+				# -----------------------------------------------------------------
+				BANCS.INPARAM.BINDVARS = CUST.DENOM.crncyCode + "|" + CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_z = "RoundOffAmt,RoundOffTyp|SELECT roundoff_amt,ptran_type "
+				sv_z = sv_z + "FROM c_derd "
+				sv_z = sv_z + "WHERE  crncy_code=?SVAR "
+				sv_z = sv_z + "AND dxfer_id = ?SVAR "
+				sv_z = sv_z + "AND to_date(to_char(tran_date,'DD-MM-YYYY'),'DD-MM-YYYY')=to_date(?SVAR,'DD-MM-YYYY') AND sol_id = ?SVAR AND bank_id = ?SVAR  "
+				sv_z = sv_z + "AND  ROWNUM<2 "
+				PRINT(sv_z)
+				sv_k = urhk_dbSelectWithBind(sv_z)
+				PRINT(sv_k)
+				IF (sv_k == 0) THEN
+				#{
+					sv_m = "RoundOffVal" + CUST.DENOM.currCnt + "|" + BANCS.OUTPARAM.RoundOffAmt
+					sv_n = "RoundOffTyp" + CUST.DENOM.currCnt + "|" + BANCS.OUTPARAM.RoundOffTyp
+					#}
+				ELSE
+					#{
+					sv_m = "RoundOffVal" + CUST.DENOM.currCnt + "|0"
+					sv_n = "RoundOffTyp" + CUST.DENOM.currCnt + "|D"
+				#}
+				ENDIF
+				CUST.DENOM.currCnt = CINT(CUST.DENOM.currCnt) + 1
+				PRINT(sv_m)
+				PRINT(sv_n)
+				sv_e = sv_e + 1
+				sv_u = urhk_setOrbOut(sv_m)
+				sv_u = urhk_setOrbOut(sv_n)
+				
+				#--------------------------------------------
+				# Fetching Max denom avail for Modify mode
+				#--------------------------------------------
+				IF ((CUST.DENOM.Func == "M") OR (CUST.DENOM.Func == "M1") OR (CUST.DENOM.Func == "R")) THEN
+				#{
+					IF ((CUST.DENOM.Func == "M") OR (CUST.DENOM.Func == "M1")) THEN
+					#{
+						PRINT(sv_c)
+						#----------------- Fetching teller ids---------------
+						IF (FIELDEXISTS(("BANCS").("INPUT").("AcctId" + FORMAT$(sv_c, "%d"))) == 0) THEN
+						#{
+							sv_m = "Y"
+							GOTO NULLENT
+						#}
+						ENDIF
+						CUST.DENOM.Acctid = ("BANCS").("INPUT").("AcctId" + FORMAT$(sv_c, "%d"))
+						PRINT(CUST.DENOM.Acctid)
+						BANCS.INPARAM.BINDVARS = CUST.DENOM.Acctid
+						PRINT(BANCS.INPARAM.BINDVARS)
+						sv_o = "bacid,solId,crncy,bankId|SELECT bacid,sol_id,acct_crncy_code,bank_id "
+						sv_o = sv_o + "FROM gam "
+						sv_o = sv_o + "WHERE foracid = ?SVAR "
+						PRINT(sv_o)
+						sv_v = urhk_dbselectWithBind(sv_o)
+						IF (sv_v != 0) THEN
+						#{
+							sv_m = "Y"
+							GOTO NULLENT
+						#}
+						ENDIF
+						CUST.DENOM.bacid = BANCS.OUTPARAM.bacid
+						CUST.DENOM.solId = BANCS.OUTPARAM.solId
+						CUST.DENOM.crncy = BANCS.OUTPARAM.crncy
+						CUST.DENOM.bank_id = BANCS.OUTPARAM.bankId
+						
+						BANCS.INPARAM.BINDVARS = CUST.DENOM.bacid + "|" + CUST.DENOM.solId + "|" + CUST.DENOM.crncy + "|" + CUST.DENOM.bank_id
+						PRINT(BANCS.INPARAM.BINDVARS)
+						
+						sv_o = "empId|SELECT emp_id "
+						sv_o = sv_o + "FROM GEC "
+						sv_o = sv_o + "WHERE emp_cash_acct = ?SVAR "
+						sv_o = sv_o + "AND sol_id = ?SVAR "
+						sv_o = sv_o + "AND crncy_code = ?SVAR "
+						sv_o = sv_o + "AND bank_id = ?SVAR "
+						sv_o = sv_o + "AND entity_cre_flg = 'Y' "
+						sv_o = sv_o + "AND del_flg != 'Y' "
+						sv_o = sv_o + "AND rownum<2 "
+						PRINT(sv_o)
+						sv_v = urhk_DBSelectWithBind(sv_o)
+						PRINT(sv_v)
+						IF (sv_v == 0) THEN
+						#{
+							("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d")) = BANCS.OUTPARAM.empId
+							("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d")) = CUST.DENOM.solId
+							PRINT(("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d")))
+							PRINT(("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d")))
+							#}
+						ELSE
+							#{
+							BANCS.INPARAM.BINDVARS = CUST.DENOM.Acctid
+							PRINT(BANCS.INPARAM.BINDVARS)
+							
+							sv_q = "exists|SELECT 1 "
+							sv_q = sv_q + "FROM dual "
+							sv_q = sv_q + "WHERE EXISTS "
+							sv_q = sv_q + "( SELECT 1 "
+							sv_q = sv_q + "FROM gct "
+							sv_q = sv_q + "WHERE cash_bacid = "
+							sv_q = sv_q + "(SELECT bacid "
+							sv_q = sv_q + "FROM gam "
+							sv_q = sv_q + "WHERE foracid = ?SVAR "
+							sv_q = sv_q + "AND entity_cre_flg = 'Y' "
+							sv_q = sv_q + "AND del_flg!='Y')) "
+							PRINT(sv_q)
+							sv_v = urhk_DBSelectWithBind(sv_q)
+							PRINT(sv_v)
+							IF (sv_v == 0) THEN
+							#{
+								("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d")) = "VAULT"
+								("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d")) = BANCS.STDIN.mySolId
+								#}
+							ELSE
+								#{
+								sv_m = "Y"
+								GOTO NULLENT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						NULLENT:
+							IF (sv_m == "Y") THEN
+							#{
+								("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d")) = BANCS.STDIN.EmployeeId
+								("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d")) = BANCS.STDIN.mySolId
+								PRINT(("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d")))
+								PRINT(("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d")))
+							#}
+							ENDIF
+						#}
+						ENDIF
+						IF (CUST.DENOM.Func == "R") THEN
+						#{
+							IF (CUST.DENOM.referralFlg != "Y") THEN
+							#{
+								CUST.DENOM.tellerId = CUST.DENOM.REVTellerID
+								CUST.DENOM.solId = CUST.DENOM.REVSOLID
+								print(CUST.DENOM.tellerId)
+								print(CUST.DENOM.solId)
+								#}
+							ELSE
+								#{
+								CUST.DENOM.tellerId = CUST.DENOM.tranTellerId
+								CUST.DENOM.solId = CUST.DENOM.tranSolId
+							#}
+							ENDIF
+							#}
+						ELSE
+							#{
+							CUST.DENOM.tellerId = ("CUST").("DENOM").("tellerId" + FORMAT$(sv_c, "%d"))
+							CUST.DENOM.solId = ("CUST").("DENOM").("solId" + FORMAT$(sv_c, "%d"))
+						#}
+						ENDIF
+						#-- To check if new denomination added for current currencies and add it to C_DENM,C_DENM_CR and C_DENM_DR tables--
+						CALL("denomdp024.scr")
+						
+						CUST.DENOM.inparams = "'" + CUST.DENOM.tellerId + "','" + CUST.DENOM.crncyCode + "','" + CUST.DENOM.solId + "'"
+						PRINT(CUST.DENOM.inparams)
+						
+						BANCS.INPARAM.BINDVARS = CUST.DENOM.tellerId + "|" + CUST.DENOM.crncyCode + "|" + CUST.DENOM.solId + "|" + CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+						
+						sv_h = "DenomCount|SELECT custom.GETMAXDENOMCOUNT(?SVAR,?SVAR,?SVAR,'N',?SVAR"
+						sv_h = sv_h + ",TO_DATE(?SVAR,'DD-MM-YYYY')) "
+						sv_h = sv_h + "FROM DUAL "
+						PRINT(sv_h)
+						sv_i = urhk_DBSelectWithBind(sv_h)
+						IF (sv_i != 0) THEN
+						#{
+							sv_u = urhk_setOrbOut("Message|N")
+							sv_u = urhk_setOrbOut("Details|Denomination entries not available")
+							PRINT(sv_u)
+							GOTO FINISH
+						#}
+						ENDIF
+						CUST.DENOM.MaxNoteDnmCnt = BANCS.OUTPARAM.DenomCount
+						
+						BANCS.INPARAM.BINDVARS = CUST.DENOM.tellerId + "|" + CUST.DENOM.crncyCode + "|" + CUST.DENOM.solId + "|" + CUST.DENOM.TranId + "|" + CUST.DENOM.TranDate
+						PRINT(BANCS.INPARAM.BINDVARS)
+						
+						sv_h = "DenomCount|SELECT custom.GETMAXDENOMCOUNT(?SVAR,?SVAR,?SVAR,'C',?SVAR"
+						sv_h = sv_h + ",TO_DATE(?SVAR,'DD-MM-YYYY')) "
+						sv_h = sv_h + "FROM DUAL "
+						PRINT(sv_h)
+						sv_i = urhk_DBSelectWithBind(sv_h)
+						IF (sv_i != 0) THEN
+						#{
+							PRINT(sv_u)
+							CUST.DENOM.MaxCoinDnmCnt = ""
+						#}
+						ENDIF
+						CUST.DENOM.MaxCoinDnmCnt = BANCS.OUTPARAM.DenomCount
+						PRINT(CUST.DENOM.MaxNoteDnmCnt)
+						PRINT(CUST.DENOM.MaxCoinDnmCnt)
+						CUST.DENOM.mask ="N"
+						
+						IF(FIELDEXISTS(("BANCS").("INPUT").("AcctId"+ FORMAT$(sv_c,"%d"))) == 1) THEN
+						#{
+							
+							CUST.DENOM.Acct=("BANCS").("INPUT").("AcctId"+ FORMAT$(sv_c,"%d"))
+							print("test")
+							PRINT(CUST.DENOM.Acct)
+							
+							
+							BANCS.INPARAM.BINDVARS = CUST.DENOM.Acct + "|" + CUST.DENOM.bank_id
+							print(BANCS.INPARAM.BINDVARS)
+							
+							sv_o = "bacid,solId,crncy,bankId,acid|SELECT bacid,sol_id,acct_crncy_code,bank_id,acid "
+							sv_o = sv_o + "FROM gam "
+							sv_o = sv_o + "WHERE foracid = ?SVAR "
+							sv_o = sv_o + "AND bank_id= ?SVAR "
+							PRINT(sv_o)
+							sv_b = urhk_DBSelectWithBind(sv_o)
+							IF(sv_b == 0) THEN
+							#{
+								CUST.DENOM.bacid = BANCS.OUTPARAM.bacid
+								CUST.DENOM.solId = BANCS.OUTPARAM.solId
+								CUST.DENOM.crncy = BANCS.OUTPARAM.crncy
+								CUST.DENOM.bankId = BANCS.OUTPARAM.bankId
+								CUST.DENOM.acid = BANCS.OUTPARAM.acid
+								
+								BANCS.INPARAM.BINDVARS = CUST.DENOM.acid +"|"+ CUST.DENOM.bank_id
+								PRINT(BANCS.INPARAM.BINDVARS)
+								
+								sv_o = "cnts|select count(*) "
+								sv_o = sv_o + "from tbaadm.aac "
+								sv_o = sv_o + " where acid = ?SVAR AND bank_id = ?SVAR "
+								sv_o = sv_o + " AND entity_cre_flg='Y' "
+								print(sv_o)
+								sv_b = urhk_DBSelectWithBind(sv_o)
+								IF(sv_b != 0) THEN
+								#{
+									CUST.DENOM.cnts = "0"
+								#}
+								ELSE
+								#{
+									CUST.DENOM.mask = "N"
+								#}
+								ENDIF
+								
+								CUST.DENOM.cnts = BANCS.OUTPARAM.cnts
+								print(CUST.DENOM.cnts)
+								
+								IF(CUST.DENOM.cnts > 0)THEN
+								#{
+									sv_o = "accessCode| select acct_access_code from tbaadm.aac "
+									sv_o = sv_o + " where acid = ?SVAR AND bank_id = ?SVAR "
+									sv_o = sv_o + " AND entity_cre_flg='Y' "
+									print(sv_o)
+									sv_b = urhk_DBSelectWithBind(sv_o)
+									IF(sv_b == 0)THEN
+									#{
+										CUST.DENOM.accessCode = BANCS.OUTPARAM.accessCode
+										print(CUST.DENOM.accessCode)
+										
+										BANCS.INPARAM.BINDVARS = CUST.DENOM.accessCode +"|"+  BANCS.STDIN.userId +"|"+ CUST.DENOM.bank_id
+										print(BANCS.INPARAM.BINDVARS)
+										sv_o = "cntRec|select count(*) from tbaadm.uac"
+										sv_o = sv_o + " where acct_access_code = ?SVAR AND user_id = ?SVAR "
+										sv_o = sv_o + " AND bank_id = ?SVAR AND entity_cre_flg='Y' "
+										print(sv_o)
+										sv_b = urhk_DBSelectWithBind(sv_o)
+										print(BANCS.OUTPARAM.cntRec)
+										IF(BANCS.OUTPARAM.cntRec > 0)THEN
+										#{
+											CUST.DENOM.mask = "N"
+										#}
+										ELSE
+										#{
+											CUST.DENOM.mask = "Y"
+										#}
+										ENDIF
+										
+									#}
+									ENDIF
+								#}
+								ELSE
+								#{
+									CUST.DENOM.mask = "N"
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						IF(CUST.DENOM.mask =="Y")THEN
+						#{
+							sv_b = 1
+							sv_i = ""
+							WHILE(sv_b != 0)
+							#{
+								sv_b = GETPOSITION(CUST.DENOM.MaxNoteDnmCnt, "-")
+								PRINT(sv_b)
+								
+								IF (sv_b != 0) THEN
+								#{
+									sv_o = LEFT$(CUST.DENOM.MaxNoteDnmCnt, (sv_b - 1))
+									print(sv_o)
+									IF(sv_i != "")THEN
+									#{
+										sv_i = sv_i + "-" + "M" + sv_o
+									#}
+									ELSE
+									#{
+										sv_i = "M" + sv_o
+									#}
+									ENDIF
+									print(sv_i)
+									CUST.DENOM.MaxNoteDnmCnt = RIGHT$(CUST.DENOM.MaxNoteDnmCnt, (STRLEN(CUST.DENOM.MaxNoteDnmCnt) - (sv_b)))
+									#}
+								ELSE
+									#{
+									sv_o = CUST.DENOM.MaxNoteDnmCnt
+									print(sv_o)
+									sv_i = sv_i + "-" + "M" + sv_o
+									print(sv_i)
+								#}
+								ENDIF
+								
+							#}
+							DO
+							CUST.DENOM.MaxNoteDnmCnt = sv_i
+							print(CUST.DENOM.MaxNoteDnmCnt)
+							
+							sv_b = 1
+							sv_i = ""
+							WHILE(sv_b != 0)
+							#{
+								sv_b = GETPOSITION(CUST.DENOM.MaxCoinDnmCnt, "-")
+								PRINT(sv_b)
+								
+								IF (sv_b != 0) THEN
+								#{
+									sv_o = LEFT$(CUST.DENOM.MaxCoinDnmCnt, (sv_b - 1))
+									print(sv_o)
+									IF(sv_i != "")THEN
+									#{
+										sv_i = sv_i + "-" + "M" + sv_o
+									#}
+									ELSE
+									#{
+										sv_i = "M" + sv_o
+									#}
+									ENDIF
+									print(sv_i)
+									CUST.DENOM.MaxCoinDnmCnt = RIGHT$(CUST.DENOM.MaxCoinDnmCnt, (STRLEN(CUST.DENOM.MaxCoinDnmCnt) - (sv_b)))
+									#}
+								ELSE
+									#{
+									sv_o = CUST.DENOM.MaxCoinDnmCnt
+									print(sv_o)
+									sv_i = sv_i + "-" + "M" + sv_o
+									print(sv_i)
+								#}
+								ENDIF
+								
+							#}
+							DO
+							
+							CUST.DENOM.MaxCoinDnmCnt = sv_i
+							print(CUST.DENOM.MaxCoinDnmCnt)
+							
+						#}
+						ENDIF
+						
+						sv_f = "MaxNoteDenom" + FORMAT$(sv_l, "%d") + "|" + CUST.DENOM.MaxNoteDnmCnt
+						PRINT(sv_f)
+						sv_t = FORMAT$(sv_l,"%d")
+						IF(CUST.DENOM.MaxCoinDnmCnt != "") THEN
+						#{
+							sv_g = "MaxCoinDenom" + FORMAT$(sv_l, "%d") + "|" + CUST.DENOM.MaxCoinDnmCnt
+							print(sv_g)
+							#}
+						ELSE
+							#{
+							Print("COIN:" + sv_t)
+							sv_g = "MaxCoinDenom" + FORMAT$(sv_l, "%d") + "|0"
+						#}
+						ENDIF
+						
+						sv_u = urhk_setOrbOut(sv_f)
+						sv_u = urhk_setOrbOut(sv_g)
+					#}
+					ENDIF
+					sv_c = sv_c + 1
+					sv_r = urhk_dbCursorFetch(CUST.DENOM.Cursor1)
+					sv_l = sv_l + 1
+					sv_x = sv_x + 1
+					PRINT(sv_r)
+					PRINT(sv_l)
+					PRINT(sv_x)
+				#}
+				DO
+				sv_r = urhk_dbCursorClose(CUST.DENOM.Cursor1)
+				CUST.DENOM.CursorCnt = CINT(CUST.DENOM.CursorCnt) - 1
+				PRINT(CUST.DENOM.CursorCnt)
+			#}
+			ENDIF
+			PRINT(sv_r)
+		#}
+		ENDIF
+		
+		CUST.DENOM.counts = LEFT$(CUST.DENOM.counts, STRLEN(CUST.DENOM.counts) - 1)
+		CUST.DENOM.pageNames = LEFT$(CUST.DENOM.pageNames, STRLEN(CUST.DENOM.pageNames) - 1)
+		PRINT(CUST.DENOM.counts)
+		PRINT(CUST.DENOM.ptranTypes)
+		PRINT(CUST.DENOM.Crncy)
+		PRINT(CUST.DENOM.CrncyDtls)
+		CUST.DENOM.TotCount = sv_e
+		PRINT(sv_e)
+		
+		sv_u = urhk_setOrbOut("counts|" + CUST.DENOM.counts)
+		sv_u = urhk_setOrbOut("TotCount|" + CUST.DENOM.TotCount)
+		sv_u = urhk_setOrbOut("ptranTypes|" + CUST.DENOM.ptranTypes)
+		sv_u = urhk_setOrbOut("Crncy|" + CUST.DENOM.Crncy)
+		sv_u = urhk_setOrbOut("CrncyDtls|" + CUST.DENOM.CrncyDtls)
+		
+		# -----------------------------------------------------------------
+		#  To fetch denom details for the new currencies.
+		# -----------------------------------------------------------------
+		IF ((CUST.DENOM.Func == "M") OR (CUST.DENOM.Func == "M1") OR (CUST.DENOM.Func == "R")) THEN
+		#{
+			CUST.DENOM.newCrncyCnt = CINT(CUST.DENOM.UniqCrncysLen) - sv_l
+			IF (TRIM(CUST.DENOM.newCrncyCnt) == "") THEN
+			#{
+				CUST.DENOM.newCrncyCnt = "0"
+			#}
+			ENDIF
+			PRINT(CUST.DENOM.newCrncyCnt)
+			sv_u = urhk_setOrbOut("newCrncyCnt|" + CUST.DENOM.newCrncyCnt)
+			PRINT(sv_u)
+			BANCS.INPUT.CrncyCount = CUST.DENOM.newCrncyCnt
+			sv_c = 0
+			WHILE(CINT(CUST.DENOM.UniqCrncysLen) > sv_l)
+			#{
+				("BANCS").("INPUT").("Crncy" + FORMAT$(sv_c, "%d")) = ("BANCS").("INPUT").("Crncy" + FORMAT$(sv_l, "%d"))
+				IF (FIELDEXISTS(("BANCS").("INPUT").("AcctId" + FORMAT$(sv_c, "%d")))) THEN
+				#{
+					("BANCS").("INPUT").("AcctId" + FORMAT$(sv_c, "%d")) = ("BANCS").("INPUT").("AcctId" + FORMAT$(sv_l, "%d"))
+					PRINT(("BANCS").("INPUT").("AcctId" + FORMAT$(sv_c, "%d")))
+					sv_c = sv_c + 1
+				#}
+				ENDIF
+				sv_l = sv_l + 1
+			#}
+			DO
+			IF (CINT(CUST.DENOM.newCrncyCnt) > 0) THEN
+			#{
+				#--Calling denomdp006.scr to get details of new currency----
+				CALL("denomdp006.scr")
+				IF (CUST.DENOM.errorFlg == "Y") THEN
+				#{
+					GOTO FINISH
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#	#-------------------------------------------------------------------
+		#        #       GETTING SETVAR FLAG FROM DB
+		#        #       Y - AMOUNT TO BE ENTERD DIRECTLY, N - DENOM MULTIPLES
+		#        #-------------------------------------------------------------------
+		#
+		#        CUST.DENOM.moduleName = "DENOM"
+		#        CUST.DENOM.subModuleName = "DENOM"
+		#        CUST.DENOM.variableName = "AMOUNT_IND"
+		#        BANCS.INPARAM.BINDVARS= CUST.DENOM.moduleName + "|" + CUST.DENOM.subModuleName + "|" + CUST.DENOM.variableName + "|" + CUST.DENOM.bank_id
+		#
+		#        sv_l = "varValue|"
+		#        sv_l = sv_l + "SELECT variable_value "
+		#        sv_l = sv_l + "FROM c_svrSetvar "
+		#        sv_l = sv_l + "WHERE module_name = ?SVAR and sub_module_name= ?SVAR "
+		#        sv_l = sv_l + "AND variable_name = ?SVAR and bank_id = ?SVAR "
+		#        print(sv_l)
+		#        sv_q = urhk_dbselectWithBind(sv_l)
+		#
+		#        IF(sv_q!=0) THEN
+		#        #{
+		#                sv_u = urhk_setOrbOut("Message|F")
+		#                sv_u = urhk_setOrbOut("Details|Setvar Setup Missing")
+		#                GOTO FINISH
+		#        #}
+		#        ELSE
+		#        #{
+		#                CUST.DENOM.setVarFlg = BANCS.OUTPARAM.varValue
+		#                print(CUST.DENOM.setVarFlg)
+		#                sv_u = urhk_setOrbOut("setVarFlg|" + CUST.DENOM.setVarFlg)
+		#        #}
+		#        ENDIF
+		#-------------------------------------------------------------------
+		
+		sv_u = urhk_setOrbOut("Message|Y")
+		sv_u = urhk_setOrbOut("Details|Success")
+		sv_u = urhk_setOrbOut("setVarFlg|Y")
+	FINISH:
+		#--------closing all cursors------------------#
+		PRINT(CUST.DENOM.CursorCnt)
+		CUST.DENOM.CursorCnt = CINT(CUST.DENOM.CursorCnt) - 1
+		WHILE(CINT(CUST.DENOM.CursorCnt) >= 0)
+		#{
+			sv_r = urhk_dbCursorClose(CUST.DENOM.CursorCnt)
+			CUST.DENOM.CursorCnt = CINT(CUST.DENOM.CursorCnt) - 1
+			PRINT(CUST.DENOM.CursorCnt)
+		#}
+		DO
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

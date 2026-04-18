@@ -1,0 +1,457 @@
+######################################################################################################################
+# Source Name					: ast0164mn001.scr 
+# Menu							: HPAYOFF										
+# Date							: 12-07-2013									
+# Description					: (amortization).
+# Input Values					: None									
+# Output Values					: 
+# Called Scripts					: 
+# Calling Script					: s_ast0164mn001.scr 				
+# Author     						: Vijaya V 								
+# Bank							: Equity Bank							
+# Modification History				:				
+#	< Version No.> 		<Date>		<Author Name> 		<Description>									
+#		 0.1			  12-07-2013 		Vijaya V	to initiate process in bkgrnd.- TOL : 358820
+########################################################################################################################
+
+<--START
+TRACE ON
+
+sv_a = urhk_B2K_printrepos("BANCS")
+print(sv_a)
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF(REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+	CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+	
+	sv_u = urhk_MTTS_PopulateInputDetails("")
+	print(sv_u)
+
+	#-------------------------------------------------------------------------------------------------------
+	# Fetching Required Input Details
+	#-------------------------------------------------------------------------------------------------------
+	CUST.DATA.foracid	= MTT.InputDetails.Argument1
+	sv_r = urhk_MTTS_Close("")
+	print(sv_r)
+
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	sv_p = urhk_B2k_PID("")
+	print(sv_p)
+	CUST.DATA.pid = TRIM(BANCS.OUTPARAM.PID)
+	print(CUST.DATA.pid)
+	CUST.DATA.sucsFile = "UNAMORTZSUCS_"+ CUST.DATA.pid +".txt"
+	CUST.DATA.failFile = "UNAMORTIZFAIL_"+ CUST.DATA.pid +".txt"
+	print(CUST.DATA.sucsFile)
+	print(CUST.DATA.failFile)
+	
+	
+	CUST.DATA.errMsg 	= ""
+	CUST.DATA.err 	= ""
+	
+	#---------------------------------------
+	#Cparam
+	#-----------------------------------
+	BANCS.INPUT.moduleName = "CHARGES"
+	BANCS.INPUT.parameterId = "AST164_CHRGTP"
+
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.DATA.chargType=BANCS.OUTPUT.parameterVal
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SRV_SetErr("Error: Parameter value for "+BANCS.INPUT.parameterId+" is not set in C_CPARAM_VALUE_TABLE")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+
+	BANCS.INPUT.parameterId = "AST164_CRACCT"
+
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.DATA.crAccount=BANCS.OUTPUT.parameterVal
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SRV_SetErr("Error: Parameter value for "+BANCS.INPUT.parameterId+" is not set in C_CPARAM_VALUE_TABLE")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#----------------------------------------------------
+	# fields 
+	#----------------------------------------------------
+	sv_s = "acid,schmCode| "
+	sv_s = sv_s + " SELECT acid,schm_code "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE entity_cre_flg ='Y'"
+	sv_s = sv_s + " AND del_flg = 'N'"
+	sv_s = sv_s + " AND foracid = ?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.foracid +"|"+ BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d==0) THEN
+	#{
+		CUST.DATA.acid= BANCS.OUTPARAM.acid
+		print(CUST.DATA.acid)
+		CUST.DATA.schmCode= BANCS.OUTPARAM.schmCode
+		print(CUST.DATA.schmCode)
+	#}
+	ENDIF
+
+	#---------------------------------------------
+	#office account from which amt is debited
+	#---------------------------------------------
+	sv_s = "amortCrBacid| "
+	sv_s = sv_s + " SELECT amortize_credit_bacid"
+	sv_s = sv_s + " FROM TBAADM.PCT"
+	sv_s = sv_s + " WHERE schm_code = ?SVAR"
+	sv_s = sv_s + " AND charge_type = ?SVAR "
+	sv_s = sv_s + " AND crncy_code = ?SVAR "
+	sv_s = sv_s + " AND del_flg = 'N'"
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.schmCode +"|"+CUST.DATA.chargType +"|"+BANCS.STDIN.homeCrncyCode +"|"+ BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d==0) THEN
+	#{
+		CUST.DATA.amortCrBacid= BANCS.OUTPARAM.amortCrBacid
+		print(CUST.DATA.amortCrBacid)
+	#}
+	ENDIF
+
+	#---------------------------------------------
+	#operative account from which amt is credited 
+	#---------------------------------------------
+	sv_s = "countOpacid| "
+	sv_s = sv_s + " SELECT count(*)"
+	sv_s = sv_s + " FROM TBAADM.LAM"
+	sv_s = sv_s + " WHERE acid = ?SVAR"
+	sv_s = sv_s + " AND entity_cre_flg = 'Y' "
+	sv_s = sv_s + " AND del_flg = 'N'"
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + " AND op_acid is not null "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.acid +"|"+ BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d==0) THEN
+	#{
+		CUST.DATA.countOpacid= BANCS.OUTPARAM.countOpacid
+		print(CUST.DATA.countOpacid)
+	#}
+	ENDIF
+
+	IF (CUST.DATA.countOpacid == CINT("1")) THEN
+	#{
+		sv_s = "crAccnt| "
+		sv_s = sv_s + " SELECT foracid"
+		sv_s = sv_s + " FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE entity_cre_flg = 'Y' "
+		sv_s = sv_s + " AND del_flg = 'N'"
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		sv_s = sv_s + " AND acid in ("
+		sv_s = sv_s + 		" SELECT op_acid "
+		sv_s = sv_s + 		" FROM TBAADM.LAM "
+		sv_s = sv_s + 		" WHERE acid = ?SVAR "
+		sv_s = sv_s + 		" AND entity_cre_flg = 'Y' "
+		sv_s = sv_s + 		" AND del_flg = 'N' "
+		sv_s = sv_s + 		" AND bank_id = ?SVAR )"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acid +"|"+ BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d==0) THEN
+		#{
+			CUST.DATA.crAccnt = BANCS.OUTPARAM.crAccnt
+			print(CUST.DATA.crAccnt)
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		CUST.DATA.crAccnt = CUST.DATA.crAccount 
+		print(CUST.DATA.crAccnt)
+	#}
+	ENDIF
+
+	#--------------------------------------------------
+	#unamortized Amount
+	#-----------------------------------------------------
+	sv_s = "unAmortAmt|"
+	#sv_s = sv_s + " SELECT SUM(sys_calc_chrge_amt - (NVL(chrge_amt_collected,0)+NVL(chrge_waived,0)))" 
+	sv_s = sv_s + " SELECT SUM(CHRGE_AMT_COLLECTED - (NVL(AMORTIZE_AMT,0)))" 
+	sv_s = sv_s + " FROM TBAADM.CHAT c, TBAADM.GAM g, TBAADM.LAM l "
+	sv_s = sv_s + " WHERE c.acid = g.acid "
+	sv_s = sv_s + " AND l.acid = g.acid "
+	sv_s = sv_s + " AND c.bank_id = g.bank_id "
+	sv_s = sv_s + " AND l.bank_id = g.bank_id "
+	sv_s = sv_s + " AND c.charge_type = ?SVAR " 
+	sv_s = sv_s + " AND g.entity_cre_flg = 'Y' "
+	sv_s = sv_s + " AND g.del_flg = 'N' "
+	sv_s = sv_s + " AND g.acct_cls_flg = 'N' "
+	sv_s = sv_s + " AND g.foracid = ?SVAR " 
+	sv_s = sv_s + " AND g.bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.chargType +"|"+ CUST.DATA.foracid +"|"+ BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d==0) THEN
+	#{
+			CUST.DATA.unAmortAmt = BANCS.OUTPARAM.unAmortAmt
+			print(CUST.DATA.unAmortAmt)
+	#}
+	ENDIF
+
+IF (CUST.DATA.unAmortAmt > CINT("0")) THEN
+#{
+	#-----------------------------------------
+	# Transaction
+	#----------------------------------------------
+		#-------------------------------------
+		# getting foracid for the bacid
+		#-------------------------------------
+		sv_s = CUST.DATA.amortCrBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+		sv_u = urhk_B2k_BacidToAcctId(sv_s)
+		IF (sv_u == 1 ) THEN
+		#{
+			sv_g = "RESULT_MSG|Place Holder "+CUST.DATA.amortCrBacid+" not present"
+			sv_u = urhk_SetOrbOut(sv_g)
+			GOTO ENDOFSCRIPT 
+		#} 
+		ENDIF
+
+		CUST.DATA.amortCrBacid = BANCS.OUTPARAM.AcctId
+		print(CUST.DATA.amortCrBacid)
+
+		CUST.DATA.naration1="Unamortized Amt Reversal"
+		CUST.DATA.naration2="Unamortized Amt Reversal"
+		CUST.DATA.tranRmks="Unamortized Amt Reversal"
+		sv_l=CUST.DATA.unAmortAmt
+		sv_m=CUST.DATA.unAmortAmt
+		CUST.DATA.chargeAmt=sv_m
+		CUST.DATA.cshAmt = sv_l
+
+		BANCS.INPUT.moduleName = "GENERAL"
+		BANCS.INPUT.parameterId = "NORRATECODE"
+
+		CALL ("getcparamvalue.scr")
+		print(BANCS.OUTPUT.parameterVal)
+
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			CUST.DATA.refCode = BANCS.OUTPUT.parameterVal
+			print(CUST.DATA.refCode)
+		#}
+		ENDIF
+
+	#---------------------------------------------------------------
+	# Adding and Posting the transaction
+	#---------------------------------------------------------------
+	sv_u = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+	sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+	sv_u = urhk_SetUrhkInp("tranHdr.tranRmks|"+CUST.DATA.tranRmks)
+	sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+	sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+
+	#--------------------------------------------------
+	# Credit
+	#--------------------------------------------------
+	CUST.DATA.cshAmt = sv_l
+	sv_w = "tranDtl.partTranDetailLL.<rec_0>."
+	sv_u = urhk_SetUrhkInp(sv_w + "key.serial_num|1")
+	sv_u = urhk_SetUrhkInp(sv_w + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "partTranType.code|C")
+	sv_u = urhk_SetUrhkInp(sv_w + "acctId.foracid|"+CUST.DATA.crAccnt)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranParticulars|"+CUST.DATA.naration1)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranRmks| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "refNum| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "valueDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "glDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranAmt|"+CUST.DATA.cshAmt+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refAmt|"+CUST.DATA.cshAmt+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "entryUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "vfdUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "rateCode.refCode|" + CUST.DATA.refCode)
+	print(sv_u)
+	#--------------------------------------------------
+	#Debit
+	#--------------------------------------------------
+	CUST.DATA.chargeAmt=sv_m
+	sv_w = "tranDtl.partTranDetailLL.<rec_1>."
+	sv_u = urhk_SetUrhkInp(sv_w + "key.serial_num|2")
+	sv_u = urhk_SetUrhkInp(sv_w + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "partTranType.code|D")
+	sv_u = urhk_SetUrhkInp(sv_w + "acctId.foracid|"+CUST.DATA.amortCrBacid)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranParticulars|"+CUST.DATA.naration2)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranRmks| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "refNum| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "valueDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "glDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranAmt|"+CUST.DATA.chargeAmt+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refCrncyCode.crncyCode|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refAmt|"+CUST.DATA.chargeAmt+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refAmt|"+CUST.DATA.chargeAmt+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "entryUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "vfdUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "rateCode.refCode|" + CUST.DATA.refCode)
+	print(sv_l)
+	#--------------------------------------------------
+	#tran id
+	#--------------------------------------------------
+	sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+	sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate") 
+	sv_u = urhk_SetUrhkOut("tranDtl.ignoreXcpnFlg|ignoreXcpnFlg")
+
+	sv_u = urhk_ExecSrv("SRV_AddXferTran|retain_all_output = Y")
+	print(sv_u)
+
+	IF (sv_u != 0) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		sv_u = urhk_ExecSrv("SRV_AddXferTran|retain_all_output = Y")
+		print(sv_u)
+	#}
+	ENDIF
+	
+	IF (FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) THEN
+	#{
+		print(BANCS.OUTPARAM.tranId)
+		print(BANCS.OUTPARAM.tranDate)
+		print(BANCS.OUTPARAM.ignoreXcpnFlg)
+	#}
+	ENDIF
+
+	IF (sv_u == 0) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		sv_u = urhk_ExecSrv("SRV_FetchTranDtlsForPost|retain_all_output = Y")
+		print(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrv("SRV_PostTran|retain_all_output = Y")
+			print(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				sv_u = urhk_ExecSrv("SRV_PostTran|retain_all_output = Y")
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+	
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	print("No Unamortized Amount") 
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+#---------------------------------------------------------------------------------
+# Checking if report file is of zero bytes
+#---------------------------------------------------------------------------------
+sv_a = "test -s " + CUST.DATA.failFile
+sv_b = SYSTEM(sv_a)
+PRINT(sv_b)
+
+#---------------------------------------------------------------------------------
+# Moving the File to  HPR menu
+#---------------------------------------------------------------------------------
+IF (sv_b == 0)THEN
+#{
+	sv_x = "babx4040 ${B2K_SESSION_ID} "+ CUST.DATA.failFile +' '+'"'+"Unamortized Amt Report "+'"'+" MANAGER 1 N"
+	PRINT(sv_x)
+	sv_h = SYSTEM (sv_x)
+	PRINT(sv_h)
+#}
+ENDIF
+
+#---------------------------------------------------------------------------------
+# Checking if report file is of zero bytes
+#---------------------------------------------------------------------------------
+sv_a = "test -s " + CUST.DATA.sucsFile
+sv_b = SYSTEM(sv_a)
+PRINT(sv_b)
+
+#---------------------------------------------------------------------------------
+# Moving the File to  HPR menu
+#---------------------------------------------------------------------------------
+IF (sv_b == 0)THEN
+#{
+	sv_x = "babx4040 ${B2K_SESSION_ID} "+ CUST.DATA.sucsFile +' '+'"'+" Unamortized Amt  Report "+'"'+" MANAGER 1 N"
+	PRINT(sv_x)
+	sv_h = SYSTEM (sv_x)
+	PRINT(sv_h)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+TRACE OFF
+EXIT
+END-->

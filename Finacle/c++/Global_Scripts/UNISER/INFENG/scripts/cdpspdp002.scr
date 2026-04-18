@@ -1,0 +1,289 @@
+#--------------------------------------------------------------------------------------------------------------------------------------------------------------
+#    Name               : cdpspdp002.scr
+#    Description        : This script will give the details of the account number from EMD table.
+#                       : and date validation
+#    Date               : 22-03-2013
+#    Author             : Nagarjuna Reddy
+#    Input              : NA
+#    Output             : It gives the EMD details for the account number.
+#    Called Script      : NA
+#    Calling Script     : cdpsp_det_glink.js
+#    Menu Option        :
+#    Srl. No        Date            Author          Description.
+#    -------        ----            ------          ----------------
+#    1.0          22-04-2013      Nagarjuna Reddy   Original Version
+#    2.0          21-06-2013      Nagarjuna Reddy   Modified error condition
+#    3.0	  30-07-2013	  Nitin Kumar	    Added validation for TO: 363015
+#     4.0	  02-08-2013	  Vijaya V	Included AAS table condition
+#    5.0	  22-10-2013   Vijaya V	AND ACCT_POA_AS_REC_TYPE = 'M' condition added in AAS query
+#--------------------------------------------------------------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="4a29b834b319a962d7fbacea61c41dc4de326b2f80625b9f40efa193ec93306e"
+	TRACE ON
+	
+	######################################################
+	# Creating Custom Repository
+	######################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "PORT")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "PORT", 5)
+	#}
+	ENDIF
+	######################################################
+	# Values Colected From FrontEnd
+	######################################################
+	print(BANCS.INPUT.acctNum)
+	CUST.PORT.acctNum = BANCS.INPUT.acctNum
+	
+	######################################################
+	# Initializing Required Varialbles
+	######################################################
+	CUST.PORT.errMsg = ""
+	CUST.PORT.amt	= ""
+	CUST.PORT.solId = ""
+	CUST.PORT.schmType = ""
+	CUST.PORT.acctName = ""
+	sv_u = urhk_Setorbout("Error|dummy")
+	sv_u = urhk_Setorbout("amount|dummy")
+	sv_u = urhk_Setorbout("solId|dummy")
+	sv_u = urhk_Setorbout("acctName|dummy")
+	sv_u = urhk_Setorbout("schmType|dummy")
+	###########################################################
+	## Check the given a/c  number is belongs to LAA type or not
+	############################################################
+	sv_u = urhk_getAcctDetailsInRepository(CUST.PORT.acctNum)
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.PORT.errMsg = "Enter Valid Account Number"
+		#sv_u = urhk_SetOrbOut("acctNum|"+ CUST.PORT.acctNum)
+		GOTO ENDOFSCRIPT
+		
+		#}
+	ELSE
+		#{
+		CUST.PORT.schmType = BANCS.OUTPARAM.schmType
+		CUST.PORT.amt = BANCS.OUTPARAM.EffAvailableAmt
+		CUST.PORT.solId = BANCS.OUTPARAM.acctSolId
+		CUST.PORT.acctName = BANCS.OUTPARAM.acctName
+		CUST.PORT.acctOwnerShip = BANCS.OUTPARAM.acctOwnerShip
+		CUST.PORT.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		CUST.PORT.empId = BANCS.OUTPARAM.empId
+
+		sv_o = urhk_B2k_ForacidToAcid(CUST.PORT.acctNum)
+		CUST.PORT.acid = BANCS.OUTPARAM.Acid
+		print(CUST.PORT.acid)
+		lv_p = "acctAccessCode |select acct_access_code from tbaadm.aac where bank_id=?SVAR "
+		lv_p = lv_p + " and acid=?SVAR "
+		##lv_p = lv_p + " and entity_cre_flg='Y' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.PORT.acid 
+		lv_s = urhk_dbSelectWithBind(lv_p)
+		if(lv_s==0)then
+			CUST.PORT.acctAccessCode = BANCS.OUTPARAM.acctAccessCode
+                        print(CUST.PORT.acctAccessCode)
+		else
+			##CUST.PORT.acctAccessCode = "NOACCESS"
+			CUST.PORT.acctAccessCode = ""
+			 print(CUST.PORT.acctAccessCode)
+
+		endif
+
+		if((CUST.PORT.acctAccessCode != "") and (BANCS.STDIN.EmployeeId != CUST.PORT.empId))then
+			lv_a = "count|select count(*) from tbaadm.uac where bank_id=?SVAR and entity_cre_flg='Y' " 
+			#lv_a = lv_a + " and user_id=?SVAR "
+			lv_a = lv_a + " and user_id=?SVAR  and acct_access_code =?SVAR"		
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId + "|" + CUST.PORT.acctAccessCode 
+			lv_o = urhk_dbSelectWithBind(lv_a)	
+			if(lv_o==0)then
+				CUST.PORT.count = BANCS.OUTPARAM.count
+				print(CUST.PORT.count)
+			else
+				cust.port.count = 0 			
+		        endif
+			if(cdouble(CUST.PORT.count)>=1)then
+				print("ok")
+				print(CUST.PORT.amt)
+			else
+				lv_n = "amt|select regexp_replace(trunc(?NVAR), '[0-9]', '*') from dual "
+				BANCS.INPARAM.BINDVARS = CUST.PORT.amt
+				lv_b = urhk_dbSelectWithBind(lv_n)
+				if(lv_b==0)then
+					CUST.PORT.amt = BANCS.OUTPARAM.amt	
+				        CUST.PORT.errMsg = "You do not have the necessary privileges for access to this account."
+			                GOTO ENDOFSCRIPT
+				endif
+			endif
+	       endif
+                
+		print(CUST.PORT.schmType)  
+		print(CUST.PORT.solId)
+		print(CUST.PORT.acctName)
+		
+		IF(CUST.PORT.acctOwnerShip == "O") THEN
+		#{
+			CUST.PORT.errMsg = "Please enter customer account number"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF((CUST.PORT.schmType == "LAA") OR (CUST.PORT.schmType == "CLA")) THEN
+		#{
+			CUST.PORT.errMsg = "Please Enter Account Number other than LAA ,CLA SchmType"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		########################################################
+		## Acct Validation
+		#######################################################
+		sv_s = "count|"
+		sv_s = sv_s + "SELECT count(*) "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE foracid = ?SVAR "
+		sv_s = sv_s + "AND del_flg = 'N' "
+		sv_s = sv_s + "AND entity_cre_flg = 'Y'"
+		#sv_s = sv_s + "AND acct_cls_flg = 'N'"
+		sv_s = sv_s + "AND bank_id = ?SVAR "
+		
+		BANCS.INPARAM.BINDVARS = CUST.PORT.acctNum + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.PORT.count = BANCS.OUTPARAM.count
+			print(CUST.PORT.count)
+			#}
+		ELSE
+			#{
+			CUST.PORT.errMsg = "Enter Valid Account Number"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(CINT(CUST.PORT.count)  > 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("amount|"+ CUST.PORT.amt)
+			sv_u = urhk_SetOrbOut("solId|"+ CUST.PORT.solId)
+			sv_u = urhk_SetOrbOut("acctName|"+CUST.PORT.acctName)
+			#sv_u = urhk_SetOrbOut("schmType|"+CUST.PORT.schmType)
+			#}
+		ELSE
+			#{
+			CUST.PORT.errMsg = "Enter Valid Account Number"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		########################################################
+		## Validation done as a part of TO:363015 starts
+		#######################################################
+		
+		sv_o = urhk_B2k_ForacidToAcid(CUST.PORT.acctNum)
+		CUST.PORT.acid = BANCS.OUTPARAM.Acid
+		print(CUST.PORT.acid)
+		
+		
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.PORT.acid + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "ps_reqd_flg|"
+		sv_s = sv_s + " SELECT PS_REQD_FLG from TBAADM.AST "
+		sv_s = sv_s + " WHERE ACID = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR  "
+		sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N' "
+		print (sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.PORT.ps_reqd_flg 	= BANCS.OUTPARAM.ps_reqd_flg
+			IF(CUST.PORT.ps_reqd_flg == "N") THEN
+			#{
+				BANCS.INPARAM.BINDVARS = ""
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.PORT.acid + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_s = "ps_reqd_flg2|"
+				sv_s = sv_s + " SELECT PASS_SHEET_FLG from TBAADM.AAS "
+				sv_s = sv_s + " WHERE ACID = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR  "
+				sv_s = sv_s + " AND ACCT_POA_AS_REC_TYPE = 'M'  "
+				sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N' "
+				print (sv_s)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				
+				IF (sv_d == 0) THEN
+				#{
+					CUST.PORT.ps_reqd_flg2 	= BANCS.OUTPARAM.ps_reqd_flg2
+					IF(CUST.PORT.ps_reqd_flg2 == "N") THEN
+					#{
+						CUST.PORT.errMsg = "A/c entered is not enabled for PSP, Pls enter valid a/c"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.PORT.acid + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_s = "ps_reqd_flg2|"
+			sv_s = sv_s + " SELECT PASS_SHEET_FLG from TBAADM.AAS "
+			sv_s = sv_s + " WHERE ACID = ?SVAR "
+			sv_s = sv_s + " AND BANK_ID = ?SVAR  "
+			sv_s = sv_s + " AND ACCT_POA_AS_REC_TYPE = 'M'  "
+			sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N' "
+			print (sv_s)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.PORT.ps_reqd_flg2 	= BANCS.OUTPARAM.ps_reqd_flg2
+				IF(CUST.PORT.ps_reqd_flg2 == "N") THEN
+				#{
+					CUST.PORT.errMsg = "A/c entered is not enabled for PSP, Pls enter valid a/c"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		########################################################
+		## Validation done as a part of TO:363015 Ends
+		#######################################################
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF(CUST.PORT.errMsg != "") THEN
+		#{
+			sv_s = "Error|"+CUST.PORT.errMsg
+			print(sv_s)
+			sv_u = urhk_SetOrbOut(sv_s)
+		#}
+		ENDIF
+		TRACE OFF
+		EXITSCRIPT
+END-->

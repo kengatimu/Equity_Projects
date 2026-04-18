@@ -1,0 +1,219 @@
+<--START
+#==========================================================================
+# Name                         	:    Disb_Charge.scr
+# Date                         	:    20-06-2009
+# Description                   :    To calculate the disbursement charge amount to the given account no.
+# Input                        	:    All the details required to disburse the loan amount.
+# Output                       	:    Success or failure message for disbursement
+# Author                       	:    Revathi Duraisamy
+# Called Scripts                :    <none>
+# Calling Script                :    <none>
+# Reference                    	:
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>          	<Description>
+#--------------------------------------------------------------------------
+#	1      	20-06-2009    	Revathi Duraisame  	Original Version
+#	2	16-02-2009	Chethan.S		Modified for 10 standards
+#=========================================================================
+TRACE ON
+#####----------------------------------------------####
+# Creation of  Repositories and Classes
+#####----------------------------------------------####
+IF (REPEXISTS("CUST")==0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+#####----------------------------------------------####
+# Creation of  String type  Class
+#####----------------------------------------------####
+IF (CLASSEXISTS("CUST","CASIGLS")==0) THEN
+#{
+	CREATECLASS("CUST","CASIGLS",5)
+#}
+ENDIF
+
+print(CUST.CASIGLS.schmLoan)
+print(CUST.CASIGLS.currencyLoan)
+print(CUST.CASIGLS.solLoan)
+print(CUST.CASIGLS.loanAcctNo)
+print(CUST.CASIGLS.loanAmount)
+
+#####---------------------------------------------------####
+# Inputs required to get the charge type, event id, amount
+#####---------------------------------------------------####
+
+sv_u = urhk_SetUrhkInp("schmCode.schmCode|"+CUST.CASIGLS.schmLoan)
+sv_u = urhk_SetUrhkInp("schmCode.schmType|LAA")
+sv_u = urhk_SetUrhkInp("crncyCode.crncyCode|"+CUST.CASIGLS.currencyLoan)
+sv_u = urhk_SetUrhkInp("solId.solId|"+CUST.CASIGLS.solLoan)
+sv_u = urhk_SetUrhkInp("laAcct.foracid|"+CUST.CASIGLS.loanAcctNo)
+sv_u = urhk_SetUrhkInp("laAcct.crncyCode|"+CUST.CASIGLS.currencyLoan)
+sv_u = urhk_SetUrhkInp("laAcct.solId|"+CUST.CASIGLS.loanAcctNo)
+
+sv_u = urhk_SetUrhkInp("loanAmount|"+CUST.CASIGLS.loanAmount+"|"+CUST.CASIGLS.currencyLoan)
+sv_u = urhk_SetUrhkInp("disbAmount|"+CUST.CASIGLS.DisbAmt+"|"+CUST.CASIGLS.currencyLoan)
+
+#####-----------------------------------------------------------####
+# To get the count of charges applicable for this scheme code
+#####-----------------------------------------------------------####
+
+sv_s = "countChrg "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT COUNT(*) "
+sv_s = sv_s + " FROM PCT "
+sv_s = sv_s + " WHERE schm_code = ?SVAR "
+sv_s = sv_s + " AND crncy_code = ?SVAR "
+sv_s = sv_s + " AND del_flg='N' "
+sv_s = sv_s + " AND assess_dmd_flg = 'A' "
+sv_s = sv_s + " AND deductible_chrge = 'Y'"
+print(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.schmLoan + "|" + CUST.CASIGLS.currencyLoan
+print(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+IF (sv_d == 0) THEN
+#{
+	print(BANCS.OUTPARAM.countChrg)
+	CUST.CASIGLS.countChrg = BANCS.OUTPARAM.countChrg
+#}
+ENDIF
+
+#####-----------------------------------------------------------------------####
+# Storing all the charges in the counter, to fetch the same in the called script
+#####-----------------------------------------------------------------------####
+
+print(CINT(CUST.CASIGLS.countChrg))
+
+CUST.CASIGLS.chgrCntr = "0"
+WHILE(CINT(CUST.CASIGLS.chgrCntr) < CINT(CUST.CASIGLS.countChrg))
+#{
+	sv_u= urhk_SetUrhkOut("disburseChargesLL.<rec_"+CUST.CASIGLS.chgrCntr+">.eventId|data_eventId"+CUST.CASIGLS.chgrCntr)
+	sv_u= urhk_SetUrhkOut("disburseChargesLL.<rec_"+CUST.CASIGLS.chgrCntr+">.key.chargeType|data_chargeType"+CUST.CASIGLS.chgrCntr)
+	sv_u= urhk_SetUrhkOut("disburseChargesLL.<rec_"+CUST.CASIGLS.chgrCntr+">.userChargeAmt|data_userChargeAmt"+CUST.CASIGLS.chgrCntr)
+	sv_u= urhk_SetUrhkOut("disburseChargesLL.<rec_"+CUST.CASIGLS.chgrCntr+">.systemChargeAmt|data_systemChargeAmt"+CUST.CASIGLS.chgrCntr)
+	
+	CUST.CASIGLS.chgrCntr = CINT(CUST.CASIGLS.chgrCntr) + 1
+#}
+DO
+
+###---------------------------------------------------------------------#######
+### SRV to calculate Disbursal charge  ###
+###---------------------------------------------------------------------#######
+sv_u = urhk_ExecSrv("SRV_CalcLaDisbCharge")
+print(sv_u)
+
+IF(sv_u == 0)THEN
+#{
+	#####-----------------------------------------------------------------------####
+	# Output has been stored in the counter
+	# Event ID, Charge Type,User calcualted amount, System charge Amt
+	# Which is applicable for this account based on the scheme code.
+	#####-----------------------------------------------------------------------####
+	print(BANCS.OUTPARAM.successOrFailure)
+	CUST.CASIGLS.chgr_out_Cntr = "0"
+	WHILE(CINT(CUST.CASIGLS.chgr_out_Cntr) < CINT(CUST.CASIGLS.countChrg))
+	#{
+		print(("BANCS").("OUTPARAM").("data_eventId" + CUST.CASIGLS.chgr_out_Cntr))
+		print(("BANCS").("OUTPARAM").("data_chargeType" + CUST.CASIGLS.chgr_out_Cntr))
+		print(("BANCS").("OUTPARAM").("data_userChargeAmt" + CUST.CASIGLS.chgr_out_Cntr))
+		print(("BANCS").("OUTPARAM").("data_systemChargeAmt" + CUST.CASIGLS.chgr_out_Cntr))
+		
+		("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chgr_out_Cntr) = ("BANCS").("OUTPARAM").("data_eventId" + CUST.CASIGLS.chgr_out_Cntr)
+		("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chgr_out_Cntr) = ("BANCS").("OUTPARAM").("data_chargeType" + CUST.CASIGLS.chgr_out_Cntr)
+		("CUST").("CASIGLS").("data_userChargeAmt" + CUST.CASIGLS.chgr_out_Cntr) = ("BANCS").("OUTPARAM").("data_userChargeAmt" + CUST.CASIGLS.chgr_out_Cntr)
+		("CUST").("CASIGLS").("data_systemChargeAmt" + CUST.CASIGLS.chgr_out_Cntr) = ("BANCS").("OUTPARAM").("data_systemChargeAmt" + CUST.CASIGLS.chgr_out_Cntr)
+
+		CUST.CASIGLS.chgr_out_Cntr = CINT(CUST.CASIGLS.chgr_out_Cntr) + 1
+	#}
+	DO
+	sv_u = urhk_B2k_PrintRepos("BANCS")
+	print(sv_u)
+#}
+ELSE
+#{
+	sv_n = BANCS.OUTPUT.successOrFailure
+	print(sv_n)
+	print(BANCS.OUTPARAM.Fatal_num)
+	print(BANCS.OUTPARAM.Error_num)
+	print(BANCS.OUTPARAM.Warning_num)
+	print(BANCS.OUTPARAM.UserInfo_num)
+	print(BANCS.OUTPARAM.Xcpn_num)
+	print(BANCS.OUTPARAM.Xcpn_Err_num)
+	print(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+	print(BANCS.OUTPARAM.Xcpn_Err_num)
+	sv_m = 1
+	sv_n = cint(BANCS.OUTPARAM.Error_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_d,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+		print(sv_e)
+		
+		###-----------------------------------------#######
+		### To Display the Error message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.OUTPUT.name = "Error - During Loan Disbursement :"+sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+		
+		sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+		print(sv_e)
+		sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+		print(sv_e)
+		sv_m = sv_m + 1
+	#}
+	DO
+	sv_m = 1
+	sv_n = cint(BANCS.OUTPARAM.Xcpn_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_d,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("XcpnDesc_"+sv_f)
+		print(sv_e)
+
+		###-----------------------------------------#######
+		### To Display the Exception message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.OUTPUT.name = "- During Calculation of Disbursement charge :"+sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Exception|" +sv_a)
+
+		sv_m = sv_m + 1
+	#}
+	DO
+	sv_m = 1
+	sv_n = cint(BANCS.OUTPARAM.Warning_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_d,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("WarningMesg"+sv_f)
+		print(sv_e)
+
+		###-----------------------------------------#######
+		### To Display the Warning message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.OUTPUT.name = "Warning - During Calculation of Disbursement charge :"+sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+
+       		sv_m = sv_m + 1
+       	#}
+	DO
+ #}
+ ENDIF
+####--------------------####
+## Exiting the script ##
+####--------------------####
+print("here end of script")
+EndOfScript:
+ 	exitscript
+ 	
+trace off
+end-->
+####--------------------####
+## End of Script ##
+####--------------------####

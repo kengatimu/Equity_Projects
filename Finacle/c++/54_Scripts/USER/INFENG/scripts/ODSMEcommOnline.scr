@@ -1,0 +1,337 @@
+#----------------------------------------------------------------------------------------------
+#  Name            : ODSMEcommKE.scr
+#  Description     : ODSEM Fee Collection
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             25-02-2025      Dennis Chirchir          Original Version
+#---------------------------------------------------------------------------------------------
+<--start
+trace on
+        if(repexists("ETSRV")==0)then
+        #{
+                createrep("ETSRV")
+        #}
+        endif
+        if(repexists("BANCS")==0)then
+        #{
+                createrep("BANCS")
+        #}
+        endif
+        if(repexists("CUST")==0)then
+        #{
+                createrep("CUST")
+        #}
+        endif
+        if(repexists("MTT")==0)then
+        #{
+                createrep("MTT")
+        #}
+        endif
+        if(classexists("ETSRV","GLBDATA")==0)then
+        #{
+                createclass("ETSRV","GLBDATA",5)
+        #}
+        endif
+        if(classexists("CUST","GCHRG")==0)then
+        #{
+                createclass("CUST","GCHRG",5)
+        #}
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+        #{
+                createclass("MTT","InputDetails",5)
+        #}
+        endif
+        if(classexists("BANCS","INPUT")==0)then
+        #{
+                createclass("BANCS","INPUT",5)
+        #}
+        endif
+
+
+
+       	sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+
+        if(sv_u == 0)then
+             CUST.GCHRG.tranType = "T"
+             CUST.GCHRG.tranSubType = "BI"
+             CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+             CUST.GCHRG.chrgAmt = MTT.InputDetails.Argument1
+             #CUST.GCHRG.eventId = MTT.InputDetails.Argument2
+             CUST.GCHRG.drAcctId = MTT.InputDetails.Argument2
+             CUST.GCHRG.ModuleCode = MTT.InputDetails.Argument3
+             CUST.GCHRG.disbTranId = MTT.InputDetails.Argument4
+             CUST.GCHRG.disbTranDate =  MTT.InputDetails.Argument5
+		###############
+		sv_r = urhk_b2k_sleep("10")
+		if((CUST.GCHRG.disbTranId !="") and (CUST.GCHRG.disbTranDate!=""))then
+		#{
+		sv_s = "dtdCnt | select count(*) from tbaadm.dtd where tran_id = lpad(?SVAR,9,' ') "
+		sv_s = sv_s + " and bank_id=?SVAR and tran_date=to_date(?SVAR,'DD-MM-RR') and pstd_flg='Y' "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.GCHRG.disbTranId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.disbTranDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		if(sv_u==0)then
+			CUST.GCHRG.dtdCnt = BANCS.OUTPARAM.dtdCnt
+			print(CUST.GCHRG.dtdCnt)
+		else
+			CUST.GCHRG.dtdCnt = 0
+		endif
+		endif
+		if(cdouble(CUST.GCHRG.dtdCnt)<=0)then
+			exitscript
+		endif
+	     ##############
+	     print(BANCS.STDIN.BODDate)
+	     print(CUST.GCHRG.chrgAmt)
+	     #print(CUST.GCHRG.eventId)
+	     print(CUST.GCHRG.drAcctId)
+	     print(CUST.GCHRG.ModuleCode)
+	     lv_l = urhk_getAcctDetailsInRepository(CUST.GCHRG.drAcctId)
+	     print(lv_l)
+	     if(lv_l == 0) then
+			CUST.GCHRG.ODSolid = BANCS.OUTPARAM.acctSolId
+	     else
+			GOTO ENDOFSCRIPT
+	     endif
+	     print(CUST.GCHRG.ODSolid)
+	     lv_z = cdouble(CUST.GCHRG.chrgAmt)
+   
+	     CUST.GCHRG.laceBacid = "LACE_OD548"
+	     CUST.GCHRG.ExciseBacid = "EXCISEDUTY"
+             sv_s = CUST.GCHRG.laceBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + CUST.GCHRG.ODSolid
+             PRINT(sv_s)
+             sv_u = urhk_B2k_BacidToAcctId(sv_s)
+             PRINT(sv_u)
+
+             IF(sv_u == 0)THEN
+             #{
+                         PRINT(BANCS.OUTPARAM.AcctId)
+                         CUST.GCHRG.laceAcct  = BANCS.OUTPARAM.AcctId
+                         PRINT(CUST.GCHRG.laceAcct)
+             #}
+	     ELSE
+	     #{
+			CUST.GCHRG.laceAcct = ""
+			GOTO ENDOFSCRIPT
+	     #}
+             ENDIF
+
+             sv_s = CUST.GCHRG.ExciseBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + CUST.GCHRG.ODSolid
+             PRINT(sv_s)
+             sv_u = urhk_B2k_BacidToAcctId(sv_s)
+             PRINT(sv_u)
+
+             IF(sv_u == 0)THEN
+             #{
+                         PRINT(BANCS.OUTPARAM.AcctId)
+                         CUST.GCHRG.ExciseAcct  = BANCS.OUTPARAM.AcctId
+                         PRINT(CUST.GCHRG.ExciseAcct)
+             #}
+	     ELSE
+			CUST.GCHRG.ExciseAcct = ""
+			GOTO ENDOFSCRIPT
+             ENDIF
+	     ####
+
+	     CUST.GCHRG.laceAmt = 2 * cdouble(CUST.GCHRG.chrgAmt)/100
+	     print(CUST.GCHRG.laceAmt)
+	     lv_x = cdouble(CUST.GCHRG.laceAmt)
+             CUST.GCHRG.laceAmt = format$(lv_x,"%17.02f")
+	     print(CUST.GCHRG.laceAmt)
+	     CUST.GCHRG.ExciseAmt = 20 * cdouble(CUST.GCHRG.laceAmt)/100
+	     print(CUST.GCHRG.ExciseAmt)
+	     lv_y = cdouble(CUST.GCHRG.ExciseAmt)
+             CUST.GCHRG.ExciseAmt = format$(lv_y,"%17.02f")
+	     print(CUST.GCHRG.ExciseAmt)
+	####mtt
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "N"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.CheckExceptions           = "N"
+
+        sv_r = REPEXISTS("MTT")
+        print(sv_r)
+        IF (sv_r == 1) THEN
+                sv_r = urhk_MTTS_Close("")
+                print(sv_r)
+        ENDIF
+
+        sv_u = urhk_MTTS_initialize("")
+        PRINT(sv_u)
+        #===================================
+        # Clear Error Message
+        #===================================
+        MTT.Error.Description   =   ""
+
+        #-------------------------------------------
+        #       Populate the details required for Transaction header
+        #------------------------------------------
+
+        MTT.TranDetails.TranDate        =   "0"
+        MTT.TranDetails.PostFlag        =       "Y"
+        MTT.TranDetails.TranType        =       "T"
+        MTT.TranDetails.TranSubType     =       "BI"
+        MTT.TranDetails.IgnoreExcp      =       "I"
+        MTT.TranDetails.Consolidate     =       "N"
+        MTT.TranDetails.ReversalFlag    =       "N"
+        MTT.TranDetails.PostTranFlg     =       "Y"
+        MTT.TranDetails.ValidationFlag  =       "Y"
+        MTT.TranDetails.RestrictModifyInd =       "SECOND_GROUP"
+        MTT.TranDetails.ErrorCheckForLuw =      "N"
+        #MTT.TranDetails.ModuleId              = "HTM"
+        #***************************************************************************
+        #Define the transaction
+        #***************************************************************************
+        PRINT("before define")
+        sv_r = urhk_MTTS_DefineTransaction("AGTFEE")
+        PRINT(sv_r)
+        IF (sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Transaction.."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+                #}
+        ELSE
+                #{
+                PRINT("success")
+        #}
+        ENDIF
+
+
+        # ---------------------------------------------------------------------
+        # Populate the details required for CREDIT and DEBIT part-tran to office account
+        # ---------------------------------------------------------------------
+	###Lace
+        MTT.PartTranDetails.Account = CUST.GCHRG.laceAcct
+        MTT.PartTranDetails.RefAmount   = CDOUBLE(CUST.GCHRG.laceAmt)
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        #MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Lace charge for ODSME Sweep"
+        MTT.PartTranDetails.tran_particular = "lace fees"
+        MTT.PartTranDetails.TranIdentifier  = "AGTFEE"
+        MTT.PartTranDetails.EntryUserId = BANCS.STDIN.userId
+        sv_r = urhk_MTTS_DefinePartTran("CR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        MTT.PartTranDetails.Account = CUST.GCHRG.drAcctId
+        MTT.PartTranDetails.RefAmount   = -1*CDOUBLE(CUST.GCHRG.laceAmt)
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        #MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Lace charge for ODSME Sweep"
+        MTT.PartTranDetails.tran_particular = "lace fees"
+        MTT.PartTranDetails.TranIdentifier  = "AGTFEE"
+        sv_r = urhk_MTTS_DefinePartTran("DR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+	###Excise
+        MTT.PartTranDetails.Account = CUST.GCHRG.ExciseAcct
+        MTT.PartTranDetails.RefAmount   = CDOUBLE(CUST.GCHRG.ExciseAmt)
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        #MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Excise Duty for ODSME charge"
+        MTT.PartTranDetails.tran_particular = "excise duty"
+        MTT.PartTranDetails.TranIdentifier  = "AGTFEE"
+        MTT.PartTranDetails.EntryUserId = BANCS.STDIN.userId
+        sv_r = urhk_MTTS_DefinePartTran("CR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        MTT.PartTranDetails.Account = CUST.GCHRG.drAcctId
+        MTT.PartTranDetails.RefAmount   = -1*CDOUBLE(CUST.GCHRG.ExciseAmt)
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        #MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Excise Duty for ODSME charge"
+        MTT.PartTranDetails.tran_particular = "excise duty"
+        MTT.PartTranDetails.TranIdentifier  = "AGTFEE"
+        sv_r = urhk_MTTS_DefinePartTran("DR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+	##endDefinition
+
+        # ---------------------------------------------------------------------
+        # Commit the transaction
+        # ---------------------------------------------------------------------
+        sv_r = urhk_MTTS_EndDefinition("")
+        IF (sv_r != 0) THEN
+        #{
+                sv_c = "Unable to end the transaction definition."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+		CUST.GCHRG.chargeTranId = " "
+             	CUST.GCHRG.chargeTranDate = BANCS.STDIN.BODDate
+                GOTO ENDOFSCRIPT
+                #}
+        ELSE
+                #{
+                PRINT("successfully posted")
+		CUST.GCHRG.chargeTranId = BANCS.OUTPARAM.MTTTranId
+             	CUST.GCHRG.chargeTranDate = BANCS.STDIN.BODDate
+		print(CUST.GCHRG.chargeTranId)
+        #}
+        ENDIF
+
+
+        ENDOFSCRIPT:
+        sv_r = urhk_MTTS_Close("")
+        EXITSCRIPT
+	#################
+    #}
+    endif
+######trace off
+end-->

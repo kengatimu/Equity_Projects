@@ -1,0 +1,362 @@
+<--start
+trace on
+#++++++++++++++++++++++Corporate Search (Vino Palani 03/06/2020) Starts
+        if(fieldexists(BANCS.INPUT.Foracid)==1)then
+                if(BANCS.INPUT.Foracid!="")then
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                        if(sv_u==0)then
+                                CUST.ATM.SolId = BANCS.OUTPARAM.acctSolId
+                                CUST.ATM.drschmCode = BANCS.OUTPARAM.schmCode
+                                CUST.ATM.drCifId = BANCS.OUTPARAM.cifId
+                        else
+                                BANCS.OUTPUT.RespCode = "03"
+                                BANCS.OUTPUT.successOrFailure="F"
+                                exitscript
+                        endif
+                         if((CUST.ATM.drschmCode=="OD541") and (BANCS.INPUT.DccId!="EFR"))then
+                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - OD541 Debit"
+                                  BANCS.OUTPUT.successOrFailure = "F"
+                                  BANCS.OUTPUT.RespCode = "99"
+                                  exitscript
+                        endif
+			#--------------- Edwin Zico: Block card txns for a/cs with  Restricted Scheme Codes: Ticket: INC0137085 
+			if((BANCS.INPUT.DccId=="SWT") or (BANCS.INPUT.DccId=="WPD"))then
+				if ((CUST.ATM.drschmCode=="SB103") or (CUST.ATM.drschmCode=="SB106") or (CUST.ATM.drschmCode=="SB107") or (CUST.ATM.drschmCode=="SB119") or (CUST.ATM.drschmCode=="SB121") or (CUST.ATM.drschmCode=="SB122") or (CUST.ATM.drschmCode=="SB123") or (CUST.ATM.drschmCode=="SB125") or (CUST.ATM.drschmCode=="SB131") or (CUST.ATM.drschmCode=="SB132") or (CUST.ATM.drschmCode=="SB113") or (CUST.ATM.drschmCode=="SB102") or (CUST.ATM.drschmCode=="TD400") or (CUST.ATM.drschmCode=="TD401")) then
+					BANCS.OUTPUT.ReservedField3 = "Card Transaction Not Allowed  for the Scheme"
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.RespCode = "99"
+					print(BANCS.OUTPUT.RespCode)
+					exitscript
+				endif
+			endif
+			#--------------- Edwin Zico: Block card txns for a/cs with  Restricted Scheme Codes: Ticket: INC0137085 
+                        sv_d = "TranYN | select CUSTOM.fn_corp_check(?SVAR,?SVAR) from dual"
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+                        sv_u = urhk_dbSelectWithBind(sv_d)
+                        if(sv_u==0)then
+                                CUST.ATM.TranYN = BANCS.OUTPARAM.TranYN
+                        else
+                                CUST.ATM.TranYN = "Y"
+                        endif
+                        if(CUST.ATM.TranYN!="Y")then
+                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - Corporate Search"
+                                  BANCS.OUTPUT.successOrFailure = "F"
+                                  BANCS.OUTPUT.RespCode = "99"
+                                  exitscript
+                        endif
+                endif
+        endif
+        if(fieldexists(BANCS.INPUT.CrForacid)==1)then
+                if(BANCS.INPUT.CrForacid!="")then
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                        if(sv_u==0)then
+                                CUST.ATM.effBal = BANCS.OUTPARAM.EffAvailableAmt
+                        else
+                                if(BANCS.INPUT.DccId=="VER")then
+                                        BANCS.OUTPUT.RespCode = "03"
+                                        BANCS.OUTPUT.successOrFailure="F"
+                                        exitscript
+                                else
+                                        CUST.ATM.effBal = ""
+                                endif
+                        endif
+                        if((BANCS.INPUT.Command=="TRRR") and (BANCS.INPUT.DccId=="VER"))then
+                                CUST.ATM.orgAmt = LEFT$(BANCS.INPUT.TranAmt,14)
+                                CUST.ATM.orgAmt = cdouble(CUST.ATM.orgAmt) + 120
+                                if(cdouble(CUST.ATM.orgAmt)>cdouble(CUST.ATM.effBal))then
+                                        BANCS.OUTPUT.ReservedField3 = "Reversal Transaction Failed - Insufficient Fund "
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        exitscript
+                                endif
+                        endif
+
+                        sv_d = "TranYN | select CUSTOM.fn_corp_check(?SVAR,?SVAR) from dual"
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.CrForacid
+                        sv_u = urhk_dbSelectWithBind(sv_d)
+                        if(sv_u==0)then
+                                CUST.ATM.TranYN = BANCS.OUTPARAM.TranYN
+                        else
+                                CUST.ATM.TranYN = "Y"
+                        endif
+#-----------------------------Amnt excemption added
+                        if(CUST.ATM.TranYN!="Y")then
+                                CUST.ATM.TranAmt = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+                                CUST.ATM.parmId = "SEARCH" + BANCS.INPUT.TranCrncy
+                                BANCS.INPUT.moduleName = "TRANVAL"
+                                BANCS.INPUT.parameterId = CUST.ATM.parmId
+                                CALL("getcparamvalue.scr")
+                                IF(BANCS.OUTPUT.parameterVal != "")THEN
+                                #{
+                                        CUST.ATM.AmtLimit = BANCS.OUTPUT.parameterVal
+                                #}
+                                ELSE
+                                #{
+                                        BANCS.OUTPUT.ReservedField3 = "Amount Limit setup not done in CPARAM"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        exitscript
+                                #}
+                                ENDIF
+                                CUST.ATM.TotAmt = cdouble(CUST.ATM.effBal) + cdouble(CUST.ATM.TranAmt)
+
+                                #if((cdouble(CUST.ATM.TranAmt)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.effBal)>cdouble(CUST.ATM.AmtLimit)))then
+                                if((cdouble(CUST.ATM.TranAmt)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.effBal)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.TotAmt)>cdouble(CUST.ATM.AmtLimit)))then
+                                        BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - Corporate Search"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        exitscript
+                                endif
+                        endif
+                endif
+        endif
+#++++++++++++++++++++++Corporate Search (Vino Palani 03/06/2020) Starts
+#++++++++++++++++++++++ODA Agent (Vino Palani 08/05/2020) Starts
+if((BANCS.INPUT.DccId=="EAZ") or (BANCS.INPUT.DccId=="WPD"))then
+#{
+if((BANCS.INPUT.Command=="TRTR") or (BANCS.INPUT.Command=="DBTR")or(BANCS.INPUT.Command=="CWDR") or (BANCS.INPUT.Command=="PRCR"))then
+#{
+        if(fieldexists(BANCS.INPUT.Foracid)==1)then
+        #{
+                if(BANCS.INPUT.Foracid!="")then
+                #{
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                        if(sv_u==0)then
+                        #{
+                                CUST.ATM.SolId = BANCS.OUTPARAM.acctSolId
+                                CUST.ATM.drschmCode = BANCS.OUTPARAM.schmCode
+                                CUST.ATM.drCifId = BANCS.OUTPARAM.cifId
+                        #}
+                        else
+                        #{
+                                BANCS.OUTPUT.RespCode = "03"
+                                BANCS.OUTPUT.successOrFailure="F"
+                                exitscript
+                        #}
+                        endif
+                        #Merchant Financing Starts 08/05/2021
+                        lv_d = "mfCnt | select count(*) from tbaadm.gam where bank_id= ?SVAR and schm_code='OD547' and acct_cls_flg<>'Y' and del_flg='N' and cif_id=?SVAR "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ATM.drCifId
+                        lv_s = urhk_dbSelectWithBind(lv_d)
+                        if(lv_s==0)then
+                        #{
+                                CUST.ATM.mfCnt = BANCS.OUTPARAM.mfCnt
+                        #}
+                        else
+                        #{
+                                CUST.ATM.mfCnt = 0
+                        #}
+                        endif
+                        if(cdouble(CUST.ATM.mfCnt)>=1)then
+                        #{
+                                BANCS.INPUT.AgentDmd = "Y"
+                                callscriptifexist("ebMfPoolLimtVal.scr")
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="N")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Limit Exceeds "
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="O")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Overdue Exist "
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                        #}
+                        endif
+                        #Merchant Financing Ends 08/05/2021
+                        if((CUST.ATM.drschmCode=="CA207") or (CUST.ATM.drschmCode=="SB126"))then
+                        #{
+                                CUST.ATM.allowAgentFloatCnt = "0"
+                                lv_p = " activePoolCnt | select count(*) from tbaadm.gam,tbaadm.pft where gam.bank_id=?SVAR and pft.bank_id=?SVAR and gam.cif_id=?SVAR and gam.schm_code in ('OD541','SB126','CA207') and gam.acct_cls_flg<>'Y' and gam.del_flg<>'Y' and gam.entity_cre_flg='Y' and gam.allow_sweeps='Y' and pft.pool_id=gam.pool_id and pft.suspend_flg<>'Y' "
+                                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.ATM.drCifId
+                                lv_i = urhk_dbSelectWithBind(lv_p)
+                                if(lv_i==0)then
+                                #{
+                                        CUST.ATM.activePoolCnt = BANCS.OUTPARAM.activePoolCnt
+                                else
+                                        CUST.ATM.activePoolCnt = "0"
+                                #}
+                                endif
+                                BANCS.INPUT.AgentDmd = "Y"
+                                if(cdouble(CUST.ATM.activePoolCnt)>=1)then
+                                #{
+                                #{
+                                        callscriptifexist("ebAgentPoolLimtVal.scr")
+                                #}
+                                else
+                                #{
+                                        lv_b = "allowAgentFloatCnt | select count(*) from tbaadm.fcftt,tbaadm.gam where  gam.bank_id=?SVAR and fcftt.bank_id=?SVAR and gam.acid=fcftt.acid and gam.foracid=?SVAR and fcftt.FREE_CODE_18='AGENT-FLOAT' and gam.entity_cre_flg='Y' and gam.del_flg='N' and fcftt.entity_cre_flg='Y' and fcftt.del_flg='N' "
+                                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+                                        lv_b = urhk_dbSelectWithBind(lv_b)
+                                        if(lv_b==0)then
+                                        #{
+                                                CUST.ATM.allowAgentFloatCnt = BANCS.OUTPARAM.allowAgentFloatCnt
+                                        #}
+                                        else
+                                        #{
+                                                CUST.ATM.allowAgentFloatCnt = "0"
+                                        #}
+                                        endif
+                                        if(cdouble(CUST.ATM.allowAgentFloatCnt)>=1)then
+                                        #{
+                                                CALL("copyBancsToCustC24.scr")
+                                                CALL("vpAgentLimitCr.scr")
+                                                CALL("copyCust24ToBancs.scr")
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        #Zero Limit or No OD Limit
+                                        if(BANCS.OUTPUT.agntValYN=="ZEROLIMIT")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Zero Limit"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                        #Related Loan is DPD
+                                        if(BANCS.OUTPUT.agntValYN=="DPD")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Related Loans are Due "
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                        #Agent Related OD has insufficient Fund
+                                        if(BANCS.OUTPUT.agntValYN=="NOCR")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Od Limit Exceeds "
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                        #Agent Account itself has sufficient Fund,No Od Tran
+                                        if(BANCS.OUTPUT.agntValYN=="NODR")then
+                                        #{
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="F")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Od Transaction Failed "
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="S")then
+                                        #{
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="N")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Limit Exceeds "
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="O")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Overdue Exist "
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="C")then
+                                        #{
+                                                BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Limit Exceeds for tran&charge amount"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "04"
+                                                sv_r = urhk_getFileLocation("EXE|babx4061")
+                                                print(sv_r)
+                                                if (sv_r==0) then
+                                                #{
+                sv_e = "nohup babx4061 $B2K_SESSION_ID  vpAgentFloatAlert.scr " + BANCS.INPUT.Foracid + " " + BANCS.INPUT.DccId + " " + BANCS.INPUT.Command + " " + BANCS.INPUT.DeviceId + " " + BANCS.INPUT.SerialNum + " " + BANCS.OUTPUT.agntValYN + " " + CUST.ATM.allowAgentFloatCnt + " @s &"
+                                                        sv_a = system(sv_e)
+                                                #}
+                                                endif
+                                                exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+       #}
+       endif
+#}
+endif
+#}
+endif
+#++++++++++++++++++++Ends
+
+
+#######trace off
+end-->
+

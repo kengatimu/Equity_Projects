@@ -1,0 +1,494 @@
+#--------------------------------------------------------------------------------------------------------------------------
+#    Name            : cdaamn001.scr
+#    Description     : This script is used for DORMANT Account activation
+#    Date            : 19-02-2013 
+#    Author          : Prakash
+#    Input           : BANCS.INPUT.funcCode,BANCS.INPUT.foracid,BANCS.INPUT.currsts,BANCS.INPUT.newsts
+#    Output          : NA
+#    Called Script   : getcparamvalue.scr
+#    Calling Script  : NA
+#    Menu Option     : CDAA
+#    Srl. No            Date            Author          Description.
+#    ------         ----------          -------         ---------------
+#    1.0            19-02-2013          Prakash         Original Version
+#    2.0			30-07-2013			Vijaya V	 	362816 - TOL for error msg.
+#    3.0			26-09-2013			Bharath			Modified as per porting3 scripts
+#    4.0			31-10-2013			Vijaya V	 	to stop activation of SB199 accounts
+#    5.0			05-11-2013			Jane	 		Adding verification
+#    6.0			31-20-2013			Vijaya V		Updating the table SVSUSER.SIGNMAINTENANCE
+#    7.0			03-11-2013			Vijaya V		Removed the instersol activation validation
+#    8.0			21-12-2013			jane			Adding cancellation
+#---------------------------------------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+IF(REPEXISTS("CUST") == 0) THEN
+#{
+    CREATEREP("CUST")
+#}
+ENDIF 
+
+IF(CLASSEXISTS("CUST","DORM") == 0) THEN
+#{
+    CREATECLASS("CUST","DORM",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+    CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.DORM.errMsg		= ""
+CUST.DORM.userWorkClass1= ""
+CUST.DORM.userWorkClass2= ""
+CUST.DORM.acctcrncycode	= ""
+CUST.DORM.solid			= ""
+CUST.DORM.funcCode 		= BANCS.INPUT.funcCode
+print (CUST.DORM.funcCode)
+
+#CUST.DORM.foracid 		= BANCS.INPUT.foracid
+CUST.DORM.foracid 		= TRIM(BANCS.INPUT.foracid)
+print(CUST.DORM.foracid)
+
+CUST.DORM.currsts 		= BANCS.INPUT.currsts
+CUST.DORM.newsts 		= BANCS.INPUT.newsts
+
+BANCS.INPUT.moduleName = "DRMNTACTACTIV"
+
+BANCS.INPUT.parameterId = "DREVENTID"
+CALL("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.GCHRG.eventId = BANCS.OUTPUT.parameterVal
+
+#}
+ELSE
+#{
+        CUST.DORM.errMsg = " Evevt Id setup not done in CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+BANCS.INPUT.parameterId = "DORM_WRKCLAS1"
+CALL("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.DORM.userWorkClass1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.DORM.errMsg = "WorkClass setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "DORM_WRKCLAS2"
+CALL("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.DORM.userWorkClass2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.DORM.errMsg = "WorkClass  setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+	sv_s = "acid,schm_type,acctcrncycode,solid,schmCode,sweeps|SELECT acid,schm_type,acct_crncy_code,sol_id,schm_code,allow_sweeps "
+	sv_s = sv_s + "FROM TBAADM.GAM "
+	sv_s = sv_s + "WHERE bank_id  = ?SVAR "
+	sv_s = sv_s + "AND foracid = ?SVAR "
+	sv_s = sv_s + "AND schm_type IN ('SBA','CAA') "
+	sv_s = sv_s + "AND acct_cls_flg = 'N' "
+	sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+	sv_s = sv_s + "AND del_flg = 'N' "
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.DORM.foracid 
+
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+
+
+	IF( sv_u == 0) THEN 
+	#{
+
+		CUST.DORM.schm_type = BANCS.OUTPARAM.schm_type
+		CUST.DORM.acid = BANCS.OUTPARAM.acid 
+		CUST.DORM.acctcrncycode = BANCS.OUTPARAM.acctcrncycode
+		CUST.DORM.solid = BANCS.OUTPARAM.solid
+		CUST.DORM.schmCode = BANCS.OUTPARAM.schmCode
+		CUST.DORM.sweeps = BANCS.OUTPARAM.sweeps
+
+		IF (CUST.DORM.sweeps == "") THEN
+		#{
+			CUST.DORM.sweeps = "N" 
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		sv_e = "Account is invalid or not of SBA or CAA scheme type"
+		sv_m = "foracid"
+		sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_e)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+IF( CUST.DORM.funcCode == "A" ) THEN
+#{
+	    IF((CUST.DORM.schmCode == "SB199") OR (CUST.DORM.schmCode == "CA299"))THEN
+	    #{   
+			sv_e = "Account belongs to "+CUST.DORM.schmCode+" scheme. Transfer the account to other scheme to proceed with Activation"
+			sv_m = "foracid"
+			sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+			sv_u = urhk_SetOrbOut(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+	    #}
+	    ENDIF
+
+
+		BANCS.INPARAM.acid = CUST.DORM.acid
+
+		sv_s = "acctStatus|SELECT acct_status "
+		sv_s = sv_s + "FROM TBAADM.SMT "
+		sv_s = sv_s + "WHERE bank_id  = ?SVAR "
+		sv_s = sv_s + "AND acid = ?SVAR "
+			
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.DORM.acid 
+
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_u)
+
+		IF( sv_u == 0) THEN 
+		#{
+			CUST.DORM.acctStatus = BANCS.OUTPARAM.acctStatus
+
+			IF (BANCS.OUTPARAM.acctStatus  == "A") THEN
+			#{
+				sv_e = "Account Status is Active"
+				sv_m = "foracid"
+				sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+		#}
+		ELSE
+		#{
+			sv_e = "Account details not Fetched"
+			sv_m = "foracid"
+			sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+			sv_u = urhk_SetOrbOut(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+
+		#}
+		ENDIF
+
+		IF( CUST.DORM.schm_type == "SBA" ) THEN
+		#{
+
+			#--------------------------------------------------------------------------------------------------------------
+			# Inputs for Account Modify services
+			# urhk_SetUrhkInp is used to set inputs 
+			#--------------------------------------------------------------------------------------------------------------
+		
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+			PRINT(sv_u)
+
+			#--------------------------------------------------------------------------------------------------------------
+			# Fetch the account data for modify
+			#--------------------------------------------------------------------------------------------------------------
+			sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|retain_all_output = Y")
+			PRINT(sv_u)
+		
+			IF (sv_u == 0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|"+CUST.DORM.sweeps)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("operAcctSchmDtls.acctStat.code|A")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("operAcctSchmDtls.acctSchemeEntered|1")
+				PRINT(sv_u)
+				sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+
+			IF (sv_u != 0) THEN
+			#{
+				IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}
+				ELSE
+				#{
+					sv_v = 0
+				#}
+				ENDIF
+			
+				IF (sv_v > 0) then
+				#{
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						print(sv_f)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						print(sv_e)
+						sv_g = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						print(sv_e)
+						sv_g = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_g)
+						sv_i = sv_i + 1
+						PRINT(sv_u)
+						CUST.DORM.errMsg = sv_e
+					#}
+					DO
+				#}
+				ELSE
+				#{
+					CUST.DORM.errMsg = "Account could not be modified"
+				#}
+				ENDIF
+
+				
+				GOTO ENDOFSCRIPT
+
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		IF( CUST.DORM.schm_type == "CAA" ) THEN
+		#{
+
+			#--------------------------------------------------------------------------------------------------------------
+			# Inputs for Account Modify services
+			# urhk_SetUrhkInp is used to set inputs 
+			#--------------------------------------------------------------------------------------------------------------
+		
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+			PRINT(sv_u)
+
+
+			#--------------------------------------------------------------------------------------------------------------
+			#	 Fetch the account data for modify
+			#--------------------------------------------------------------------------------------------------------------
+			sv_u = urhk_ExecSrv("SRV_FetchCAAcctMaintDtlForModify|retain_all_output = Y")
+			PRINT(sv_u)
+		
+			IF (sv_u ==0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|"+CUST.DORM.sweeps)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("schmDtls.acctStat.code|A")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("schmDtls.acctSchemeEntered|1")
+				PRINT(sv_u)		
+				sv_u = urhk_ExecSrv("SRV_ModifyCAAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+
+			IF (sv_u != 0) THEN
+			#{
+				IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}
+				ELSE
+				#{
+					sv_v = 0
+				#}
+				ENDIF
+			
+				IF (sv_v > 0) then
+				#{
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						print(sv_e)
+						sv_g = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						print(sv_e)
+						sv_g = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_g)
+						sv_i = sv_i + 1
+						PRINT(sv_u)
+						CUST.DORM.errMsg = sv_e
+					#}
+					DO
+				#}
+				ELSE
+				#{
+					CUST.DORM.errMsg = "Account could not be modified"
+				#}
+				ENDIF
+				
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+
+#============================================================================*
+# CHARGE
+#============================================================================*
+
+	IF(sv_u ==0) THEN
+	#{
+	
+		#-------------------------------------------
+		# Creating Transaction for chage collection
+		#-------------------------------------------
+
+
+		CUST.GCHRG.tranType = "T"
+		CUST.GCHRG.tranSubType = "BI"
+		CUST.GCHRG.drAcctId = CUST.DORM.foracid
+		CUST.GCHRG.acctCrncyCode = CUST.DORM.acctcrncycode 
+		#CUST.GCHRG.eventId = "DORACT" 
+		CUST.GCHRG.chrgAmt =  "|" + CUST.DORM.acctcrncycode 
+
+		#============================================================================*
+		# Updating the table SVSUSER.SIGNMAINTENANCE column to  'N'
+		#============================================================================*
+		sv_s =""
+		sv_s = sv_s + " UPDATE SVSUSER.SIGNMAINTENANCE"
+		sv_s = sv_s + " SET SIGNMAINTENANCE.active ='Y'"
+		sv_s = sv_s + " WHERE SIGNMAINTENANCE.signid IN "
+		sv_s = sv_s + 								" (SELECT SIGNOTHERINFO.signid" 
+		sv_s = sv_s +								" FROM SVSUSER.SIGNOTHERINFO"
+		sv_s = sv_s +								" WHERE SIGNOTHERINFO.acctid=?SVAR"
+		sv_s = sv_s +								" AND   SIGNOTHERINFO.entityid=?SVAR)"
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS	= ""
+		BANCS.INPARAM.BINDVARS	= BANCS.INPARAM.BINDVARS + CUST.DORM.foracid + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		PRINT(sv_d)
+
+		IF(sv_d==0)THEN
+		#{
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			PRINT(sv_d)
+		#}
+		ENDIF 
+		
+		  
+		IF ((CUST.DORM.schmCode=="SB142") OR (CUST.DORM.schmCode=="SB143") OR (CUST.DORM.schmCode=="SB122") OR (CUST.DORM.schmCode=="SB123")) THEN
+	
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		        sv_g = "RESULT_MSG|Account Activated and Charges not Collected "
+		        sv_z = urhk_SetOrbOut(sv_g)
+		        GOTO ENDOFSCRIPT
+
+		ELSE
+			
+			CALL("gchrgcommon.scr")
+			
+		ENDIF
+
+		IF( CUST.GCHRG.successOrFailure == "S" ) THEN
+
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Account Activated And Charges Collected TRAN ID - <b>" + CUST.GCHRG.tranId + "</b>"
+			sv_z = urhk_SetOrbOut(sv_g)
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+		        sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		        sv_g = "RESULT_MSG|Account Activated and Charges not Collected "
+		        sv_z = urhk_SetOrbOut(sv_g)
+		        GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	
+#}
+ENDIF
+
+
+ENDOFSCRIPT :
+IF (CUST.DORM.errMsg != "") THEN
+#{
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	sv_g = "RESULT_MSG|" + CUST.DORM.errMsg + " - Account might need data correction, kindly invoke HACM menu for modifications"
+	PRINT(sv_g)
+	sv_z = urhk_SetOrbOut(sv_g)
+	PRINT(sv_z)
+#}
+ENDIF
+TRACE OFF
+
+EXITSCRIPT
+END-->

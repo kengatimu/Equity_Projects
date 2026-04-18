@@ -1,0 +1,19 @@
+/
+exec CUSTOM.ACCT_LIMIT_CHECK_ALL_PROC_54;
+/
+commit;
+/
+exec CUSTOM.ACCT_LIMIT_CHECK_ALL_PROC_50;
+/
+commit;
+/
+exec CUSTOM.ACCT_LIMIT_CHECK_ALL_PROC_11;
+/
+commit;
+/
+exec CUSTOM.ACCT_LIMIT_CHECK_ALL_PROC_56;
+/
+commit;
+/
+exit
+/

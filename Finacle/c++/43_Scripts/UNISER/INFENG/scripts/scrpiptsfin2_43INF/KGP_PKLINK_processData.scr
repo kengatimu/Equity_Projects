@@ -1,0 +1,409 @@
+#=======================================================================
+# Name                   : KGP_PKLINK_processData.scr
+# Date                   : 12-12-2020
+# Description            : To handle submit logic for PKLINK menu
+# MenuOption             : PKLINK
+# Author                 : Chethan Kumar D
+# Called Script          : NA
+# Calling Script         : NA
+# Reference Document     : NA
+# Modification History
+# S.No.  Date          Name                 Description
+# -----  ----------    ----------------     -----------------------------
+#  1.0   12-12-2020    Chethan Kumar D      Original Version
+#========================================================================
+<--START
+	TRACE ON
+	
+	#-----------------------------------------
+	#  Create the required repository Classes
+	#------------------------------------------
+	
+                IF(REPEXISTS("CUST") == 0) THEN
+                #{
+                        CREATEREP("CUST")
+                #}
+                ENDIF
+
+                IF (CLASSEXISTS("CUST", "PKLINK") == 0) THEN
+                #{
+                        CREATECLASS("CUST", "PKLINK", 5)
+                #}
+                ENDIF
+
+	
+	#--------------------------------
+	# Intialization of Local Fields
+	#-------------------------------
+	
+                CUST.PKLINK.cifId                = ""
+                CUST.PKLINK.packageCode          = ""
+
+                CUST.PKLINK.error                  = ""
+                CUST.PKLINK.errorFocus             = "dummy"
+                CUST.PKLINK.Resultmsg              = ""
+                CUST.PKLINK.messageField           = ""
+		CUST.PKLINK.modTableCount          = "0"
+                CUST.PKLINK.mainTableCount         = "0"	
+	
+	#--------------------------------
+	# Fetching Input Values
+	#-------------------------------
+	
+		IF(FIELDEXISTS(BANCS.INPUT.funcCode)) THEN
+		#{
+			CUST.PKLINK.funcCode = TRIM(TOUPPER(BANCS.INPUT.funcCode))
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.cifId)) THEN
+		#{
+			CUST.PKLINK.cifId = TRIM(TOUPPER(BANCS.INPUT.cifId))
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.packageCode)) THEN
+        #{
+           CUST.PKLINK.packageCode = TRIM(TOUPPER(BANCS.INPUT.packageCode))
+        #}
+        ENDIF
+
+		CUST.PKLINK.userId = BANCS.STDIN.userId 
+		print(CUST.PKLINK.userId)
+	
+		PRINT(CUST.PKLINK.funcCode)
+		PRINT(CUST.PKLINK.cifId)
+		PRINT(CUST.PKLINK.packageCode)
+	
+	#---------------------------------------------
+	#	Checking mandatory fields
+	#---------------------------------------------
+
+		IF(CUST.PKLINK.cifId == "") THEN
+		#{
+				CUST.PKLINK.error      = "Field must be entered"
+				CUST.PKLINK.errorFocus = "cifId"
+				GOTO ERROR		
+		#}
+		ENDIF
+
+		IF(CUST.PKLINK.packageCode == "") THEN
+		#{
+				CUST.PKLINK.error      = "Field must be entered"
+				CUST.PKLINK.errorFocus = "packageCode"
+				GOTO ERROR		
+		#}
+		ENDIF		
+		
+	#---------------------------------------------
+	#	Validating cif id 
+	#---------------------------------------------
+	
+		sv_a = urhk_getCustomerDetails(CUST.PKLINK.cifId)
+		print(sv_a)
+
+		IF(sv_a != "0") THEN
+		#{
+			CUST.PKLINK.error      = "Cif Id Is invalid"
+			CUST.PKLINK.errorFocus = "cifId"
+			GOTO ERROR
+		#}
+		ENDIF
+
+	#---------------------------------------------
+	#	Fetching table counts
+	#---------------------------------------------
+
+		lv_q = "mainTableCount|SELECT COUNT(1) FROM CUSTOM.C_PKLINK_MAIN WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND BANK_ID = ?SVAR "
+		PRINT(lv_q)
+
+		BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		lv_u = urhk_dbSelectWithBind(lv_q)
+		PRINT(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			CUST.PKLINK.mainTableCount = BANCS.OUTPARAM.mainTableCount
+			PRINT(CUST.PKLINK.mainTableCount)
+		#}
+		ENDIF
+
+		lv_q = "modTableCount|SELECT COUNT(1) FROM CUSTOM.C_PKLINK_MAIN WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR AND ENTITY_CRE_FLG != 'Y' AND BANK_ID = ?SVAR "
+		PRINT(lv_q)
+
+		BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		lv_u = urhk_dbSelectWithBind(lv_q)
+		PRINT(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			CUST.PKLINK.modTableCount = BANCS.OUTPARAM.modTableCount
+			PRINT(CUST.PKLINK.modTableCount)
+		#}
+		ENDIF
+
+	#-------------------------
+	#	Add block
+	#------------------------
+	
+		IF(CUST.PKLINK.funcCode == "A")THEN
+		#{
+			IF(CDOUBLE(CUST.PKLINK.mainTableCount) > 0) THEN	
+			#{
+				CUST.PKLINK.error      = "Record already exists."
+				CUST.PKLINK.errorFocus = "funcCode"
+				GOTO ERROR
+			#}
+			ENDIF
+
+			IF(CDOUBLE(CUST.PKLINK.modTableCount) > 0) THEN	
+			#{
+				CUST.PKLINK.error      = "Record already exists and pending verification."
+				CUST.PKLINK.errorFocus = "funcCode"
+				GOTO ERROR
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId  +"|"+ CUST.PKLINK.packageCode
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ 'N'+ "|" +'N'+ "|" +BANCS.STDIN.userId+ "|" +BANCS.STDIN.userId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+ "|" +BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_q = "INSERT INTO CUSTOM.C_PKLINK_MAIN (cif_id,package_code,ENTITY_CRE_FLG,DEL_FLG,RCRE_USER_ID,RCRE_TIME,LCHG_USER_ID,LCHG_TIME,BANK_ID)"
+			sv_q = sv_q + " VALUES(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR, sysdate,?SVAR, sysdate,?SVAR)"
+			PRINT(sv_q)
+			
+			sv_r = urhk_dbSQLWithBind(sv_q)
+			PRINT(sv_r)
+
+			IF(sv_r == "0") THEN
+			#{
+				CUST.PKLINK.messageField = "Record Added Successfully for Customer Id " + CUST.PKLINK.cifId + ",Please Verify"
+				CUST.PKLINK.SuccessOrFailure="Y"
+				GOTO SUCCESS	
+			#}
+			ELSE
+			#{
+				CUST.PKLINK.error      = "Technical Error! Please contact administrator"
+				CUST.PKLINK.errorFocus = "dummy"
+				GOTO ERROR
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	#---------------------------------------------
+    #       Verify Block
+    #---------------------------------------------
+		
+		IF(CUST.PKLINK.funcCode=="V") THEN
+		#{
+			BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_x="rcreuser,del_flg,entity_cre_flg|select rcre_user_id,del_flg,entity_cre_flg from CUSTOM.C_PKLINK_MAIN where CIF_ID = ?SVAR "
+			sv_x = sv_x + " and package_code = ?SVAR and entity_cre_flg='N' AND BANK_ID = ?SVAR"
+			print(sv_x)
+
+			sv_d=urhk_dbselectWithBind(sv_x)
+			PRINT(sv_d)
+
+			IF(sv_d==0) THEN
+			#{
+				CUST.PKLINK.rcreuser=BANCS.OUTPARAM.rcreuser
+				CUST.PKLINK.del_flg=BANCS.OUTPARAM.del_flg
+				CUST.PKLINK.entity_cre_flg=BANCS.OUTPARAM.entity_cre_flg
+			#}
+			ELSE
+			#{
+				 CUST.PKLINK.error = "Record is not found for the given criteria."
+				 CUST.PKLINK.erroFocus = "funcCode"
+				 GOTO ERROR
+			#}
+			ENDIF
+
+			IF(CUST.PKLINK.rcreuser==CUST.PKLINK.userId) THEN
+			#{
+				CUST.PKLINK.error = "Same user cannot verify"
+				CUST.PKLINK.erroFocus = "funcCode"
+				GOTO ERROR
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId +"|"+ CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_q = " UPDATE CUSTOM.C_PKLINK_MAIN SET ENTITY_CRE_FLG = 'Y',LCHG_TIME = SYSDATE, LCHG_USER_ID = ?SVAR "
+			sv_q = sv_q + " WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR AND BANK_ID = ?SVAR AND ENTITY_CRE_FLG != 'Y' AND DEL_FLG != 'Y'"
+			PRINT(sv_q)
+			
+			sv_r = urhk_dbSQLWithBind(sv_q)
+			PRINT(sv_r)
+
+			IF(sv_r == "0") THEN
+			#{
+				CUST.PKLINK.messageField = "Record verified Successfully for Customer Id " + CUST.PKLINK.cifId + "."
+				CUST.PKLINK.SuccessOrFailure="Y"
+                GOTO SUCCESS	
+			#}
+			ELSE
+			#{
+				CUST.PKLINK.error      = "Technical Error! Please contact administrator"
+				CUST.PKLINK.errorFocus = "dummy"
+				GOTO ERROR
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+	#---------------------------------------------
+	#	Cancel block
+	#---------------------------------------------
+	
+		IF(CUST.PKLINK.funcCode == "X")THEN
+		#{
+			IF(CDOUBLE(CUST.PKLINK.mainTableCount) > 0) THEN	
+			#{
+				CUST.PKLINK.error      = "There is nothing to verify or cancel."
+				CUST.PKLINK.errorFocus = "cifId"
+				GOTO ERROR
+			#}
+			ELSE
+			#{
+				IF(CDOUBLE(CUST.PKLINK.modTableCount) == 0) THEN
+				#{
+					CUST.PKLINK.error      = "Record is not found for the given criteria."
+					CUST.PKLINK.errorFocus = "cifId"
+					GOTO ERROR
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_q = " DELETE FROM CUSTOM.C_PKLINK_MAIN WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR "
+			sv_q = sv_q + " AND BANK_ID = ?SVAR AND DEL_FLG != 'Y' AND ENTITY_CRE_FLG != 'Y'"
+			PRINT(sv_q)
+			
+			sv_r = urhk_dbSQLWithBind(sv_q)
+			PRINT(sv_r)
+
+			IF(sv_r == "0") THEN
+			#{
+				CUST.PKLINK.messageField = "Record cancelled Successfully for Customer Id " + CUST.PKLINK.cifId + "."
+				CUST.PKLINK.SuccessOrFailure="Y"
+                GOTO SUCCESS	
+			#}
+			ELSE
+			#{
+				CUST.PKLINK.error      = "Technical Error! Please contact administrator"
+				CUST.PKLINK.errorFocus = "dummy"
+				GOTO ERROR
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	#---------------------------------------------
+	#	Delete block
+	#---------------------------------------------
+
+		IF((CUST.PKLINK.funcCode == "D") OR (CUST.PKLINK.funcCode == "I")) THEN
+		#{
+			IF(CDOUBLE(CUST.PKLINK.modTableCount) > 0) THEN	
+			#{
+				CUST.PKLINK.error      = "Record addition pending for verification"
+				CUST.PKLINK.errorFocus = "cifId"
+				GOTO ERROR
+			#}
+			ENDIF
+			
+			lv_q =  "delFlg|"
+			lv_q = lv_q + " SELECT DEL_FLG "
+			lv_q = lv_q + " FROM CUSTOM.C_PKLINK_MAIN WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND BANK_ID = ?SVAR"
+			PRINT(lv_q)
+
+			BANCS.INPARAM.BINDVARS = CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			lv_r = urhk_dbSelectWithBind(lv_q)
+			PRINT(lv_r)
+			
+			IF(lv_r == "0")THEN
+			#{
+				CUST.PKLINK.delFlg	 	= BANCS.OUTPARAM.delFlg
+				PRINT(CUST.PKLINK.delFlg)
+					
+				IF(CUST.PKLINK.delFlg == "Y") THEN
+				#{
+					CUST.PKLINK.error      = "Record is already deleted."
+					CUST.PKLINK.errorFocus = "cifId"
+					GOTO ERROR
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				CUST.PKLINK.error      = "Record does not exists."
+				CUST.PKLINK.errorFocus = "cifId"
+				GOTO ERROR
+			#}
+			ENDIF
+			
+			IF(CUST.PKLINK.funcCode == "I")THEN
+			#{
+				CUST.PKLINK.messageField = "Record Inquire Successful for Customer Id " + CUST.PKLINK.cifId + " and package code : "+ CUST.PKLINK.packageCode
+				CUST.PKLINK.SuccessOrFailure="Y"
+				GOTO SUCCESS	
+			#}
+			ENDIF
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId +"|"+ CUST.PKLINK.cifId +"|"+ CUST.PKLINK.packageCode +"|"+ BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_q = " UPDATE CUSTOM.C_PKLINK_MAIN SET DEL_FLG = 'Y',LCHG_TIME = SYSDATE, LCHG_USER_ID = ?SVAR "
+			sv_q = sv_q + " WHERE CIF_ID = ?SVAR AND PACKAGE_CODE = ?SVAR AND BANK_ID = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG != 'Y'"
+			PRINT(sv_q)
+			
+			sv_r = urhk_dbSQLWithBind(sv_q)
+			PRINT(sv_r)
+
+			IF(sv_r == "0") THEN
+			#{
+				CUST.PKLINK.messageField = "Record deleted Successfully for Customer Id " + CUST.PKLINK.cifId + "."
+				CUST.PKLINK.SuccessOrFailure="Y"
+				GOTO SUCCESS	
+			#}
+			ELSE
+			#{
+				CUST.PKLINK.error      = "Technical Error! Please contact administrator"
+				CUST.PKLINK.errorFocus = "dummy"
+				GOTO ERROR
+			#}
+			ENDIF
+	#}
+	ENDIF
+
+	
+ERROR:
+	IF(CUST.PKLINK.error != "") THEN
+	#{
+		lv_x=urhk_SetOrbOut("Error_0|Error^" + CUST.PKLINK.error  + "^" +CUST.PKLINK.errorFocus)
+		lv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+		
+SUCCESS:
+		sv_z   =   urhk_SetOrbOut("SuccessOrFailure|Y")
+        sv_z   =   urhk_SetOrbOut("RESULT_MSG| "+ CUST.PKLINK.messageField)
+
+ENDOFSCRIPT:
+
+END-->

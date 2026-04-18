@@ -1,0 +1,394 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : b_acctclose.scr
+#   Description     : This script is called from job
+#   Date            : 06-02-2014
+#   Author          : jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : NA
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             06-02-2014      jane     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0f0c2c5398bbb59b03a1a915d9ddc40fc263d145ee48ce2ad76d83ad0e75107f"
+	TRACE ON
+	
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	#}
+	ENDIF
+
+	sv_s = "UPDATE custom.tz_excise "
+	sv_s = sv_s + " SET entity_cre_flg = 'N'"
+	sv_s = sv_s + " WHERE sol_id= ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		sv_c = urhk_dbSQLWithBind("commit")
+		print(sv_c)
+	#}
+	ENDIF
+
+	sv_b = BANCS.STDIN.mySolId
+	print(sv_b)
+	
+	sv_q="foracid|"
+	sv_q = sv_q + "select foracid from custom.tz_excise where bank_id = ?SVAR AND ENTITY_CRE_FLG='N' and sol_id = ?SVAR "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			exitscript
+		#}
+		ENDIF
+		print(sv_q)
+		
+		WHILE (sv_q==0)
+		#{
+			CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+			print(CUSTS.GLBDATA.foracid)
+
+			CUSTS.GLBDATA.crActexcise1="340011837"
+			CUSTS.GLBDATA.crActexcise=BANCS.STDIN.mySolId + CUSTS.GLBDATA.crActexcise1
+			print(CUSTS.GLBDATA.crActexcise)
+			CUSTS.GLBDATA.crActvat1="340011836"
+			CUSTS.GLBDATA.crActvat=BANCS.STDIN.mySolId + CUSTS.GLBDATA.crActvat1
+			print(CUSTS.GLBDATA.crActvat)
+			CUSTS.GLBDATA.narr1="VAT/EXCISE TRANSFER"
+
+			sv_u = "foracid,trandate,income|"
+			sv_u = sv_u + "SELECT foracid ,TRAN_DATE, (CREDITS-DEBITS) DIFF from "
+			sv_u = sv_u + " (select foracid,tran_date, sum(credits)CREDITS,sum(debits)DEBITS from "
+			sv_u = sv_u + " (select foracid,TRAN_DATE,(case when part_tran_type ='C' THEN SUM(TRAN_AMT)  ELSE 0  END ) CREDITS ,"
+			sv_u = sv_u + " (case when part_tran_type ='D' THEN SUM(TRAN_AMT) ELSE 0 END ) DEBITS"
+			sv_u = sv_u + " from tbaadm.gam,tbaadm.dtd "
+			sv_u = sv_u + " where gam.acid = dtd.acid and gam.bank_id=dtd.bank_id "
+			sv_u = sv_u + " and foracid= ?SVAR "
+			sv_u = sv_u + " and acct_ownership='O' AND gam.bank_id= ?SVAR and dtd.del_flg='N'"
+			sv_u = sv_u + " group by TRAN_DATE,foracid,part_tran_type)"
+			sv_u = sv_u + " group by TRAN_DATE,foracid)"
+			print(sv_u)
+			
+			BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_w =  urhk_dbSelectWithBind(sv_u)
+			print(sv_w)
+			
+			IF (sv_w==0) THEN
+			#{
+				CUSTS.GLBDATA.foracid2=BANCS.OUTPARAM.foracid
+				print(CUSTS.GLBDATA.foracid2)
+				
+				CUSTS.GLBDATA.trandate=BANCS.OUTPARAM.trandate
+				print(CUSTS.GLBDATA.trandate)
+				
+				CUSTS.GLBDATA.income=BANCS.OUTPARAM.income
+				print(CUSTS.GLBDATA.income)
+				
+				
+				
+				
+				IF(CUSTS.GLBDATA.income == "0") THEN
+				#{
+					#print (BANCS.OUTPARAM.foracid)
+					sv_s = "UPDATE custom.tz_excise "
+					sv_s = sv_s + " SET entity_cre_flg = 'A',"
+					sv_s = sv_s + " acct_opn_date= SYSDATE"
+					sv_s = sv_s + " WHERE foracid= ?SVAR"
+					sv_s = sv_s + " AND bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+
+				CUSTS.GLBDATA.VAT1=cdouble("18") *cdouble(CUSTS.GLBDATA.income)
+				CUSTS.GLBDATA.VAT=cdouble(CUSTS.GLBDATA.VAT1)/cdouble("118")
+				print(CUSTS.GLBDATA.VAT)
+
+				CUSTS.GLBDATA.excise1=cdouble("10")*cdouble(CUSTS.GLBDATA.income)
+				CUSTS.GLBDATA.excise=cdouble(CUSTS.GLBDATA.excise1)/cdouble("110")
+				print(CUSTS.GLBDATA.excise)
+
+				CUSTS.GLBDATA.totalamt=cdouble(CUSTS.GLBDATA.VAT)+ cdouble(CUSTS.GLBDATA.excise)
+				print(CUSTS.GLBDATA.totalamt)
+
+				#}
+				ENDIF
+				
+			
+
+			
+			
+			#--------------------------------------------------------------------------
+			# Initialise the MTT repository
+			#--------------------------------------------------------------------------
+			
+			sv_r = REPEXISTS("MTT")
+			IF (sv_r == 0) THEN
+			#{
+				CREATEREP("MTT")
+			#}
+			ENDIF
+			
+			sv_r = CLASSEXISTS("MTT","TranDetails")
+			IF (sv_r == 0) THEN
+			#{
+				CREATECLASS("MTT","TranDetails",5)
+			#}
+			ENDIF
+			
+			sv_r = REPEXISTS("BANCS")
+			IF (sv_r == 0) THEN
+			#{
+				CREATEREP("BANCS")
+			#}
+			ENDIF
+			
+			sv_r = CLASSEXISTS("BANCS","INPARAM")
+			IF (sv_r == 0) THEN
+			#{
+				CREATECLASS("BANCS","INPARAM",5)
+			#}
+			ENDIF
+			
+			#===================================
+			# STEP 1 : INITIALIZE THE MTT
+			#===================================
+			
+			BANCS.INPARAM.PostTranFlg 		= "Y"
+			BANCS.INPARAM.CommitFlg 		= "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+			BANCS.INPARAM.ValidationFlag 		= "Y"
+			BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+			BANCS.INPARAM.CheckExceptions 		= "N"
+			
+			
+			sv_u = urhk_MTTS_PopulateInputDetails("")
+			
+			
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = CUSTS.GLBDATA.narr1
+			
+			sv_v = "PurchaseComm"
+			PRINT(sv_v)
+			
+			#sv_k = urhk_MTTS_Initialize("")
+			#print(sv_k)
+			
+			#IF(sv_k != 0) THEN
+			#{
+			#	sv_u = urhk_SRV_SetErr("MTT initialized failed")
+			#	GOTO Finsh
+			#}
+			#ENDIF
+			
+			sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+			
+			#--------------------------------------------------
+			# Credit to VAT
+			#--------------------------------------------------
+			
+			MTT.PartTranDetails.Account = CUSTS.GLBDATA.crActvat
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUSTS.GLBDATA.narr1
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUSTS.GLBDATA.VAT)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "PurchaseIncome"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			PRINT(sv_r)
+
+			
+			#--------------------------------------------------
+			# Credit to EXCISE
+			#--------------------------------------------------
+			
+			MTT.PartTranDetails.Account = CUSTS.GLBDATA.crActexcise
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUSTS.GLBDATA.narr1
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUSTS.GLBDATA.excise)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "PurchaseIncome"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			PRINT(sv_r)
+			
+			#------------------------------------------------------------------
+			# Debit From INCOME
+			#------------------------------------------------------------------
+			
+			MTT.PartTranDetails.Account = CUSTS.GLBDATA.foracid
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUSTS.GLBDATA.narr1
+			sv_a = CDOUBLE(CUSTS.GLBDATA.totalamt)
+			sv_a = -(sv_a)
+			PRINT(sv_a)
+			MTT.PartTranDetails.RefAmount = sv_a
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_h = "D" + CUSTS.GLBDATA.foracid
+			
+			
+			sv_r = urhk_MTTS_definePartTran(sv_h)
+			IF (sv_r == 1) THEN
+			#{
+				PRINT("Unable to create MTT Part transaction")
+				GOTO Finish
+			#}
+			ENDIF
+			
+			#############################
+			# Commit the transaction
+			#############################
+			sv_u = urhk_MTTS_EndDefinition("")
+			PRINT(sv_u)
+			
+			CUSTS.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+			PRINT(CUSTS.GLBDATA.TranId)
+			
+			
+			##################################################
+			# If any error tran id will not be created
+			##################################################
+			IF ((sv_u != 0)  OR (CUSTS.GLBDATA.TranId==""))THEN
+			#{
+					sv_s = "UPDATE custom.tz_excise "
+					sv_s = sv_s + " SET entity_cre_flg = 'B',"
+					sv_s = sv_s + " acct_opn_date= SYSDATE"
+					sv_s = sv_s + " WHERE foracid= ?SVAR"
+					sv_s = sv_s + " AND bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+			#}
+			ELSE
+			#{
+					sv_s = "UPDATE custom.tz_excise "
+					sv_s = sv_s + " SET entity_cre_flg = 'C',"
+					sv_s = sv_s + " acct_opn_date= SYSDATE"
+					sv_s = sv_s + " WHERE foracid= ?SVAR"
+					sv_s = sv_s + " AND bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+				
+			#}
+			ENDIF
+
+			
+	#}
+	ELSE
+	#{
+
+					sv_s = "UPDATE custom.tz_excise "
+					sv_s = sv_s + " SET entity_cre_flg = 'D',"
+					sv_s = sv_s + " acct_opn_date= SYSDATE"
+					sv_s = sv_s + " WHERE foracid= ?SVAR"
+					sv_s = sv_s + " AND bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+	#}
+	ENDIF
+	
+	#sv_r = urhk_MTTS_Close("")
+	#print(sv_r)
+	Finish:
+
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)	
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(sv_m)
+		PRINT(sv_c)
+		print("ALL TAX DONE")
+	#}
+	ENDIF
+	
+	TRACE OFF
+	exitscript
+END-->

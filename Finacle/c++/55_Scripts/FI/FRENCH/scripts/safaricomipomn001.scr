@@ -1,0 +1,361 @@
+#------------------------------------------------------------------------------------------------    
+#  Name            : tm01.scr
+#  Description     : This script is for collecting missed cash charges
+#  Date            : 18-04-2013
+#  Author          : Samrat Saha
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr,insurchrgmisdp001.scr
+#  Menu Option     :
+#  Srl. No         Date            Author          Description.
+#  -------         ------          ------          ------------
+#  1.0             16-01-2013      Samrat Saha     Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="efb2ab615b9e8c925c0813c27a8580d3f892d0999755236320347e80da799204"
+	TRACE ON
+	
+	#-----------------------------------------------------------------------------------------------
+	# Creating Repository
+	#-----------------------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","TMCHARGES") == 0) THEN
+	#{
+		CREATECLASS("CUST","TMCHARGES", 5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM", 5)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------
+	#--('SAFCC','SAFCR','KPLCCR')
+	#-----------------------------------------------------
+	BANCS.INPUT.moduleName = "TMCHRG"
+	BANCS.INPUT.parameterId = "TM_CHG_BACID"
+	CALL ("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.tmBacid = BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.tmBacid)
+		#}
+	ELSE
+		#{
+		CUST.TMCHARGES.errMsg = "CPARAM setup is not done for TM_CHG_BACID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#----------------------------------------------------
+	#--REVERSAL :
+	#-----------------------------------------------------
+	BANCS.INPUT.moduleName = "TMCHRG"
+	BANCS.INPUT.parameterId = "TM_CHG_COMT"
+	CALL ("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.tmRevComt = BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.tmRevComt)
+		#}
+	ELSE
+		#{
+		CUST.TMCHARGES.errMsg = "CPARAM setup is not done for TM_CHG_BACID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-------------------------------------------------------------------------------
+	CUST.TMCHARGES.errMsg 		= " "
+	CUST.TMCHARGES.particular	= " "
+	CUST.TMCHARGES.remarks		= " "
+	CUST.TMCHARGES.refnum		= " "
+	
+	sv_u = urhk_Setorbout("Error| ")
+	sv_u = urhk_Setorbout("TranPtcls| ")
+	sv_u = urhk_Setorbout("TranRmks| ")
+	sv_u = urhk_Setorbout("RefNo| ")
+	
+	#------------------------------------------------------------------------------
+	# Getting acctId code from front end
+	#------------------------------------------------------------------------------
+	CUST.TMCHARGES.amount 		= BANCS.INPUT.amount
+	CUST.TMCHARGES.tranDate 	= BANCS.INPUT.tranDate
+	CUST.TMCHARGES.tranId 		= BANCS.INPUT.tranId
+	
+	IF (CUST.TMCHARGES.tranDate !="") THEN
+	#{
+		sv_u = urhk_B2k_valDate(CUST.TMCHARGES.tranDate)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.TMCHARGES.errMsg  = "Enter Tran Date in [DD-MM-YYYY] format"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	print(CUST.TMCHARGES.amount)
+	print(CUST.TMCHARGES.tranDate)
+	print(CUST.TMCHARGES.tranId)
+	
+	CUST.TMCHARGES.bodDate=MID$(BANCS.STDIN.BODDate,0,10)
+	PRINT(CUST.TMCHARGES.bodDate)
+	
+	CUST.TMCHARGES.tranId=LPAD(CUST.TMCHARGES.tranId,9,' ')
+	PRINT(CUST.TMCHARGES.tranId)
+	IF (CUST.TMCHARGES.tranDate == CUST.TMCHARGES.bodDate) THEN
+	#{
+		sv_s=""
+		sv_s=sv_s + " count|SELECT COUNT(1) FROM TBAADM.DTD"
+		sv_s=sv_s + " WHERE DTD.tran_id = ?SVAR"
+		sv_s=sv_s + " AND DTD.tran_date = TO_DATE(?SVAR,'dd-mm-yyyy')"
+		sv_s=sv_s + " AND DTD.tran_amt  = ?SVAR"
+		sv_s=sv_s + " AND DTD.acid IN (	SELECT acid FROM TBAADM.GAM "
+		sv_s=sv_s +  					" WHERE INSTR(?SVAR,CONCAT(CONCAT('!',GAM.bacid),'!'))>0"
+		sv_s=sv_s + 					" AND GAM.sol_id=?SVAR"
+		sv_s=sv_s + 					" AND GAM.bank_id = DTD.bank_id)"
+		sv_s=sv_s + " AND DTD.part_tran_type='C'"
+		sv_s=sv_s + " AND DTD.del_flg!='Y'"
+		sv_s=sv_s + " AND DTD.bank_id= ?SVAR "
+		
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS=""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.amount 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.tmBacid		+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId  		+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			CUST.TMCHARGES.errMsg = "Error in getting the count from DTD Table....Database error......."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_s =""
+		sv_s=sv_s + " count|SELECT COUNT(1) FROM TBAADM.HTD"
+		sv_s=sv_s + " WHERE HTD.tran_id = ?SVAR"
+		sv_s=sv_s + " AND HTD.tran_date = to_date(?SVAR,'dd-mm-yyyy')"
+		sv_s=sv_s + " AND HTD.tran_amt = ?SVAR"
+		sv_s=sv_s + " AND HTD.acid in (SELECT acid FROM TBAADM.GAM "
+		sv_s=sv_s + 					" WHERE INSTR(?SVAR,CONCAT(CONCAT('!',GAM.bacid),'!'))>0"
+		sv_s=sv_s + 					" AND GAM.sol_id=?SVAR"
+		sv_s=sv_s + 					" AND GAM.bank_id=HTD.bank_id) "
+		sv_s=sv_s + " AND HTD.part_tran_type='C'"
+		sv_s=sv_s + " AND HTD.del_flg!='Y'"
+		sv_s=sv_s + " AND HTD.bank_id= ?SVAR "
+		
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS=""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.amount 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.tmBacid		+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId  		+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			CUST.TMCHARGES.errMsg = "Error in getting the count from HTD Table...Database error......."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.TMCHARGES.transCount=BANCS.OUTPARAM.count
+		
+		IF (CDOUBLE(CUST.TMCHARGES.transCount)==0) THEN
+		#{
+			CUST.TMCHARGES.errMsg = "Record not found......."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (CDOUBLE(CUST.TMCHARGES.transCount)==1) THEN
+	#{
+		IF (CUST.TMCHARGES.tranDate == CUST.TMCHARGES.bodDate) THEN
+		#{
+			sv_s=""
+			sv_s=sv_s + " particular,remarks,refnum|"
+			sv_s=sv_s + " SELECT tran_particular,tran_rmks,ref_num"
+			sv_s=sv_s + " FROM TBAADM.DTD "
+			sv_s=sv_s + " WHERE DTD.tran_id=?SVAR"
+			sv_s=sv_s + " AND DTD.tran_date=TO_DATE(?SVAR,'dd-mm-yyyy')"
+			sv_s=sv_s + " AND DTD.tran_amt= ?SVAR "
+			sv_s=sv_s + " AND DTD.acid in (SELECT GAM.acid FROM TBAADM.GAM WHERE INSTR(?SVAR,CONCAT(CONCAT('!',GAM.bacid),'!'))>0"
+			sv_s=sv_s + 					" AND gam.sol_id=?SVAR"
+			sv_s=sv_s + 					" AND gam.bank_id=DTD.bank_id) "
+			sv_s=sv_s + " AND DTD.part_tran_type='C'"
+			sv_s=sv_s + " AND del_flg!='Y'"
+			sv_s=sv_s + " AND DTD.bank_id= ?SVAR "
+			
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS=""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId		+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.amount 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.tmBacid 		+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId  		+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			#}
+		ELSE
+			#{
+			sv_s=""
+			sv_s=sv_s + " particular,remarks,refnum|"
+			sv_s=sv_s + " SELECT tran_particular,tran_rmks,ref_num FROM TBAADM.HTD "
+			sv_s=sv_s + " WHERE HTD.tran_id= ?SVAR"
+			sv_s=sv_s + " AND HTD.tran_date= TO_DATE(?SVAR,'dd-mm-yyyy')"
+			sv_s=sv_s + " AND HTD.tran_amt= ?SVAR"
+			sv_s=sv_s + " AND HTD.acid in (SELECT GAM.acid FROM TBAADM.GAM WHERE INSTR(?SVAR,CONCAT(CONCAT('!',GAM.bacid),'!'))>0"
+			sv_s=sv_s + 					" AND gam.sol_id=?SVAR"
+			sv_s=sv_s + 					" AND gam.bank_id=DTD.bank_id) "
+			sv_s=sv_s + " AND HTD.part_tran_type='C' "
+			sv_s=sv_s + " AND HTD.del_flg!='Y' "
+			sv_s=sv_s + " AND HTD.bank_id= ?SVAR "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS=""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.amount 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.tmBacid		+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId  		+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+		#}
+		ENDIF
+		sv_d = urhk_dbselectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.TMCHARGES.particular	= BANCS.OUTPARAM.particular
+			CUST.TMCHARGES.remarks		= BANCS.OUTPARAM.remarks
+			CUST.TMCHARGES.refnum		= BANCS.OUTPARAM.refnum
+			
+			PRINT(CUST.TMCHARGES.particular)
+			PRINT(CUST.TMCHARGES.remarks)
+			PRINT(CUST.TMCHARGES.refnum)
+			
+			sv_s=""
+			sv_s=sv_s + " count|SELECT count(1)"
+			sv_s=sv_s + " FROM CUSTOM.IPO_APPLICATIONS"
+			sv_s=sv_s + " WHERE IPO_APPLICATIONS.app_dc_no =?SVAR "
+			sv_s=sv_s + " AND IPO_APPLICATIONS.app_dc_no_date=TO_DATE(?SVAR,'dd-mm-yyyy') "
+			sv_s=sv_s + " AND IPO_APPLICATIONS.bank_id=?SVAR "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS=""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_d = urhk_dbselectWithBind(sv_s)
+			IF (sv_d == 0) THEN
+			#{
+				CUST.TMCHARGES.count=BANCS.OUTPARAM.count
+				PRINT(CUST.TMCHARGES.count)
+				IF (CDOUBLE(CUST.TMCHARGES.count)> 0) THEN
+				#{
+					CUST.TMCHARGES.errMsg ="Record already maintained in IPO......."
+					CUST.TMCHARGES.amount="0"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				CUST.TMCHARGES.errMsg ="Unable to get the count ....from IPO"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.TMCHARGES.errMsg ="Unable to get the particular,remarks,refnum....DTD OR HTD"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_s=""
+		sv_s=sv_s + " count|SELECT count(1) FROM CUSTOM.IPO_APPLICATIONS"
+		sv_s=sv_s + " WHERE IPO_APPLICATIONS.app_dc_no=?SVAR "
+		sv_s=sv_s + " AND IPO_APPLICATIONS.app_dc_no_date=TO_DATE(?SVAR,'dd-mm-yyyy')"
+		sv_s=sv_s + " AND IPO_APPLICATIONS.BANK_ID=?SVAR "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS=""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.TMCHARGES.tranDate 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.TMCHARGES.count=BANCS.OUTPARAM.count
+			PRINT(CUST.TMCHARGES.count)
+			IF (CUST.TMCHARGES.count> 0) THEN
+			#{
+				CUST.TMCHARGES.errMsg ="Record already maintained in IPO......."
+				CUST.TMCHARGES.amount="0"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			IF (CUST.TMCHARGES.count == 0) THEN
+			#{
+				CUST.TMCHARGES.particular	= CUST.CPARAM.tmRevComt + CUST.TMCHARGES.tranId +"/"+CUST.TMCHARGES.tranDate
+				CUST.TMCHARGES.remarks		= CUST.TMCHARGES.tranId +"/"+CUST.TMCHARGES.tranDate
+				CUST.TMCHARGES.remarks		= TRIM(CUST.TMCHARGES.remarks)
+				CUST.TMCHARGES.refnum		= " "
+				PRINT(CUST.TMCHARGES.particular)
+				PRINT(CUST.TMCHARGES.remarks)
+				PRINT(CUST.TMCHARGES.refnum)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.TMCHARGES.errMsg ="Unable to get the count ....from IPO"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		print(CUST.TMCHARGES.errMsg)
+		print(CUST.TMCHARGES.particular)
+		print(CUST.TMCHARGES.refnum)
+		sv_u = urhk_Setorbout("Error|"+CUST.TMCHARGES.errMsg)
+		sv_u = urhk_Setorbout("TranPtcls|"+CUST.TMCHARGES.particular)
+		sv_u = urhk_Setorbout("TranRmks|"+CUST.TMCHARGES.remarks)
+		sv_u = urhk_Setorbout("RefNo|"+CUST.TMCHARGES.refnum)
+		EXITSCRIPT
+END-->

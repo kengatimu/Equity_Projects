@@ -1,0 +1,171 @@
+<--start
+trace on
+
+    IF (REPEXISTS("CUST") == 0) THEN
+    #{
+            CREATEREP("CUST")
+    #}
+    ENDIF
+
+    IF (CLASSEXISTS("CUST","TDCLS") == 0) THEN
+    #{
+            CREATECLASS("CUST","TDCLS",5)
+    #}
+    ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("FORACID"))== 0) ) THEN
+        #{
+            CUST.TDCLS.errMsg="FORACID IS NULL"
+            sv_t = urhk_SetOrbOut("SuccessOrFailure|N")
+            sv_j = "ERROR | " +CUST.TDCLS.errMsg
+            sv_u = urhk_SetOrbOut(sv_j)
+            GOTO ENDSCRIPT
+        #}
+        ENDIF
+
+        CUST.TDCLS.FORACID= TRIM(BANCS.INPUT.FORACID)
+        print(CUST.TDCLS.FORACID)
+
+
+    sv_u = urhk_SetUrhkInp("tdAcctId.foracid|" + CUST.TDCLS.FORACID)
+    sv_u = urhk_ExecSrv("SRV_FetchDfltTDClsrDtls|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = Y|override_xcpn_flg = Y")
+    PRINT(sv_u)
+    IF(sv_u==0)THEN
+    #{
+        PRINT("SUCCESS4")
+        sv_u = urhk_SetUrhkInp("tdAcctClsrCrit.tdAcctId.foracid|" + CUST.TDCLS.FORACID)
+        PRINT(sv_u)
+        sv_u = urhk_ExecSrv("SRV_FetchTDAcctForClsrVfy|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = Y|override_xcpn_flg = Y")
+        PRINT(sv_u)
+        IF(sv_u ==0)THEN
+        #{
+            sv_u = urhk_CopyOutToIn("")
+            PRINT(sv_u)
+            IF(sv_u==0)THEN
+            #{
+                sv_u = urhk_ExecSrv("NAPI_VerifyTDAcctClsr|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = Y|override_xcpn_flg = Y")
+
+                IF(sv_u==0)THEN
+                #{
+                    sv_n=CUST.TDCLS.FORACID
+                    print(sv_n)
+                    BANCS.INPARAM.BINDVARS = sv_n
+                    sv_o = "tranId|select tran_id from tbaadm.dtd where acid=(select acid from tbaadm.gam where foracid=?SVAR) "
+                    sv_o = sv_o +" and tran_particular like 'Closure proceeds%' and pstd_flg='N' and del_flg='N' and rownum=1"
+                    PRINT(sv_o)
+                    sv_s = urhk_dbSelectWithBind(sv_o)
+                    PRINT(sv_s)
+                    if(sv_s == 0)then
+                        sv_n = BANCS.OUTPARAM.tranId
+                        print(sv_n)
+                        sv_a = urhk_SetUrhkInp("tranDetail.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+                        sv_a = urhk_SetUrhkInp("tranDetail.tranIdentifier.tranId|"+sv_n)
+
+                        sv_a = urhk_SetUrhkOut("tranDetail.tranIdentifier.tranDate|tranDate")
+                        sv_a = urhk_SetUrhkOut("tranDetail.tranIdentifier.tranId|tranId")
+                        #sv_a = urhk_SetUrhkOut("tranDetail.partTranDetailLL.<rec_0>.pstdDate|entPstdDate")
+                        sv_u = urhk_ExecSrv("SRV_PostAnEnteredTransaction|retain_all_output = Y|same_user_verify = Y")
+                        PRINT(sv_u)
+                        IF (sv_u == 0) THEN
+                            PRINT(BANCS.OUTPARAM.tranId)
+                            PRINT(BANCS.OUTPARAM.tranDate)
+                            goto RESPONSE
+                        else
+                            goto ERRORCHECK
+                        endif
+                    else
+                        goto RESPONSE
+                    endif
+
+                    #response
+                    RESPONSE:
+                        ###############james 29/11/2022#####################
+                        sv_t = urhk_SetOrbOut("SuccessOrFailure|Y")
+                        CUST.TDCLS.MSG ="ACCOUNT "+CUST.TDCLS.FORACID+" has been closed successfully."
+                        sv_t = "message| " +CUST.TDCLS.MSG
+                        ###############james 29/11/2022#####################
+
+                        sv_u = urhk_SetOrbOut(sv_t)
+                        sv_t = "PaymentReason|TD Liquidation proceeds"
+                        sv_u = urhk_SetOrbOut(sv_t)
+                        sv_t= "PaymentTo|" + CUST.TDCLS.accname + " "+ CUST.TDCLS.OPERNO
+                        sv_u = urhk_SetOrbOut(sv_t)
+                        sv_t = "SentfromName | " +CUST.TDCLS.accname +" "+CUST.TDCLS.FORACID
+                        sv_u = urhk_SetOrbOut(sv_t)
+                        sv_t = "Reference|" + CUST.TDCLS.FORACID
+                        sv_u = urhk_SetOrbOut(sv_t)
+                        sv_t = " DateAndTime|" +BANCS.STDIN.BODDate
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+                        sv_a = urhk_SetUrhkInp("sol.solId|000")
+                        print(sv_a)
+                        sv_a = urhk_ExecSrv("SRV_ModifyContextSol")
+                        print(sv_a)
+                ELSE
+                    GOTO ERRORCHECK
+                #}
+                ENDIF
+            ELSE
+                GOTO ERRORCHECK
+            #}
+            ENDIF
+        ELSE
+            GOTO ERRORCHECK
+        #}
+        ENDIF
+    ELSE
+        GOTO ERRORCHECK
+    #}
+    ENDIF
+
+
+ERRORCHECK:
+    PRINT(BANCS.STDIN.mySolId)
+        #----------------------------------------------------------------------------------------------------
+        # SRV Error check
+        #----------------------------------------------------------------------------------------------------
+        IF (sv_u != 0) THEN
+        #{
+                IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+                #{
+                        print(BANCS.OUTPARAM.Error_num)
+                        sv_v = BANCS.OUTPARAM.Error_num
+                #}
+                ELSE
+                #{
+                        sv_v = 0
+                #}
+                ENDIF
+                IF (sv_v > 0) then
+                #{
+                        sv_u = system("echo 'Error'")
+                        sv_i = 1
+                        WHILE (sv_i <= sv_v)
+                        #{
+                                sv_f = FORMAT$(sv_i,"%d")
+                                sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+                                sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+                                sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+                                print(sv_e)
+                                sv_i = sv_i + 1
+                                sv_u = system("echo '"+sv_e+"' >>tdcls.log")
+                                print(sv_u)
+
+                                #Error response
+                ###############james 29/11/2022#####################
+                sv_t = urhk_SetOrbOut("SuccessOrFailure|N")
+                                sv_t = "message| " +sv_e
+                ###############james 29/11/2022#####################
+
+                                sv_u = urhk_SetOrbOut(sv_t)
+                                GOTO ENDSCRIPT
+
+                        #}
+                        DO
+                        #}
+                ENDIF
+        #}
+        ENDIF
+
+trace off
+end-->

@@ -1,0 +1,508 @@
+-------------------------------------------------------------------------------------------------------------
+#    Name            : AutoVirtualAccountOpen.scr
+#    Description     : Automation menu for suspending CIFs in bulk
+#    Date            : 24-Sep-2024
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : CAUTOMNU (Option - SC)
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1.          15-Aug-2024 	     Osuka S      		Original Version         1.0
+#------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+
+	#==============================================================================
+	#       Intialising Variables
+	#=============================================================================
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+        CREATEREP("CUST")
+        #}
+        ENDIF
+       
+        sv_r = CLASSEXISTS("CUST","DATA")
+        IF (sv_r == 0) THEN
+        #{
+        CREATECLASS("CUST","DATA",5)
+        #}
+        ENDIF
+        
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+
+   	 print(CUST.DATA.file_name)
+
+	IF(FIELDEXISTS(BANCS.STDIN.userWorkClass)) THEN
+		IF(CINT(BANCS.STDIN.userWorkClass) == 083) THEN
+			PRINT("User work class okay")
+		ELSE
+			PRINT("User work class missing")
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ELSE
+		PRINT("User workclass missing")
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+    CUST.DATA.ERROR_CODE = " "
+    CUST.DATA.ENTITY_CRE_FLG = " "
+
+	IF(FIELDEXISTS(BANCS.STDIN.mySolId)) THEN
+		CUST.DATA.mySolId = BANCS.STDIN.mySolId
+	ELSE
+		CUST.DATA.mySolId = " "
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	CUST.DATA.SOURCEFILE = CUST.DATA.FilePath
+	print(CUST.DATA.SOURCEFILE)
+
+	sv_r = urtn_fileAccess(CUST.DATA.SOURCEFILE)
+	print(sv_r)
+	IF ( sv_r != 0 ) THEN
+		sv_r = urhk_TBAF_DispMesg("Unable to Access FILE_LIST")
+		sv_v = "UNABLE TO ACCESS THE LIST OF FILES"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	#--------------------------
+	#	OPENING THE FILE
+	#--------------------------
+
+	sv_t = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	print(sv_t)
+	IF (sv_t < 0) THEN
+		print("Unable to open the file")
+		GOTO ENDOFSCRIPT
+	ELSE
+		print("File Opened SuccessFully")
+		CUST.DATA.succIndex = sv_t
+	ENDIF
+
+	#===================================================================================================================
+	#       Read The File Data
+	#===================================================================================================================
+
+	CUST.DATA.fileRec = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	PRINT(CUST.DATA.fileRec)
+	sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+	PRINT(sv_t)
+	IF(sv_t != 0) THEN
+		sv_w = "SuccessOrFailure|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_w = "Error_03|ERROR^Upload file is empty^fileName"
+		sv_u = urhk_SetOrbOut(sv_w)
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	sv_w = 0
+	sv_y = 0
+	CUST.DATA.RECCNT = 0
+	#=======================================================================================
+	#       Split And Storage Of data in file
+	#=======================================================================================
+
+	WHILE(sv_t == 0)
+	#{
+		CUST.DATA.SOL_ID 		= CUST.DATA.mySolId
+		CUST.DATA.BANK_ID 		= BANCS.STDIN.contextBankId
+		CUST.DATA.CIF_ID 		= ""
+		
+		sv_y =format$(sv_w,"%d")
+		CUST.DATA.RECCNT = cint(CUST.DATA.RECCNT)+1
+		CUST.DATA.inputRecord = TOUPPER(CUST.DATA.inputRecord)
+		
+		sv_c = CUST.DATA.inputRecord
+		IF(STRLEN(sv_c) > 10) THEN
+			CUST.DATA.CIF_ID = sv_c
+			print(CUST.DATA.CIF_ID)
+		ELSE
+			CUST.DATA.CIF_ID = sv_c
+			print(CUST.DATA.CIF_ID)
+			CUST.DATA.ENTITY_CRE_FLG = "E"
+			CUST.DATA.suspendStatus = "E"
+			CUST.DATA.ERROR_CODE  = "Invalid CIF"
+			PRINT(CUST.DATA.ERROR_CODE)
+			GOTO ENDOFSCRIPT
+		ENDIF	
+
+ #       sv_s="suspendStatus|"
+  #      sv_s = sv_s + " SELECT acc.SUSPENDED  FROM CRMUSER.ACCOUNTS acc "
+   #     sv_s = sv_s + "   LEFT JOIN tbaadm.gam gam ON acc.orgkey = gam.cif_id AND acc.bank_id = gam.bank_id AND gam.bank_id = ?SVAR "
+    #    sv_s = sv_s + "   WHERE acc.bank_id = ?SVAR AND acc.ORGKEY=?SVAR AND gam.cif_id IS NULL "
+   	sv_s="suspendStatus| SELECT acc.SUSPENDED  FROM CRMUSER.ACCOUNTS acc Where orgkey =?SVAR and orgkey not in  "
+	sv_s = sv_s + "  ( select cif_id from tbaadm.gam where cif_id =?SVAR and acct_cls_flg ='N') "
+	BANCS.INPARAM.BINDVARS = CUST.DATA.CIF_ID + "|" + CUST.DATA.CIF_ID 
+        PRINT(sv_s)
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d != 0) THEN
+			CUST.DATA.msg = "DB ERROR!"
+			sv_c = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+		ELSE
+			CUST.DATA.suspendStatus = BANCS.OUTPARAM.suspendStatus
+			IF(CUST.DATA.suspendStatus != "N")THEN
+				CUST.DATA.ERROR_CODE = "Account already suspended"
+				CUST.DATA.ENTITY_CRE_FLG = "E"
+				CUST.DATA.suspendStatus = "E"
+				PRINT(CUST.DATA.ERROR_CODE)
+            		ELSE
+                		CUST.DATA.ERROR_CODE = ""
+				CUST.DATA.ENTITY_CRE_FLG = ""
+			ENDIF
+		ENDIF	
+		PRINT(CUST.DATA.CIF_ID)
+        PRINT(CUST.DATA.suspendStatus)
+
+		#-- Check if the CIF id exists in the custom table
+		sv_c = " count | SELECT COUNT(1) FROM CUSTOM.SUSPENDED_CIF " 
+		sv_c = sv_c + " WHERE orgkey = ?SVAR AND bank_id = ?SVAR and  file_name= ?SVAR "
+		BANCS.INPARAM.BINDVARS= CUST.DATA.CIF_ID + "|" + BANCS.STDIN.contextBankId  + "|" + CUST.DATA.file_name
+		sv_d = urhk_dbSelectWithBind(sv_c)
+
+		IF(sv_d == 0) THEN
+			PRINT(BANCS.OUTPARAM.count)
+			IF(CINT(BANCS.OUTPARAM.count) == 0) THEN
+				PRINT("Inserting clean data into custom table")
+				IF(CUST.DATA.suspendStatus != "E") THEN
+					CUST.DATA.ERROR_CODE = ""
+					CUST.DATA.ENTITY_CRE_FLG = ""
+				ENDIF
+			ELSE
+				CUST.DATA.ERROR_CODE = "CIF already exists in the table"
+				CUST.DATA.ENTITY_CRE_FLG = "E"
+				CUST.DATA.suspendStatus = "E"
+				PRINT(CUST.DATA.ERROR_CODE)
+			ENDIF
+		ENDIF
+
+		#-- Insert into custom table for auditing
+		sv_s = " INSERT INTO CUSTOM.SUSPENDED_CIF "
+		sv_s = sv_s + "    (orgkey, suspended,  bank_id, RCRE_USER_ID, rcre_time, file_name, error_msg, sol_id) "
+		sv_s = sv_s + "    VALUES ( ?SVAR, ?SVAR, ?SVAR, ?SVAR, SYSDATE, ?SVAR, ?SVAR, ?SVAR ) "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.CIF_ID + "|" + CUST.DATA.suspendStatus + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId + "|" + CUST.DATA.file_name + "|" + CUST.DATA.ERROR_CODE + "|" + CUST.DATA.mySolId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		PRINT(sv_d)
+
+		IF (sv_d == 0) THEN
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			PRINT(sv_d)
+			PRINT("Suspended CIF added!")
+			sv_s="corpID|"
+			sv_s = sv_s + " SELECT acc.corp_id  FROM CRMUSER.ACCOUNTS acc "
+			sv_s = sv_s + "   WHERE acc.bank_id = ?SVAR AND acc.ORGKEY=?SVAR "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.BANK_ID + "|" + CUST.DATA.CIF_ID		
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+				PRINT(BANCS.OUTPARAM.corpID)
+				IF(STRLEN(BANCS.OUTPARAM.corpID) > 0) THEN
+					CALLSCRIPTIFEXIST("AutoBulkCIFSuspensionCorp.scr")
+				ELSE
+					CALLSCRIPTIFEXIST("AutoBulkCIFSuspensionRetail.scr")
+				ENDIF
+			ELSE
+				CUST.DATA.errorFlg = "Y"
+				CUST.DATA.errorCode = "3333" 
+				CUST.DATA.errorType = "DB"
+				CUST.DATA.errorMsg = "Suspension process not performed!" 
+				PRINT(CUST.DATA.errorMsg)
+			ENDIF
+		ELSE
+			CUST.DATA.errorFlg = "Y"
+			CUST.DATA.errorCode = "3333" 
+			CUST.DATA.errorType = "DB"
+			CUST.DATA.errorMsg = "Record not added!" 
+			PRINT(CUST.DATA.errorMsg)
+		ENDIF
+
+
+
+		NEXTREC1:
+		sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+		PRINT(sv_t)
+		sv_w = sv_w + 1
+		PRINT(sv_w)
+
+		CUST.DATA.recCount = sv_w
+		print(CUST.DATA.recCount)
+		sv_y = format$(sv_w,"%d")
+		PRINT(sv_y)
+
+	DO
+	#===================================================================================#
+	# Closing the files                                                                 #
+	#===================================================================================#
+	sv_j = urtn_fileClose(CUST.DATA.SOURCEFILE)
+	print(sv_j)
+	sv_t = urtn_fileClose(CUST.DATA.fileRec)
+	PRINT(sv_t)
+	sv_e = system("mv "+CUST.DATA.FilePath+" "+CUST.DATA.FilePath+"_Done")
+	print(sv_e)
+	GOTO ENDOFSCRIPT
+
+ENDOFSCRIPT:
+#-- Report for uploaded records
+	sv_s="custcount|"
+	sv_s = sv_s + " SELECT COUNT(1) "
+	sv_s = sv_s + " FROM CUSTOM.SUSPENDED_CIF "
+	sv_s = sv_s + " WHERE SUSPENDED = 'P' "
+	sv_s = sv_s + " AND SOL_ID= ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR AND FILE_NAME = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name
+	# BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name 
+	
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF (sv_d != 0) THEN
+		CUSTS.DATA.msg = "DB ERROR!"
+		sv_c = urhk_setorbout("SuccessOrFailure|N")
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+	ELSE
+		print(BANCS.OUTPARAM.custcount)
+		CUST.DATA.count = BANCS.OUTPARAM.custcount
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "No records found"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO UPLOADERROR
+		ENDIF
+
+		lv_d = urhk_B2k_PID("")
+		IF (lv_d == 0) THEN
+			CUST.DATA.pid = BANCS.OUTPARAM.PID
+			PRINT(CUST.DATA.pid)
+		ENDIF
+
+		#-----------------------------------------------------------------------------------------
+		#Calling the sql to create the report
+		#-----------------------------------------------------------------------------------------
+		CUST.DATA.lstFile = "Bulk_Cif_Sus_Upload_Success_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+		CUST.DATA.status = "P"
+		CUST.DATA.inputStr = CUST.DATA.file_name + "!" + BANCS.STDIN.contextBankId + "!" + CUST.DATA.status + "!" + BANCS.STDIN.mySolId
+		print(CUST.DATA.inputStr)
+
+		CUST.DATA.ReportHeader = "CIF ID              |UPLOAD BY |SOL_ID    |SUSPENDED |FILE_NAME                     |VERIFIED  |ERROR_MSG                                                                       |"
+
+		lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+		PRINT(lv_a)
+		lv_s = SYSTEM(lv_a)
+		PRINT(lv_s)
+		
+		sv_a = "exebatch spbx4001" + " " + "CUSTOM.BULK_CIF_SUSPENSION.BULK_CIF_SUSPENSION_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+		PRINT(sv_a)
+		lv_u = SYSTEM(sv_a)
+		PRINT(lv_u)
+		IF (lv_u != 0) THEN
+		#{
+			CUST.DATA.errMsg = "Report generation Failed"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+			GOTO UPLOADERROR
+		ELSE
+			#=====================================================================
+			# Move the file to HPR menu
+			#=====================================================================
+			CUST.DATA.userId = BANCS.STDIN.userId
+			CUST.DATA.title = "Bulk Cif Sus Upld " + CUST.DATA.file_name + " Success Rpt"
+			PRINT(CUST.DATA.title)
+			lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+			PRINT(lv_a)
+			lv_x = SYSTEM(lv_a)
+			PRINT(lv_x)
+			if(lv_x == 0) then
+				sv_w = urhk_SetOrbOut("SuccessOrFailure|Y")
+				sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.file_name+". Check status in HPR"
+				sv_w = urhk_SetOrbOut(sv_g)
+				PRINT(sv_w)
+				GOTO UPLOADERROR
+			ELSE
+				CUST.DATA.msg = "Error_2|Error.2^Virtual Account Opening Report Generation Failed "
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				GOTO UPLOADERROR
+			ENDIF
+		ENDIF
+	ENDIF
+
+	# In case of error during upload
+	UPLOADERROR:
+		sv_s="custcount|"
+		sv_s = sv_s + " SELECT COUNT(1) "
+		sv_s = sv_s + " FROM CUSTOM.SUSPENDED_CIF "
+		sv_s = sv_s + " WHERE SUSPENDED = 'E' "
+		sv_s = sv_s + " AND SOL_ID= ?SVAR"
+		sv_s = sv_s + " AND bank_id = ?SVAR AND FILE_NAME = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name
+		# BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name 
+		
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d != 0) THEN
+			CUSTS.DATA.msg = "DB ERROR!"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+		ELSE
+			print(BANCS.OUTPARAM.custcount)
+			CUST.DATA.count = BANCS.OUTPARAM.custcount
+			IF(CUST.DATA.count<1)THEN
+				CUST.DATA.msg = "No records found"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				GOTO SUSPERROR
+			ENDIF
+
+			lv_d = urhk_B2k_PID("")
+			IF (lv_d == 0) THEN
+				CUST.DATA.pid = BANCS.OUTPARAM.PID
+				PRINT(CUST.DATA.pid)
+			ENDIF
+
+			#-----------------------------------------------------------------------------------------
+			#Calling the sql to create the report
+			#-----------------------------------------------------------------------------------------		
+			CUST.DATA.lstFile = "Bulk_Cif_Sus_Upload_Failure_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+			CUST.DATA.status = "E"
+			CUST.DATA.inputStr = CUST.DATA.file_name + "!" + BANCS.STDIN.contextBankId + "!" + CUST.DATA.status + "!" + BANCS.STDIN.mySolId
+			print(CUST.DATA.inputStr)
+
+			CUST.DATA.ReportHeader = "CIF ID              |UPLOAD BY |SOL_ID    |SUSPENDED |FILE_NAME                     |VERIFIED  |ERROR_MSG                                                                       |"
+
+			lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+			PRINT(lv_a)
+			lv_s = SYSTEM(lv_a)
+			PRINT(lv_s)
+			
+			sv_a = "exebatch spbx4001" + " " + "CUSTOM.BULK_CIF_SUSPENSION.BULK_CIF_SUSPENSION_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+			PRINT(sv_a)
+			lv_u = SYSTEM(sv_a)
+			PRINT(lv_u)
+			IF (lv_u != 0) THEN
+				CUST.DATA.errMsg = "Report generation Failed"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+				GOTO SUSPERROR
+			ELSE
+				#=====================================================================
+				# Move the file to HPR menu
+				#=====================================================================
+				CUST.DATA.userId = BANCS.STDIN.userId
+				CUST.DATA.title = "Bulk Cif Sus Upld " + CUST.DATA.file_name + " Failure Rpt"
+				PRINT(CUST.DATA.title)
+				lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+				PRINT(lv_a)
+				lv_x = SYSTEM(lv_a)
+				PRINT(lv_x)
+				if(lv_x == 0) then
+					sv_w = urhk_SetOrbOut("SuccessOrFailure|Y")
+					sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.file_name+". Check status in HPR"
+					sv_w = urhk_SetOrbOut(sv_g)
+					PRINT(sv_w)
+					GOTO SUSPERROR
+				ELSE
+					CUST.DATA.msg = "Error_2|Error.2^Virtual Account Opening Report Generation Failed "
+					sv_c = urhk_setorbout("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+					GOTO SUSPERROR
+				ENDIF
+			ENDIF
+		ENDIF
+
+	# In case of error during upload
+	SUSPERROR:
+		sv_s="custcount|"
+		sv_s = sv_s + " SELECT COUNT(1) "
+		sv_s = sv_s + " FROM CUSTOM.SUSPENDED_CIF "
+		sv_s = sv_s + " WHERE SUSPENDED = 'X' "
+		sv_s = sv_s + " AND SOL_ID= ?SVAR"
+		sv_s = sv_s + " AND bank_id = ?SVAR AND FILE_NAME = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name
+		# BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.file_name 
+		
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d != 0) THEN
+			CUSTS.DATA.msg = "DB ERROR!"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+		ELSE
+			print(BANCS.OUTPARAM.custcount)
+			CUST.DATA.count = BANCS.OUTPARAM.custcount
+			IF(CUST.DATA.count<1)THEN
+				CUST.DATA.msg = "No records found"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				GOTO ENDOF
+			ENDIF
+
+			lv_d = urhk_B2k_PID("")
+			IF (lv_d == 0) THEN
+				CUST.DATA.pid = BANCS.OUTPARAM.PID
+				PRINT(CUST.DATA.pid)
+			ENDIF
+
+			#-----------------------------------------------------------------------------------------
+			#Calling the sql to create the report
+			#-----------------------------------------------------------------------------------------		
+			CUST.DATA.lstFile = "Bulk_Cif_Sus_Failure_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+			CUST.DATA.status = "X"
+			CUST.DATA.inputStr = CUST.DATA.file_name + "!" + BANCS.STDIN.contextBankId + "!" + CUST.DATA.status + "!" + BANCS.STDIN.mySolId
+			print(CUST.DATA.inputStr)
+
+			CUST.DATA.ReportHeader = "CIF ID              |UPLOAD BY |SOL_ID    |SUSPENDED |FILE_NAME                     |VERIFIED  |ERROR_MSG                                                                       |"
+
+			lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+			PRINT(lv_a)
+			lv_s = SYSTEM(lv_a)
+			PRINT(lv_s)
+			
+			sv_a = "exebatch spbx4001" + " " + "CUSTOM.BULK_CIF_SUSPENSION.BULK_CIF_SUSPENSION_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+			PRINT(sv_a)
+			lv_u = SYSTEM(sv_a)
+			PRINT(lv_u)
+			IF (lv_u != 0) THEN
+				CUST.DATA.errMsg = "Report generation Failed"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+				GOTO ENDOF
+			ELSE
+				#=====================================================================
+				# Move the file to HPR menu
+				#=====================================================================
+				CUST.DATA.userId = BANCS.STDIN.userId
+				CUST.DATA.title = "Bulk Cif Sus " + CUST.DATA.file_name + " Failure Rpt"
+				PRINT(CUST.DATA.title)
+				lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+				PRINT(lv_a)
+				lv_x = SYSTEM(lv_a)
+				PRINT(lv_x)
+				if(lv_x == 0) then
+					sv_w = urhk_SetOrbOut("SuccessOrFailure|Y")
+					sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.file_name+". Check status in HPR"
+					sv_w = urhk_SetOrbOut(sv_g)
+					PRINT(sv_w)
+					GOTO ENDOF
+				ELSE
+					CUST.DATA.msg = "Error_2|Error.2^Virtual Account Opening Report Generation Failed "
+					sv_c = urhk_setorbout("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+					GOTO ENDOF
+				ENDIF
+			ENDIF
+		ENDIF
+
+ENDOF:
+EXITSCRIPT
+TRACE OFF
+END-->

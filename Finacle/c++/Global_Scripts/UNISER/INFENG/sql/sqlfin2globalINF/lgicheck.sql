@@ -1,0 +1,30 @@
+set head off
+set verify off
+set feed off
+set term off
+set pages 0
+set linesize 250
+set trims on
+set maxdata 60000
+set serveroutput on size 1000000
+spool lgicheck.lst
+
+/
+update crmuser.accounts set OFFLINE_CUM_DEBIT_LIMIT='999999.99' where orgkey in (select orgkey from crmuser.accounts where BODATECREATED >= (select db_stat_date from tbaadm.gct where bank_id ='54'))
+/
+update tbaadm.upr set user_Work_class ='150'  where role_id ='AMO' and home_bank_id in ('54','50') and user_Work_class ='200'
+/
+update tbaadm.upr set role_id ='CAO2' where role_id='AMO' and user_work_class='110' and home_bank_id ='54'
+/
+update tbaadm.adt set auth_id ='SYSTEM' where acid in  (select acid from tbaadm.cltt where bank_id ='99')and auth_id ='!' and bank_id ='99'
+/
+commit
+/
+delete from tbaadm.cltt where bank_id ='99'
+/
+commit
+/
+spool off;
+exit;
+
+

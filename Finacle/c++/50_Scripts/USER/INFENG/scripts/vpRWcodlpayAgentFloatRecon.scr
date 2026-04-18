@@ -1,0 +1,240 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpRWcodlpayAgentFloatRecon.scr
+#  Description     : Reconciliation for agency transaction via CODLPAY
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             18-07-2024      Dennis Chirchir      Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Caution : Do not Change any variables and logics without proper change request and business rules
+#-------------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+        #{
+                createrep("EQSRV")
+        #}
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+        #{
+                createclass("EQSRV","GLBDATA",5)
+        #}
+        endif
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+        EQSRV.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+        EQSRV.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+	EBSRV.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        sv_l = "dmdsrlNum,drAcct,dmdDate,dmdOvduDate,orgDmdAmt,dmdAmt,solidagddt,totAdjAmt,penalInt|"
+        sv_l = sv_l + " select dep_srl_num,foracid,to_char(dmd_date,'DD-MM-YYYY'),to_char(dmd_ovdu_date,'DD-MM-YYYY'),dmd_amt,sum(dmd_amt-tot_adj_amt)as outstandingAmt,sol_id,tot_adj_amt,PENAL_INT "
+        sv_l = sv_l + " from custom.agddt "
+        sv_l = sv_l + " where bank_id=?SVAR "
+        ##sv_l = sv_l + " and to_date(dmd_date,'DD-MM-RR') <= to_date(?SVAR,'DD-MM-RR')"
+        sv_l = sv_l + " and dep_command='CSWOP' "
+        sv_l = sv_l + " and dep_dccid='BATCH' "
+        sv_l = sv_l + " and dep_srl_num='NOSWEEPDIRECT_CREDIT' "
+        sv_l = sv_l + " and del_flg='N' "
+        sv_l = sv_l + " and entity_cre_flg='Y' "
+        sv_l = sv_l + " and dmd_amt-tot_adj_amt >0   "
+	sv_l = sv_l + " and free_text1=?SVAR "
+        sv_l = sv_l + " group by dep_srl_num,foracid,dmd_date,dmd_ovdu_date,dmd_amt,tot_adj_amt,sol_id,PENAL_INT  "
+        sv_l = sv_l + " order by dmd_ovdu_date"
+        print(sv_l)
+        ##BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.AgentOdCifId 
+	print(BANCS.INPARAM.BINDVARS)
+        sv_c = urhk_dbCursorOpenWithBind(sv_l)
+        if(sv_c==0)then
+        #{
+                EQSRV.GLBDATA.dlscdhNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.dlscdhNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		EQSRV.GLBDATA.dmdsrlNum = BANCS.OUTPARAM.dmdsrlNum
+		EQSRV.GLBDATA.drAcct = BANCS.OUTPARAM.drAcct
+		EQSRV.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+		EQSRV.GLBDATA.dmdOvduDate = BANCS.OUTPARAM.dmdOvduDate
+		EQSRV.GLBDATA.orgDmdAmt = BANCS.OUTPARAM.orgDmdAmt
+		EQSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+		EQSRV.GLBDATA.solidagddt = BANCS.OUTPARAM.solidagddt
+		EQSRV.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+		EQSRV.GLBDATA.penalInt = BANCS.OUTPARAM.penalInt
+                if(cdouble(EQSRV.GLBDATA.dmdAmt)<=0)then
+                #{
+                                goto NXTREC
+                #}
+                endif
+		print(EBSRV.GLBDATA.tranAmt)
+		print(EBSRV.GLBDATA.TranId)
+		print(EBSRV.GLBDATA.RepayMode)
+		print(EQSRV.GLBDATA.penalInt)
+        #recocile flow
+		if(EBSRV.GLBDATA.RepayMode=="F")then
+		#{
+                	sv_d = "update custom.agddt set tot_adj_amt=dmd_amt ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),free_text2=?SVAR,PENAL_INT = 0 "
+                	sv_d = sv_d + " where bank_id=?SVAR and foracid=?SVAR  and dep_srl_num=?SVAR and dmd_Date=to_date(?SVAR,'DD-MM-YYYY') and dmd_ovdu_Date=to_Date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR"
+                        BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10) + "|" + EBSRV.GLBDATA.TranId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcct + "|" + EQSRV.GLBDATA.dmdsrlNum + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOvduDate + "|" + EQSRV.GLBDATA.orgDmdAmt 
+			print(sv_d)
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = urhk_dbSqlWithBind(sv_d)
+			if(sv_u==0)then
+				sv_u = urhk_dbSqlWithBind("commit")
+				print(sv_u)
+			endif
+			goto NXTREC
+		#}
+		endif
+		if(EBSRV.GLBDATA.RepayMode=="P")then
+		#{
+                        if(cdouble(EBSRV.GLBDATA.tranAmt)>0)then
+                        #{
+				if(cdouble(EQSRV.GLBDATA.dmdAmt)>=cdouble(EBSRV.GLBDATA.tranAmt))then
+				#{
+					print(EQSRV.GLBDATA.totAdjAmt)
+					print(EBSRV.GLBDATA.tranAmt)
+                                        EQSRV.GLBDATA.totupamt = cdouble(EQSRV.GLBDATA.totAdjAmt) + cdouble(EBSRV.GLBDATA.tranAmt)
+					print(EQSRV.GLBDATA.totupamt)
+					sv_d = "update custom.agddt set tot_adj_amt=?NVAR ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),free_text2=?SVAR "
+					sv_d = sv_d + " where bank_id=?SVAR and foracid=?SVAR  and dep_srl_num=?SVAR and dmd_Date=to_date(?SVAR,'DD-MM-YYYY') and dmd_ovdu_Date=to_Date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR"
+					BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.totupamt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + EBSRV.GLBDATA.TranId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcct + "|" + EQSRV.GLBDATA.dmdsrlNum + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOvduDate + "|" + EQSRV.GLBDATA.orgDmdAmt 
+					print(sv_d)
+					print(BANCS.INPARAM.BINDVARS)
+					sv_u = urhk_dbSqlWithBind(sv_d)
+					if(sv_u==0)then
+						sv_u = urhk_dbSqlWithBind("commit")
+						print(sv_u)
+						EBSRV.GLBDATA.tranAmt = "0"
+					endif
+					goto NXTREC
+				#}
+				else
+				#{
+                                        if(cdouble(EBSRV.GLBDATA.tranAmt)<=0)then
+                                        #{
+                                                goto NXTREC
+                                        #}
+                                        endif
+                                        EBSRV.GLBDATA.tranAmt = cdouble(EBSRV.GLBDATA.tranAmt) - cdouble(EQSRV.GLBDATA.dmdAmt)
+                                        print(EBSRV.GLBDATA.tranAmt)
+                                        EQSRV.GLBDATA.totupamt = cdouble(EQSRV.GLBDATA.totAdjAmt) + cdouble(EQSRV.GLBDATA.dmdAmt)
+                                        print(EQSRV.GLBDATA.totupamt)
+					sv_d = "update custom.agddt set tot_adj_amt=?NVAR ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),free_text2=?SVAR "
+					sv_d = sv_d + " where bank_id=?SVAR and foracid=?SVAR  and dep_srl_num=?SVAR and dmd_Date=to_date(?SVAR,'DD-MM-YYYY') and dmd_ovdu_Date=to_Date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR"
+					BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.totupamt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + EBSRV.GLBDATA.TranId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcct + "|" + EQSRV.GLBDATA.dmdsrlNum + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOvduDate + "|" + EQSRV.GLBDATA.orgDmdAmt 
+                                        print(BANCS.INPARAM.BINDVARS)
+					print(sv_d)
+                                        lv_j = urhk_dbSqlWithBind(sv_d)
+                                        if(lv_j==0)then
+                                        #{
+                                                lv_j = urhk_dbSqlWithBind("commit")
+                                        #}
+                                        endif
+                                        goto PENALCOLL
+				#}
+				endif
+                                PENALCOLL:
+                                #############Reconcile Penal
+                                if(cdouble(EQSRV.GLBDATA.penalInt)>=cdouble(EBSRV.GLBDATA.TranAmount))then
+                                #{
+                                        EQSRV.GLBDATA.penalCol = cdouble(EQSRV.GLBDATA.penalInt) - cdouble(EBSRV.GLBDATA.TranAmount)
+                                        print(EQSRV.GLBDATA.penalCol)
+                                        lv_j = "update custom.agddt set penal_int=?NVAR,lchg_user_id=?SVAR,lchg_time=sysdate,host_machine_id=?SVAR,free_text_4=?SVAR,free_text_3='Codlpay',last_adj_date=to_date(?SVAR,'DD-MM-YYYY')  where bank_id=?SVAR and dep_srl_num=?NVAR and foracid =?SVAR  and dmd_Date=to_date(?SVAR,'DD-MM-YYYY') and dmd_ovdu_Date=to_Date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR "
+                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.penalCol + "|" + BANCS.STDIN.userId + "|" + EBSRV.GLBDATA.machineId + "|" + EBSRV.GLBDATA.TranId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.dmdsrlNum + "|" + EQSRV.GLBDATA.drAcct+ "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOvduDate + "|" + EQSRV.GLBDATA.orgDmdAmt 
+                                        print(lv_j)
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        lv_j = urhk_dbSqlWithBind(lv_j)
+                                        if(lv_j==0)then
+                                        #{
+                                                lv_j = urhk_dbSqlWithBind("commit")
+                                        #}
+                                        endif
+                                        EBSRV.GLBDATA.TranAmount = cdouble("0")
+                                        goto NXTREC
+                                #}
+                                else
+                                #{
+                                       if(cdouble(EBSRV.GLBDATA.TranAmount)<=0)then
+                                        #{
+                                                goto NXTREC
+                                        #}
+                                        endif
+                                        EBSRV.GLBDATA.TranAmount = cdouble(EBSRV.GLBDATA.TranAmount) - cdouble(EQSRV.GLBDATA.penalInt)
+                                        print(EBSRV.GLBDATA.TranAmount)
+                                        lv_j = "update custom.agddt set penal_int=0, lchg_user_id=?SVAR,lchg_time=sysdate,host_machine_id=?SVAR,free_text_4=?SVAR,free_text_3='ChannelPay',last_adj_date=to_date(?SVAR,'DD-MM-YYYY')  where bank_id=?SVAR and disb_srl_num=?NVAR and foracid =?SVAR  and dmd_Date=to_date(?SVAR,'DD-MM-YYYY') and dmd_ovdu_Date=to_Date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR "
+                                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + EBSRV.GLBDATA.machineId + "|" + EBSRV.GLBDATA.TranId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbsrlNum + "|" + EQSRV.GLBDATA.drAcct+ "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOvduDate + "|" + EQSRV.GLBDATA.orgDmdAmt 
+                                        print(lv_j)
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        lv_j = urhk_dbSqlWithBind(lv_j)
+                                        if(lv_j==0)then
+                                        #{
+                                                lv_j = urhk_dbSqlWithBind("commit")
+                                        #}
+                                        endif
+                                        goto NXTREC
+                                #}
+                                endif
+                                #############Reconcile Penal End
+			#}
+			endif
+		#}
+		else
+		#{
+			goto NXTREC
+		#}
+		endif
+#Ends
+                NXTREC:
+                        print(EQSRV.GLBDATA.srvErrMsg)
+                        print(EQSRV.GLBDATA.srvErrCode)
+                        print(EQSRV.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.dlscdhNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.dlscdhNum)
+                                print(sv_u)
+                                goto RESPONSE
+                        #}
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.dlscdhNum)
+        print(sv_u)
+Endofscript:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        exitscript
+RESPONSE:
+	print("Agent Loan Paid and Reconciled Successfully")
+        BANCS.OUTPUT.successOrFailure="S"
+        exitscript
+trace off
+end-->

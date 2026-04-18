@@ -1,0 +1,165 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebz_preproc43.scr
+#  Description     : FEE ZERORIZATION
+#  Date            : 13-12-2024
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2024     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST", "ATM")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "ATM", 5)
+	ENDIF
+
+	IF (FIELDEXISTS(BANCS.INPUT.ConsumerNum) == 1) THEN
+		IF (BANCS.INPUT.ConsumerNum !="") THEN
+			print(BANCS.INPUT.ConsumerNum)
+			CUST.ATM.TranFeeCustAcct1 =""
+			CUST.ATM.status = ""
+			CUST.ATM.CDCIRateCode = ""
+			CUST.ATM.TranFeeCustCrncy=""
+			CUST.ATM.chrgCrncyCode=""
+			CUST.ATM.chrgAmount=""
+			CUST.ATM.feeAmt =""
+
+			lv_f = mid$(BANCS.INPUT.Fee,4,16)
+			print(lv_f)
+			lv_f = CDOUBLE(lv_f)
+			lv_f = lv_f/100
+			print(lv_f)
+			CUST.ATM.feeAmt = lv_f
+			CUST.ATM.chrgAmount = lv_f
+			print(CUST.ATM.feeAmt)
+			CUST.ATM.chrgCrncyCode =  mid$(BANCS.INPUT.StlmntFee,0,3)
+			print(CUST.ATM.chrgCrncyCode)
+
+			IF(CUST.ATM.chrgCrncyCode !="")THEN
+				print(CUST.ATM.chrgCrncyCode)
+			ELSE
+				CUST.ATM.chrgCrncyCode = BANCS.STDIN.homeCrncyCode
+			ENDIF
+
+			sv_p = getposition(BANCS.INPUT.ConsumerNum,"|")
+			print (sv_p)
+			IF (sv_p ==0 ) THEN
+				sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.ConsumerNum)
+				IF (sv_u == 0) THEN
+					print(BANCS.OUTPARAM.schmCode)
+					IF (BANCS.OUTPARAM.schmCode=="INCOM") THEN
+						CUST.ATM.TranFeeContraAcct1 = BANCS.INPUT.ConsumerNum
+					ELSE
+						BANCS.OUTPUT.RespCode = "99"
+						BANCS.OUTPUT.ReservedField3 = "Income Account Defined is not INCOM Type GL:Field 63"
+						BANCS.OUTPUT.successOrFailure="F"
+					ENDIF
+				ELSE
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.ReservedField3 = "Income Account Defined is invalid:Field 63"
+					BANCS.OUTPUT.successOrFailure="F"
+				ENDIF
+			ELSE
+				sv_m = MID$(BANCS.INPUT.ConsumerNum, 0, sv_p-1)
+				PRINT(sv_m)
+				sv_u = urhk_getAcctDetailsInRepository(sv_m)
+				IF (sv_u == 0) THEN
+					CUST.ATM.TranFeeCustAcct1 = sv_m			
+				ELSE
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.ReservedField3 = "Debit Fee Acct Defined is invalid:Field 63"
+					BANCS.OUTPUT.successOrFailure="F"			
+				ENDIF
+			ENDIF
+
+			# GET ACCOUNT STATUS
+			lv_u = urhk_B2k_ForacidToAcid(CUST.ATM.TranFeeCustAcct1)
+			print(lv_u)
+
+			IF (lv_u == 0) THEN
+				BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+				print(BANCS.INPARAM.acid)
+
+				sv_u = urhk_getAcctStatus("")
+				IF(sv_u == 0) THEN
+					CUST.ATM.status = BANCS.OUTPARAM.acctStatus
+					print(CUST.ATM.status)
+				ENDIF
+			ENDIF
+
+			sv_u = urhk_getAcctDetailsInRepository(CUST.ATM.TranFeeCustAcct1)
+			IF (sv_u == 0) THEN
+				CUST.ATM.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+				print(CUST.ATM.EffAvailableAmt)
+				CUST.ATM.TranFeeCustCrncy = BANCS.OUTPARAM.acctCrncyCode
+				print(CUST.ATM.TranFeeCustCrncy)
+
+				IF(CUST.ATM.TranFeeCustCrncy != CUST.ATM.chrgCrncyCode ) THEN
+					CUST.ATM.CDCIRateCode = urhk_getEnv("CDCI_RATE_CODE")
+					PRINT(CUST.ATM.CDCIRateCode)
+
+					IF(CUST.ATM.CDCIRateCode !="" ) THEN
+						PRINT("USE DEFAULT RATE")
+					ELSE
+						sv_s = "rateCode| select ratecode_tran from custom.c_ratecode where from_currency = ?SVAR AND to_currency=?SVAR AND bank_id =?SVAR"
+						BANCS.INPARAM.BINDVARS = CUST.ATM.chrgCrncyCode + "|" + CUST.ATM.TranFeeCustCrncy + "|" + BANCS.STDIN.contextBankId
+						PRINT(BANCS.INPARAM.BINDVARS)
+
+						lv_d = urhk_dbSelectWithBind(sv_s)
+						PRINT(lv_d)
+						IF(lv_d ==0) THEN
+							CUST.ATM.CDCIRateCode = BANCS.OUTPARAM.rateCode
+							PRINT(CUST.ATM.CDCIRateCode)
+						ENDIF
+					ENDIF
+
+					#Convert the charge amount
+					BANCS.INPARAM.InputAmount  = CUST.ATM.feeAmt
+					BANCS.INPARAM.FromCurrency = CUST.ATM.chrgCrncyCode
+					BANCS.INPARAM.ToCurrency   = CUST.ATM.TranFeeCustCrncy
+					BANCS.INPARAM.RateCode     = CUST.ATM.CDCIRateCode
+					BANCS.INPARAM.Rate         = ""
+					sv_z=urhk_B2k_ConvertAmount("")
+					print(sv_z)
+
+					IF(sv_z == 0)THEN
+						CUST.ATM.chrgAmount = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						print(CUST.ATM.chrgAmount)
+					ENDIF
+				ENDIF
+				
+				PRINT(CUST.ATM.chrgAmount)
+				IF(CDOUBLE(CUST.ATM.chrgAmount) > CDOUBLE("0"))THEN
+					IF(CDOUBLE(CUST.ATM.chrgAmount) > CDOUBLE(CUST.ATM.EffAvailableAmt) ) THEN
+						CUST.ATM.LowBalInd ="Y"
+						BANCS.OUTPUT.Fee="CDFD000000000000000070"
+						BANCS.OUTPUT.StlmntFee="CDF00000000D0000000000000000"
+					ENDIF
+					IF(CUST.ATM.status != "") THEN
+						IF((CUST.ATM.status == "D") OR (CUST.ATM.status == "I") )THEN
+							CUST.ATM.LowBalInd ="Y"
+							BANCS.OUTPUT.Fee="CDFD000000000000000070"
+							BANCS.OUTPUT.StlmntFee="CDF00000000D0000000000000000"
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+
+
+#trace off
+END-->

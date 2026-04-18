@@ -1,0 +1,200 @@
+#===============================================================================
+#Source Name	: svsBulkupload.com
+#Description	: Perform SVS upload
+#Input Values	: XLS file name
+#Output Values	: Nil
+#Called Scripts	: Nil
+#Calling Scripts	: icisig.scr
+#Modification history:
+#   Sl. No		Date		Author			Description
+#    ---------	--------------	----------------------------	----------------
+#      1		12-11-2012	Jithu Teresa Joseph		Migration to 10.x
+#===============================================================================
+#export JAVA_HOME=/usr/java6_64
+#export ORACLE_HOME=/was/oracle/client_1
+#export SVS_PATH=/finweb/InstallPath2/SVSBULK/SVSBulkUpload/lib
+#export FINACLE_INSTALL_ID=IDEVID
+. /etc/b2k/$FINACLE_INSTALL_ID/FINCORE/$FIN_BANK_ID/com/commonenv.com
+sleep 10
+export CLASSPATH=$CLASSPATH:$JAVA_HOME/lib:$JAVA_HOME/lib/tools.jar:$JAVA_HOME/jre/lib/rt.jar:$SVS_PATH/finjinfra.jar:$SVS_PATH/ojdbc6.jar:$SVS_PATH/Sprinta2000.jar:$SVS_PATH/arjutils.jar:$SVS_PATH/../BulkUploadUtility.jar:$SVS_PATH/jai_core.jar:$SVS_PATH/jai_codec.jar
+export PATH=$JAVA_HOME/bin:$PATH:$ORACLE_HOME/bin;
+finacle_install_id=`echo "$FINACLE_INSTALL_ID"`
+arg=$2 
+userId=`echo "${arg}" | cut -f1 -d "!"` 
+bankId=`echo "${arg}" | cut -f2 -d "!"` 
+solid=`echo "${arg}" | cut -f3 -d "!"` 
+menu=`echo "${arg}" | cut -f4 -d "!"` 
+
+if [ "${menu}" = "C" ]
+then
+	corploc="$DATA_PATH"	
+	inputFile="$ONS_LOG_DIR/${userId}/svsuplfile.txt"
+echo $corploc >> temp.csv
+echo $inputFile >> temp.csv
+	java com.infy.svs.util.MakeOnlyThumbnail $inputFile
+
+	java -DFINACLE_INSTALL_ID=$finacle_install_id -jar $SVS_PATH/../BulkUploadUtility.jar -b $solid -e $bankId -f $inputFile -c F -t 1 -r 1 -d oracle -v N -u svsbulkuser 
+
+if [ -s "$ONS_LOG_DIR/${userId}/svsuplfile.txt.error.error" ]
+mkdir $FIN_REPORTS_DIR/${userId}
+cp $ONS_LOG_DIR/${userId}/svsuplfile.txt.error.error $FIN_REPORTS_DIR/${userId}/svsuplfile.txt.error.error 
+then
+babx4040 ${B2K_SESSION_ID} svsuplfile.txt.error.error "SVS UPLOAD FAILURE" "MANAGER" "1" "N"
+fi
+
+echo "update svsuser.nsigncustinfo set createdby='${userId}' where createdby='SVSUPLOADUTILITY'" > test12345.sql
+echo "/" >> test12345.sql
+echo "COMMIT" >> test12345.sql
+echo "/" >> test12345.sql
+
+bauu9151 test12345.sql
+\rm -f test12345.sql
+
+echo "update svsuser.nsignmaintenance set createdby='${userId}' where createdby='SVSUPLOADUTILITY'" > test123456.sql
+echo "/" >> test123456.sql
+echo "COMMIT" >> test123456.sql
+echo "/" >> test123456.sql
+
+bauu9151 test123456.sql
+\rm -f test123456.sql
+
+
+`awk -F',' 'BEGIN{OFS="";} {print $1;}' $ONS_LOG_DIR/${userId}/svsuplfile.txt > $ONS_LOG_DIR/${userId}/sample.lst`
+
+babx4061 $B2K_SESSION_ID corpsig001.scr ""
+
+i=0
+j=0
+k=0
+i=`sed -n '4p' $ONS_LOG_DIR/${userId}/svsuplfile.txt.time.timelog|awk '{ print $NF }'`
+j=`awk 'END { print NR }' $ONS_LOG_DIR/${userId}/invalid.txt`
+k=`expr $i - $j`
+
+echo $i >> temp.csv
+echo $j >> temp.csv
+echo $k >> temp.csv
+
+var = `cat $ONS_LOG_DIR/${userId}/svsuplfile.txt.time.timelog | awk '/Succ/{gsub(/'$i'/, "'$k'")};{print}' > $ONS_LOG_DIR/${userId}/svsuplfile.txt.timelog`
+
+if [ ${j} -gt 0 ]
+then
+mkdir $FIN_REPORTS_DIR/${userId}
+cp $ONS_LOG_DIR/${userId}/invalid.txt $FIN_REPORTS_DIR/${userId}/invalid.txt
+babx4040 ${B2K_SESSION_ID} invalid.txt "SVS Invalid Account List" "MANAGER" "1" "N"
+fi
+
+if [ -s "$ONS_LOG_DIR/${userId}/svsuplfile.txt.timelog" ]
+then
+mkdir $FIN_REPORTS_DIR/${userId}
+cp $ONS_LOG_DIR/${userId}/svsuplfile.txt.timelog $FIN_REPORTS_DIR/${userId}/svsuplfile.txt.timelog
+babx4040 ${B2K_SESSION_ID} svsuplfile.txt.timelog "SVS UPLOAD SUCCESS" "MANAGER" "1" "N"
+fi
+
+`awk -F',' 'BEGIN{OFS="";} {print $1;}' $ONS_LOG_DIR/${userId}/svsuplfile.txt > $ONS_LOG_DIR/${userId}/sample_${userId}.lst`
+
+datfiles=`ls -l $ONS_LOG_DIR/${userId}/sample_${userId}.lst |tr -s " " " " | cut -d " " -f9`
+echo "" > CREMInsert.sql
+for d in $datfiles
+do
+
+        chmod 777 $d
+        count=`cat $d|wc -l`
+
+        i=1
+
+        line=`cat $d|head -$i|tail -1`
+
+        while [ $i -le $count ]
+         do
+
+                       line=`cat $d|head -$i|tail -1`
+
+                       echo "delete from svsuser.nsignotherinfo where acctid='"$line"' and entityid='"$bankId"' and not exists (select 1 from tbaadm.gam where gam.foracid = '"$line"' and gam.bank_id='"$bankId"');" >> CREMInsert.sql
+
+                       echo "delete from svsuser.nsignmaintenance where signid in (select signid from svsuser.nsignotherinfo where acctid ='"$line"' and entityid='"$bankId"' and not exists (select 1 from tbaadm.gam where gam.foracid = '"$line"' and gam.bank_id='"$bankId"'));" >> CREMInsert.sql
+
+                       echo "delete from svsuser.nsigncustinfo where signid in (select signid from svsuser.nsignotherinfo where acctid ='"$line"' and entityid='"$bankId"' and not exists (select 1 from tbaadm.gam where gam.foracid = '"$line"' and gam.bank_id='"$bankId"'));" >> CREMInsert.sql
+
+                        status1=`echo $?`
+
+        i=`expr $i + 1`
+        done
+        echo file $d
+rm $d 2> /dev/null
+done
+echo "COMMIT;" >> CREMInsert.sql
+bauu9151 CREMInsert.sql
+\rm -f CREMInsert.sql
+
+#`awk -F',' 'BEGIN{OFS="";} {print "'$DATA_PATH'",$1,"*";}' $ONS_LOG_DIR/${userId}/svsuplfile.txt > $ONS_LOG_DIR/${userId}/sample_${userId}.lst`
+
+`awk -F',' 'BEGIN{OFS="";} {print "'$DATA_PATH'","'${userId}'","/",$1,"*";}' $ONS_LOG_DIR/${userId}/svsuplfile.txt > $ONS_LOG_DIR/${userId}/sample_${userId}.lst`
+
+rm -f $(<$ONS_LOG_DIR/${userId}/sample_${userId}.lst)
+
+\rm -f $ONS_LOG_DIR/${userId}/sample_${userId}.lst
+\rm -f $ONS_LOG_DIR/${userId}/svsuplfile.txt.uploadProps
+\rm -f $ONS_LOG_DIR/${userId}/svsuplfile.txt.time.timelog
+\rm -f $ONS_LOG_DIR/${userId}/svsuplfile.txt.error.error
+\rm -f $ONS_LOG_DIR/${userId}/sample.lst
+\rm -f $ONS_LOG_DIR/${userId}/invalid.txt
+\rm -f $ONS_LOG_DIR/${userId}/svsuplfile.txt
+
+#####
+	oldFileNum=`cat $TBA_PROD_ROOT/cust/INFENG/dat/corpimgNum.dat`
+	FileNum=`expr ${oldFileNum} | awk '{printf("%04s\n", $1)}'`
+	resFileName="$ONS_LOG_DIR/${userId}/s${CDCI_DC_ALIAS}_`date '+%y%m%d'_$FileNum`_${userId}.res"
+	errFileName="$ONS_LOG_DIR/${userId}/s${CDCI_DC_ALIAS}_`date '+%y%m%d'_$FileNum`_${userId}.err"
+
+	echo `cat $resFileName | wc -l`>resLines
+	resLines=`cat resLines`
+	echo `cat $errFileName | wc -l`>errLines
+	errLines=`cat errLines`
+	if [ -s $inputFile.error.error ]
+	then
+		return=3
+		i=1
+		while [ $i -lt ${resLines}+1 ]
+		do
+			echo `head -$i $resFileName | tail -1` > Tmpline
+			Tmpline=`cat Tmpline`
+			echo `grep -s $Tmpline $inputFile.error.error` > TmpgrepLine
+			TmpgrepLine=`cat TmpgrepLine`
+			if [ "$TmpgrepLine" = "" ]
+			then
+				mv "$corploc$Tmpline" "$corploc$Tmpline.done"
+			else
+				return=3
+			fi
+			i=`expr $i + 1`
+			rm -f Tmp*
+		done
+	else
+		return=0
+		i=1
+		TmpRes=`expr $resLines + 1`
+		while [ $i -lt ${TmpRes} ]
+		do
+			echo `head -$i $resFileName | tail -1` > Tmpline
+			Tmpline=`cat Tmpline`
+			mv "$corploc$Tmpline" "$corploc$Tmpline.done"
+			i=`expr $i + 1`
+			rm -f Tmp*
+		done
+	fi
+#####
+fi
+
+if [ $return = "3" ]
+then
+	exit 3
+fi
+if [ $return = "0" ]
+then
+	#echo "in if of return = 0" >> svscomLog
+    exit 0
+else
+	#echo "in else of return not 0"  >> svscomLog
+    exit 1
+fi
+

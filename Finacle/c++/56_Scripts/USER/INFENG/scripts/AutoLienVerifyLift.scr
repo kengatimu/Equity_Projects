@@ -1,0 +1,190 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename		:	AutoLienLift.scr
+# Author		:	Irungu James
+# Description           :	Lift Lien Script
+# Called Script         :	None
+# Calling Script        :	None
+# Modification History
+# Sl.#		Date		Author		Modification		Version
+# --------------------------------------------- ---------
+#  1		19-JAN-2023	Irungu James	Original Version	 1.0
+#------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+	
+	##Excute the lifting lien
+
+	sv_s = "FORACID ,B2K_ID, LIEN_AMT , LIEN_REASON_CODE, LIEN_REMARKS , ROW |  select  FORACID,  nvl(B2K_ID,'NA')  , nvl(LIEN_AMT,'0') ,"
+	sv_s = sv_s + " nvl(LIEN_REASON_CODE,'NA'),  nvl(LIEN_REMARKS,'NA') ,FREE_TEXT2 from CUSTOM.CUST_AUTO_LIEN_LIFT where   FILE_NAME= ?SVAR "
+	sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' "
+	BANCS.INPARAM.BINDVARS = CUST.DATA.file_name
+	sv_k = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_k)
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(sv_m)
+	sv_c = urhk_dbCursorFetch(sv_m)
+	PRINT(sv_c)
+	IF(sv_c != 0)THEN
+		CUST.DATA.messg="No records found "
+		sv_c=urhk_dbCursorClose(sv_m)
+		GOTO ENDOFSCRIPT
+	ELSE
+		sv_j = 0
+		PRINT(sv_j)
+		
+		WHILE (sv_c == 0)
+			CUST.DATA.FORACID = BANCS.OUTPARAM.FORACID
+			PRINT(CUST.DATA.FORACID)
+			CUST.DATA.B2K_ID = BANCS.OUTPARAM.B2K_ID
+			PRINT(CUST.DATA.B2K_ID)
+			CUST.DATA.ROW = BANCS.OUTPARAM.ROW
+			PRINT(CUST.DATA.ROW)
+
+			CUST.DATA.LIFT = "N"
+			CUST.DATA.LIFTED = "N"
+
+			IF (CUST.DATA.B2K_ID !="NA") THEN
+				CUST.DATA.LIFT = "Y"
+				GOTO LIFT
+			ENDIF
+
+
+			LIFT:
+			IF (CUST.DATA.LIFT == "Y") THEN				
+				BANCS.INPARAM.BINDVARS  = CUST.DATA.FORACID + "|" + BANCS.STDIN.contextBankId + "|" +  CUST.DATA.B2K_ID
+				sv_s = " LIEN_REMARKS,LIEN_AMT, LIEN_REASON_CODE | select LIEN_REMARKS,LIEN_AMT, LIEN_REASON_CODE from tbaadm.alt where acid= (select acid from tbaadm.gam where foracid = ?SVAR )  "
+				sv_s = sv_s + " and B2K_TYPE ='ULIEN'  and bank_id = ?SVAR AND  B2K_ID = ?SVAR "
+				Print (sv_s)
+				Print (BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				if(sv_d == 0) then
+					BANCS.INPARAM.b2kId = CUST.DATA.B2K_ID
+					BANCS.INPARAM.acctNum = CUST.DATA.FORACID
+					BANCS.INPARAM.blockMode = "M"
+					BANCS.INPARAM.lienAmt = cdouble(BANCS.OUTPARAM.LIEN_AMT) * -1
+					BANCS.INPARAM.expiryDate = left$(BANCS.STDIN.BODDate,10)
+					BANCS.INPARAM.remarks = BANCS.OUTPARAM.LIEN_REMARKS
+					BANCS.INPARAM.reasonCode = BANCS.OUTPARAM.LIEN_REASON_CODE
+					BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+					BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+					sv_a = urhk_updateLien("")
+					IF (sv_a =="0") Then			
+						CUST.DATA.InfoRes = "Lien Lift Success"
+						CUST.DATA.LIFTED = "Y"
+					ELSE
+						CUST.DATA.InfoRes = "Lien Lift Failed"
+						
+						if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+							print(BANCS.OUTPARAM.successOrFailure)
+							if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_a !=0))then
+								if(repexists("EQSRV")==0)then
+									createrep("EQSRV")
+								endif
+								if(classexists("EQSRV","GLBDATA")==0)then
+									createclass("EQSRV","GLBDATA",5)
+								endif
+								
+								EQSRV.GLBDATA.srvAcctId = CUST.DATA.FORACID
+								callscriptifexist("ebsrvHandler.scr")
+								EQSRV.GLBDATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+								EQSRV.GLBDATA.srvErrCode = "Failed : SRV_AddAndPostXferTran "
+								EQSRV.GLBDATA.srvSucFail = "F"
+
+							ENDIF
+						ENDIF
+					ENDIF
+				ELSE
+					CUST.DATA.InfoRes = "Query Error. Validate if the user defined lien exists"
+				ENDIF
+			ENDIF
+		
+			
+			NEXTREC:
+
+			sv_s = "  update  CUSTOM.CUST_AUTO_LIEN_LIFT set B2K_ID =?SVAR , LCHG_USER_ID = ?SVAR , LCHG_TIME = sysdate , FREE_TEXT1 = ?SVAR  , ENTITY_CRE_FLG ='Y', PROCESSED_FLG =?SVAR where FILE_NAME = ?SVAR  and  FREE_TEXT2 =?SVAR and foracid =?SVAR "
+			BANCS.INPARAM.BINDVARS = CUST.DATA.B2K_ID + "|" + BANCS.STDIN.userId + "|" + CUST.DATA.InfoRes +"|"+ CUST.DATA.LIFTED  +"|" + CUST.DATA.file_name + "|" + CUST.DATA.ROW  + "|" + CUST.DATA.FORACID
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_s)
+			sv_d=urhk_dbSqlWithBind(sv_s)
+			IF (sv_d == 0)  THEN
+				sv_d = urhk_dbSQLWithBind("COMMIT")
+			ENDIF
+			
+			sv_c = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_c)
+		DO
+		sv_c = urhk_dbCursorClose(sv_m)
+		PRINT(sv_c)
+
+
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CUST_AUTO_LIEN_LIFT where FILE_NAME='"+CUST.DATA.file_name+"'")
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "File name Doesn't Exists"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO ENDOFSCRIPT
+		ENDIF
+		lv_d = urhk_B2k_PID("")
+		IF (lv_d == 0) THEN
+			CUST.DATA.pid = BANCS.OUTPARAM.PID
+			PRINT(CUST.DATA.pid)
+		ENDIF
+		#-----------------------------------------------------------------------------------------
+		#Calling the sql to create the report
+		#-----------------------------------------------------------------------------------------
+		CUST.DATA.lstFile = "Lien_Lift_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+		CUST.DATA.inputStr = CUST.DATA.file_name
+		print(CUST.DATA.inputStr)
+
+		CUST.DATA.ReportHeader = "FORACID|LIEN_REMARKS|LIEN_REASON_CODE|LIEN_ID|DETAILS_LOG|PROCESSED_FLG|LIFTED_FLG| "
+
+		lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+		PRINT(lv_a)
+		lv_s = SYSTEM(lv_a)
+		PRINT(lv_s)
+
+		sv_a = "exebatch spbx4001" + " " + "CUSTOM.LIEN_LIFT_RESULT.LIEN_LIFT_RESULT_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+		PRINT(sv_a)
+		lv_u = SYSTEM(sv_a)
+		PRINT(lv_u)
+		IF (lv_u != 0) THEN
+		#{
+			CUST.DATA.errMsg = "Report generation Failed"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+		ELSE
+			#=====================================================================
+			# Move the file to HPR menu
+			#=====================================================================
+			CUST.DATA.userId = BANCS.STDIN.userId
+			CUST.DATA.title = "Lien Lift Upload REPORT For "+CUST.DATA.file_name
+			PRINT(CUST.DATA.title)
+			lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+			PRINT(lv_a)
+			lv_x = SYSTEM(lv_a)
+			PRINT(lv_x)
+			if(lv_x == 0) then
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+				sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.file_name+". Check status in HPR"
+				sv_z = urhk_SetOrbOut(sv_g)
+				PRINT(sv_z)
+			ELSE
+				CUST.DATA.msg = "Error_2|Error.2^Lien Lift Report Generation Failed "
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				GOTO ENDOFSCRIPT
+			ENDIF
+		ENDIF
+
+	ENDIF
+
+	
+ENDOFSCRIPT:
+EXITSCRIPT
+#TRACE OFF
+END-->

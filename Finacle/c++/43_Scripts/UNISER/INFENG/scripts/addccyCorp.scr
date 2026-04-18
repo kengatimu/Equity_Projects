@@ -1,0 +1,293 @@
+<--START
+# Script body goes here
+TRACE ON
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+			CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+	#{
+			CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+	#sv_r = urhk_b2k_printrepos("BANCS")
+	#print(sv_r)
+	
+	BANCS.INPUT.newcrncy1 ="CDF"
+	BANCS.INPUT.newcrncy2 ="USD"
+	BANCS.INPUT.newcrncy3 ="EUR"
+	BANCS.INPUT.newcrncy4 ="CHF"
+	BANCS.INPUT.newcrncy5 = "ZAR"
+	#BANCS.INPUT.newcrncy6 = ""
+	#BANCS.INPUT.newcrncy7 = ""
+	#BANCS.INPUT.newcrncy8 = ""
+	
+	sv_a = "1"
+	sv_g = 1
+	print(sv_g)
+	#sv_x = CINT(sv_b) +1
+	#print(sv_x)
+	
+	#sv_q = "count,orgkey,crncy|select count(orgkey),orgkey,b.CRNCY from crmuser.accounts a,custom.emt_temp b where a.bank_id =?SVAR " 
+	#sv_q = sv_q + " and a.orgkey in(select cif from custom.emt_temp ) "
+	#sv_q = sv_q + " and a.orgkey = b.cif "
+	#sv_q = sv_q + " group by orgkey,b.CRNCY "
+	
+	sv_q = "orgkey,crncy|select cifid,crncy from custom.emt_temp " 
+	sv_q = sv_q + " where processed='N'"
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS=  BANCS.STDIN.contextBankId 
+	
+	
+	sv_x = urhk_dbCursorOpenWithBind(sv_q)
+	print(sv_x)
+	
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_m)
+		sv_x = urhk_dbCursorFetch(sv_m)
+	print(sv_x)
+	#sv_g = 1
+	#while(sv_x==0)
+	
+		
+	while( sv_x ==0 )
+    #{
+	#CUST.DATA.count=BANCS.OUTPARAM.count
+	#PRINT(CUST.DATA.count)
+	CUST.DATA.orgkey=BANCS.OUTPARAM.orgkey
+	PRINT(CUST.DATA.orgkey)
+	#CUST.DATA.count=BANCS.OUTPARAM.count
+	#PRINT(CUST.DATA.count)
+#	CUST.DATA.newcrncy="KES"
+        CUST.DATA.newcrncy=BANCS.OUTPARAM.crncy
+	PRINT(CUST.DATA.newcrncy)
+		
+	CUST.DATA.cifId=CUST.DATA.orgkey
+	PRINT(CUST.DATA.cifId)
+	#("CUST").("DATA").("newcrncy" ) = ("BANCS").("INPUT").("newcrncy" + format$(sv_g,"%d")) 
+	PRINT(CUST.DATA.newcrncy)
+	
+	###########################
+	#Checking dublicate records
+	###########################
+	sv_q = "count| "
+	sv_q = sv_q + " SELECT count(CORP_MISC_ID) "
+	sv_q = sv_q + " from CRMUSER.CORPMISCELLANEOUSINFO where orgkey=?SVAR  and BANK_ID  =?SVAR and TYPE ='CURRENCY' and STR1  =?SVAR "
+	
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS= CUST.DATA.cifId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.newcrncy
+	
+	print(BANCS.INPARAM.BINDVARS)	
+	
+	sv_t = urhk_dbSelectWithBind(sv_q)
+	print(sv_t)
+	
+	IF(sv_t == 0) THEN
+	#{
+		CUST.DATA.count=BANCS.OUTPARAM.count
+		PRINT(CUST.DATA.count)
+		
+
+		
+		IF(CUST.DATA.count >"0")THEN
+		#{
+			CUST.DATA.crncyadd ="N"
+			("CUST").("DATA").("crncyaddStatus" ) = CUST.DATA.newcrncy + " Already exist"
+			print(("CUST").("DATA").("crncyaddStatus" ))
+		
+                                # Update custom table status
+                                #----------------------------------------------------------------------------------------------------
+                                sv_s = "UPDATE custom.emt_temp "
+                                sv_s = sv_s + " SET processed = 'E'  WHERE cifid= ?SVAR  and crncy=?SVAR"
+                                print(sv_s)
+
+                             #  BANCS.INPARAM.BINDVARS = CUST.DATA.ORGKEY+"|"+CUST.DATA.newcrncy
+                            BANCS.INPARAM.BINDVARS = CUST.DATA.cifId +"|"+CUST.DATA.newcrncy
+                               print(BANCS.INPARAM.BINDVARS)
+
+                                sv_d = urhk_dbSQLWithBind(sv_s)
+                                IF (sv_d == 0) THEN
+                                #{
+                                        sv_c = urhk_dbSQLWithBind("commit")
+                                        print(sv_c)
+                                #}
+                                ENDIF	
+			goto NEXTREC
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	###########################
+	#Getting currency details
+	###########################
+	
+	sv_q = "CORP_MISC_ID,orgkey,corecustid| "
+	sv_q = sv_q + " SELECT max(CORP_MISC_ID),orgkey,CORE_CUST_ID "
+	sv_q = sv_q + " from CRMUSER.CORPMISCELLANEOUSINFO where orgkey=?SVAR  and BANK_ID  =?SVAR and TYPE ='CURRENCY' group by orgkey,CORE_CUST_ID"
+
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS= CUST.DATA.cifId + "|" + BANCS.STDIN.contextBankId
+	
+	print(BANCS.INPARAM.BINDVARS)	
+	
+	sv_t = urhk_dbSelectWithBind(sv_q)
+	print(sv_t)
+	
+	IF(sv_t == 0) THEN
+	#{
+		CUST.DATA.CORP_MISC_ID=BANCS.OUTPARAM.CORP_MISC_ID
+		PRINT(CUST.DATA.CORP_MISC_ID)
+		CUST.DATA.orgkey=BANCS.OUTPARAM.orgkey
+		PRINT(CUST.DATA.orgkey)
+		CUST.DATA.corecustid=BANCS.OUTPARAM.corecustid
+		PRINT(CUST.DATA.corecustid)
+
+		###########################
+		#Getting next sequense
+		###########################
+		
+		IF(CUST.DATA.CORP_MISC_ID != "")THEN
+		#{
+			#sv_q = "maxCORP_MISC_ID| "
+			#sv_q = sv_q + " SELECT max(CORP_MISC_ID) +1 "
+			#sv_q = sv_q + " from CRMUSER.CORPMISCELLANEOUSINFO where  BANK_ID = ?SVAR "
+	
+			sv_q = "maxCORP_MISC_ID| "
+			sv_q = sv_q + " SELECT TO_CHAR(CRMUSER.CORP_MISC_ID.NEXTVAL)NEXTVAL FROM DUAL "
+			#sv_q = sv_q + " from CRMUSER.CORPMISCELLANEOUSINFO where  BANK_ID = ?SVAR "
+			
+			PRINT(sv_q)
+			BANCS.INPARAM.BINDVARS=  BANCS.STDIN.contextBankId
+	
+			print(BANCS.INPARAM.BINDVARS)	
+	
+			sv_t = urhk_dbSelectWithBind(sv_q)
+			print(sv_t)
+	
+			IF(sv_t == 0) THEN
+			#{
+			CUST.DATA.maxCORP_MISC_ID=BANCS.OUTPARAM.maxCORP_MISC_ID
+			PRINT(CUST.DATA.maxCORP_MISC_ID)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+		
+				############################################################################
+                # Inserting new currency into CRMUSER.CORPMISCELLANEOUSINFO
+                ############################################################################
+				CUST.DATA.TYPE ="CURRENCY"
+				CUST.DATA.STR1 = CUST.DATA.newcrncy
+				CUST.DATA.STRTEXT1 ="CURRENCY"
+				CUST.DATA.DTDATE1 = "31-dec-2099"
+				CUST.DATA.DBFLOAT1 = "0" 
+				CUST.DATA.DBFLOAT2 = "0" 
+				CUST.DATA.DBFLOAT3 = "15" 
+				CUST.DATA.DBFLOAT4 = "0"
+				CUST.DATA.CORE_CUST_ID = CUST.DATA.corecustid
+				CUST.DATA.ENTITY_CRE_FLG = "Y"
+				CUST.DATA.ORGKEY  = CUST.DATA.orgkey
+				#CUST.DATA.TMDATE = "SYSDATE"
+				
+                sv_s = "Insert into CRMUSER.CORPMISCELLANEOUSINFO "
+			       #	sv_s = sv_s +" (CORP_MISC_ID, BANK_ID, CORP_ID, TYPE,STR1, "
+		              sv_s = sv_s +" (CORP_MISC_ID, BANK_ID, TYPE,STR1, "	
+                         	#sv_s = sv_s +" DTDATE1, DBFLOAT1, DBFLOAT2, DBFLOAT3, DBFLOAT4, "
+				sv_s = sv_s +" CORE_CUST_ID, ORGKEY, TMDATE,date1)  "
+                sv_s = sv_s +" VALUES(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,SYSDATE,'31-dec-2099') "
+                PRINT(sv_s)
+
+                BANCS.INPARAM.BINDVARS = CUST.DATA.maxCORP_MISC_ID + "|"
+                BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId+ "|"
+                #BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.CORP_MISC_ID+ "|"
+                BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.TYPE+ "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.STR1+ "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.CORE_CUST_ID + "|"
+				#BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.ENTITY_CRE_FLG + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.ORGKEY 
+                       # 	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DATA.TMDATE 
+				
+                
+                PRINT(BANCS.INPARAM.BINDVARS)
+
+                sv_d = urhk_dbSQLWithBind(sv_s)
+                PRINT(sv_d)
+                IF(sv_d == 0)THEN
+                #{
+                       sv_r  = urhk_dbSQLWithBind("COMMIT")
+                       PRINT(sv_r)
+					   CUST.DATA.crncyadd = "Y"
+					   print(CUST.DATA.crncyadd)
+					   ("CUST").("DATA").("crncyaddStatus" ) = CUST.DATA.STR1 + " added successfully"
+					   
+					   print(("CUST").("DATA").("crncyaddStatus" ))
+					   
+					   
+                                # Update custom table status
+                                #----------------------------------------------------------------------------------------------------
+                                sv_s = "UPDATE custom.emt_temp "
+                                sv_s = sv_s + " SET processed = 'P'  WHERE cifid= ?SVAR  and crncy=?SVAR"
+                                print(sv_s)
+
+                               BANCS.INPARAM.BINDVARS = CUST.DATA.ORGKEY+"|"+CUST.DATA.STR1
+                                print(BANCS.INPARAM.BINDVARS)
+
+                                sv_d = urhk_dbSQLWithBind(sv_s)
+                                IF (sv_d == 0) THEN
+                                #{
+                                        sv_c = urhk_dbSQLWithBind("commit")
+                                        print(sv_c)
+                                #}
+                                ENDIF
+                       #}
+                ELSE
+                       #{
+                       sv_r  = urhk_dbSQLWithBind("ROLLBACK")
+                       PRINT(sv_r)
+					   CUST.DATA.crncyadd = "N"
+					   print(CUST.DATA.crncyadd)
+					   
+
+                #}
+                ENDIF
+	FINISH:
+	NEXTREC:
+	
+	sv_g = sv_g +1
+	print(sv_g)
+	
+	sv_x = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_x)
+			
+			
+	#}
+	do
+	#}
+	#do
+	sv_u = urhk_dbCursorClose(sv_m)
+	#ENDIF
+	#FINISH:
+	CUST.DATA.crncyadd="Y"
+	IF(CUST.DATA.crncyadd=="Y")THEN
+	#{
+	#sv_u = urhk_SetOrbOut("crncyadd|"+CUST.DATA.crncyaddStatus)
+	#sv_u = urhk_SetOrbOut("crncyadd|"+ ("CUST").("DATA").("crncyaddStatus" ))
+	#sv_u = urhk_SetOrbOut("Status|Successful")
+	#}
+	ELSE
+	#{
+	#sv_u = urhk_SetOrbOut("crncyadd|"+ CUST.DATA.crncyaddStatus)
+	#sv_u = urhk_SetOrbOut("crncyadd|"+ ("CUST").("DATA").("crncyaddStatus" ))
+	#sv_u = urhk_SetOrbOut("Status|Failed")
+	#}
+	ENDIF
+	
+EXITSCRIPT
+TRACE OFF
+
+END-->

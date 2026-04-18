@@ -1,0 +1,131 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+##   Name                   : ProxyUpdatePartial.scr 
+##   Date                   : 15-Jan-2020 
+##   Description            : Script for casa Account batch freeze
+##   Input                  :
+##   Output                 :
+##   Author                 : Vino Palani
+##   Called Script          :
+##   Calling Script         :
+##   Reference              :
+##+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+##   Modification History   :
+##   15-Jan- 2020  		James k Irungu 		Query Data from custom table
+##+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#Repos&Classes
+	if (repexists("EQSRV") == 0) then
+		createrep("EQSRV")
+	endif
+	if (classexists("EQSRV","GLBDATA") == 0) then
+		createclass("EQSRV","GLBDATA",5)
+	endif
+#Variables
+     
+	EQSRV.GLBDATA.Tran_Date	= ""
+	EQSRV.GLBDATA.CNT	= ""
+	EQSRV.GLBDATA.AMT_OFFSET= ""
+	EQSRV.GLBDATA.ORG_TRAN_AMT= ""
+	EQSRV.GLBDATA.TOTAL_OFFSET_AMT= ""
+
+
+
+sv_s = " update tbaadm.ott set TOTAL_OFFSET_AMT= ORG_TRAN_AMT, NUM_OFFSET_PTRAN='1' where  bank_id ='43'  and (tran_date||tran_id||PART_TRAN_SRL_NUM) "
+sv_s = sv_s + " in (select ott.TRAN_DATE || ott.TRAN_ID || ott.PART_TRAN_SRL_NUM from tbaadm.ott , tbaadm.tct , tbaadm.gam where ott.bank_id ='43' "
+sv_s = sv_s + " and ott.bank_id =gam.bank_id and ott.acid =gam.acid and gam.bacid ='PROXY' and gam.bank_id ='43'  and gam.sol_id= ?SVAR "
+sv_s = sv_s + " and  (ott.tran_date||ott.tran_id|| ott.PART_TRAN_SRL_NUM)  IN  (tct.tran_date || tct.TRAN_ID || tct.PART_TRAN_SRL_NUM)  "
+sv_s = sv_s + " and tct.eNTITY_CRE_FLG ='N' and ORG_TRAN_AMT = AMT_OFFSET) "
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+sv_d = urhk_dbSQLWithBind(sv_s)
+IF (sv_d == 0) THEN
+	 Print ("OK")
+ENDIF 
+sv_q = " update tbaadm.tct set ENTITY_CRE_FLG='Y' where  bank_id ='43'  and (tran_date||tran_id||PART_TRAN_SRL_NUM) " 
+sv_q = sv_q + " in (select ott.TRAN_DATE || ott.TRAN_ID || ott.PART_TRAN_SRL_NUM from tbaadm.ott , tbaadm.tct , tbaadm.gam where ott.bank_id ='43' "
+sv_q = sv_q + " and ott.bank_id =gam.bank_id and ott.acid =gam.acid and gam.bacid ='PROXY' and gam.bank_id ='43' and gam.sol_id= ?SVAR " 
+sv_q = sv_q + " and  (ott.tran_date||ott.tran_id|| ott.PART_TRAN_SRL_NUM)  IN  (tct.tran_date || tct.TRAN_ID || tct.PART_TRAN_SRL_NUM) "
+sv_q = sv_q + " and tct.eNTITY_CRE_FLG ='N' and ORG_TRAN_AMT = AMT_OFFSET) "
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+sv_c = urhk_dbSQLWithBind(sv_q)
+IF (sv_c == 0) THEN
+	sv_d = urhk_dbSQLWithBind("commit")
+	print(sv_d)
+ENDIF 
+
+
+	sv_q = " TranDate,AMT_OFFSET, CNT | select a.TID ,a.AMT_OFFSET ,a.cnt  from "
+	sv_q = sv_q + "  (select ( concat (tran_date, concat  ( tran_id ,PART_TRAN_SRL_NUM))) TID , sum (AMT_OFFSET) AMT_OFFSET , count (*) cnt from tbaadm.tct  where bank_id ='43'   "
+	sv_q = sv_q + "  and ( concat (tran_date, concat  ( tran_id ,PART_TRAN_SRL_NUM)))  in  (select ( concat (tran_date, concat  ( tran_id ,PART_TRAN_SRL_NUM)))  from tbaadm.ott where acid    "
+	sv_q = sv_q + "  in (select acid from tbaadm.gam where bacid ='PROXY' and  bank_id =?SVAR and sol_id =?SVAR) and bank_id ='43'  )    group  by ( concat (tran_date, concat  ( tran_id ,PART_TRAN_SRL_NUM))) )a,  "
+	sv_q = sv_q + "  (select  ( concat (tran_date, concat  ( tran_id ,PART_TRAN_SRL_NUM))) TIDB ,ORG_TRAN_AMT,TOTAL_OFFSET_AMT   from tbaadm.ott where acid   "
+	sv_q = sv_q + "  in (select acid from tbaadm.gam where bacid ='PROXY' and  bank_id =?SVAR and sol_id =?SVAR) and bank_id ='43'  )  b  where  a.TID =b.TIDB  and  AMT_OFFSET !=TOTAL_OFFSET_AMT   "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId   + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId  
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print (sv_m)
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+			IF(sv_q == 1) THEN
+				sv_x = urhk_dbCursorClose(sv_m)
+				print(sv_x)
+				exitscript
+			ENDIF
+		print(sv_q)
+
+	WHILE (sv_q==0)
+
+	EQSRV.GLBDATA.TranDate= BANCS.OUTPARAM.TranDate
+Print (EQSRV.GLBDATA.TranDate)
+	EQSRV.GLBDATA.CNT = BANCS.OUTPARAM.CNT 
+Print (EQSRV.GLBDATA.CNT )
+	EQSRV.GLBDATA.AMT_OFFSET= BANCS.OUTPARAM.AMT_OFFSET
+Print (EQSRV.GLBDATA.AMT_OFFSET)
+
+	
+				sv_s = "update tbaadm.ott set TOTAL_OFFSET_AMT= ?SVAR, NUM_OFFSET_PTRAN = ?SVAR where  bank_id ='43'  and (tran_date||tran_id||PART_TRAN_SRL_NUM) = ?SVAR "
+                                print(sv_s)
+                               	BANCS.INPARAM.BINDVARS = BANCS.OUTPARAM.AMT_OFFSET + "|" + EQSRV.GLBDATA.CNT  + "|" + EQSRV.GLBDATA.TranDate
+                                print(BANCS.INPARAM.BINDVARS)
+                                sv_d = urhk_dbSQLWithBind(sv_s)
+                                IF (sv_d == 0) THEN
+                                #{
+                                        sv_c = urhk_dbSQLWithBind("commit")
+                                        print(sv_c)
+                                #}
+                                ENDIF 
+
+				sv_s = "update tbaadm.tct set ENTITY_CRE_FLG='Y' where  bank_id ='43'   and (tran_date||tran_id||PART_TRAN_SRL_NUM)  = ?SVAR "
+                                print(sv_s)
+                               	BANCS.INPARAM.BINDVARS =  EQSRV.GLBDATA.TranDate
+                                print(BANCS.INPARAM.BINDVARS)
+                                sv_d = urhk_dbSQLWithBind(sv_s)
+                                IF (sv_d == 0) THEN
+                                #{
+                                        sv_c = urhk_dbSQLWithBind("commit")
+                                        print(sv_c)
+                                #}
+                                ENDIF 
+
+	print (sv_m)
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	DO
+#}
+ENDIF
+
+#EndofScript
+
+        
+	if(classexists("EQSRV","GLBDATA")==1)then
+                deleteclass("EQSRV","GLBDATA")
+        endif
+        if(repexists("EQSRV")==1)then
+                deleterep("EQSRV")
+        endif
+        exitscript
+trace off
+end-->

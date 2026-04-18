@@ -1,0 +1,447 @@
+<--START
+	TRACE ON
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	
+	PRINT(CUST.UBP.biller_chgAmt)
+	PRINT(CUST.UBP.biller_billerId)
+	PRINT(CUST.UBP.dbForacid)
+	PRINT(CUST.UBP.tranPart)
+	
+	sv_r = REPEXISTS("BILLER")
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("BILLER")
+	#}
+	ENDIF
+	#========================================================
+	# Check whether UBP Class exists else create it
+	#========================================================
+	sv_r = CLASSEXISTS("BILLER","TRAN")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("BILLER","TRAN",5)
+	#}
+	ENDIF
+	
+	BILLER.TRAN.cr_Gl = "15000307010138"
+	PRINT(BILLER.TRAN.cr_Gl)
+	
+	BILLER.TRAN.bill_chrg = ""
+	BILLER.TRAN.bill_vat = ""
+	BILLER.TRAN.successOrFailure = ""
+	BILLER.TRAN.chargeTranId  = ""
+	
+	lv_s = "total_chrg, chrg, bill_chrg_dr, vat, bill_vat_dr|"
+	lv_s = lv_s + " SELECT "
+	lv_s = lv_s + " ?SVAR * -1 AS total_chrg, "
+	lv_s = lv_s + " ?SVAR / 1.16 AS chrg, "
+	lv_s = lv_s + " (?SVAR / 1.16)*-1 AS bill_chrg_dr, "
+	lv_s = lv_s + " ?SVAR - (?SVAR / 1.16) AS vat, "
+	lv_s = lv_s + " (?SVAR - (?SVAR / 1.16)) * -1 AS bill_vat_dr "
+	lv_s = lv_s + " FROM dual "
+	PRINT(lv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.UBP.biller_chgAmt + "|" + CUST.UBP.biller_chgAmt + "|" + CUST.UBP.biller_chgAmt + "|" + CUST.UBP.biller_chgAmt
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.UBP.biller_chgAmt + "|" + CUST.UBP.biller_chgAmt + "|" + CUST.UBP.biller_chgAmt
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	lv_q = urhk_dbSelectWithBind(lv_s)
+	print(lv_q)
+	IF(lv_q == 0)THEN
+		BILLER.TRAN.total_chrg = BANCS.OUTPARAM.total_chrg
+		BILLER.TRAN.bill_chrg = BANCS.OUTPARAM.chrg
+		BILLER.TRAN.bill_vat = BANCS.OUTPARAM.vat
+		BILLER.TRAN.bill_chrg_dr = BANCS.OUTPARAM.bill_chrg_dr
+		BILLER.TRAN.bill_vat_dr = BANCS.OUTPARAM.bill_vat_dr
+		print(BILLER.TRAN.bill_chrg)
+		PRINT(BILLER.TRAN.bill_vat)
+		PRINT(BILLER.TRAN.bill_chrg_dr)
+		PRINT(BILLER.TRAN.bill_vat_dr)
+	ELSE
+		sv_u = urhk_SetOrbOut("ERROR|Unable to calculate Charge and TVA")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT1
+	ENDIF
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT.
+	#===================================
+	
+	BANCS.INPARAM.PostTranFlg 		= "X"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "N"
+	BANCS.INPARAM.ValidationFlag 		= "N"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "Y"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	print (sv_u)
+	
+	IF (sv_u != 0) THEN
+	#{
+		sv_c = "Initialisation of MTT Failed"
+		MTT.Error.Description = sv_c
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+		GOTO END_OF_SCRIPT
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	print(sv_r)
+	IF(sv_r != 0) THEN
+	#{
+		MTT.Error.Description="Error in Populating Input details for MTT"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		exitscript
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------#
+	#####   Defining the Transaction
+	#-----------------------------------------------------------------------------------------------#
+	
+	#--------------------------
+	# To get the tran Id
+	#--------------------------
+	MTT.TranDetails.TranDate	        = "0"
+	MTT.TranDetails.PostFlag 		= "X"
+	MTT.TranDetails.TranType 		= "T"
+	MTT.TranDetails.TranSubType 		= "BI"
+	MTT.TranDetails.Remarks 		= "Bill Charge"
+	MTT.TranDetails.IgnoreExcp		="Y"
+	MTT.TranDetails.Consolidate         	= "N"
+	MTT.TranDetails.ReversalFlg         	= "N"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.ValidationFlag          = "N"
+	#MTT.TranDetails.RestrictModifyInd   	= "FIRST_GROUP"
+	
+	sv_v = urhk_MTTS_DefineTransaction("DFCU")
+	print(sv_v)
+	
+	IF(sv_v != 0) THEN
+	#{
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print(MTT.Error.Description)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#---------------------------------------------------------------------------
+	#DR CHARGE 
+	#--------------------------------------------------------------------------
+	MTT.PartTranDetails.Account= CUST.UBP.dbForacid
+	MTT.PartTranDetails.RefAmount= BILLER.TRAN.bill_chrg_dr
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.dbCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart + " FEE"
+	MTT.PartTranDetails.Remarks = "FEE"
+	MTT.PartTranDetails.RefNum = CUST.UBP.biller_billerId
+	
+	sv_q = urhk_MTTS_DefinePartTran("DFCU1")
+	print(sv_q)
+	
+	IF (sv_q == 1) THEN
+	#{
+		#print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#CR CHARGE 1
+	#---------------------------------------------------------------------------
+	print(BILLER.TRAN.cr_Gl)
+	MTT.PartTranDetails.Account= BILLER.TRAN.cr_Gl
+	print(BILLER.TRAN.bill_chrg)
+	MTT.PartTranDetails.RefAmount= BILLER.TRAN.bill_chrg
+	print(CUST.UBP.crCrncyCode)
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.crCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart + " FEE"
+	MTT.PartTranDetails.Remarks = "FEE"
+	MTT.PartTranDetails.RefNum = CUST.UBP.biller_billerId
+	sv_v = urhk_MTTS_DefinePartTran("DFCU2")
+	print(sv_v)
+	
+	IF (sv_v == 1) THEN
+	#{
+		print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------
+	#End of MTT Definition
+	#-----------------------------------------------------------------------------
+	sv_v = urhk_MTTS_EndDefinition("")
+	print(sv_v)
+	IF (sv_v == 1) THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print (MTT.Error.Description)
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		#sv_a = urhk_B2k_PrintRepos("BANCS")
+		IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			BANCS.OUTPARAM.MTTTranId = BANCS.OUTPARAM.MTTTranId
+			print(BANCS.OUTPARAM.MTTTranId)
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_HandleExceptions("POST")
+	print(sv_r)
+	
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	
+	IF(sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+		
+		BANCS.OUTPUT.successOrFailure = "F"
+		CUST.UBP.Response = "urhk_MTTS_Close returns FAILURE"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		print(BANCS.OUTPARAM.MTTTranId)
+		sv_t = BANCS.OUTPARAM.MTTTranId
+		print(sv_t)
+		
+		BILLER.TRAN.successOrFailure = "S"
+		BILLER.TRAN.chargeTranId = sv_t
+	#}
+	ENDIF
+	
+	###########################################################################################################
+	#########################MTT FOR TVA COLLECTION (Separation of charges.)
+	###########################################################################################################
+	
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT.
+	#===================================
+	
+	BANCS.INPARAM.PostTranFlg 		= "X"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "N"
+	BANCS.INPARAM.ValidationFlag 		= "N"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "Y"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	print (sv_u)
+	
+	IF (sv_u != 0) THEN
+	#{
+		sv_c = "Initialisation of MTT Failed"
+		MTT.Error.Description = sv_c
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+		GOTO END_OF_SCRIPT
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	print(sv_r)
+	IF(sv_r != 0) THEN
+	#{
+		MTT.Error.Description="Error in Populating Input details for MTT"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		exitscript
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------#
+	#####   Defining the Transaction
+	#-----------------------------------------------------------------------------------------------#
+	
+	#--------------------------
+	# To get the tran Id
+	#--------------------------
+	MTT.TranDetails.TranDate	        = "0"
+	MTT.TranDetails.PostFlag 		= "X"
+	MTT.TranDetails.TranType 		= "T"
+	MTT.TranDetails.TranSubType 		= "BI"
+	MTT.TranDetails.Remarks 		= "Bill Charge"
+	MTT.TranDetails.IgnoreExcp		="Y"
+	MTT.TranDetails.Consolidate         	= "N"
+	MTT.TranDetails.ReversalFlg         	= "N"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.ValidationFlag          = "N"
+	#MTT.TranDetails.RestrictModifyInd   	= "FIRST_GROUP"
+	
+	sv_v = urhk_MTTS_DefineTransaction("DFCU")
+	print(sv_v)
+	
+	IF(sv_v != 0) THEN
+	#{
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print(MTT.Error.Description)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#---------------------------------------------------------------------------
+	#DR CHARGE 
+	#--------------------------------------------------------------------------
+	MTT.PartTranDetails.Account= CUST.UBP.dbForacid
+	MTT.PartTranDetails.RefAmount= BILLER.TRAN.bill_vat_dr
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.dbCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart + " TVA"
+	MTT.PartTranDetails.Remarks = "TVA"
+	MTT.PartTranDetails.RefNum = CUST.UBP.biller_billerId
+	
+	sv_q = urhk_MTTS_DefinePartTran("DFCU1")
+	print(sv_q)
+	
+	IF (sv_q == 1) THEN
+	#{
+		#print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#CR CHARGE 1
+	#---------------------------------------------------------------------------
+	print(BILLER.TRAN.cr_Gl)
+	MTT.PartTranDetails.Account= BILLER.TRAN.cr_Gl
+	print(BILLER.TRAN.bill_vat)
+	MTT.PartTranDetails.RefAmount= BILLER.TRAN.bill_vat
+	print(CUST.UBP.crCrncyCode)
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.crCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart + " TVA"
+	MTT.PartTranDetails.Remarks = "TVA"
+	MTT.PartTranDetails.RefNum = CUST.UBP.biller_billerId
+	sv_v = urhk_MTTS_DefinePartTran("DFCU3")
+	print(sv_v)
+	
+	IF (sv_v == 1) THEN
+	#{
+		print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------
+	#End of MTT Definition
+	#-----------------------------------------------------------------------------
+	sv_v = urhk_MTTS_EndDefinition("")
+	print(sv_v)
+	IF (sv_v == 1) THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print (MTT.Error.Description)
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		#sv_a = urhk_B2k_PrintRepos("BANCS")
+		IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			BANCS.OUTPARAM.MTTTranId = BANCS.OUTPARAM.MTTTranId
+			print(BANCS.OUTPARAM.MTTTranId)
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_HandleExceptions("POST")
+	print(sv_r)
+	
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	
+	IF(sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+		
+		BANCS.OUTPUT.successOrFailure = "F"
+		CUST.UBP.Response = "urhk_MTTS_Close returns FAILURE"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		print(BANCS.OUTPARAM.MTTTranId)
+		sv_t = BANCS.OUTPARAM.MTTTranId
+		print(sv_t)
+		
+		BILLER.TRAN.vat_successOrFailure = "S"
+		BILLER.TRAN.vat = sv_t
+	#}
+	ENDIF
+	
+	IF (FIELDEXISTS(BANCS.OUTPARAM.MTTPostingStatus)) THEN
+	#{
+		IF (BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+		#{
+			sv_h = BANCS.OUTPARAM.MTTPostingError
+			print(sv_h)
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "S"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT1 :
+TRACE OFF
+END-->

@@ -1,0 +1,606 @@
+#-------------------------------------------------------------------------------------    
+#	Name			: s_ast0057mn001.scr
+#	Description		: This script is used for verifying whether disbursement greater than old accounts O/S amount during 'Yes' condition
+#				: and raising exception during 'No' condition during 'Disbursement'.
+#	Date			: 13-06-2013
+#	Author			: Prashanth
+#	Input			: NA
+#	Output			: NA
+#	Called Script		: SRV_InsertDisbData_pre_process_data.scr
+#	Calling Script	:
+#	Menu Option		:
+#	Srl. No		Date			Author			Description.
+#	-------		----			------			----------------
+#	1.0			13-06-2013		Prashanth		Original Version
+#	2.0			26-06-2013		Prashanth		made logical changes in the Script
+#	3.0			10-07-2013		Bharath			Skip for reversal added
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="1aefc47124e1e53be31b7ecdca025c11244029d406be79399412e26b49df1a69"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	CUST.LADISB.errMsg 		= ""
+	CUST.LADISB.totOsAmt 	= 0
+	
+	IF(BANCS.STDIN.menuId=="HLADISB") THEN
+	#{
+		#-----------------------------------------------------------------------------------------------
+		#Getting rateCode from CPARAM values--'NOR'
+		#-----------------------------------------------------------------------------------------------
+		BANCS.INPUT.moduleName = "GENERAL"
+		BANCS.INPUT.parameterId = "NORRATECODE"
+		
+		CALL ("getcparamvalue.scr")
+		print(BANCS.OUTPUT.parameterVal)
+		
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			CUST.LADISB.limitRateCode = BANCS.OUTPUT.parameterVal
+			print(CUST.LADISB.limitRateCode)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "NORRATECODE setup not done in CPARAM"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------------------
+		# Exitscript if function code is Reversal
+		#------------------------------------------------------------------------------
+		sv_b = urhk_SRV_GetVal("acctDisburseTranLA.reversalTranId")
+		CUST.LADISB.reversalTran = BANCS.OUTPARAM.srvValue
+		print(CUST.LADISB.reversalTran)
+		IF (CUST.LADISB.reversalTran != "") THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		#Getting rateCode from CPARAM values--'LOD'
+		#-----------------------------------------------------------------------------------------------
+		BANCS.INPUT.moduleName = "RETAILLOANS"
+		BANCS.INPUT.parameterId = "EXCEPTIONCODE"
+		
+		CALL ("getcparamvalue.scr")
+		print(BANCS.OUTPUT.parameterVal)
+		
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			CUST.LADISB.exceptionCode = BANCS.OUTPUT.parameterVal
+			print(CUST.LADISB.exceptionCode)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "EXCEPTIONCODE setup not done in CPARAM"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-------------------------------------------------------------------------------------------
+		# Getting foracid from from frontend
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+		print(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.LADISB.newLoanForacid = BANCS.OUTPARAM.srvValue
+			print(CUST.LADISB.newLoanForacid)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "Error: urhk_SRV_GetVal failed for foracid"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-------------------------------------------------------------------------------------------
+		# Getting schmCode from from frontend
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.schmCode.schmCode")
+		print(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.LADISB.schmCode = BANCS.OUTPARAM.srvValue
+			print(CUST.LADISB.schmCode)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "Error: urhk_SRV_GetVal failed for schmCode"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------
+		#Getting new loan account currency code
+		#--------------------------------------------------------------------
+		sv_s = ""
+		sv_s = "newLoanCrncyCode|SELECT GAM.acct_crncy_code "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE GAM.foracid = ?SVAR "
+		sv_s = sv_s + "AND GAM.bank_id = ?SVAR "
+		sv_s = sv_s + "AND GAM.acct_cls_flg = 'N' "
+		sv_s = sv_s + "AND GAM.del_flg = 'N' "
+		sv_s = sv_s + "AND GAM.entity_cre_flg = 'Y'"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.newLoanForacid + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF ( sv_d != 0 ) THEN
+		#{
+			CUST.LADISB.errMsg = "Error occured in calculating new loan account currency code"
+			print(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.newLoanCrncyCode= BANCS.OUTPARAM.newLoanCrncyCode
+			print(BANCS.OUTPARAM.newLoanCrncyCode)
+		#}
+		ENDIF
+		
+		sv_a = 1
+		#---------------------------------------------------------------
+		#getting old loan account number and currrency code
+		#---------------------------------------------------------------
+		sv_s = ""
+		sv_s = "oldForacid,oldAccntCrncyCode|"
+		sv_s = sv_s + " SELECT GAM.foracid,GAM.acct_crncy_code"
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE GAM.schm_code = ?SVAR"
+		sv_s = sv_s + " AND GAM.cif_id = ("
+		sv_s = sv_s +			   " SELECT GAM.cif_id"
+		sv_s = sv_s +	           " FROM TBAADM.GAM"
+		sv_s = sv_s +			   " WHERE GAM.foracid = ?SVAR"
+		sv_s = sv_s +			   " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s +			   " AND GAM.acct_cls_flg = 'N'"
+		sv_s = sv_s +			   " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + 			   " AND GAM.del_flg = 'N')"
+		sv_s = sv_s + " AND GAM.acct_cls_flg = 'N'"
+		sv_s = sv_s + " AND GAM.del_flg = 'N'"
+		sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.foracid != ?SVAR"
+		sv_s = sv_s + " AND GAM.clr_bal_amt != 0"
+		
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.schmCode + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.newLoanForacid  + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.newLoanForacid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d  = urhk_dbcursorOpenWithBind(sv_s)
+		print(sv_d)
+		
+		IF( sv_d != 0) THEN
+		#{
+			CUST.LADISB.errMsg = "No records fetched for the entered Account Number"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			sv_l = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			print(sv_l)
+			sv_c = urhk_dbCursorFetch(sv_l)
+			print(sv_c)
+			
+			WHILE( sv_c == 0)
+			#{
+				print(sv_a)
+				CUST.LADISB.oldForacid=BANCS.OUTPARAM.oldForacid
+				print(CUST.LADISB.oldForacid)
+				
+				CUST.LADISB.oldAccntCrncyCode = BANCS.OUTPARAM.oldAccntCrncyCode
+				print(CUST.LADISB.oldAccntCrncyCode)
+				
+				#--------------------------------------------------------------------------------------
+				# getting Int route flag from LAM table
+				#--------------------------------------------------------------------------------------
+				sv_s = ""
+				sv_s = sv_s + " intRoute|"
+				sv_s = sv_s + " SELECT LAM.int_route_flg"
+				sv_s = sv_s + "	FROM TBAADM.LAM"
+				sv_s = sv_s + " WHERE LAM.acid ="
+				sv_s = sv_s + 			" (SELECT GAM.ACID"
+				sv_s = sv_s + 			" FROM TBAADM.GAM"
+				sv_s = sv_s + 			" WHERE GAM.FORACID = ?SVAR"
+				sv_s = sv_s + 			" AND GAM.acct_cls_flg = 'N'"
+				sv_s = sv_s + 			" AND GAM.del_flg = 'N'"
+				sv_s = sv_s + 			" AND GAM.entity_cre_flg = 'Y'"
+				sv_s = sv_s + 			" AND GAM.bank_id = ?SVAR)"
+				sv_s = sv_s + " AND LAM.del_flg='N'"
+				sv_s = sv_s + " AND LAM.entity_cre_flg = 'Y'"
+				sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+				
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = ""
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.oldForacid + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+				
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				
+				IF ( sv_d != 0 ) THEN
+				#{
+					CUST.LADISB.errMsg = "Error occured in calculating old Loan O/S amount"
+					print(CUST.LADISB.errMsg)
+					GOTO ENDOFSCRIPT
+					#}
+				ELSE
+					#{
+					CUST.LADISB.intRoute = BANCS.OUTPARAM.intRoute
+					print(CUST.LADISB.intRoute)
+				#}
+				ENDIF
+				
+				#--------------------------------------------------------------------------------------
+				#getting total outstanding amount except new loan a/c under same scheme code and cifId
+				#--------------------------------------------------------------------------------------
+				IF(CUST.LADISB.intRoute == "L") THEN
+				#{
+					sv_s = ""
+					sv_s = sv_s + " outStndAmt|"
+					sv_s = sv_s + " SELECT (nvl(gam.clr_bal_amt,0)"
+					sv_s = sv_s + " +nvl((EIT.nrml_interest_amount_dr"
+					sv_s = sv_s + " - EIT.nrml_booked_amount_dr),0)"
+					sv_s = sv_s + " +nvl((EIT.penal_interest_amount_dr"
+					sv_s = sv_s + " - EIT.penal_booked_amount_dr),0))"
+					sv_s = sv_s + " FROM TBAADM.GAM,TBAADM.EIT"
+					sv_s = sv_s + " WHERE GAM.schm_code = ?SVAR"
+					sv_s = sv_s + " AND GAM.acct_cls_flg = 'N'"
+					sv_s = sv_s + " AND GAM.del_flg = 'N'"
+					sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+					sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+					sv_s = sv_s + " AND GAM.foracid = ?SVAR"
+					sv_s = sv_s + " AND EIT.entity_id = GAM.ACID"
+					sv_s = sv_s + " AND EIT.entity_type = 'ACCNT'"
+					sv_s = sv_s + " AND EIT.bank_id = GAM.bank_id"
+					
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = ""
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.schmCode + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.oldForacid
+					
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					
+					IF ( sv_d != 0 ) THEN
+					#{
+						CUST.LADISB.errMsg = "Error occured in calculating old Loan O/S amount"
+						print(CUST.LADISB.errMsg)
+						GOTO ENDOFSCRIPT
+						#}
+					ELSE
+						#{
+						CUST.LADISB.outStndAmt= CDOUBLE(BANCS.OUTPARAM.outStndAmt)
+						print(CUST.LADISB.outStndAmt)
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					sv_s = ""
+					sv_s = sv_s + " outStndAmt|"
+					sv_s = sv_s + " SELECT (nvl(gam.clr_bal_amt,0)"
+					sv_s = sv_s + " +nvl((EIT.nrml_interest_amount_dr"
+					sv_s = sv_s + " - EIT.nrml_booked_amount_dr),0)"
+					sv_s = sv_s + " +nvl((EIT.penal_interest_amount_dr"
+					sv_s = sv_s + " - EIT.penal_booked_amount_dr),0)"
+					sv_s = sv_s + " + nvl(LAM.INT_DMD_OS,0) "
+					sv_s = sv_s + " + nvl(LAM.BCHG_DMD_OS,0)"
+					sv_s = sv_s + " + nvl(LAM.OCHG_DMD_OS,0))"
+					sv_s = sv_s + " FROM TBAADM.GAM,TBAADM.EIT,TBAADM.LAM"
+					sv_s = sv_s + " WHERE GAM.schm_code = ?SVAR"
+					sv_s = sv_s + " AND GAM.acct_cls_flg = 'N'"
+					sv_s = sv_s + " AND GAM.del_flg = 'N'"
+					sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+					sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+					sv_s = sv_s + " AND GAM.foracid = ?SVAR"
+					sv_s = sv_s + " AND EIT.entity_id = GAM.ACID"
+					sv_s = sv_s + " AND EIT.entity_type = 'ACCNT'"
+					sv_s = sv_s + " AND EIT.bank_id = GAM.bank_id"
+					sv_s = sv_s + " AND LAM.acid = GAM.acid"
+					sv_s = sv_s + " AND LAM.del_flg='N'"
+					sv_s = sv_s + " AND LAM.entity_cre_flg = 'Y'"
+					sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+					
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = ""
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.schmCode + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.oldForacid + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+					
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					
+					IF ( sv_d != 0 ) THEN
+					#{
+						CUST.LADISB.errMsg = "Error occured in calculating old Loan O/S amount"
+						print(CUST.LADISB.errMsg)
+						GOTO ENDOFSCRIPT
+						#}
+					ELSE
+						#{
+						CUST.LADISB.outStndAmt= CDOUBLE(BANCS.OUTPARAM.outStndAmt)
+						print(CUST.LADISB.outStndAmt)
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				IF(CDOUBLE(CUST.LADISB.outStndAmt) < 0) THEN
+				#{
+					CUST.LADISB.outStndAmt = -1 * CDOUBLE(CUST.LADISB.outStndAmt)
+					print(CUST.LADISB.outStndAmt)
+				#}
+				ENDIF
+				#------------------------------------------------------------------------------
+				#	If currency codes are different, Convert Amount
+				#------------------------------------------------------------------------------
+				IF(CUST.LADISB.oldAccntCrncyCode != CUST.LADISB.newLoanCrncyCode) THEN
+				#{
+					BANCS.INPARAM.InputAmount = CUST.LADISB.outStndAmt
+					BANCS.INPARAM.FromCurrency = CUST.LADISB.oldAccntCrncyCode
+					BANCS.INPARAM.ToCurrency = CUST.LADISB.newLoanCrncyCode
+					BANCS.INPARAM.RateCode = CUST.LADISB.limitRateCode
+					BANCS.INPARAM.Rate = 0.00
+					BANCS.INPARAM.CustId = ""
+					
+					sv_u = urhk_B2k_ConvertAmount("")
+					print(sv_u)
+					
+					IF(sv_u == 0)THEN
+					#{
+						CUST.LADISB.oldAcntConvOsAmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						print(CUST.LADISB.oldAcntConvOsAmt)
+						
+						IF(CDOUBLE(CUST.LADISB.oldAcntConvOsAmt) < 0) THEN
+						#{
+							CUST.LADISB.oldAcntConvOsAmt = -1 * CDOUBLE(CUST.LADISB.oldAcntConvOsAmt)
+							print(CUST.LADISB.oldAcntConvOsAmt)
+						#}
+						ENDIF
+						#}
+					ELSE
+						#{
+						CUST.LADISB.errMsg = "Error occured in converting the Amount"
+						print(CUST.LADISB.errMsg)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					CUST.LADISB.oldAcntConvOsAmt = CUST.LADISB.outStndAmt
+					print(CUST.LADISB.oldAcntConvOsAmt)
+				#}
+				ENDIF
+				
+				CUST.LADISB.totOsAmt = CDOUBLE(CUST.LADISB.totOsAmt) + CDOUBLE(CUST.LADISB.oldAcntConvOsAmt)
+				print(CUST.LADISB.totOsAmt)
+				sv_a = sv_a + 1
+				
+				sv_c = urhk_dbCursorFetch(sv_l)
+				print(sv_c)
+			#}
+			DO
+			sv_c = urhk_dbCursorClose(sv_l)
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------
+		# Calculate the count of foracid's under same cif_id,schemeCode
+		#--------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = "count|"
+		sv_s = sv_s + " SELECT COUNT(*)"
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE GAM.schm_code = ?SVAR"
+		sv_s = sv_s + " AND GAM.cif_id = ("
+		sv_s = sv_s +			   " SELECT GAM.cif_id"
+		sv_s = sv_s +	                   	" FROM TBAADM.GAM"
+		sv_s = sv_s +			   	" WHERE GAM.foracid = ?SVAR"
+		sv_s = sv_s + 			" AND GAM.acct_cls_flg = 'N'"
+		sv_s = sv_s + 			" AND GAM.del_flg = 'N'"
+		sv_s = sv_s + 			" AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s +			   	" AND GAM.bank_id = ?SVAR)"
+		sv_s = sv_s + " AND GAM.acct_cls_flg = 'N'"
+		sv_s = sv_s + " AND GAM.del_flg = 'N'"
+		sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.foracid != ?SVAR"
+		sv_s = sv_s + " AND GAM.clr_bal_amt != 0"
+		
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.schmCode + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.newLoanForacid  + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.newLoanForacid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF ( sv_d != 0 ) THEN
+		#{
+			CUST.LADISB.errMsg = "Error occured in calculating count of old loan foracid's"
+			print(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.count = BANCS.OUTPARAM.count
+			print(CUST.LADISB.count)
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.count > 0) THEN
+		#{
+			IF(CUST.LADISB.totOsAmt != 0) THEN
+			#{
+				CUST.LADISB.payofflag = ""
+				print(ONS.CUSTOM.custDataIn)
+				IF(STRLEN(ONS.CUSTOM.custDataIn) > 0) THEN
+				#{
+					sv_d = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+					IF(FIELDEXISTS(BANCS.INPUT.ladisb_tran_details_FIELD_1) == 1) THEN
+					#{
+						CUST.LADISB.payofflag = BANCS.INPUT.ladisb_tran_details_FIELD_1
+						print(CUST.LADISB.payofflag)
+						#}
+					ELSE
+						#{
+						#CUST.LADISB.errMsg = "error getting in payofflag from CUSTDATAIN "
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				#---------------------------------------------------------------
+				# when selecting 'NO' option in drop down box of old loan payoff
+				#----------------------------------------------------------------
+				IF(CUST.LADISB.payofflag == "N") THEN
+				#{
+					sv_r = urhk_B2k_PutUserException(CUST.LADISB.exceptionCode)
+					print(sv_r)
+					#}
+				ELSE
+					#{
+					IF(STRLEN(ONS.CUSTOM.custDataIn) > 0) THEN
+					#{
+						sv_d = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+						IF(FIELDEXISTS(BANCS.INPUT.ladisbdet_FIELD_1) == 1) THEN
+						#{
+							CUST.LADISB.laAmtCrncy = BANCS.INPUT.ladisbdet_FIELD_1
+							print(CUST.LADISB.laAmtCrncy)
+							#}
+						ELSE
+							#{
+							CUST.LADISB.errMsg = "error getting in laAmtCrncy from CUSTDATAIN "
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+					
+					IF(STRLEN(ONS.CUSTOM.custDataIn) > 0) THEN
+					#{
+						sv_d = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+						IF(FIELDEXISTS(BANCS.INPUT.ladisbdet_FIELD_2) == 1) THEN
+						#{
+							CUST.LADISB.crdOpAcctNum = BANCS.INPUT.ladisbdet_FIELD_2
+							print(CUST.LADISB.crdOpAcctNum)
+							#}
+						ELSE
+							#{
+							CUST.LADISB.errMsg = "error getting in crdOpAcctNum from CUSTDATAIN "
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+					
+					IF(CDOUBLE(CUST.LADISB.totOsAmt) < 0) THEN
+					#{
+						CUST.LADISB.totOsAmt = -1 * CDOUBLE(CUST.LADISB.totOsAmt)
+						print(CUST.LADISB.totOsAmt)
+					#}
+					ENDIF
+					
+					IF(CDOUBLE(CUST.LADISB.laAmtCrncy) < 0) THEN
+					#{
+						CUST.LADISB.laAmtCrncy = -1 * CDOUBLE(CUST.LADISB.laAmtCrncy)
+						print(CUST.LADISB.laAmtCrncy)
+					#}
+					ENDIF
+					
+					print(CUST.LADISB.payofflag)
+					print(CUST.LADISB.laAmtCrncy)
+					print(CUST.LADISB.totOsAmt)
+					
+					#----------------------------------------------------------------------
+					# Removing comma of amt fields
+					#----------------------------------------------------------------------
+					sv_s = ""
+					sv_s = sv_s + " laAmt|SELECT"
+					sv_s = sv_s + " REPLACE("
+					sv_s = sv_s + "'"+ CUST.LADISB.laAmtCrncy +"'"
+					sv_s = sv_s + ",',','') "
+					sv_s = sv_s + "FROM DUAL"
+					print(sv_s)
+					
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					IF(sv_d == 0) THEN
+					#{
+						CUST.LADISB.laAmt = BANCS.OUTPARAM.laAmt
+						print(CUST.LADISB.laAmt)
+						#}
+					ELSE
+						#{
+						CUST.LADISB.errMsg = "error getting in laAmt from Dual"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+					
+					IF(CDOUBLE(CUST.LADISB.laAmt) < CDOUBLE(CUST.LADISB.totOsAmt)) THEN
+					#{
+						CUST.LADISB.errMsg = "Disbursement amount should be greater than OR equal to outstanding amount"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			sv_a = urhk_SRV_SetErr(CUST.LADISB.errMsg)
+			BANCS.OUTPUT.successOrFailure="F"
+			print(CUST.LADISB.errMsg)
+		#}
+		ENDIF
+		EXITSCRIPT
+		TRACE OFF
+END-->

@@ -1,0 +1,142 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : SB102_otccharges.scr
+#   Description     :
+#   Date            : 04-02-2025
+#   Author          : Mawazo Adraiga Justus
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : onlinechargesdp001.scr 
+#   Menu Option     :
+#   Srl. No         Date            Author              Description.
+#   -------         ------          ------              ------------
+#   01		04-Feb-2025     Mawazo A Justus     Charges for SB102		
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+#
+sv_q = urhk_B2k_PrintRepos("BANCS")
+print(sv_q)
+
+#------------------------------------------------------------------------------
+# Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+    CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","TMCHRG") == 0) THEN
+#{
+    CREATECLASS("CUST","TMCHRG",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+#{
+    CREATECLASS("CUST","CPARAM",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+    CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+###################### ADDED MAWAZO FOR JUNIOR SB102 ###########################
+		print(CASH.WITH.schmCode)
+		print(CASH.WITH.Int_Flg)
+		IF ((CUST.GCHRG.acctCrncy == "UGX") AND (CASH.WITH.schmCode == "SB102")) THEN
+		#{
+		print("We are here")
+		
+		sv_s = "FIRST_DAY,LAST_DAY|SELECT TRUNC(TO_DATE(SYSDATE,'DD-MM-RRRR'),'Q'),  last_day(add_months(TRUNC(TO_DATE(SYSDATE,'DD-MM-RRRR'),'Q'),2)) FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+
+                            sv_q = BANCS.OUTPARAM.FIRST_DAY
+                            PRINT(sv_q)
+                            sv_r = BANCS.OUTPARAM.LAST_DAY
+                            print(sv_r)
+
+					sv_u = "count_cwd_htd|"
+					sv_u = sv_u + "select COUNT(*) from tbaadm.htd where"
+					sv_u = sv_u + " acid in (select acid from tbaadm.gam where foracid = ?SVAR AND bank_id = ?SVAR) "
+					sv_u = sv_u + " AND tran_date BETWEEN to_date(?SVAR,'dd-mm-rrrr') and to_date(?SVAR,'dd-mm-rrrr') "
+					sv_u = sv_u + " and bank_id = ?SVAR AND PSTD_FLG = 'Y' AND DEL_FLG ='N' AND TRAN_TYPE = 'C' AND TRAN_SUB_TYPE='NP'"
+					print(sv_u)
+					BANCS.INPARAM.BINDVARS =  CASH.WITH.Ac_Number  + "|" + BANCS.STDIN.contextBankId + "|" + sv_q  + "|" + sv_r + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_w=urhk_dbSelectWithBind(sv_u)
+					print(sv_w)								
+					sv_f = BANCS.OUTPARAM.count_cwd_htd
+					print(sv_f)
+
+					sv_d = "count_cwd_dtd|"
+					sv_d = sv_d + "select COUNT(*) from tbaadm.dtd where"
+					sv_d = sv_d + " acid in (select acid from tbaadm.gam where foracid = ?SVAR AND bank_id = ?SVAR) "
+					sv_d = sv_d + " and bank_id = ?SVAR AND PSTD_FLG = 'Y' AND DEL_FLG ='N' AND TRAN_TYPE = 'C' AND TRAN_SUB_TYPE='NP' AND TRAN_ID != lpad(?SVAR,9)"
+					print(sv_d)
+					BANCS.INPARAM.BINDVARS =  CASH.WITH.Ac_Number  + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CASH.WITH.tran_id
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_e=urhk_dbSelectWithBind(sv_d)
+					print(sv_e)
+					sv_g = BANCS.OUTPARAM.count_cwd_dtd
+					print(sv_g)
+					print(sv_f)
+
+					IF((sv_g == "0") AND (sv_F == "0")) THEN
+					#{
+						CUST.GCHRG.chrgAmt= "0"
+						exitscript
+					#}
+					ELSE
+					#{
+						#--- CHG0036572 fix for withdraw charges not picking including the penalty - Ayaa
+						CUST.GCHRG.check = GETPOSITION(CASH.WITH.tran_amt,"|")
+						print(CUST.GCHRG.check)
+						IF(CUST.GCHRG.check > 0)THEN
+						#{
+							CASH.WITH.tran_amt = LEFT$(CASH.WITH.tran_amt,GETPOSITION(CASH.WITH.tran_amt,"|") -1 )
+						#}
+						ENDIF
+						sv_a = "chrgAmt|"
+						sv_a = sv_a + "SELECT  nvl(CHARGE_AMOUNT,'0') "
+						sv_a = sv_a + "from CUSTOM.NON_SUP_WD_TIER  "
+						sv_a = sv_a + "WHERE  '"+CASH.WITH.tran_amt+"' BETWEEN FROM_AMOUNT and TO_AMOUNT "
+						sv_a = sv_a + "AND BANK_ID = '"+BANCS.STDIN.contextBankId+"' "
+						print(sv_a)
+						sv_q = urhk_dbSelectWithBind(sv_a)
+						print(sv_q)
+						IF (sv_q == "0") THEN
+						#{
+							CUST.GCHRG.chrgAmt1 = CDOUBLE(BANCS.OUTPARAM.chrgAmt)
+							print(CUST.GCHRG.chrgAmt1)
+
+							CUST.GCHRG.chrgPen = CDOUBLE(CUST.CPARAM.jurnwdpenal)
+							print(CUST.GCHRG.chrgPen)
+
+							CUST.GCHRG.chrgAmt = cdouble(CUST.GCHRG.chrgAmt1) + cdouble(CUST.GCHRG.chrgPen)
+
+							CUST.GCHRG.chrgAmt = CUST.GCHRG.chrgAmt + "|" + BANCS.STDIN.homeCrncyCode
+							CUST.GCHRG.eventId = CUST.CPARAM.jnrPen
+
+							CALL("ChargeLien.scr")
+							CALL("gchrgcommon.scr")
+						#}
+						else
+						#{
+							CUST.GCHRG.chrgAmt= "0"
+							exitscript
+						#}
+						ENDIF
+						#---fix for withdraw charges not picking including the penalty
+	
+					#}
+					ENDIF
+
+###################### END JUNIOR #############################################
+TRACE OFF
+END-->

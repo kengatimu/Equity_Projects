@@ -1,0 +1,308 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodadp003.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to calculate charge and net TOD amount.
+# Input                 :       Criteria page values.
+# Output                :       Details page values.
+# Called Script         :       None
+# Calling Script        :       None
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           08-04-2013         Nitin Prabhakar   original Version          1.0
+#  2           24-07-2013         Bharath   		Modified for TOL          2.0
+#  3           26-07-2013         Bharath			Modified for total amount availed field
+#  4	       07-08-2013	  Kalvin	Modified for TO:363826&363177 4.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="9a896d2a7e96a393f6e64cbb3200b7ee87825ded2e87a5cc0fc05d91b3512320"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	# Creation of  repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "CTODA") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CTODA", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+	#{
+		CREATECLASS("CUST", "INTERFACE", 5)
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Getting Input at Backend
+	#--------------------------------------------------------------------------
+	CUST.CTODA.accNum =  TRIM(BANCS.INPUT.accNum)
+	print(CUST.CTODA.accNum)
+	CUST.CTODA.availAmt = TRIM(BANCS.INPUT.availAmt)
+	print(CUST.CTODA.availAmt)
+	CUST.CTODA.totAvailedAmt = TRIM(BANCS.INPUT.totAvailedAmt)
+	print(CUST.CTODA.totAvailedAmt)
+	#--------------------------------------------------------------------------
+	# checking availment amount cant be zero
+	#--------------------------------------------------------------------------
+	IF( CDOUBLE(CUST.CTODA.availAmt) == CDOUBLE("0.00") ) THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Enter TOD availment amount grater than zero."
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Finding maximum contract amount
+	#--------------------------------------------------------------------------
+	CUST.CTODA.maxContractAmt=0
+	sv_s = "conAmt|"
+	sv_s = sv_s + " SELECT MAX_CNTRT_AMT "
+	sv_s = sv_s + " FROM CUSTOM.CATOD_MASTER_TABLE "
+	sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND  ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND  DEL_FLG = 'N'"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Error in finding maximum contract amount"
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.maxContractAmt = BANCS.OUTPARAM.conAmt
+		print(CUST.CTODA.maxContractAmt)
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Getiing account details for further charge calculation.
+	#--------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "crncyCode,schmType,schmCode|"
+	sv_s = sv_s + " SELECT ACCT_CRNCY_CODE,SCHM_TYPE, SCHM_CODE"
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE FORACID = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CTODA.schmCode = ""
+		CUST.CTODA.schmType = ""
+		CUST.CTODA.schmCode = ""
+		#}
+	ELSE
+		#{
+		CUST.CTODA.crncyCode = BANCS.OUTPARAM.crncyCode
+		print(CUST.CTODA.crncyCode)
+		CUST.CTODA.schmType = BANCS.OUTPARAM.schmType
+		print(CUST.CTODA.schmType)
+		CUST.CTODA.schmCode = BANCS.OUTPARAM.schmCode
+		print(CUST.CTODA.schmCode)
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Getiing minimum Availment amount value from CPARAM.
+	#--------------------------------------------------------------------------
+	CUST.INTERFACE.errorCode = TRIM(CUST.CTODA.schmType) + "_AVAIL_MIN"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		CUST.CTODA.errorMsg = "Could not fetch parameter value for " +  CUST.INTERFACE.errorCode
+		sv_z = "Error_0|" + CUST.CTODA.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.CTODA.minAvailAmt = TRIM(CUST.INTERFACE.errorDesc)
+	print(CUST.CTODA.minAvailAmt)
+	#--------------------------------------------------------------------------
+	# checking availment amount cannot be less than minimum Availment amount.
+	#--------------------------------------------------------------------------
+	CUST.CTODA.minAvailAmt = FORMAT$(CDOUBLE(CUST.CTODA.minAvailAmt),"%.2f")
+	print(CUST.CTODA.minAvailAmt)
+	IF( CDOUBLE(CUST.CTODA.availAmt) < CDOUBLE(CUST.CTODA.minAvailAmt) ) THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Enter TOD availment amount cannot be less than " + CUST.CTODA.minAvailAmt
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# calling script to calculate the charge amount.
+	#--------------------------------------------------------------------------
+	BANCS.INPUT.acctId = CUST.CTODA.accNum
+	BANCS.INPUT.inputAvailAmount = CUST.CTODA.availAmt
+	BANCS.INPUT.inputCrncy = CUST.CTODA.crncyCode
+	CALL("TODCharge.scr")
+	CUST.CTODA.chrgAmt = BANCS.OUTPUT.collAmount
+	
+	#--------------------------------------------------------------------------
+	# Checking for minimum charge amount
+	#--------------------------------------------------------------------------
+	CUST.INTERFACE.errorCode = TRIM(CUST.CTODA.schmCode) + "_MINCHRG"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		CUST.CTODA.errorMsg = "Could not fetch parameter value for " +  CUST.INTERFACE.errorCode
+		sv_z = "Error_0|" + CUST.CTODA.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.CTODA.minChrg = TRIM(CUST.INTERFACE.errorDesc)
+	print(CUST.CTODA.minChrg)
+	IF( CDOUBLE(CUST.CTODA.chrgAmt) < CDOUBLE(CUST.CTODA.minChrg) ) THEN
+	#{
+		CUST.CTODA.chrgAmt = CUST.CTODA.minChrg
+	#}
+	ENDIF
+	
+	# converting charge amount to 2 decimal place
+	CUST.CTODA.chrgAmt = FORMAT$(CDOUBLE(CUST.CTODA.chrgAmt),"%.2f")
+	print(CUST.CTODA.chrgAmt)
+	#calculating net tod amount
+	CUST.CTODA.netTodAmount = CDOUBLE(CUST.CTODA.availAmt) + CDOUBLE(CUST.CTODA.chrgAmt)
+	print(CUST.CTODA.netTodAmount)
+	# converting net tod amount to 2 decimal place
+	CUST.CTODA.netTodAmount = FORMAT$(CDOUBLE(CUST.CTODA.netTodAmount),"%.2f")
+	print(CUST.CTODA.netTodAmount)
+	
+	#--------------------------------------------------------------------------
+	# Checking availability of avilment amount
+	#--------------------------------------------------------------------------
+	sv_s = "totAmtAvailed|"
+	sv_s = sv_s + " SELECT NVL(SUM(req_amt),0) "
+	sv_s = sv_s + " FROM CUSTOM.C_TODA "
+	sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	#sv_s = sv_s + " AND  status_flg = 'A'"
+	sv_s = sv_s + " AND  IS_DELETED = 'N'"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Error in finding total availed amount"
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.totAmtAvailed = BANCS.OUTPARAM.totAmtAvailed
+		print(CUST.CTODA.totAmtAvailed)
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Checking saction amount
+	#--------------------------------------------------------------------------
+	sv_s = "sanctAmt|"
+	sv_s = sv_s + " SELECT nvl(sanct_amt,0) "
+	sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+	sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND  status_flg = 'A'"
+	sv_s = sv_s + " AND  entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND  del_flg = 'N'"
+	
+	#=========added as a part of TO:363826&363177=======#
+	sv_s = sv_s + " AND  cls_flg = 'N'"
+	#=========end of changes for  TO:363826&363177=======#
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Error in finding sanction amount"
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.sanctAmt = BANCS.OUTPARAM.sanctAmt
+		print(CUST.CTODA.sanctAmt)
+	#}
+	ENDIF
+	
+	
+	#CUST.CTODA.availLimit =  CDOUBLE(CUST.CTODA.sanctAmt) - CDOUBLE(CUST.CTODA.totAmtAvailed)
+	CUST.CTODA.availLimit =  CDOUBLE(CUST.CTODA.maxContractAmt) - CDOUBLE(CUST.CTODA.totAmtAvailed)
+	print(CUST.CTODA.availLimit)
+	print(CUST.CTODA.netTodAmount)
+	print(CUST.CTODA.totAmtAvailed)
+	#IF( CDOUBLE(CUST.CTODA.netTodAmount) > CDOUBLE(CUST.CTODA.availLimit)) THEN
+	#{
+	#	sv_w = "SUCCESSORFAILURE|N"
+	#	sv_u = urhk_SetOrbOut(sv_w)
+	#	sv_m = "Net Availment amount cannot be greater than sanction amount. Total amount availed "
+	#	sv_z = "Error_0|" + sv_m
+	#	sv_u = urhk_SetOrbOut(sv_z)
+	#	GOTO ENDOFSCRIPT
+	#}
+	#ENDIF
+	
+	print(CUST.CTODA.totAvailedAmt)
+	print(CUST.CTODA.availAmt)
+	IF( CDOUBLE(CUST.CTODA.totAvailedAmt) < CDOUBLE(CUST.CTODA.availAmt) ) THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Availment amount cannot be greater than amount available for availment"
+		sv_z = "Error_0|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#--------------------------------------------------------------------------
+	# sending values to FE.
+	#--------------------------------------------------------------------------
+	sv_w = "SuccessOrFailure|Y"
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "chrgAmt|" + CUST.CTODA.chrgAmt
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "netTodAmount|" + CUST.CTODA.netTodAmount
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "maxContractAmt|" + CUST.CTODA.maxContractAmt
+	sv_u = urhk_SetOrbOut(sv_w)
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+		TRACE OFF
+END-->

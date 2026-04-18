@@ -1,0 +1,243 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: Ttumupload.scr
+# Type: NA|default
+# Description: Ttumupload.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# product: Finacle Core
+# category: Script Name Based
+# script: Ttumupload.scr
+# type: Ttumupload|default
+# description: The entire line from the file containing the records to be uploaded. This line should conform to the format specified for upload menu option
+#============================================================
+
+<--START
+CHECKSUM="cb1d94536499c6698b34589ccb08119a5c89b4da938b98bcebdc8e3af0e65289"
+	TRACE ON
+	# ==============================================================================
+	# This script contains the transaction creation logic for TTUM upload
+	# ==============================================================================
+	sv_r = 0
+	sv_c = 0
+	BANCS.INPUT.recCount = CINT("0")
+	BANCS.INPUT.tolTranAmt = CDOUBLE("0")
+	BANCS.INPUT.tolUpldCount = CINT("0")
+	sv_z = 1
+	
+	# ==============================================================================
+	# This script contains the transaction creation logic for TTUM upload
+	# ==============================================================================
+	BANCS.INPUT.moduleName  = "TTUM"
+	BANCS.INPUT.parameterId = "MAX_REC_LIM"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		BANCS.INPUT.maxTTUMRecCount = BANCS.OUTPUT.parameterVal
+		PRINT(BANCS.INPUT.maxTTUMRecCount)
+		#}
+	ELSE
+		#{
+		MTT.Error.Description = "Maximum record count setup not done in CPARAM"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	#==============================================================================
+	# Fetching Suspence Account from CPARAM.
+	#==============================================================================
+	BANCS.INPUT.moduleName  = "TTUM"
+	BANCS.INPUT.parameterId = "SUSP_ACCT"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		MTT.PartTranDetails.suspAccount = BANCS.OUTPUT.parameterVal
+		PRINT(MTT.PartTranDetails.suspAccount)
+		#}
+	ELSE
+		#{
+		MTT.Error.Description = "Suspense Account setup not done in CPARAM"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	MTT.OutputDetails.keyFieldString = ""
+	MTT.InputDetails.inputRecordString = ""
+	
+	#==============================================================================
+	# sv_n is used for curr cal implemented flag from GCT and should not be overwritten
+	# Fetching Loan payment bacid.
+	#==============================================================================
+	sv_n = ""
+	sv_e = "CrncyHolImplFlg,lapayBacid|select ccy_cal_implmntd_flg,la_payment_bacid from tbaadm.gct where BANK_ID = ?SVAR "
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_u = urhk_dbSelectWithBind(sv_e)
+	IF ( sv_u == 0 ) THEN
+	#{
+		sv_n = BANCS.OUTPARAM.CrncyHolImplFlg
+		BANCS.INPUT.lapayBacid = BANCS.OUTPARAM.lapayBacid
+		PRINT(BANCS.INPUT.lapayBacid)
+	#}
+	ENDIF
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	WHILE (sv_r < 1)
+	#{
+		sv_c = sv_c + 1
+		sv_s = Format$(sv_c, "%d")
+		
+		MTT.OutputDetails.keyFieldString = sv_s + "|" + MTT.InputDetails.inputRecordString
+		
+		sv_j = urhk_B2k_checkForPipeChar(MTT.InputDetails.inputRecordString)
+		IF (sv_j != 0) THEN
+		#{
+			MTT.Error.Description="Upload Record Should not contain PIPE Characters"
+			MTT.OutputDetails.keyFieldString = sv_s + "|"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO NXTREC
+		#}
+		ENDIF
+		
+		CALL("parseTTUM711.scr")
+		IF (BANCS.STDIN.contextBankId == "43") THEN
+			IF (FIELDEXISTS(BANCS.OUTPUT.successOrFailure) == 1) THEN
+				print(BANCS.OUTPUT.successOrFailure)
+				IF (BANCS.OUTPUT.successOrFailure=="F") THEN
+					EXITSCRIPT
+				ENDIF
+			ENDIF
+		ENDIF
+		
+		#==============================================================================
+		# BANCS.OUTPUT.successOrFailure is populated by the script parseInputRec.scr
+		#==============================================================================
+		IF (BANCS.OUTPUT.successOrFailure == "S") THEN
+		#{
+			BANCS.INPUT.recCount = CINT(BANCS.INPUT.recCount) + 1
+			#---------------------------------------------------
+			# Find total sum of tran amt till now
+			#---------------------------------------------------
+			PRINT(BANCS.INPUT.tolTranAmt)
+			BANCS.INPUT.tolTranAmt = CDOUBLE(BANCS.INPUT.tolTranAmt) +CDOUBLE( MTT.PartTranDetails.RefAmount)
+			PRINT(BANCS.INPUT.tolTranAmt)
+			PRINT(BANCS.INPUT.recCount)
+			IF(CINT(BANCS.INPUT.recCount) == CINT(BANCS.INPUT.maxTTUMRecCount)) THEN
+			#{
+				IF(CDOUBLE(BANCS.INPUT.tolTranAmt) != CDOUBLE("0")) THEN
+				#{
+					#for diff amount do the trasnaction posting into suspense a/c in child script
+					BANCS.INPUT.tolTranAmt=CDOUBLE(BANCS.INPUT.tolTranAmt) - CDOUBLE(MTT.PartTranDetails.RefAmount)
+					CALL("ttumdp001.scr")
+					
+					#---------------------------------------------------
+					# As we have passed the prev leg into suspense account
+					# we need to travese the  last record again and move
+					# to next transcation id
+					#---------------------------------------------------
+					PRINT(MTT.OutputDetails.keyFieldString)
+					CALL("parseTTUM711.scr")
+					IF (BANCS.OUTPUT.successOrFailure == "S") THEN
+					#{
+						BANCS.INPUT.recCount= "1"
+						BANCS.INPUT.tolUpldCount = CINT(BANCS.INPUT.tolUpldCount) + 1
+						PRINT(BANCS.INPUT.tolUpldCount)
+						BANCS.INPUT.tolTranAmt = CDOUBLE("0")
+						sv_z = sv_z + 1
+						PRINT(sv_z)
+						
+						PRINT(BANCS.INPUT.tolTranAmt)
+						BANCS.INPUT.tolTranAmt = CDOUBLE(BANCS.INPUT.tolTranAmt) +CDOUBLE( MTT.PartTranDetails.RefAmount)
+						PRINT(BANCS.INPUT.tolTranAmt)
+					#}
+					ENDIF
+					
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			MTT.TranDetails.TranDate = "0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "Y"
+			MTT.TranDetails.ReversalFlg = "N"
+			PRINT(sv_z)
+			BANCS.INPUT.tranIdentifier = "TTUMREC_" + FORMAT$(sv_z,"%d")
+			PRINT(BANCS.INPUT.tranIdentifier)
+			sv_r = urhk_MTTS_DefineTransaction(BANCS.INPUT.tranIdentifier)
+			PRINT(sv_r)
+			IF (sv_r != 0) THEN
+			#{
+				sv_m=urhk_B2k_PrintRepos("MTT")
+				PRINT(sv_m)
+				GOTO NXTREC
+			#}
+			ENDIF
+			
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "TTUMREC_" + FORMAT$(sv_z,"%d")
+			MTT.PartTranDetails.PTranBusinessType="UPLOAD"
+			PRINT("CHECK")
+			PRINT(MTT.PartTranDetails.RefAmount)
+			PRINT(MTT.PartTranDetails.Account)
+			PRINT(sv_c)
+			sv_r = urhk_MTTS_DefinePartTran("FIRST")
+			PRINT(sv_r)
+			IF (sv_r != 0) THEN
+			#{
+				GOTO NXTREC
+			#}
+			ENDIF
+			IF(CINT(BANCS.INPUT.recCount) == CINT(BANCS.INPUT.maxTTUMRecCount)) THEN
+			#{
+				BANCS.INPUT.recCount = CINT("0")
+				BANCS.INPUT.tolTranAmt = "0"
+				sv_z = sv_z + 1
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		NXTREC:
+			
+			MTT.OutputDetails.keyFieldString = ""
+			MTT.InputDetails.inputRecordString = ""
+			sv_r = urhk_MTTS_PopulateInputDetails("")
+			PRINT(sv_r)
+			
+		#}
+		DO
+		PRINT(BANCS.INPUT.tolTranAmt)
+		PRINT(BANCS.INPUT.tolUpldCount)
+		IF((BANCS.INPUT.tolUpldCount) > 0)THEN
+		#{
+			IF(CDOUBLE(BANCS.INPUT.tolTranAmt) !=CDOUBLE("0"))THEN
+			#{
+				PRINT(sv_z)
+				PRINT(BANCS.INPUT.tolTranAmt)
+				CALL("ttumdp001.scr")
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#since now onwards errors are not record specific i am making record num string as null.
+		MTT.OutputDetails.keyFieldString = "" + "|" + MTT.InputDetails.inputRecordString
+		PRINT(MTT.OutputDetails.keyFieldString)
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+		
+		EXITSCRIPT
+END-->

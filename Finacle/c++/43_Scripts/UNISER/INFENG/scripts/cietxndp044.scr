@@ -1,0 +1,161 @@
+##########################################################################################
+# Source Name           : cietxndp044.scr
+# Date                  : 04-Mar-2013
+# Description           : Get Cr Acct Num for Payment To A/c GL
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        04-Mar-2013   Mohan Raghu Arudi         Base Version
+#      2        09-Mar-2022   Irungu Jame		Drc Pay to GL
+###########################################################################################
+<--START
+CHECKSUM="82c75c7b91cf3dc3544a8871c530ca298bdf3b7678dc8ebb9ea19619e468ec3d"
+	TRACE ON
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CIETXN Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CIETXN")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CIETXN",5)
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	
+	CUST.CIETXN.errorFlg = "N"
+	CUST.CIETXN.errorMsg = " "
+	CUST.CIETXN.crAcctNum = " "
+	CUST.CIETXN.refCrncy = " "
+	CUST.CIETXN.targetEntity = ""
+	
+	IF(FIELDEXISTS(BANCS.INPUT.refCrncy))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.refCrncy) != "")THEN
+		#{
+			CUST.CIETXN.refCrncy = TOUPPER(TRIM(BANCS.INPUT.refCrncy))
+			print(CUST.CIETXN.refCrncy)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CIETXN.errorFlg = "Y"
+		CUST.CIETXN.errorMsg = "Unable to find Payment To Account GL Credit Account;"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.targetEntity))THEN
+	#{
+			CUST.CIETXN.targetEntity = TOUPPER(TRIM(BANCS.INPUT.targetEntity))
+	#}
+	ENDIF
+
+	PRINT(BANCS.STDIN.contextBankId)
+	PRINT(BANCS.STDIN.mySolId)
+	PRINT(BANCS.STDIN.homeCrncyCode)
+	PRINT(CUST.CIETXN.refCrncy)
+	PRINT(CUST.CIETXN.targetEntity)
+	
+	CUST.CIETXN.parameterId = "PA_CR_ACCT_NUM"
+	print(CUST.CIETXN.parameterId)
+	
+	sv_s = "crAcctNum|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+	sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CIETXN.parameterId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CIETXN.errorFlg = "Y"
+		CUST.CIETXN.errorMsg = "Unable to find Payment To Account GL Credit Account;"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.crAcctNum = BANCS.OUTPARAM.crAcctNum
+	print(CUST.CIETXN.crAcctNum)
+	
+	IF(TRIM(CUST.CIETXN.crAcctNum) == "")THEN
+	#{
+		CUST.CIETXN.errorFlg = "Y"
+		CUST.CIETXN.errorMsg = "Unable to find Payment To Account GL Credit Account;"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.inputBankId = BANCS.STDIN.contextBankId
+	CUST.CIETXN.inputBacid = CUST.CIETXN.crAcctNum
+	CUST.CIETXN.inputSolId = BANCS.STDIN.mySolId
+	
+	#IF((CUST.CIETXN.refCrncy != "EUR") AND (CUST.CIETXN.refCrncy != "GBP") AND (CUST.CIETXN.targetEntity != BANCS.STDIN.contextBankId))THEN
+	#IF((CUST.CIETXN.refCrncy != "EUR") AND (CUST.CIETXN.refCrncy != "GBP"))THEN
+	#{
+	#	CUST.CIETXN.inputCcy = "USD"
+	#}
+	#ELSE
+	##{
+		CUST.CIETXN.inputCcy = CUST.CIETXN.refCrncy
+	##}
+	#ENDIF
+
+	CUST.CIETXN.inputBacidOrForacid = CUST.CIETXN.crAcctNum
+	
+	CALL("cietxndp032.scr")
+	
+	PRINT(CUST.CIETXN.outputForacid)
+	IF(TRIM(CUST.CIETXN.outputForacid) == "")THEN
+	#{
+		CUST.CIETXN.errorFlg = "Y"
+		CUST.CIETXN.errorMsg = "Unable to find Payment To Account GL Credit Account;"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.crAcctNum = CUST.CIETXN.outputForacid
+	PRINT(CUST.CIETXN.crAcctNum)
+	
+	ENDOFSCRIPT:
+		
+		sv_u = urhk_SetOrbOut("errorFlg|"+CUST.CIETXN.errorFlg)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("errorMsg|"+CUST.CIETXN.errorMsg)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("crAcctNum|"+CUST.CIETXN.crAcctNum)
+		print(sv_u)
+		
+		
+END-->

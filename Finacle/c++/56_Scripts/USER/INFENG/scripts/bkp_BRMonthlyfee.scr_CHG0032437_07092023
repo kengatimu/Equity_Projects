@@ -1,0 +1,285 @@
+        
+#------------------------------------------------------------------------------------------------
+#  Name            : 
+#  Description     : 
+#  Date            : 23-08-2023
+#  Author          : Brian Njogu
+#  Input           : NA
+#  Output          : NA
+#  Calling Script  : BRMonthlyfee.scr
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#
+#-----------------------------------------------------------------------------------------------
+<--START  
+TRACE ON 
+
+		sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+		
+		
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+       	endif
+
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+       	endif
+		
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+       	
+        
+		print(CUST.DATA.foracid)
+						
+		
+		print(CUST.DATA.solId)
+						
+		
+		print(CUST.DATA.acctname)
+        
+
+       	#----------------------------------------------------------------------------------------------------
+		#--- 1. SRV_FetchAcctDtlForTran - FETCH DEBIT A/C DETAILS
+		#---------------------------------------------------------------------------------------------------- 
+
+		sv_k = urhk_SetUrhkInp("acct.foracid|" +CUST.DATA.foracid)
+		print(CUST.DATA.foracid)
+
+		sv_k = urhk_SetUrhkOut("acct.crncyCode|drCrncyCode")
+		sv_k = urhk_SetUrhkOut("acct.solId|solId")
+
+		sv_k = urhk_ExecSrv("SRV_FetchAcctDtlForTran|retain_all_output = Y")
+		print(sv_k)
+
+		IF(sv_k == 0)THEN
+		#{
+			print("Step 1 success")
+
+
+			CUST.DATA.drAcctNum = CUST.DATA.foracid
+			PRINT(CUST.DATA.drAcctNum)
+			
+			CUST.DATA.drCrncyCode = BANCS.OUTPARAM.drCrncyCode
+			print(CUST.DATA.drCrncyCode)
+
+			CUST.DATA.solId = BANCS.OUTPARAM.solId
+			print(CUST.DATA.solId)
+      
+      
+			CUST.DATA.PARTICULARS = "Bundled Monthly fees"
+			print(CUST.DATA.PARTICULARS)
+      
+		  
+			#Change context sol depending on the account number
+			IF(CUST.DATA.solId != BANCS.STDIN.mySolId)THEN
+			#{
+				sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.DATA.solId)
+				print(sv_u)
+				sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+				print(sv_u)
+				IF(sv_u!="0")THEN
+				#{
+					CALL("trapSRVerror.scr")
+					EXITSCRIPT
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(BANCS.STDIN.contextBankId)
+      
+			#---------------------------------
+			#-------CR account credit-------------
+			sv_l = "foracid|select foracid from tbaadm.gam where bank_id=?SVAR and bacid='SUPREME' and sol_id=?SVAR and acct_cls_flg!='Y' "
+			sv_l = sv_l + "and del_flg='N'"
+			print(sv_l)
+			
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId
+		
+			sv_s = urhk_dbSelectWithBind(sv_l)
+			PRINT(sv_s)
+			IF (sv_s !=0) THEN
+			#{
+				print("UNable to get INCOME ACCOUNT")
+				EXITSCRIPT
+			#}
+			ELSE
+			#{
+			
+				CUST.DATA.crAcctNum =BANCS.OUTPARAM.foracid
+				print(CUST.DATA.crAcctNum)
+				
+			#}
+			ENDIF
+			
+			  
+			#===================================
+			#   INITIALIZE THE MTT
+			#===================================
+			
+			sv_r = urhk_MTTS_Close("")
+        	print(sv_r)
+				
+			BANCS.INPARAM.PostTranFlg 		= "Y"
+			BANCS.INPARAM.CommitFlg 		= "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+			BANCS.INPARAM.ValidationFlag 		= "Y"
+			BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+			BANCS.INPARAM.CheckExceptions 		= "N"
+
+			sv_u = urhk_MTTS_Initialize("")
+        	print(sv_u)
+
+			sv_a = urhk_MTTS_PopulateInputDetails("")
+			print(sv_a)
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = "Bundled Monthly fees"
+
+			sv_v = "BMonthlytran"
+			print(sv_v)
+
+			sv_r = urhk_MTTS_DefineTransaction("BMonthlytran")
+			
+			CUST.DATA.amount = "75000"
+			print(CUST.DATA.amount)
+			
+			IF((CUST.DATA.foracid!=""))THEN
+			#{		
+				
+				#BundledFee Debit
+					MTT.PartTranDetails.Account 	= CUST.DATA.foracid 
+					MTT.PartTranDetails.RefCurrency = CUST.DATA.drCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = CUST.DATA.PARTICULARS
+					MTT.PartTranDetails.RefAmount = -(cdouble(CUST.DATA.amount))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = CUST.DATA.PARTICULARS
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "BMDr"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.DATA.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+				#BundledFee Credit
+					MTT.PartTranDetails.Account 	= CUST.DATA.crAcctNum
+					MTT.PartTranDetails.RefCurrency = CUST.DATA.drCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = CUST.DATA.PARTICULARS
+					MTT.PartTranDetails.RefAmount = (cdouble(CUST.DATA.amount))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Cr from:" + CUST.DATA.foracid + " - " + CUST.DATA.PARTICULARS
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "BMCr"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.DATA.MTTErrDesc = MTT.Error.Description
+						print(CUST.DATA.MTTErrDesc)
+					#}
+					ENDIF
+		
+		
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				
+				if(sv_r!="0")THEN
+				#{
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.DATA.MTTErrDesc = MTT.Error.Description
+						print(CUST.DATA.MTTErrDesc)
+					#}
+					ENDIF
+					
+					sv_r = urhk_MTTS_Close("")
+					print(sv_r)
+					EXITSCRIPT
+					
+				#}
+				ENDIF
+				
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.DATA.tranid)
+					
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)			
+				
+			#}
+			ENDIF		
+			
+			sv_r = urhk_MTTS_Close("")
+			print(sv_r)
+			
+		#}
+		ELSE
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+			#}									
+			ENDIF
+		#}
+		ENDIF
+EXITSCRIPT
+TRACE OFF
+END-->

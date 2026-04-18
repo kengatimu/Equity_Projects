@@ -1,0 +1,159 @@
+#############################################################################
+#    Name                       :  bulk_checque_destroy_wf.scr
+#    Date                       :  06-may-2021
+#    Description                :  This script will Destroy All unused cheque for account
+#    Author                     :  Anand Pansare
+#    Called Script              :
+#    Calling Script             :
+#    Modification History       :
+#    <Serial No.>          <Date>     <Author Name>        <Description>
+#############################################################################
+
+<--START
+TRACE ON
+
+	lv_r = REPEXISTS("CUST")
+	IF (lv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+		PRINT("HERE")
+	#}
+	ENDIF
+	
+	lv_r = CLASSEXISTS("CUST", "DATA")
+	IF (lv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+	
+	CUST.DATA.AccountNo = CUST.DATA.foracid
+	print(CUST.DATA.AccountNo)
+
+	lv_s = ""
+	lv_s = lv_s + "beginChqNum,numOfLvs,Chq_Lvs_Stat|"
+	lv_s = lv_s + " select begin_chq_num ,chq_num_of_lvs,Chq_Lvs_Stat  from tbaadm.cbt"
+	lv_s = lv_s + " where  entity_cre_flg ='Y' "
+	lv_s = lv_s + " and (chq_lvs_stat like '%U%' OR chq_lvs_stat like '%I%')"
+	lv_s = lv_s + " and acid = (select acid from tbaadm.gam where bank_id = '"+BANCS.STDIN.contextBankId+"' and foracid ='"+CUST.DATA.AccountNo+"') "
+
+	print(lv_s)	
+
+	lv_d = urhk_dbcursorOpenWithBind(lv_s)
+        IF(lv_d == 0)THEN
+        #{
+                lv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                print(lv_m)
+                lv_z = urhk_dbCursorFetch(lv_m)
+                print(lv_z)
+
+                if (lv_z != 0) then
+                #{
+                        print("Chequebook Not found")
+                        EXITSCRIPT
+                #}
+                ENDIF
+
+                while( lv_z == 0)
+                #{
+			CUST.DATA.beginChqNum     = BANCS.OUTPARAM.beginChqNum	
+			CUST.DATA.numOfLvs        = BANCS.OUTPARAM.numOfLvs	
+			CUST.DATA.Chq_Lvs_Stat    = BANCS.OUTPARAM.Chq_Lvs_Stat	
+			print(CUST.DATA.beginChqNum)
+			print(CUST.DATA.numOfLvs)
+			print(CUST.DATA.Chq_Lvs_Stat)
+			print(CUST.DATA.AccountNo)
+
+			#==========================================================================
+			#if Chequebook issue but not acknowleded. 
+			#==========================================================================
+			lv_a = mid$(CUST.DATA.Chq_Lvs_Stat,0,1)
+			print(lv_a)
+			if(lv_a == "I")THEN
+			#{
+				#==========================================================================
+				# urhk_SetUrhkInp is used to set inputs
+				#==========================================================================
+				print(CUST.DATA.AccountNo)
+				lv_u = urhk_SetUrhkInp("acct.foracid|" + CUST.DATA.AccountNo)
+				print(lv_u)
+				#==========================================================================
+				# Fetch Account details  for Achnolegement SRV
+				#==========================================================================
+				lv_u = urhk_ExecSrv("SRV_FetchChqBookDtlForAcknowledge|retain_all_output = Y")
+				print(lv_u)
+				IF (lv_u == 0 ) THEN
+				#{
+					lv_u = urhk_CopyOutToIn("")
+					PRINT(lv_u)
+					lv_u = urhk_SetUrhkInp("chqBookDtlLL.<rec_0>.key.serial_num|00001")
+					lv_u = urhk_SetUrhkInp("chqBookDtlLL.<rec_0>.selFlg|Y")
+
+					#==========================================================================
+					#CALLING SRV FOR ACKNOWLEDING AND VERIFYING ACKNOWLEMET
+					#==========================================================================
+					lv_u = urhk_ExecSrv("SRV_AcknowledgeChqBooksAndVerify|retain_all_output = Y|same_user_verify = Y")
+					PRINT(lv_u)
+					IF (lv_u != 0) THEN
+					#{
+						CALL("Error_Capturing_INM.scr")
+						IF(FIELDEXISTS(CUST.ERR.messageField)) THEN
+						#{
+							PRINT(CUST.ERR.messageField)
+							CUST.DATA.ErrorMsg = CUST.ERR.messageField
+							GOTO ERROR
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#==========================================================================
+			#CALLING SRV FOR DESTROYING AND VERIFYING CHEQUEBOOK 
+			#==========================================================================
+
+			lv_a = urhk_SetUrhkInp("newStat.code|" + "D")
+			lv_a = urhk_SetUrhkInp("acct.foracid|" + CUST.DATA.AccountNo)
+			lv_a = urhk_SetUrhkInp("beginChqNum|" + CUST.DATA.beginChqNum)
+			lv_a = urhk_SetUrhkInp("numOfLvs|" + CUST.DATA.numOfLvs)
+
+			lv_s = urhk_ExecSrv("SRV_MaintChqBookAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(lv_s)
+			
+			IF(lv_s != 0) THEN
+			#{
+				CUST.DATA.successOrFailure = "F"
+				CALL("SrvErrorHandlingmn001.scr")
+				PRINT(CUST.DATA.errorCode)
+				PRINT(CUST.DATA.errorDesc)
+			#}
+			ELSE
+			#{
+				CUST.DATA.successOrFailure = "S"
+				CUST.DATA.errorCode = ""
+				CUST.DATA.errorDesc = ""
+			#}
+			ENDIF
+
+	                lv_z = urhk_dbCursorFetch(lv_m)
+                        print(lv_z)
+                #}
+                do
+                lv_z = urhk_dbCursorClose(lv_m)
+        #}
+        ELSE
+        #{
+                print("No record found")
+                EXITSCRIPT
+        #}
+        ENDIF
+
+
+	
+	STEP1:
+		EXITSCRIPT
+		TRACE OFF
+END-->
+

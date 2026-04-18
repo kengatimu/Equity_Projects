@@ -1,0 +1,191 @@
+	
+	######################################################################################################################
+	# Source Name						: collateral.scr
+	# Menu							: HPAYOFF
+	# Date							: 09-05-2013
+	# Description						: This script is set in HPTTM for LINSR Event Type  which is set in HLAGSPM menu.
+	# Input Values						: None
+	# Output Values						: .
+	# Called Scripts					:
+	# Calling Script					:
+	# Author     						: jane
+	# Bank							: Equity Bank
+	# Modification History				:
+	#	< Version No.> 		<Date>		<Author Name> 		<Description>
+	#	 0.1			09-05-2013 	jane			Original Version
+	########################################################################################################################
+<--START
+CHECKSUM="84340c14c0cbaca6df38161602fd1bb2e26c0d2596a7a1006a2c6e2c16ca4dd9"
+	TRACE ON
+	
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print (sv_r)
+	
+	##################################################################
+	# Script for slabwise insuarance fee collection
+	##################################################################
+	
+	#--------------------------------------------------------------------------
+	#  Creation of CUST repository and INSU class
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("INSU")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("INSU")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("INSU", "LOAN")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("INSU", "LOAN", 5)
+	#}
+	ENDIF
+	
+	INSU.LOAN.Colpcnt=""
+	INSU.LOAN.ColFEE2=""
+	INSU.LOAN.errMsg=""
+	
+	BANCS.INPUT.moduleName = "ACCOUNT_OPENING"
+	BANCS.INPUT.parameterId = "SCHM_COD16"
+	CALL ("getcparamvaluelong.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		INSU.LOAN.collschm = BANCS.OUTPUT.parameterVal
+		print(INSU.LOAN.collschm)
+		#}
+	ELSE
+		#{
+		INSU.LOAN.errMsg = "CPARAM setup not done for acctNum1"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Selecting the Free TEXT 1  in table GAC
+	#--------------------------------------------------------------------------
+	print(BANCS.INPUT.Foracid)
+	INSU.LOAN.Foracid=BANCS.INPUT.Foracid
+	
+	sv_s = "Freetext14|"
+	sv_s = sv_s + " SELECT free_text_14"
+	sv_s = sv_s + " FROM TBAADM.GAC "
+	sv_s = sv_s + " WHERE acid in ("
+	sv_s = sv_s + "          SELECT acid "
+	sv_s = sv_s + "          FROM TBAADM.GAM "
+	sv_s = sv_s + "          WHERE foracid = ?SVAR "
+	sv_s = sv_s + "          AND del_flg = 'N' "
+	sv_s = sv_s +           " AND GAM.del_flg = 'N' "
+	sv_s = sv_s +           " AND GAM.bank_id = ?SVAR ) "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = INSU.LOAN.Foracid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d =urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		print ("YAA")
+		INSU.LOAN.FreeCode14 = BANCS.OUTPARAM.Freetext14
+		print(INSU.LOAN.FreeCode14)
+		
+	#}
+	ENDIF
+	#-------------------------------------------------------------------------
+	# Selecting the period in table lam
+	# if the period is 0 then exiting
+	#--------------------------------------------------------------------------
+	
+	sv_s = "period,SchmCode,sanclimit|"
+	sv_s = sv_s + " SELECT rep_perd_mths,schm_code,sanct_lim "
+	sv_s = sv_s + " FROM TBAADM.LAM, TBAADM.GAM "
+	sv_s = sv_s + " WHERE LAM.acid = GAM.acid "
+	sv_s = sv_s + " AND LAM.bank_id = GAM.bank_id "
+	sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + " AND LAM.del_flg = 'N' "
+	sv_s = sv_s + " AND LAM.entity_cre_flg = 'Y' "
+	sv_s = sv_s + " AND GAM.del_flg = 'N' "
+	sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = INSU.LOAN.Foracid + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	
+	IF (sv_d == 0) THEN
+	#{
+		INSU.LOAN.period = BANCS.OUTPARAM.period
+		INSU.LOAN.schmcode = BANCS.OUTPARAM.SchmCode
+		#INSU.LOAN.amnt = BANCS.OUTPARAM.sanclimit
+		#Modified by Sruthi for TOL 358704 to consider topup amount as well while disbursing.
+		INSU.LOAN.amnt=BANCS.INPUT.eventAmt
+		#}
+	ELSE
+		#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	######################################################################
+	#Collateral insurance
+	#######################################################################
+	sv_w = getPosition(INSU.LOAN.collschm,"," +  INSU.LOAN.schmcode + ",")
+	print(sv_w)
+	
+	IF(sv_w > 0)  THEN
+	#{
+		INSU.LOAN.Colpcnt="0.01"
+		
+	#}
+	ENDIF
+	#	IF (INSU.LOAN.schmcode == "LA524") THEN
+	#	#{
+	#		INSU.LOAN.Colpcnt="0.01"
+	#	#}
+	#	ENDIF
+	
+	INSU.LOAN.ColFEE1=CDOUBLE(INSU.LOAN.FreeCode14) *CDOUBLE(INSU.LOAN.Colpcnt)* CDOUBLE(INSU.LOAN.period)
+	INSU.LOAN.ColFEE2=CDOUBLE(INSU.LOAN.ColFEE1) / CDOUBLE("12")
+	
+	INSU.LOAN.TTLFEE=CDOUBLE(INSU.LOAN.ColFEE2)
+	print(INSU.LOAN.TTLFEE)
+	
+	
+	
+	IF (BANCS.STDIN.moduleIdentity != "FI") THEN
+	#{
+		IF (INSU.LOAN.TTLFEE < 500)  THEN
+		#{
+			INSU.LOAN.TTLFEE="500"
+			print(INSU.LOAN.TTLFEE)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.collAmount = INSU.LOAN.TTLFEE
+	BANCS.OUTPUT.AmountWithNoDiscount	= CDOUBLE(INSU.LOAN.TTLFEE)
+	print(BANCS.INPUT.inputCrncy)
+	BANCS.OUTPUT.collCrncy = BANCS.STDIN.homeCrncyCode
+	
+	
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print (sv_r)
+	
+	print(INSU.LOAN.TTLFEE)
+	print(BANCS.OUTPUT.collAmount)
+	
+	
+	
+	
+	ENDOFSCRIPT :
+		IF ( INSU.LOAN.errMsg != "" ) THEN
+		#{
+			sv_u = system("echo '"+INSU.LOAN.errMsg+"' >>insurance.log")
+		#}
+		ENDIF
+		
+		print(BANCS.OUTPUT.collAmount)
+		TRACE OFF
+		EXITSCRIPT
+END-->

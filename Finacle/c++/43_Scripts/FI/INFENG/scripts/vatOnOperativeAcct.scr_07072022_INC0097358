@@ -1,0 +1,269 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vatOnOperativeAcct.scr
+#  Description     : Mtt to collect VAT
+#  Date            : 19-01-2021
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : SRV
+#  Menu Option     : HBJE-VATOP
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             18-01-2021      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="241077deeab9cbb9e4c1515546cbf9adfad83c186db837736eac8aa8569ed600"
+TRACE ON
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","WITH") == 0) THEN
+#{
+        CREATECLASS("CUST","WITH",5)
+#}
+ENDIF
+CUST.WITH.BodDate =  mid$(BANCS.STDIN.BODDate,0,10)
+print(CUST.WITH.BodDate)
+
+sv_d = "StartDate|select to_char (to_date(?SVAR,'DD-MM-YYYY') - 0,'DD-MON-YYYY')  as StartDate FROM dual"
+BANCS.INPARAM.BINDVARS = CUST.WITH.BodDate
+print(sv_d)
+print(BANCS.INPARAM.BINDVARS)
+sv_u = urhk_dbSelectWithBind(sv_d)
+if(sv_u==0)then
+#{
+    CUST.WITH.StartDate =BANCS.OUTPARAM.StartDate
+    print(CUST.WITH.StartDate)
+
+#}
+endif
+
+sv_s = "acid,solid,foracid,acctname,schmtype,schmcode,acctcrncy,clramt,intdd ,operacct,vat,clrbalop,NARRATION |"
+sv_s = sv_s + " select acid,sol_id,foracid,acct_name,schm_type,schm_code,acct_crncy_code,clr_bal_amt,ADJ_AMT ,opereative_account , VAT_TO_COLLECT  ,clr_bal_amt_Op,NARRATION   from   "
+sv_s = sv_s + " ((select  a.acid, a.sol_id ,foracid, a.acct_name , a.schm_type , a.schm_code, a.acct_crncy_code,a.clr_bal_amt ,c.ADJ_AMT , (select foracid from tbaadm.gam g where g.bank_id='43' and g.acid=b.op_acid) opereative_account,(0.16*ADJ_AMT)  VAT_TO_COLLECT,  "
+sv_s = sv_s + " (select clr_bal_amt from tbaadm.gam s where s.bank_id='43' and s.acid=b.op_acid) clr_bal_amt_Op, concat  ( to_char (to_date(tran_date,'DD-MM-RRRR'),'DD-MM-RR') , concat  ( '/', concat( trim(tran_id) , concat  ( '/' ,trim (PART_TRAN_SRL_NUM))))) NARRATION  "
+sv_s = sv_s + " from tbaadm.gam a , tbaadm.lam b, tbaadm.ldah  c where a.acid =b.acid  and  a.acid =c.acid and  a.bank_id  =b.bank_id  and  a.bank_id =c.bank_id and  a.schm_code in ('LA711','LA712','LA732','LA733','LA734','LA790','LA791','LA792','ML711','ML712','ML732','ML733','ML734','ML790','ML791','ML792')  "
+sv_s = sv_s + " and a.schm_type ='LAA' and a.sol_id in (select sol_id from  tbaadm.sst where set_id ='BCDC') and c.DMD_FLOW_ID='INDEM' and a.bank_id ='43' and tran_date =?SVAR ) UNION  "
+sv_s = sv_s + " (select  a.acid, a.sol_id , foracid, a.acct_name , a.schm_type , a.schm_code, a.acct_crncy_code,a.clr_bal_amt ,c.ADJ_AMT ,(select foracid from tbaadm.gam g where g.bank_id='43' and g.acid=b.op_acid) opereative_account,(0.16*ADJ_AMT)  VAT_TO_COLLECT,  "
+sv_s = sv_s + " (select clr_bal_amt from tbaadm.gam s where s.bank_id='43' and s.acid=b.op_acid) clr_bal_amt_Op, concat  ( to_char (to_date(tran_date,'DD-MM-RRRR'),'DD-MM-RR') , concat  ( '/', concat( trim(tran_id) , concat  ( '/' ,trim (PART_TRAN_SRL_NUM))))) NARRATION  "
+sv_s = sv_s + " from tbaadm.gam a , tbaadm.lam b, tbaadm.lda  c where a.acid =b.acid  and  a.acid =c.acid and  a.bank_id  =b.bank_id  and  a.bank_id =c.bank_id and  a.schm_code in ('LA711','LA712','LA732','LA733','LA734','LA790','LA791','LA792','ML711','ML712','ML732','ML733','ML734','ML790','ML791','ML792')  "
+sv_s = sv_s + " and a.schm_type ='LAA' and a.sol_id in (select sol_id from  tbaadm.sst where set_id ='BCDC') and c.DMD_FLOW_ID='INDEM' and a.bank_id ='43' and tran_date =?SVAR )) "
+BANCS.INPARAM.BINDVARS = CUST.WITH.StartDate +"|" + CUST.WITH.StartDate
+print(BANCS.INPARAM.BINDVARS)
+sv_e = urhk_dbCursorOpenWithBind(sv_s)
+PRINT(sv_e)
+IF(sv_e == 0) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+
+	IF(sv_q == 1) THEN
+	#{
+		sv_x = urhk_dbCursorClose(sv_m)
+		print(sv_x)
+		CUST.WITH.errMsg ="No Data."
+		sv_e=urhk_SetOrbOut("StattusCode|Error")
+		sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg )
+		EXITSCRIPT
+	#}
+	ENDIF
+	print(sv_q)
+
+	WHILE (sv_q==0)
+
+	CUST.WITH.foracid = BANCS.OUTPARAM.foracid
+	print(CUST.WITH.foracid)
+	CUST.WITH.vat=BANCS.OUTPARAM.vat
+	print(CUST.WITH.vat)
+	CUST.WITH.clramt=BANCS.OUTPARAM.clrbalop
+	print(CUST.WITH.clramt)
+	CUST.WITH.acctcrncy = BANCS.OUTPARAM.acctcrncy
+	print(CUST.WITH.acctcrncy)
+	CUST.WITH.operacct = BANCS.OUTPARAM.operacct
+	print(CUST.WITH.operacct)	
+	CUST.WITH.solid = BANCS.OUTPARAM.solid
+	print(CUST.WITH.solid)
+	CUST.WITH.NARRATION = BANCS.OUTPARAM.NARRATION
+	print(CUST.WITH.NARRATION)
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+				CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+				CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+				CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+				CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+				CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF	
+
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "Y"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.CheckExceptions           = "N"
+
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+		print(sv_a)
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = "VAT ON INTEREST"
+		
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+
+		sv_r = urhk_MTTS_DefineTransaction("WITHTran")	
+
+		CUST.WITH.VatCrAcctId = "347010005"
+                print(CUST.WITH.VatCrAcctId)
+                print(CUST.WITH.solid)
+                CUST.WITH.VatCrAcctId = CUST.WITH.solid + CUST.WITH.VatCrAcctId
+                print(CUST.WITH.VatCrAcctId)
+
+		sv_v = "WITHTran"
+		print(sv_v)
+
+		#CustomerDebit
+		MTT.PartTranDetails.Account     = CUST.WITH.operacct
+		#MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode 
+		MTT.PartTranDetails.RefCurrency =CUST.WITH.acctcrncy		
+		if (CUST.WITH.acctcrncy !="CDF")then
+			MTT.PartTranDetails.RateCode ="TTB"
+		else
+			MTT.PartTranDetails.RateCode ="MEAN"
+		endif
+		MTT.PartTranDetails.Rate        = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "INT VAT /"+ CUST.WITH.foracid 
+		MTT.PartTranDetails.RefAmount = -(cdouble(CUST.WITH.vat))
+		print(MTT.PartTranDetails.RefAmount)
+		print(CUST.WITH.clramt)
+		print(cdouble(CUST.WITH.vat))
+		if (cdouble(CUST.WITH.clramt) < cdouble(CUST.WITH.vat)) then
+		#{				
+			MTT.PartTranDetails.TODRefType          = "IN"
+			MTT.PartTranDetails.TodEntityType   = "TODIN"
+			print(CUST.WITH.foracid)
+			MTT.PartTranDetails.TodEntityId     = CUST.WITH.operacct 
+			MTT.PartTranDetails.TodLevIntFlg    = "N"
+			MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+			MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+			MTT.PartTranDetails.TodPermittedBy  = "SYSTEM" 
+			MTT.PartTranDetails.TodRemarks      = "Charges TOD"
+			MTT.PartTranDetails.Consolidate     = "N"
+		#}
+		endif
+		
+		MTT.PartTranDetails.Remarks = CUST.WITH.NARRATION
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_r = urhk_MTTS_DefinePartTran("CustDr")
+		print(sv_r)
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+
+		#----WITH Credit Fee
+
+		MTT.PartTranDetails.Account     = CUST.WITH.VatCrAcctId
+		#MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RefCurrency = CUST.WITH.acctcrncy
+		MTT.PartTranDetails.RateCode    ="TTB"
+		MTT.PartTranDetails.Rate        = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "VAT FEE /" + CUST.WITH.foracid + "/" + CUST.WITH.operacct
+		MTT.PartTranDetails.RefAmount = (cdouble(CUST.WITH.vat))
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = CUST.WITH.NARRATION
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+		print(sv_r)
+
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.WITH.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.WITH.tranid)
+		#}
+		ENDIF	
+					
+		
+	NEXTREC:
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	#}
+	DO
+#}
+ELSE
+#{
+	CUST.WITH.errMsg ="Data Error"
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg)
+#}
+ENDIF
+
+
+EXITSCRIPT
+trace off
+end-->
+
+
+
+
+
+
+

@@ -1,0 +1,947 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: autoclosureCurrent.scr
+# Type: NA|default
+# Description: this is the script for a batch job for autoclosure of dormant current accounts with zero balance
+# Author: Meena_Andhavarapu
+# Date: 9/4/18 12:03 PM
+# Modification Log :
+#============================================================
+
+<--START
+CHECKSUM="202e4adffbae0f6cc5c307fdba0415d57fffa366ff4fface6be1931a8394331c"
+	# Script body goes here
+	TRACE ON
+	LIBNAME CUSTOMSO
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	sv_r = REPEXISTS("CCUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CCUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CCUST","AUTOCLS")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CCUST","AUTOCLS",5)
+	#}
+	ENDIF
+	
+	sv_s = "timeStamp|select to_char(sysdate,'ddmmyyyyhhmiss') from dual"
+	PRINT(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CCUST.AUTOCLS.timeStamp = BANCS.OUTPARAM.timeStamp
+		PRINT(CCUST.AUTOCLS.timeStamp)
+	#}
+	ENDIF
+	
+	
+	CCUST.AUTOCLS.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+	CCUST.AUTOCLS.errMsg = ""
+	CCUST.AUTOCLS.failureFile = "failfile_CAAUTOCLS1_" + BANCS.STDIN.mySolId +".lst"
+	CCUST.AUTOCLS.successFile = "succfile_CAAUTOCLS1_" + BANCS.STDIN.mySolId +".lst"
+	
+	CCUST.AUTOCLS.failFileIndex1 = ""
+	CCUST.AUTOCLS.failFileIndex1 = urtn_fileOpen(CCUST.AUTOCLS.failureFile + "|w")
+	
+	PRINT(CCUST.AUTOCLS.failFileIndex1)
+	
+	CCUST.AUTOCLS.succFileIndex1 = ""
+	CCUST.AUTOCLS.succFileIndex1 = urtn_fileOpen(CCUST.AUTOCLS.successFile + "|w")
+	
+	PRINT(CCUST.AUTOCLS.succFileIndex1)
+	
+	
+	CCUST.AUTOCLS.list_file_name = CCUST.AUTOCLS.failureFile
+	CCUST.AUTOCLS.list_file_name1 = CCUST.AUTOCLS.successFile
+	CCUST.AUTOCLS.title = "AutoClosure of dormant CA Accounts Fail Rep"
+	CCUST.AUTOCLS.title1 = "AutoClosure of dormant CA Accounts Succ Rep"
+	CCUST.AUTOCLS.mrt_file_name = "caaAUTOCLS.mrt"
+	CCUST.AUTOCLS.rpt_file_name = "caaAUTOCLSfail_"+CCUST.AUTOCLS.timeStamp+".rpt"
+	CCUST.AUTOCLS.rpt_file_name1 = "caaAUTOCLSsucc_"+CCUST.AUTOCLS.timeStamp+".rpt"
+	CCUST.AUTOCLS.rpt =  "caaAUTOCLSfail_"+CCUST.AUTOCLS.timeStamp
+	CCUST.AUTOCLS.rpt1 =  "caaAUTOCLSsucc_"+CCUST.AUTOCLS.timeStamp
+	
+	
+	CCUST.AUTOCLS.parameterId = "DORMANCY_PERIOD_CA"
+	CCUST.AUTOCLS.moduleName = "CA"
+	
+	PRINT(BANCS.STDIN.contextBankId)
+	PRINT(CCUST.AUTOCLS.moduleName)
+	PRINT(CCUST.AUTOCLS.parameterId)
+	
+	sv_a = ""
+	
+	sv_a = sv_a + "paramVal|select parameter_value FROM CUSTOM.C_CPVALUE , CUSTOM.C_CPMASTER "
+	sv_a = sv_a + " WHERE C_CPMASTER.bank_id = C_CPVALUE.bank_id  AND "
+	sv_a = sv_a + " C_CPMASTER.module_name = C_CPVALUE.module_name  AND "
+	sv_a = sv_a + " C_CPMASTER.parameter_id = C_CPVALUE.parameter_id AND "
+	sv_a = sv_a + " C_CPVALUE.del_flg != 'Y' AND "
+	sv_a = sv_a + " C_CPVALUE.entity_cre_flg = 'Y' AND "
+	sv_a = sv_a + " C_CPMASTER.bank_id = ?SVAR AND "
+	sv_a = sv_a + " C_CPMASTER.module_name = ?SVAR AND "
+	sv_a = sv_a + " C_CPVALUE.parameter_id = ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CCUST.AUTOCLS.moduleName + "|" + CCUST.AUTOCLS.parameterId
+	
+	sv_d = urhk_dbSelectWithBind(sv_a)
+	PRINT(sv_a)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.paramVal)
+		CCUST.AUTOCLS.dormPeriod = BANCS.OUTPARAM.paramVal
+		#}
+	ELSE
+		#{
+		CCUST.AUTOCLS.errMsg = "CPARAM | CPARAM not maintained for Parameter Id: "+CCUST.AUTOCLS.parameterId + " for CA in Entity: "+ BANCS.STDIN.contextBankId
+		PRINT(CCUST.AUTOCLS.errMsg)
+		sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + CCUST.AUTOCLS.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+		
+	#}
+	ENDIF
+	PRINT(CCUST.AUTOCLS.dormPeriod)
+	
+	sv_s = ""
+	
+	sv_s = "foracid,crncyCode,statDate|SELECT FORACID, acct_crncy_code, to_char( MAX(ACCT_STATUS_DATE),'DD-MM-YYYY') "
+	sv_s = sv_s + " FROM TBAADM.GAM, TBAADM.SMT "
+	sv_s = sv_s + " WHERE GAM.BANK_ID=?SVAR AND GAM.SOL_ID=?SVAR and gam.bank_id=smt.bank_id"
+	sv_s = sv_s + " AND GAM.ACID = SMT.ACID  and gam.acct_crncy_code='CDF' and nvl(gam.lien_amt,0)=0"
+	sv_s = sv_s + " AND GAM.ENTITY_CRE_FLG = 'Y' AND GAM.del_flg = 'N' and gam.acct_cls_flg='N' and ACCT_CLS_DATE is null "
+	sv_s = sv_s + "	and (gam.frez_code not in ('D','T') or gam.frez_code =' ' or gam.frez_code is null) and (pool_id is null or pool_id =' ')  "
+	sv_s = sv_s + " AND ACCT_STATUS = 'D' AND  ( nvl(CLR_BAL_AMT,'0') +nvl(UN_CLR_BAL_AMT,0) ) =0 AND SCHM_TYPE = 'CAA' "
+	sv_s = sv_s + " and not  exists (select 1 from tbaadm.gam g2 ,tbaadm.lam l2 where g2.bank_id=l2.bank_id and g2.schm_type='LAA' "
+	sv_s = sv_s + " and g2.acid=l2.acid  and l2.op_acid=gam.acid and g2.bank_id=gam.bank_id and g2.acct_cls_flg='N' and g2.del_flg='N'  and g2.entity_cre_flg ='Y' "
+	sv_s = sv_s + " and g2.entity_cre_flg='Y' and l2.op_acid is not null) "
+	sv_s = sv_s + "	GROUP BY FORACID,ACCT_CRNCY_CODE "
+	
+	##added to improve performance
+	sv_s = sv_s + " having to_date(?SVAR,'dd-mm-yyyy')- to_date(TO_CHAR(TO_DATE(MAX(ACCT_STATUS_DATE),'DD-MON-YY'),'DD-MM-YYYY'),'dd-mm-yyyy')>= ?SVAR"
+        
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CCUST.AUTOCLS.BODDate + "|" + CCUST.AUTOCLS.dormPeriod
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	
+	IF(sv_c!=0) THEN
+	#{
+		CCUST.AUTOCLS.errMsg = "DB Error: | Error in opening cursor, Please contact DBA!!"
+		PRINT(CCUST.AUTOCLS.errMsg)
+		sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + CCUST.AUTOCLS.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	sv_l = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(sv_l)
+	
+	sv_f = urhk_dbCursorFetch(sv_l)
+	PRINT(sv_f)
+	IF(sv_f!=0) THEN
+	#{
+		CCUST.AUTOCLS.errMsg = "DB Error: | No accounts exist"
+		PRINT(CCUST.AUTOCLS.errMsg)
+		sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + CCUST.AUTOCLS.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+		
+	#}
+	ENDIF
+	
+	WHILE(sv_f == 0)
+	#{
+		
+		CCUST.AUTOCLS.foracid = BANCS.OUTPARAM.foracid
+		CCUST.AUTOCLS.statDate= BANCS.OUTPARAM.statDate
+		CCUST.AUTOCLS.crncyCode = BANCS.OUTPARAM.crncyCode
+		
+		PRINT(CCUST.AUTOCLS.foracid)
+		PRINT(CCUST.AUTOCLS.statDate)
+		PRINT(CCUST.AUTOCLS.crncyCode)
+		CCUST.AUTOCLS.AUTOCLSflg = "N"
+		CCUST.AUTOCLS.pendingChrgAmt = "0"
+		
+		##to check if operative account is not active
+		sv_r = urhk_getAcctDetailsInRepository(CCUST.AUTOCLS.foracid)
+		IF(sv_r != 0)THEN
+		#{
+			sv_q ="acct is not found"
+			PRINT(sv_q)
+			sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+			sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+			PRINT(sv_b)
+			GOTO NEXTACID
+			PRINT("acct is not active")
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.date1 = CCUST.AUTOCLS.BODDate
+		BANCS.INPARAM.date2 = CCUST.AUTOCLS.statDate
+		sv_r = urhk_B2k_dateDiff("")
+		sv_i = BANCS.OUTPARAM.dateDiff
+		
+		#sv_i= urhk_B2k_getDateDiffFromBODDate(CCUST.AUTOCLS.statDate)
+		#sv_i = (BANCS.OUTPARAM.DateDiff)
+		
+		PRINT(BANCS.OUTPARAM.dateDiff)
+		PRINT(sv_i)
+		PRINT(CCUST.AUTOCLS.dormPeriod)
+		#---------------------------------------------------------
+		# checking if the account is dormant based on CPARAM setup
+		#---------------------------------------------------------
+		
+		IF(CINT(BANCS.OUTPARAM.dateDiff) >= CINT(CCUST.AUTOCLS.dormPeriod))THEN
+		#{
+			sv_k = ""
+			sv_k = sv_k + "pendingChrgAmt|select nvl(sum(PENDING_CHRG_AMT),0) "
+			sv_k = sv_k + " FROM TBAADM.CXL WHERE ENTITY_CRE_FLG= 'Y' "
+			#sv_k = sv_k + " AND DEL_FLG = 'N' AND event_id = 'ACCT_MAINTENANCE' AND event_type = 'ACMNT' "
+			sv_k = sv_k + " AND DEL_FLG = 'N' AND event_type = 'ACMNT' AND BANK_ID=?SVAR"
+			#sv_k = sv_k + " AND comp_b2kid = (select ACID FROM TBAADM.GAM where bank_id=?SVAR AND FORACID = ?SVAR) "
+			sv_k = sv_k + " AND target_acid = (select ACID FROM TBAADM.GAM where bank_id=?SVAR AND FORACID = ?SVAR) "
+			#sv_k = sv_k + " group by COMP_B2KID"
+			
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CCUST.AUTOCLS.foracid
+			PRINT(sv_k)
+			sv_o = urhk_dbSelectWithBind(sv_k)
+			print(CCUST.AUTOCLS.foracid)
+			
+			IF(sv_o	== "0") THEN
+			#{
+				PRINT(BANCS.OUTPARAM.pendingChrgAmt)
+				CCUST.AUTOCLS.pendingChrgAmt = (BANCS.OUTPARAM.pendingChrgAmt)
+			#}
+			ENDIF
+			
+			print(CCUST.AUTOCLS.foracid)
+			
+			IF(CCUST.AUTOCLS.pendingChrgAmt != 0)THEN
+			#{
+				print(CCUST.AUTOCLS.foracid)
+				sv_k = ""
+				sv_k = sv_k + "lienAmt|select nvl(sum(lien_amt),0) from tbaadm.alt "
+				sv_k = sv_k + " where entity_cre_flg='Y' AND del_flg='N' AND lien_reason_code = 'LIEN' "
+				sv_k = sv_k + " AND  acid = (select acid from tbaadm.gam where bank_id=?SVAR AND foracid = ?SVAR) AND bank_id =?SVAR "
+				sv_k = sv_k + " group by acid "
+				
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CCUST.AUTOCLS.foracid + "|" + BANCS.STDIN.contextBankId
+				PRINT(sv_k)
+				sv_o = urhk_dbSelectWithBind(sv_k)
+				
+				IF(sv_o!=0) THEN
+				#{
+					sv_q ="ERROR in alt query for the account"
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					GOTO NEXTACID
+					PRINT("ERROR in alt query for the account")
+				#}
+				ENDIF
+				
+				PRINT(BANCS.OUTPARAM.lienAmt)
+				CCUST.AUTOCLS.lienAmt = (BANCS.OUTPARAM.lienAmt)
+				
+				#-----------------------------------------------------------------------------------
+				#Checking if the lien amount on the account is only the account maintenance charges
+				#-----------------------------------------------------------------------------------
+				
+				IF(CCUST.AUTOCLS.pendingChrgAmt != CCUST.AUTOCLS.lienAmt)THEN
+				#{
+					
+					sv_q ="Lien marked ON Acct includes charges other than A/C Maintenance charges"
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					GOTO NEXTACID
+					PRINT("Lien marked ON Acct includes charges other than A/C Maintenance charges")
+				#}
+				ENDIF
+				
+				CCUST.AUTOCLS.remarks="AC MAINTENANCE CHARGES"
+				CCUST.AUTOCLS.reasonCode="012"
+				sv_g = urhk_SetUrhkInp("pendingChrgWaiverCrit.funcCode|W")
+				sv_g = urhk_SetUrhkInp("pendingChrgWaiverCrit.solSetId.setId|"+BANCS.STDIN.mySolId)
+				sv_g = urhk_SetUrhkInp("pendingChrgWaiverCrit.monthsElapsed|M")
+				
+				sv_g = urhk_ExecSrvNoCommit("SRV_FetchPendingChrgsForWavier|retain_all_output = Y")
+				
+				sv_g = urhk_CopyOutToIn("")
+				
+				sv_a = "b2kId,lien|select b2k_id, nvl((lien_amt),0) from tbaadm.alt "
+				sv_a = sv_a + " where entity_cre_flg='Y' AND del_flg='N' AND lien_reason_code = 'LIEN' "
+				sv_a = sv_a + " AND  acid in (select acid from tbaadm.gam where bank_id=?SVAR AND foracid = ?SVAR) AND bank_id =?SVAR "
+				
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CCUST.AUTOCLS.foracid + "|" + BANCS.STDIN.contextBankId
+				
+				PRINT(sv_a)
+				sv_c = urhk_dbCursorOpenWithBind(sv_a)
+				PRINT(sv_c)
+				IF(sv_c == 0) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+					sv_i = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+					sv_r = urhk_dbCursorFetch(sv_i)
+					PRINT(sv_r)
+					sv_z = 0
+					WHILE (sv_r == 0)
+					#{
+						CCUST.AUTOCLS.b2kId  = BANCS.OUTPARAM.b2kId
+						PRINT(CCUST.AUTOCLS.b2kId)
+						CCUST.AUTOCLS.lien  = BANCS.OUTPARAM.lien
+						PRINT(CCUST.AUTOCLS.lien)
+						sv_z = sv_z + 1
+						CCUST.AUTOCLS.srlNum = sv_z
+						PRINT(sv_z)
+						sv_y = format$(sv_z,"%d")
+						PRINT(sv_y)
+						
+						
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.key.serial_num|"+CCUST.AUTOCLS.srlNum)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.selectFlg|Y")
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.foracid|"+CCUST.AUTOCLS.foracid)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.lienB2kId|"+CCUST.AUTOCLS.b2kId)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.eventId.eventId|ACCT_MAINTENANCE")
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.eventId.eventType|ACMNT")
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.chrgCollStartDate|"+BANCS.STDIN.BODDate)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.acctCrncy.crncyCode|"+CCUST.AUTOCLS.crncyCode)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.actualChrgAmt|"+CCUST.AUTOCLS.lien+"|"+CCUST.AUTOCLS.crncyCode)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.pendingChrgAmt|"+CCUST.AUTOCLS.lien+"|"+CCUST.AUTOCLS.crncyCode)
+						sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_" + sv_y + ">.waiveReason.refCode|"+CCUST.AUTOCLS.reasonCode)
+						
+						
+						
+						IF (sv_r == 0) THEN
+						#{
+							sv_r = urhk_dbCursorFetch(sv_i)
+							PRINT(sv_r)
+						#}
+						ENDIF
+					#}
+					DO
+					sv_r = urhk_dbCursorClose(sv_i)
+					PRINT(sv_r)
+				#}
+				ENDIF
+				
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.key.serial_num|1")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.selectFlg|Y")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.foracid|"+CCUST.AUTOCLS.foracid)
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.eventId.eventId|ACCT_MAINTENANCE")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.eventId.eventType|ACMNT")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.chrgCollStartDate|"+BANCS.STDIN.BODDate)
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.acctCrncy.crncyCode|XOF")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.actualChrgAmt|"+CCUST.AUTOCLS.lienAmt+"|XOF")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.pendingChrgAmt|"+CCUST.AUTOCLS.pendingChrgAmt+"|XOF")
+				#sv_g = urhk_SetUrhkInp("pendingChrgWaiverOutputLL.<rec_0>.waiveReason.refCode|"+CCUST.AUTOCLS.reasonCode)
+				#sv_g = urhk_SetUrhkInp("lienMaintLL.<rec_0>.effFromDate|" + BANCS.STDIN.BODDate)
+				#sv_g = urhk_SetUrhkInp("lienMaintLL.<rec_0>.b2kId|" + CCUST.TAX.b2k_id)
+				
+				#sv_h = urhk_ExecSrvNoCommit("SRV_WaivePendingChrgs|retain_all_output = Y|same_user_verify = Y")
+				
+				#sv_h = urhk_CopyOutToIn("")
+				
+				sv_h = urhk_ExecSrvNoCommit("SRV_WaivePendingChrgsAndVerify|retain_all_output = Y|same_user_verify = Y")
+				
+				
+				IF (sv_h != 0) THEN
+				#{
+					###capturing errorsand exeptions###############
+					
+					sv_c = BANCS.OUTPUT.successOrFailure
+					sv_d = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					PRINT(sv_c)
+					PRINT(sv_d)
+					WHILE(sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d, "%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_" + sv_f)
+						PRINT(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_" + sv_f)
+						PRINT(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("Tag_" + sv_f)
+						PRINT(sv_e)
+						sv_d = sv_d + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errMsg = CCUST.AUTOCLS.foracid + "|" + "Lien update failed"
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + CCUST.AUTOCLS.errMsg)
+					PRINT(sv_b)
+					sv_d = 1
+					sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+					WHILE(sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d, "%d")
+						sv_e = ("BANCS").("OUTPARAM").("XcpnDesc_" + sv_f)
+						PRINT(sv_e)
+						sv_d = sv_d + 1
+						
+					#}
+					DO
+					
+					sv_d = 1
+					sv_c = CINT(BANCS.OUTPARAM.Warning_num)
+					WHILE(sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d, "%d")
+						sv_e = ("BANCS").("OUTPARAM").("WarningMesg" + sv_f)
+						PRINT(sv_e)
+						sv_d = sv_d + 1
+					#}
+					DO
+					
+					GOTO NEXTACID
+				#}
+				ENDIF
+				
+				PRINT("lien successfully lifted!!")
+				
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" +CCUST.AUTOCLS.foracid)
+				sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+				#}
+				ENDIF
+				
+				sv_a = urhk_CopyOutToIn("")
+				
+				#sv_u = urhk_SetUrhkInp("intUptoDateFlg|N")
+				#sv_u = urhk_SetUrhkInp("intCalcReqd|Y")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_CloseOperAcct|retain_all_output = Y|same_user_verify = Y|call_mode = N")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					
+				#}
+				ENDIF
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" +CCUST.AUTOCLS.foracid)
+				#sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify =	Y")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+				#}
+				ENDIF
+				
+				sv_a = urhk_CopyOutToIn("")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y|call_mode = N")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					#}
+				ELSE
+					#{
+					
+					sv_q = "Account successfully Autoclosed"
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.succFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					
+				#}
+				ENDIF
+				
+			#}
+			ELSE
+			#{
+				print(CCUST.AUTOCLS.foracid)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" +CCUST.AUTOCLS.foracid)
+				sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				print(CCUST.AUTOCLS.foracid)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+				#}
+				ENDIF
+				print(CCUST.AUTOCLS.foracid)
+				
+				sv_a = urhk_CopyOutToIn("")
+				print(CCUST.AUTOCLS.foracid)
+				
+				#sv_u = urhk_SetUrhkInp("intUptoDateFlg|N")
+				#sv_u = urhk_SetUrhkInp("intCalcReqd|Y")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_CloseOperAcct|retain_all_output = Y|same_user_verify = Y|call_mode = N")
+				PRINT(sv_u)
+				print(CCUST.AUTOCLS.foracid)
+				
+				IF (sv_u == "1") THEN
+				#{
+					print(sv_u)
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					PRINT(sv_b)	
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					
+				#}
+				ENDIF
+				print(CCUST.AUTOCLS.foracid)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" +CCUST.AUTOCLS.foracid)
+				#sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify =	Y")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+				#}
+				ENDIF
+				
+				sv_a = urhk_CopyOutToIn("")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y|call_mode = N")
+				PRINT(sv_u)
+				
+				IF (sv_u == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Fatal_num)
+					PRINT(BANCS.OUTPARAM.Error_num)
+					PRINT(BANCS.OUTPARAM.Warning_num)
+					PRINT(BANCS.OUTPARAM.UserInfo_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+					PRINT(BANCS.OUTPARAM.Xcpn_Err_num)
+					
+					sv_d = 1
+					sv_n = 1
+					sv_c = CINT(BANCS.OUTPARAM.Error_num)
+					WHILE (sv_d <= sv_c)
+					#{
+						sv_f = FORMAT$(sv_d,"%d")
+						sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_b)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_a)
+						sv_d = sv_d + 1
+						sv_n = sv_n + 1
+						sv_d = sv_c + 1
+					#}
+					DO
+					CCUST.AUTOCLS.errorFlg = "Y"
+					CCUST.AUTOCLS.errorMsg = sv_b
+					
+					#Failure message written in the final report
+					#sv_t = urtn_fileWrite(CCUST.DATA.fileIndex + "|" + CCUST.DATA.message)
+					
+					sv_q = CCUST.AUTOCLS.errorMsg
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					#}
+				ELSE
+					#{
+					
+					sv_q = "Account successfully Autoclosed"
+					PRINT(sv_q)
+					sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+					sv_b = urtn_fileWrite(CCUST.AUTOCLS.succFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					
+					GOTO NEXTACID
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			
+			sv_q = "Account in dormant state for less than 360 days"
+			PRINT(sv_q)
+			#sv_q = CCUST.AUTOCLS.foracid +"|"+ sv_q
+			#sv_b = urtn_fileWrite(CCUST.AUTOCLS.failFileIndex1 + "|" + sv_q)
+			#PRINT(sv_b)
+			
+			GOTO NEXTACID
+			
+		#}
+		ENDIF
+		
+		
+		NEXTACID:
+			sv_f = urhk_dbCursorFetch(sv_l)
+			PRINT(sv_f)
+			
+		#}
+		DO
+		
+		sv_c = urhk_dbCursorClose(sv_l)
+		PRINT(sv_c)
+		
+		
+	ENDOFSCRIPT:
+		
+		sv_c = urtn_fileClose(CCUST.AUTOCLS.failFileIndex1)
+		PRINT(sv_c)
+		
+		sv_c = urtn_fileClose(CCUST.AUTOCLS.succFileIndex1)
+		PRINT(sv_c)
+		
+		
+		CCUST.AUTOCLS.ERR000002 = "Failed "
+		PRINT(CCUST.AUTOCLS.list_file_name)
+		sv_q = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CCUST.AUTOCLS.mrt_file_name + " " + CCUST.AUTOCLS.list_file_name + " " + CCUST.AUTOCLS.rpt
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CCUST.AUTOCLS.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		PRINT(CCUST.AUTOCLS.mrt_file_name)
+		PRINT(CCUST.AUTOCLS.list_file_name1)
+		PRINT(CCUST.AUTOCLS.rpt1)
+		
+		sv_q = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CCUST.AUTOCLS.mrt_file_name + " " + CCUST.AUTOCLS.list_file_name1 + " " + CCUST.AUTOCLS.rpt1
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CCUST.AUTOCLS.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CCUST.AUTOCLS.rpt_file_name+" '" + CCUST.AUTOCLS.title+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CCUST.AUTOCLS.ERR000002 + "^DATE")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CCUST.AUTOCLS.rpt_file_name1+" '" + CCUST.AUTOCLS.title1+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CCUST.AUTOCLS.ERR000002 + "^DATE")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+	FINISH:
+		TRACE OFF
+		
+		
+		
+		
+END-->

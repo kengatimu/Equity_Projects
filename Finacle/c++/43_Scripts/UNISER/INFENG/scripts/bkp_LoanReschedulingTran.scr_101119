@@ -1,0 +1,2410 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : LoanReschedulingTran.scr
+#   Description     : This script is executed by batch job "BILCG" in EOD/BOD process to collect
+#                   : the bill charges 22kes per bill collection
+#   Date            : 24-01-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : NA
+#   Calling Script  : NA
+#   Menu Option     :HBJSTM and HBJE
+#   Srl. No         Date            Author          Description.
+#   -------         ------          ------          ------------
+#   1.0             24-01-2013      Sateesh     Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="6a952f5ac6114fd503207fff63004e9fa35862e3376969e64082e27ae7de8776"
+	TRACE ON
+
+sv_z = urhk_MTTS_PopulateInputDetails("")
+#print(sv_z)
+
+###############################################################################
+# Get all the amounts into local variables . Please do not set these variables
+# anywhere else in this script. The variables are : -
+# sv_p = Outstanding Principal Demand
+# sv_i = Pending Interest (Sum Of Previous Unsatisfied Interest Demand &
+#							The Interest Computed at the time of Rescheduling)
+# sv_b = Outstanding Bank Charges Demand
+# sv_o = Outstanding Other Charges Demand
+# sv_l = amount in loan payment acct.
+# sv_n = Normal interest to be reversed from Suspense A/c to P&L A/c
+# sv_e = Penal interest to be reversed from Suspense A/c to P&L A/c
+# sv_f = Normal interest adjustment amount
+# sv_g = Penal interest adjustment amount
+# sv_h = Overdue interest adjustment amount
+###############################################################################
+
+
+sv_p = CDOUBLE(MTT.InputDetails.princDmdOutStanding)
+#print(sv_p)
+sv_v = CDOUBLE(MTT.InputDetails.intDmdOutStanding)
+#print(sv_v)
+sv_b = CDOUBLE(MTT.InputDetails.bankChrgDmdOutStanding)
+#print(sv_b)
+sv_o = CDOUBLE(MTT.InputDetails.otherChrgDmdOutStanding)
+#print(sv_o)
+sv_i = CDOUBLE(MTT.InputDetails.pendInterestAmount)
+#print(sv_i)
+#sv_d = CDOUBLE(MTT.InputDetails.pendPrincipalDemandAmount)
+
+#sv_o = CDOUBLE(MTT.InputDetails.rebAmt)
+#sv_j =  MTT.InputDetails.rebBeneftSrcAcct
+#sv_m = MTT.InputDetails.rebOnReschdFlg
+#sv_r = MTT.InputDetails.islamicProductType
+#sv_s = MTT.InputDetails.istisnaType
+#############################
+
+
+#############################
+
+###############################################################################
+# Define the Transaction
+###############################################################################
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType=MTT.InputDetails.chrgTranType
+#print(MTT.TranDetails.TranType)
+
+if (MTT.InputDetails.chrgTranType == "C" ) then
+	MTT.TranDetails.TranSubType = "CR"
+else
+	MTT.TranDetails.TranSubType="BI"
+endif
+#print(MTT.TranDetails.TranSubType)
+#MTT.TranDetails.TranSubType=MTT.InputDetails.TranSubType
+MTT.TranDetails.Remarks="Reschedule Transaction"
+MTT.TranDetails.IgnoreExcp="N"
+MTT.TranDetails.Consolidate="Y"
+MTT.TranDetails.PrintAdviceInd="B"
+MTT.TranDetails.TranIdOnline = "Y"
+MTT.TranDetails.sysTranCode = "LOANAA006"
+
+sv_z = urhk_MTTS_DefineTransaction("rschdl") 
+#print(sv_z)
+
+#
+###############################################################################
+# Part Tran 1.Debit/Credit Loan/Loan Interest A/c for Interest Adjustment Amount
+#   Input :-   MTT.InputDetails.tranInterestAmount :- Interest adj during Rescheduling
+#              MTT.InputDetails.tranIarAmount      :- IAR Amount During Rescheduling
+#              MTT.InputDetails.intDmdOutStanding  :- Pending Interest Demands
+###############################################################################
+sv_u = CDOUBLE(MTT.InputDetails.tranInterestAmount)
+#print(sv_u)
+sv_x = CDOUBLE(MTT.InputDetails.tranIarAmount)
+#print(sv_x)
+sv_v = CDOUBLE(MTT.InputDetails.intDmdOutStanding)
+#print(sv_v)
+
+sv_u = sv_u + sv_x
+
+###############################################################################
+#    Only if refund is there create part trans 1 & 2 , else ignore these
+#    Cases Handled :-
+#
+#       1. Pending Interest demands ( sv_v ) is greater than Interest Adj
+#              Refund the entire adjustment to Loan Interest A/c , this will
+#              satisfy the demands.
+#       2. Pending Interest demands ( sv_u + sv_x ) is lesser than interest adj
+#             Refund upto pending interest demands ( sv_v) to loan interest a/c
+#             rest to loan a/c. Reduce prepayment amount by an amount equal
+#            to this refund so that customer need not pay this amount
+###############################################################################
+if(sv_u < 0 ) then
+#{
+	if((sv_v) > 0 ) then
+
+		if(MTT.InputDetails.intRouteFlg == "O") then 
+			MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+		else
+			MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+		endif
+#print(MTT.PartTranDetails.Account)
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+		MTT.PartTranDetails.RateCode = ""
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Interest Refund"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN00692"
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LARET"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+			IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+			#{
+				sv_s = "intRateCode|SELECT ds_rate_code "
+				sv_s = sv_s + " FROM tbaadm.LAM"
+				sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+				sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+				BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+				print(sv_s)
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+				print(MTT.PartTranDetails.RateCode)
+				IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+				#{
+					sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	                                print(sv_s)
+					print(BANCS.INPARAM.BINDVARS)
+       		                        sv_d = urhk_dbselectWithBind(sv_s)
+                                	print(sv_d)
+					IF(sv_d == "0")THEN
+					#{
+						MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+					#}
+					ENDIF
+				#}
+				ENDIF
+				print(MTT.PartTranDetails.RateCode)
+
+			#}
+			ENDIF
+
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+		MTT.PartTranDetails.Remarks="Refund Interest - Rescheduling"
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier="rschdl"
+		MTT.PartTranDetails.PTranBusinessType="OFFC1"
+
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+
+		###############################################################################
+		# If Credit due to interest adj comes in excess of pending interest demand,
+		# then amount equal to pending interest should be credited to satisfy interest
+		# demands and rest should go to satisfy principal demands.
+		###############################################################################
+
+		if((sv_v) > ((-1)*(sv_u))) then
+			MTT.LAAddnlDetails.TypeOfDemand = "I"     
+			MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.defltCollFlowId   
+			MTT.PartTranDetails.RefAmount=-(sv_u)
+		else
+			MTT.LAAddnlDetails.TypeOfDemand = "I"     
+			MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.defltCollFlowId   
+			MTT.PartTranDetails.RefAmount=(sv_v)
+#print(MTT.PartTranDetails.RefAmount)
+		endif
+	MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+	endif
+#}
+endif
+
+###############################################################################
+# Part Tran 2.Credit Loan Account for excess of credit over and above pending
+# interest demands.
+###############################################################################
+
+sv_u = CDOUBLE(MTT.InputDetails.tranInterestAmount)
+sv_x = CDOUBLE(MTT.InputDetails.tranIarAmount)
+sv_v = CDOUBLE(MTT.InputDetails.intDmdOutStanding)
+sv_u = sv_u + sv_x
+sv_u = (-1)*(sv_u)
+if((sv_u > sv_v) and (sv_u !=  0)) then
+#{
+	MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+#print(MTT.PartTranDetails.Account)
+	MTT.PartTranDetails.RefAmount=(sv_u-sv_v)
+#print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Int Adj(Credit)"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Cr Excess Int Adj"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="LOAN3"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00693"
+
+	MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.TypeOfDemand = "A"     
+	MTT.LAAddnlDetails.AdvancePaymentFlg ="Y"
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.defltCollFlowId   
+	MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+
+######################################
+#  Reduce the principal amount by this amount
+#	to be looked into
+	sv_p = CDOUBLE(MTT.InputDetails.princDmdOutStanding)
+	sv_p = sv_p - (sv_u - sv_v)
+
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+	#print(sv_z)
+#}
+endif
+###############################################################################
+
+###################################################################################
+# If the Interest Run at the time of Rescheduling requires Normal Interest Demands
+# to be raised, Debit loanAcct/loanIntAcct for the same depending on 
+# Interest Route Flag
+###################################################################################
+#MTT.InputDetails.tranNormalInterestAmount=100
+sv_f = CDOUBLE(MTT.InputDetails.tranNormalInterestAmount)
+sv_x = CDOUBLE(MTT.InputDetails.tranIarAmount)
+#print(sv_f)
+sv_f = sv_f + sv_x
+if(sv_f > 0) then
+    if(MTT.InputDetails.intRouteFlg == "O") then
+        MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    else
+        MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+    endif
+	MTT.PartTranDetails.RefAmount=-(sv_f)
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+    MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Normal Interest Dmd"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Dr Acct For Raising Normal Int Dmd - Rescheduling"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="OFFC3"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00694"	
+
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+    MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+	MTT.LAAddnlDetails.raiseDemandFlg="Y"
+	
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+###################################################################################
+# If the Interest Run at the time of Rescheduling requires Penal Interest Demands
+# to be raised, Debit loanAcct/loanIntAcct for the same depending on 
+# Interest Route Flag
+###################################################################################
+sv_g = CDOUBLE(MTT.InputDetails.tranPenalInterestAmount)
+#print(sv_g)
+if(sv_g != 0) then
+    if(MTT.InputDetails.intRouteFlg == "O") then
+        MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    else
+        MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+    endif
+	MTT.PartTranDetails.RefAmount=-(sv_g)
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+    MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Penal Int Dmd"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Dr Acct For Raising Penal Int Dmd - Rescheduling"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="OFFC4"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00695"
+
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+    MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.penalLoanFlowId
+    MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+	MTT.LAAddnlDetails.raiseDemandFlg="Y"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+###############################################################################
+# Part Tran. Debit the Loan Account for Penal Accrual
+###############################################################################
+sv_a = CDOUBLE(MTT.InputDetails.accrpenaldmdos)
+if (sv_a > 0) then
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct+" Debit for Penal Accrued interest"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.Account = MTT.InputDetails.loanAcct
+    MTT.PartTranDetails.RefAmount= -sv_a
+    MTT.PartTranDetails.PTranBusinessType = "SUSP"
+	MTT.LAAddnlDetails.raiseDemandFlg="N" 
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.penalLoanFlowId
+	MTT.LAAddnlDetails.OriginOfTran = "RSCHD"
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00696"
+
+    sv_z = urhk_MTTS_DefineLoanPartTran("PENAL_ACCR_INT_DEBIT")
+    if (sv_z == 1) then
+        exitscript
+    endif
+endif
+
+###############################################################################
+# Part Tran. Credit the Loan Account for Penal Accrual
+###############################################################################
+
+if (sv_a > 0) then
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct+" Credit for Penal Accrued interest"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+   	MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode 
+	MTT.PartTranDetails.Account = MTT.InputDetails.penalPandlAcct
+    MTT.PartTranDetails.RefAmount= sv_a
+    MTT.PartTranDetails.PTranBusinessType = "SUSP"
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00697"
+
+    sv_z = urhk_MTTS_DefineLoanPartTran("PENAL_ACCR_INT_DEBIT")
+    if (sv_z == 1) then
+        exitscript
+    endif
+endif
+###########################################################################################
+###################################################################################
+# If the Interest Run at the time of Rescheduling requires Overdue Interest Demands
+# to be raised, Debit loanAcct/loanIntAcct for the same depending on 
+# Interest Route Flag
+###################################################################################
+sv_h = CDOUBLE(MTT.InputDetails.tranOvduInterestAmount)
+#print(sv_h)
+if(sv_h > 0) then
+    if(MTT.InputDetails.intRouteFlg == "O") then
+    MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    else
+        MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+    endif
+	MTT.PartTranDetails.RefAmount=-(sv_h)
+#print(MTT.PartTranDetails.RefAmount)
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+    MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Overdue Int Dmd"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Dr Acct For Raising Overdue Int Dmd - Rescheduling"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="OFFC5"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00698"
+
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.ovduLoanFlowId
+    MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+	MTT.LAAddnlDetails.raiseDemandFlg="Y"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+
+###############################################################################
+# Part Tran 3. Credit/Debit Receivable for tranNormalInterest and
+# 				tranOvduInterest Amounts        
+# Inputs :-   MTT.InputDetails.intBookAcct            :- Interest Receivable A/c
+#             MTT.InputDetails.tranNormalInterestAmount:- Interest run amount 
+#														 during Rescheduling
+###############################################################################
+#MTT.InputDetails.tranNormalInterestAmount=100
+sv_u = CDOUBLE(MTT.InputDetails.tranNormalInterestAmount)
+sv_x = CDOUBLE(MTT.InputDetails.tranOvduInterestAmount)
+
+sv_u = sv_u + sv_x
+
+if(sv_u != 0) then
+	if(MTT.InputDetails.pastDueFlg != "Y") then
+		MTT.PartTranDetails.Account=MTT.InputDetails.intBookAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.PDIntBookAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=(sv_u)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Int Receivable a/c adj"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Int Applied - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00699"
+
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+
+################################################################################
+# Part Tran 4. Credit/Debit Penal Int Receivable for tranPenalInterest Amount        
+# Inputs :-   MTT.InputDetails.penalIntBookAcct            :- Penal Int Receivable A/c
+#             MTT.InputDetails.tranPenalInterestAmount:- Interest run amount 
+#														 during Rescheduling
+###############################################################################
+#MTT.InputDetails.tranPenalInterestAmount=100
+sv_u = CDOUBLE(MTT.InputDetails.tranPenalInterestAmount)
+
+if(sv_u != 0) then
+	print ("LARA")
+	print (MTT.InputDetails.penalIntBookAcct)
+	print(MTT.InputDetails.PDPenalIntBookAcct)
+	if(MTT.InputDetails.pastDueFlg != "Y") then
+		MTT.PartTranDetails.Account=MTT.InputDetails.penalIntBookAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.PDPenalIntBookAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=(sv_u)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Penal Int Receivable a/c adj"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Penal Int Applied - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00700"
+
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+
+###############################################################################
+# Part Tran 5.Debit/Credit Receivable for normaltranBook and ovdutranBook Amts 
+# Inputs :-   MTT.InputDetails.intBookAcct            :- Interest Receivable A/c
+#             MTT.InputDetails.normaltranBookAmount   :- Booking Run Amount 
+#			  MTT.InputDetails.ovdutranBookAmount		 during Rescheduling
+###############################################################################
+#MTT.InputDetails.normaltranBookAmount=100
+sv_u = CDOUBLE(MTT.InputDetails.normaltranBookAmount)
+sv_x = CDOUBLE(MTT.InputDetails.ovdutranBookAmount)
+sv_u = sv_u+sv_x
+if(sv_u != 0) then
+	if(MTT.InputDetails.pastDueFlg != "Y") then
+		MTT.PartTranDetails.Account=MTT.InputDetails.intBookAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.PDIntBookAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=-(sv_u)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Booking Adj Interest Receivable "
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Int Booked - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00701"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+
+###############################################################################
+# Part Tran 6.Debit/Credit Receivable for penaltranBook Amount
+# Inputs :-   MTT.InputDetails.penalIntBookAcct       :- Penal Interest Receivable A/c
+#             MTT.InputDetails.normaltranBookAmount   :- Booking Run Amount 
+#			  											 during Rescheduling
+###############################################################################
+#MTT.InputDetails.penaltranBookAmount=100
+sv_u = CDOUBLE(MTT.InputDetails.penaltranBookAmount)
+
+if(sv_u != 0) then
+	if(MTT.InputDetails.pastDueFlg != "Y") then
+		MTT.PartTranDetails.Account=MTT.InputDetails.penalIntBookAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.PDPenalIntBookAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=-(sv_u)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Booking Adj Penal Int. Receivable "
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Penal Int Booked - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00702"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+endif
+
+######################################################################################
+# Part Tran 7.Credit/debit normal P&L/Interest Suspense Acct for normaltranBookAmount
+#				and advIntAmortAdjAmt when refund interest flg is Y
+#
+# Inputs :-   MTT.InputDetails.normalPandlAcct        	:- Normal P & L A/c
+#			  MTT.InputDetails.intSuspAcct				:- Interest Suspense Acct
+#             MTT.InputDetails.normaltranBookAmount     :- Normal Booking Amount
+#             MTT.InputDetails.tranIarAmount            :- IAR Amount 
+#			  MTT.InputDetails.advIntAmortAdjAmt		:- Amort Adjustment Amount
+#                       For IAR Amount , transaction is between Loan(Loan Interest) A/c  
+#                       and normal P &L Account directly, without passing through
+#                       Receivable A/c.  
+#######################################################################################
+
+#MTT.InputDetails.normaltranBookAmount=100
+sv_u = CDOUBLE(MTT.InputDetails.normaltranBookAmount)
+sv_x = CDOUBLE(MTT.InputDetails.tranIarAmount)
+sv_u = sv_u + sv_x
+
+if(sv_u != 0.0) then
+	if(MTT.InputDetails.pastDueFlg != "Y" ) then
+		MTT.PartTranDetails.Account=MTT.InputDetails.normalPandlAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.intSuspAcct
+	endif
+	MTT.PartTranDetails.RefAmount=(sv_u)
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode	
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Normal Book Adj"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Dr for Normal Int Booking"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00703"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_BOOK")
+#print(sv_z)
+endif
+#####################################################################################
+# Part Tran 8.Credit/debit penal P&L/Interest Suspense Acct  for penaltranBookAmount                
+# Inputs :-   MTT.InputDetails.penalPandlAcct          :- Penal P & L A/c
+#			  MTT.InputDetails.penalIntSuspAcct		   :- Penal Interest Suspense Acct
+#             MTT.InputDetails.penaltranBookAmount     :- Penal Booking Amount
+#####################################################################################
+sv_u = CDOUBLE(MTT.InputDetails.penaltranBookAmount)
+if(MTT.InputDetails.penaltranBookAmount != 0) then
+	if(MTT.InputDetails.pastDueFlg != "Y" ) then
+		MTT.PartTranDetails.Account=MTT.InputDetails.penalPandlAcct
+	else
+			MTT.PartTranDetails.Account=MTT.InputDetails.intSuspAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=(sv_u)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode	
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Penal Book Adj"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Dr for Penal Int Booking"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00704"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_BOOK")
+#print(sv_z)
+endif
+
+#####################################################################################
+# Part Tran 9.Credit/debit normal P&L/Interest Suspense Acct for ovdutranBookAmount
+# Inputs :-   MTT.InputDetails.normalPandlAcct       	:- Overdue P &L A/c
+#             MTT.InputDetails.ovdutranBookAmount      	:- Overdue Booking Amount
+#####################################################################################
+sv_u = CDOUBLE(MTT.InputDetails.ovdutranBookAmount)
+#print(sv_u)
+if(MTT.InputDetails.ovdutranBookAmount != 0) then
+	if(MTT.InputDetails.pastDueFlg != "Y" ) then
+		MTT.PartTranDetails.Account=MTT.InputDetails.normalPandlAcct
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.intSuspAcct
+	endif
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    MTT.PartTranDetails.RefAmount=(sv_u)
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rescheduling Int book Ovdu"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Dr Int book -Rescheduling"
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="SUSP"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00705"
+
+sv_z = urhk_MTTS_DefineLoanPartTran("INT_BOOK")
+#print(sv_z)
+endif
+
+#####################################################################################
+#			  For Transfering Interest Liability from Loan Int Acct to Loan Acct
+#			  when Capitalize Interest is chosen
+# Part Tran  .Debit Loan Interest Acct Cr Loan Acct for capitalizeIntAmt
+# Inputs :-   MTT.InputDetails.loanIntAcct       	:- Loan Interest Account
+#             MTT.InputDetails.loanAcct      		:- Loan Account
+#####################################################################################
+
+sv_c = CDOUBLE(MTT.InputDetails.capitalizeIntAmt)
+
+if((sv_c > 0) and (MTT.InputDetails.intRouteFlg == "O")) then
+#{
+	#{
+	MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=sv_c
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Capitalize Int Liability"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Dr Loan Int Acct For Capitalizing Interest - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="OFFC5"
+
+   	MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+	MTT.LAAddnlDetails.OriginOfTran = "XFR"
+	#}
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00706"
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_COLL")
+#print(sv_z)
+
+	#{
+	MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.RefAmount=-(sv_c)
+#print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Capitalize Int Liability"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00707"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Cr Loan Acct For the Interest being Capitalized - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="OFFC5"
+
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+	MTT.LAAddnlDetails.OriginOfTran = "XFR"
+	#}
+	sv_z = urhk_MTTS_DefinePartTran("INT_COLL")
+#print(sv_z)
+#}
+endif
+
+
+#####################################################################################
+#			  For Transfering Charge Liability from Loan Int Acct to Loan Acct
+#			  when Carry Overdue Demands is chosen as NO 
+# Part Tran  .Debit Loan Interest Acct Cr Loan Acct for 
+#				bankChrgDmdOutStanding + otherChrgDmdOutStanding
+# Inputs :-   MTT.InputDetails.loanIntAcct       	:- Loan Interest Account
+#             MTT.InputDetails.loanAcct      		:- Loan Account
+#####################################################################################
+
+
+sv_c = CDOUBLE(MTT.InputDetails.bankChrgDmdOutStanding)
+sv_x = CDOUBLE(MTT.InputDetails.otherChrgDmdOutStanding)
+#print(sv_x)
+sv_c = sv_c + sv_x
+#print(sv_c)
+#print(MTT.InputDetails.chrgRouteFlg)
+#print(MTT.InputDetails.carryOverDueDmdsFlg)
+if((sv_c > 0) and (MTT.InputDetails.chrgRouteFlg == "O") and (MTT.InputDetails.carryOverDueDmdsFlg== "N")) then
+#{
+	#{
+	MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+#print(MTT.PartTranDetails.Account)
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.RefAmount=-(sv_c)
+#print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Charge Liability"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+	
+	IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		sv_s = "intRateCode|SELECT ds_rate_code "
+		sv_s = sv_s + " FROM tbaadm.LAM"
+		sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+		sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+		BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+		print(MTT.PartTranDetails.RateCode)
+		IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+		#{
+			sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                        print(sv_s)
+			print(BANCS.INPARAM.BINDVARS)
+       	                sv_d = urhk_dbselectWithBind(sv_s)
+                        print(sv_d)
+			IF(sv_d == "0")THEN
+			#{
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+			#}
+			ENDIF
+		#}
+		ENDIF
+		print(MTT.PartTranDetails.RateCode)
+
+	#}
+	ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Dr Loan Int Acct For Charge Liability - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="OFFC5"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00708"
+
+	MTT.LAAddnlDetails.OriginOfTran = "XFR"
+	#}
+	sv_z = urhk_MTTS_DefineLoanPartTran("CHRG_COLL")
+#print(sv_z)
+
+	#{
+	MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+#print(MTT.PartTranDetails.Account)
+	MTT.PartTranDetails.RefAmount=sv_c
+#print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Charge Liability"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00709"
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+	
+	IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		sv_s = "intRateCode|SELECT ds_rate_code "
+		sv_s = sv_s + " FROM tbaadm.LAM"
+		sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+		sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+		BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+		print(MTT.PartTranDetails.RateCode)
+		IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+		#{
+			sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                        print(sv_s)
+			print(BANCS.INPARAM.BINDVARS)
+                        sv_d = urhk_dbselectWithBind(sv_s)
+                      	print(sv_d)
+			IF(sv_d == "0")THEN
+			#{
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+			#}
+			ENDIF
+		#}
+		ENDIF
+		print(MTT.PartTranDetails.RateCode)
+
+	#}
+	ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="Cr Loan Acct For Charge Liability - Rescheduling"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="OFFC5"
+	MTT.LAAddnlDetails.OriginOfTran = "XFR"
+	#}
+	sv_z = urhk_MTTS_DefineLoanPartTran("CHRG_COLL")
+#print(sv_z)
+#}
+endif
+######################################################################
+# For advance interest Loan Accounts, amortization adjustment is done 
+# between P&L and Advance Interest Account.
+# Inputs : MTT.InputDetails.advIntAmortAdjAmt :- This is the Amount which need
+# 												 to be moved from AdvIntAc to
+# 												 P&L, if excess amortization
+# 												 has happened this amount will
+# 												 come negative. For reversal
+# 												 just need to change the sign.
+######################################################################
+if ( MTT.InputDetails.advIntFlg == "Y" ) then 
+#{ 
+	sv_w = CDOUBLE(MTT.InputDetails.advIntAmortAdjAmt)  
+	if(sv_w!=0) then
+	#{
+		if(MTT.InputDetails.bookAdvIntFlg!="Y") then
+		#{
+			MTT.PartTranDetails.Account=MTT.InputDetails.normalPandlAcct
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+			MTT.PartTranDetails.RefAmount=sv_w
+#print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+			MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode	
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - P&L Amort Adjust Rescheduling"
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LARET"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+			
+			IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+			#{
+				sv_s = "intRateCode|SELECT ds_rate_code "
+				sv_s = sv_s + " FROM tbaadm.LAM"
+				sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+				sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+				BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+				print(sv_s)
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+				print(MTT.PartTranDetails.RateCode)
+				IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+				#{
+					sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                	print(sv_s)
+					print(BANCS.INPARAM.BINDVARS)
+       	                        	sv_d = urhk_dbselectWithBind(sv_s)
+                               		print(sv_d)
+					IF(sv_d == "0")THEN
+					#{
+						MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+					#}
+					ENDIF
+				#}
+				ENDIF
+				print(MTT.PartTranDetails.RateCode)
+
+			#}
+			ENDIF
+
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+			MTT.PartTranDetails.Remarks="Amortization Adjustment"
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="rschdl"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00710"
+
+			sv_z = urhk_MTTS_DefineLoanPartTran("ADV_INT_ADJ")
+#print(sv_z)
+
+			MTT.PartTranDetails.Account=MTT.InputDetails.advIntAcct
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+			MTT.PartTranDetails.RefAmount=-sv_w
+#print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+			MTT.PartTranDetails.RateCode = ""
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - AdvInt Amort Adjust Rescheduling"
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LARET"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+			
+			IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+			#{
+				sv_s = "intRateCode|SELECT ds_rate_code "
+				sv_s = sv_s + " FROM tbaadm.LAM"
+				sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+				sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+				BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+				print(sv_s)
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+				print(MTT.PartTranDetails.RateCode)
+				IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+				#{
+					sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                	print(sv_s)
+					print(BANCS.INPARAM.BINDVARS)
+       	                        	sv_d = urhk_dbselectWithBind(sv_s)
+                               		print(sv_d)
+					IF(sv_d == "0")THEN
+					#{
+						MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+					#}
+					ENDIF
+				#}
+				ENDIF
+				print(MTT.PartTranDetails.RateCode)
+
+			#}
+			ENDIF
+
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+			MTT.PartTranDetails.Remarks="Amortization Adjustment"
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="rschdl"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00711"
+
+			sv_z = urhk_MTTS_DefineLoanPartTran("ADV_INT_ADJ")
+#print(sv_z)
+		#}
+		endif
+	#}
+	endif
+#}
+endif
+##############################################################################
+#Part Tran:
+#		Debit P&L account with advIntRefundCollAmt if bookAdvIntFlg is YES or
+#		Debit advIntAcct with advIntRefundCollAmt if bookAdvIntFlg is NO
+#		Credit source Account with advIntRefundCollAmt
+#Input Parameters:
+#       MTT.InputDetails.advIntAcct         :-advance interest account
+#       MTT.InputDetails.advIntRefundCollAmt       :-refund amount
+##############################################################################
+#print(MTT.InputDetails.advIntFlg)
+if ( MTT.InputDetails.advIntFlg == "Y" ) then 
+#{
+	sv_w = CDOUBLE(MTT.InputDetails.advIntRefundCollAmt)
+	if(sv_w!=0) then
+	#{
+		if(MTT.InputDetails.refundCollAdvIntFlg=="Y") then
+		#{
+			if(MTT.InputDetails.bookAdvIntFlg=="Y") then
+			#{
+				MTT.PartTranDetails.Account=MTT.InputDetails.normalPandlAcct
+				MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+				MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+				MTT.PartTranDetails.RefAmount=-(sv_w)
+#print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode	
+				MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + "- P&L Advance Int Refund"
+
+				# Call to common script to modify tran particulars if script is present
+				MTT.PartTranDetails.ScriptEventType = "LARET"
+				sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+				if (sv_m == 0) then
+					call("getMTTTranPart.scr")
+				endif
+				
+				IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+				#{
+					sv_s = "intRateCode|SELECT ds_rate_code "
+					sv_s = sv_s + " FROM tbaadm.LAM"
+					sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+					sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+					BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+					print(sv_s)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+					print(MTT.PartTranDetails.RateCode)
+					IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+					#{
+						sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                		print(sv_s)
+						print(BANCS.INPARAM.BINDVARS)
+       	                        		sv_d = urhk_dbselectWithBind(sv_s)
+                               			print(sv_d)
+						IF(sv_d == "0")THEN
+						#{
+							MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+						#}
+						ENDIF
+					#}
+					ENDIF
+					print(MTT.PartTranDetails.RateCode)
+
+				#}
+				ENDIF
+
+				MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+				MTT.PartTranDetails.Remarks="Debit PandL Account"
+				MTT.PartTranDetails.Consolidate="N"
+				MTT.PartTranDetails.TranIdentifier="rschdl"
+				MTT.PartTranDetails.PTranBusinessType="LOANS"
+				MTT.PartTranDetails.sysPartTranCode = "PTRN01734"
+			#}
+			else
+			#{
+				MTT.PartTranDetails.Account=MTT.InputDetails.advIntAcct
+				MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+				MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+				MTT.PartTranDetails.RefAmount=-(sv_w)
+#print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+				MTT.PartTranDetails.RateCode = ""
+				MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + "- AdvInt Advance Int Refund"
+				MTT.PartTranDetails.sysPartTranCode = "PTRN00712"
+
+				# Call to common script to modify tran particulars if script is present
+				MTT.PartTranDetails.ScriptEventType = "LARET"
+				sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+				if (sv_m == 0) then
+					call("getMTTTranPart.scr")
+				endif
+				
+				IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+				#{
+					sv_s = "intRateCode|SELECT ds_rate_code "
+					sv_s = sv_s + " FROM tbaadm.LAM"
+					sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+					sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+					BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+					print(sv_s)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+					print(MTT.PartTranDetails.RateCode)
+					IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+					#{
+						sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                		print(sv_s)
+						print(BANCS.INPARAM.BINDVARS)
+       	                        		sv_d = urhk_dbselectWithBind(sv_s)
+                               			print(sv_d)
+						IF(sv_d == "0")THEN
+						#{
+							MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+						#}
+						ENDIF
+					#}
+					ENDIF
+					print(MTT.PartTranDetails.RateCode)
+
+				#}
+				ENDIF
+
+				MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+				MTT.PartTranDetails.Remarks="Debit AdvIntAcct"
+				MTT.PartTranDetails.Consolidate="N"
+				MTT.PartTranDetails.TranIdentifier="rschdl"
+				MTT.PartTranDetails.PTranBusinessType="LOANS"
+			#}
+			endif
+
+			sv_z = urhk_MTTS_DefineLoanPartTran("REFUND AMOUNT")
+#print(sv_z)
+
+			sv_m = ""
+			sv_g = ""
+
+			sv_m=MTT.InputDetails.loanAcctCrncy
+			sv_g=MTT.InputDetails.advIntSrcAcctCrncy
+			MTT.PartTranDetails.Account=MTT.InputDetails.advIntSrcAcct
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+			MTT.PartTranDetails.RefAmount=sv_w
+#print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+
+			# Dump Rate details if Loan and Transfer acct currencies are different.
+			if (sv_m != sv_g) then
+			#{
+			  MTT.PartTranDetails.RateCode = MTT.InputDetails.advIntRateCode
+			  MTT.PartTranDetails.Rate = MTT.InputDetails.advIntRate
+			  MTT.PartTranDetails.TreaRate = MTT.InputDetails.advIntTreaRate
+			  MTT.PartTranDetails.TreaRefNum = MTT.InputDetails.advIntTreaRate
+			#}
+			else
+			#{
+			  MTT.PartTranDetails.RateCode = ""
+				IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+				#{
+					sv_s = "intRateCode|SELECT ds_rate_code "
+					sv_s = sv_s + " FROM tbaadm.LAM"
+					sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+					sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+					BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+					print(sv_s)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+					print(MTT.PartTranDetails.RateCode)
+					IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+					#{
+						sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                		print(sv_s)
+						print(BANCS.INPARAM.BINDVARS)
+       	                        		sv_d = urhk_dbselectWithBind(sv_s)
+                               			print(sv_d)
+						IF(sv_d == "0")THEN
+						#{
+							MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+						#}
+						ENDIF
+					#}
+					ENDIF
+					print(MTT.PartTranDetails.RateCode)
+
+				#}
+				ENDIF
+			  MTT.PartTranDetails.TreaRefNum = ""
+			#}
+			endif
+
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + "- Advance Int Refund"
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LARET"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+
+			if(MTT.InputDetails.advIntSrcOAPSchmFlg != "Y") then
+			#{
+				MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+			#}
+			endif
+
+			MTT.PartTranDetails.Remarks="Credit Source Account"
+#print(MTT.PartTranDetails.Account)
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="rschdl"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00713"
+
+			if(MTT.InputDetails.advIntSrcOAPSchmFlg == "Y") then
+			#{
+				MTT.PartTranDetails.Refnum=MTT.InputDetails.advIntSrcOAPRefNum
+				if(sv_w < 0 ) then
+					sv_w = -(sv_w)
+				endif			
+				MTT.OAPAddnlDetails.OffsetAmount = sv_w
+				MTT.OAPAddnlDetails.OrgTranID = MTT.InputDetails.advIntSrcOAPTranId
+				MTT.OAPAddnlDetails.OrgTranDate = MTT.InputDetails.advIntSrcOAPTranDate
+				MTT.OAPAddnlDetails.OrgPartTran = MTT.InputDetails.advIntSrcOAPTranSrlNum
+			#}
+			endif			
+			sv_z = urhk_MTTS_DefineLoanPartTran("REFUND AMOUNT")
+#print(sv_z)
+		#}
+		endif
+	#}
+	endif
+#}
+endif
+##################################################################################################
+# istisna uei transaction - both debit  and credit 
+##################################################################################################
+if(MTT.InputDetails.ueiApplFlg == "Y") then
+#{
+sv_y = CDOUBLE(MTT.InputDetails.ueiAdjAmt)
+if (sv_y!=0) then
+#{
+print(sv_y)
+	# First debit to loan/ LIA  
+	if(MTT.InputDetails.intRouteFlg == "O") then
+		MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+	endif
+	print(MTT.InputDetails.loanIntAcct)
+	print(MTT.InputDetails.loanAcct)
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	if (sv_y >0)then
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " UEI Amount Adjustment Increase "
+	else
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " UEI Amount Adjustment Decrease"
+	endif
+        
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	print(MTT.PartTranDetails.ValueDate)
+	MTT.PartTranDetails.Remarks="UEI adjustment entry during rescheduling "
+	MTT.PartTranDetails.RefAmount=-(sv_y)
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+	MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+	MTT.LAAddnlDetails.raiseDemandFlg="N"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03880" 	
+	sv_z = urhk_MTTS_DefineLoanPartTran("UEI_IST_INT_DR")
+print (sv_z)
+
+	# second credit uei placeholder account  
+	MTT.PartTranDetails.Account=MTT.InputDetails.ueiIntSrcAcct
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+	MTT.PartTranDetails.RateCode = ""
+	print(MTT.PartTranDetails.Account)
+	print(MTT.InputDetails.loanAcct)
+	if (sv_y >0)then
+		print("sv_y is +ve")
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " UEI Amount Adjustment Increase "
+	else
+		print("sv_y is -ve")
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " UEI Amount Adjustment Decrease"
+	endif
+        
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+	MTT.PartTranDetails.Remarks="UEI adjustment entry during rescheduling "
+	MTT.PartTranDetails.RefAmount=sv_y
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier="rschdl"
+	MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03881" 
+	sv_z = urhk_MTTS_DefineLoanPartTran("UEI_IST_INT_CR")
+print (sv_z)
+
+#}
+endif
+#}
+endif
+
+##################################################################################################
+# Murabaha and Tawarruq transaction - both debit  and credit
+##################################################################################################
+if(FIELDEXISTS(MTT.InputDetails.islamicProductType)) then
+sv_r = MTT.InputDetails.islamicProductType
+sv_s = MTT.InputDetails.istisnaType
+
+if((sv_r == "M") OR (sv_r == "T") OR ((sv_r == "I") AND (sv_s == "M"))) then
+sv_y = CDOUBLE(MTT.InputDetails.rebAmt)
+sv_z = MTT.InputDetails.rebOnReschdFlg
+if((sv_y > 0) AND (sv_z == "P")) then 
+	# First debit to UEI account #
+	sv_a = MTT.InputDetails.ueiIntSrcAcct
+	MTT.PartTranDetails.Account=MTT.InputDetails.ueiIntSrcAcct
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+
+	if (sv_y >0)then
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " Debit Rebate Amount to UEI "
+    else
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " Debit Rebate Amount to UEI  decrease"
+    endif
+
+	# Call to common script to modify tran particulars if script is present
+    MTT.PartTranDetails.ScriptEventType = "LARET"
+    sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+    if (sv_m == 0) then
+        call("getMTTTranPart.scr")
+    endif
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Rebate UEI_INT_DR "
+    MTT.PartTranDetails.RefAmount=-(sv_y)
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+    MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+    MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+    MTT.LAAddnlDetails.raiseDemandFlg="N"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03882" 
+	
+    sv_q = urhk_MTTS_DefineLoanPartTran("REBATE_UEI_INT_DR")
+
+ 	# credit rebate benefit placeholder #
+	MTT.PartTranDetails.Account=MTT.InputDetails.rebBeneftSrcAcct
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType = "ACCNT"
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+	
+	if (sv_y >0)then
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " REBATE AMOUNT CREDIT "
+    else
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " REBATE AMOUNT DEBIT "
+    endif
+
+	# Call to common script to modify tran particulars if script is present
+    MTT.PartTranDetails.ScriptEventType = "LARET"
+    sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+    if (sv_m == 0) then
+        call("getMTTTranPart.scr")
+    endif
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Rebate BEN_MUR_INT_CR "
+    MTT.PartTranDetails.RefAmount=sv_y
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03883" 
+    sv_w = urhk_MTTS_DefineLoanPartTran("REBATE_BEN_MUR_INT_CR")
+
+endif
+endif
+
+sv_r = MTT.InputDetails.islamicProductType
+sv_s = MTT.InputDetails.istisnaType
+
+if((sv_r == "M") OR (sv_r == "T") OR ((sv_r == "I") AND (sv_s == "M"))) then
+# if case is refund
+sv_y = CDOUBLE(MTT.InputDetails.rebAmt)
+sv_z = MTT.InputDetails.rebOnReschdFlg
+if((sv_y > 0) AND(sv_z == "R")) then
+	
+	# First debit to UEI account #
+    sv_a = MTT.InputDetails.ueiIntSrcAcct
+    MTT.PartTranDetails.Account=MTT.InputDetails.ueiIntSrcAcct
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+    MTT.PartTranDetails.RateCode = ""
+
+    if (sv_y >0)then
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " Debit Rebate Amount to UEI "
+    else
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " Debit Rebate Amount to UEI  decrease"
+    endif
+
+    # Call to common script to modify tran particulars if script is present
+    MTT.PartTranDetails.ScriptEventType = "LARET"
+    sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+    if (sv_m == 0) then
+        call("getMTTTranPart.scr")
+    endif
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Debit Rebate REFUEI_INT_DR"
+    MTT.PartTranDetails.RefAmount=-(sv_y)
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="LOANS"
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+    MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.normalLoanFlowId
+    MTT.LAAddnlDetails.OriginOfTran = "RSCHDL"
+    MTT.LAAddnlDetails.raiseDemandFlg="N"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03882" 
+
+    sv_q = urhk_MTTS_DefineLoanPartTran("REBATE_REFUEI_INT_DR")
+
+
+#credit to Loan acct or Loan interest account depending on int route flag
+	
+	if (MTT.InputDetails.intRouteFlg == "O") then
+		# credit loan interest account #
+		sv_q = MTT.InputDetails.loanIntAcct
+		MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct
+	 	#MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rebate"
+	else
+		MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+	endif
+
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.loanAcctCrncy
+        MTT.PartTranDetails.RateCode = ""
+		#MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Rebate"
+
+	if (sv_y >0)then
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " REBATE AMOUNT CREDIT " 
+    else
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " REBATE AMOUNT DEBIT " 
+    endif
+
+    # Call to common script to modify tran particulars if script is present
+    MTT.PartTranDetails.ScriptEventType = "LARET"
+    sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+    if (sv_m == 0) then
+        call("getMTTTranPart.scr")
+    endif
+
+    MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Remarks="Rebate REFLIA_INT_CR "
+    MTT.PartTranDetails.RefAmount=sv_y
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN03868" 	
+    sv_w = urhk_MTTS_DefineLoanPartTran("REBATE_REFLIA_INT_CR")
+
+endif
+endif
+endif
+##################################################################################################
+# 	Leasing principal booking transaction - both debit  and credit
+##################################################################################################
+if(FIELDEXISTS(MTT.InputDetails.leaseType)) then
+if(MTT.InputDetails.leaseType == "O") then
+#{
+	sv_a = CDOUBLE(MTT.InputDetails.prinBookAmt)
+	if(sv_a > 0) then
+	#{
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.loanAcctCrncy
+		MTT.PartTranDetails.Particulars = "Debit for principal booking amount adj"
+		MTT.TranDetails.TranType ="T"
+		MTT.PartTranDetails.TranIdentifier = "rschdl"
+		MTT.PartTranDetails.RateCode = ""
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.Account = MTT.InputDetails.prinBookDrAcct
+		MTT.PartTranDetails.RefAmount = -sv_a
+		MTT.PartTranDetails.PTranBusinessType = "LEASING"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03771"
+		sv_z = urhk_MTTS_DefinePartTran("DR")
+
+		if (sv_z == 1) then
+			exitscript
+		endif
+
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.loanAcctCrncy
+		MTT.PartTranDetails.Particulars = "Credit for principal booking amount adj"
+		MTT.TranDetails.TranType = "T"
+        MTT.PartTranDetails.TranIdentifier = "rschdl"
+		MTT.PartTranDetails.RateCode = ""
+		MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.Account = MTT.InputDetails.prinBookCrAcct
+        MTT.PartTranDetails.RefAmount = sv_a
+        MTT.PartTranDetails.PTranBusinessType = "LEASING"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03770" 
+        sv_z = urhk_MTTS_DefinePartTran("CR")
+
+        if (sv_z == 1) then
+            exitscript
+        endif
+	#}
+	endif
+
+#}
+endif
+##################################################################################################
+#    Leasing rent reversal transaction - both debit  and credit 
+##################################################################################################
+if((MTT.InputDetails.leaseType == "O") and (MTT.InputDetails.carryOverDueDmdsFlg!= "A")) then
+#{
+    sv_a = CDOUBLE(MTT.InputDetails.reversalAmt)
+	if(sv_a > 0) then
+    #{
+        MTT.PartTranDetails.RefCurrency = MTT.InputDetails.loanAcctCrncy
+        MTT.PartTranDetails.Particulars = "Credit for  rent reversal amount adj"
+        MTT.PartTranDetails.TranIdentifier = "rschdl"
+        MTT.PartTranDetails.Account = MTT.InputDetails.prinBookDrAcct
+        MTT.PartTranDetails.RefAmount = sv_a
+        MTT.PartTranDetails.PTranBusinessType = "LEASING"
+        MTT.PartTranDetails.RateCode = ""
+        MTT.PartTranDetails.Consolidate="N"
+        MTT.TranDetails.TranType = "T"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03772" 
+        sv_z = urhk_MTTS_DefinePartTran("CR")
+        if (sv_z == 1) then
+            exitscript
+        endif
+        MTT.PartTranDetails.RefCurrency = MTT.InputDetails.loanAcctCrncy
+        MTT.PartTranDetails.Particulars = "Debit for rent reversal amount adj"
+        MTT.PartTranDetails.TranIdentifier = "rschdl"
+        MTT.PartTranDetails.Account = MTT.InputDetails.prinBookCrAcct
+        MTT.PartTranDetails.RefAmount = -sv_a
+        MTT.PartTranDetails.PTranBusinessType = "LEASING"
+        MTT.PartTranDetails.RateCode = ""
+        MTT.PartTranDetails.Consolidate="N"
+        MTT.TranDetails.TranType = "T"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03773"
+        sv_z = urhk_MTTS_DefinePartTran("DR")
+
+        if (sv_z == 1) then
+            exitscript
+        endif
+    #}
+    endif
+
+#}
+endif
+endif
+##################################################################################################
+#    All Rescheduling part trans end here. From now on all trans are charge parttrans.
+##################################################################################################
+
+sv_r = urhk_MTTS_PopulateInputDetails("")
+#print(sv_z)
+if(sv_r >= 1) then
+	sv_z = urhk_MTTS_EndDefinition("")  
+#print(sv_z)
+	exitscript
+endif
+
+
+#PART TRAN 1
+#Now let us debit the COllection account for total collection amount
+sv_l = CDOUBLE(MTT.InputDetails.totChrgAmtCollFromSrc)
+if(sv_l == 0) then
+    sv_z = urhk_MTTS_EndDefinition("")
+#print(sv_z)
+    exitscript
+endif
+
+
+###############################################################################
+# Debit Source Account for the amount that was collected from it against 
+# Reschedule Charges
+###############################################################################
+sv_m=MTT.InputDetails.chargeCreditCrncy
+sv_g=MTT.InputDetails.chrgCollSrcCrncy
+sv_l = CDOUBLE(MTT.InputDetails.totChrgAmtCollFromSrc)
+MTT.PartTranDetails.Account=MTT.InputDetails.chrgCollSrcAcct
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+MTT.PartTranDetails.RefAmount=-sv_l
+#print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.chrgCollSrcCrncy
+
+
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + "- Rescheduling Charges Collection"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LARET"
+sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_m == 0) then
+	call("getMTTTranPart.scr")
+endif
+
+
+if(MTT.InputDetails.chrgSrcOAPSchmFlg != "Y") then
+#{
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+#}
+endif
+
+MTT.PartTranDetails.Remarks="Debit Charge Collection Source Account"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="rschdl"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.sysPartTranCode = "PTRN00714"
+
+if(MTT.InputDetails.chrgSrcOAPSchmFlg == "Y") then
+#{
+
+	#print(MTT.InputDetails.chrgSrcOAPRefNum)
+	#print(sv_l)
+	#print(MTT.InputDetails.chrgSrcOAPTranId)
+	#print(MTT.InputDetails.chrgSrcOAPTranDate)
+	#print(MTT.InputDetails.chrgSrcOAPTranSrlNum)
+
+
+	MTT.PartTranDetails.Refnum=MTT.InputDetails.chrgSrcOAPRefNum
+	if(sv_l < 0 ) then
+		sv_l = -(sv_l)
+	endif			
+	MTT.OAPAddnlDetails.OffsetAmount = sv_l
+	MTT.OAPAddnlDetails.OrgTranID = MTT.InputDetails.chrgSrcOAPTranId
+	MTT.OAPAddnlDetails.OrgTranDate = MTT.InputDetails.chrgSrcOAPTranDate
+	MTT.OAPAddnlDetails.OrgPartTran = MTT.InputDetails.chrgSrcOAPTranSrlNum
+#}
+endif			
+sv_z = urhk_MTTS_DefineLoanPartTran("CHARGE COLLECTION")
+#print(sv_z)
+
+
+#	x-----------------------------------------------------------x
+#	|           Charges Parking Acct Credit			 	     	|				 
+#	x-----------------------------------------------------------x
+
+sv_m=MTT.InputDetails.chargeCreditCrncy
+sv_g=MTT.InputDetails.chrgCollSrcCrncy
+
+		if ((MTT.InputDetails.chrgCollSrcCrncy != MTT.InputDetails.chargeCreditCrncy) AND (MTT.InputDetails.chrgCollSrcCrncy != "" ) AND (sv_l != 0 )) then 
+		#{
+			MTT.PartTranDetails.Account = MTT.InputDetails.consolAcctForChrgs
+			#print( MTT.InputDetails.consolAcctForChrgs) 
+			MTT.PartTranDetails.RefAmount = sv_l
+			#print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.RefCurrency = MTT.InputDetails.chrgCollSrcCrncy
+			#print(MTT.PartTranDetails.RefCurrency)
+			MTT.PartTranDetails.Particulars = "Parking Account Credit for Loan Rescheduling Fee Collection"
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LARET"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.PartTranDetails.Consolidate = "Y"
+		  	MTT.PartTranDetails.RateCode = MTT.InputDetails.chrgRateCode
+		  	MTT.PartTranDetails.Rate = MTT.InputDetails.chrgRate
+		  	MTT.PartTranDetails.TreaRate = MTT.InputDetails.chrgTreaRate
+		  	MTT.PartTranDetails.TreaRefNum = MTT.InputDetails.chrgTreaRefNum
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00715"
+
+			#print(MTT.PartTranDetails.RateCode)
+			#print(MTT.PartTranDetails.Rate)
+			#print(MTT.PartTranDetails.TreaRate)
+			#print(MTT.PartTranDetails.TreaRefNum)
+
+			MTT.PartTranDetails.TranIdentifier="rschdl"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+
+			#print(MTT.PartTranDetails.RefAmount)
+			#print(MTT.PartTranDetails.RefCurrency) 
+			sv_z = urhk_MTTS_DefineLoanPartTran("FEEPARKCR")	
+			#print(sv_z) 
+			
+# 			Calling B2K Convert Amt to find out how much to Debit the Parking Acct
+# 			and the subsequent Charge Credits .
+
+			BANCS.INPARAM.InputAmount=sv_l
+			BANCS.INPARAM.FromCurrency=MTT.InputDetails.chrgCollSrcCrncy
+			#print(BANCS.INPARAM.FromCurrency)
+			BANCS.INPARAM.ToCurrency=MTT.InputDetails.chargeCreditCrncy
+			#print(BANCS.INPARAM.ToCurrency)
+			BANCS.INPARAM.RateCode=MTT.InputDetails.chrgRateCode
+			BANCS.INPARAM.Rate=MTT.InputDetails.chrgRate
+			sv_z=urhk_B2k_ConvertAmount("")
+			#print(sv_z)
+			sv_x= CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+			#print(sv_x)
+
+
+#	x-----------------------------------------------------------x
+#	|           Charges Parking Acct Debit 			 	        |				 
+#	x-----------------------------------------------------------x
+
+			MTT.PartTranDetails.Account=MTT.InputDetails.consolAcctForChrgs
+			#print(MTT.PartTranDetails.Account )
+			MTT.PartTranDetails.RefAmount=-sv_x
+			#print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.chargeCreditCrncy
+			#print( MTT.PartTranDetails.RefCurrency) 
+			MTT.PartTranDetails.RateCode = ""
+			MTT.PartTranDetails.Particulars = "Parking Account Debit for Loan Rescheduling Fee Collection"
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LARET"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+			IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+			#{
+				sv_s = "intRateCode|SELECT ds_rate_code "
+				sv_s = sv_s + " FROM tbaadm.LAM"
+				sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+				sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+				BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+				print(sv_s)
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+				print(MTT.PartTranDetails.RateCode)
+				IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+				#{
+					sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                	print(sv_s)
+					print(BANCS.INPARAM.BINDVARS)
+       	                        	sv_d = urhk_dbselectWithBind(sv_s)
+                               		print(sv_d)
+					IF(sv_d == "0")THEN
+					#{
+						MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+					#}
+					ENDIF
+				#}
+				ENDIF
+				print(MTT.PartTranDetails.RateCode)
+
+			#}
+			ENDIF
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="rschdl"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00716"
+			sv_z = urhk_MTTS_DefineLoanPartTran("FEEPARKDR")
+			#print(sv_z)
+		endif
+		#}
+
+
+###############################################################################
+# First Charge transaction. Rest of the transactions will be done in a loop
+# The first transaction is seperate to accomadate the parking account also
+# in case charge and loan account currencies are different
+#
+# Inputs :-   MTT.InputDetails.chargeCreditAmt       :- Charge amount
+#             MTT.InputDetails.chargeCreditAccount   :- Charge account at pttm
+#             MTT.InputDetails.chargeCreditCrncy     :- Charge currency
+#             MTT.InputDetails.valueDate             :- Value Date
+#             MTT.InputDetails.sysCalcChrgAmt        :- System calculated charge amount
+#             MTT.InputDetails.loanAcct              :- Used to populate cxl target acid
+#                                                       used in reversal
+###############################################################################
+
+#Now we will put the transaction to charge account
+sv_l=CDOUBLE(MTT.InputDetails.chargeCreditAmt)
+#
+MTT.PartTranDetails.Account=MTT.InputDetails.chargeCreditAccount
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+MTT.PartTranDetails.RefAmount=sv_l
+#print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.chargeCreditCrncy
+MTT.PartTranDetails.RateCode = ""
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct+" - Fee Collection during Rescheduling" 
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LARET"
+sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_m == 0) then
+	call("getMTTTranPart.scr")
+endif
+IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+#{
+	sv_s = "intRateCode|SELECT ds_rate_code "
+	sv_s = sv_s + " FROM tbaadm.LAM"
+	sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+	sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+	print(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+	print(MTT.PartTranDetails.RateCode)
+	IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+	#{
+		sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                print(sv_s)
+		print(BANCS.INPARAM.BINDVARS)
+                sv_d = urhk_dbselectWithBind(sv_s)
+               	print(sv_d)
+		IF(sv_d == "0")THEN
+		#{
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+		#}
+		ENDIF
+	#}
+	ENDIF
+	print(MTT.PartTranDetails.RateCode)
+
+#}
+ENDIF
+
+MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="rschdl"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.sysPartTranCode = "PTRN00717"	
+
+MTT.ChargeDetails.EventType = MTT.InputDetails.eventType
+MTT.ChargeDetails.EventId = MTT.InputDetails.eventId
+MTT.ChargeDetails.CompB2kId = MTT.InputDetails.CompB2kId
+
+sv_x = CDOUBLE(MTT.InputDetails.sysCalcChrgAmt)
+MTT.ChargeDetails.CalculatedAmount = sv_x
+MTT.ChargeDetails.ActualAmount = sv_l
+MTT.ChargeDetails.CollectionCrncy = MTT.InputDetails.chargeCreditCrncy
+MTT.ChargeDetails.ChargeCifId = MTT.InputDetails.chargeCifId
+MTT.ChargeDetails.TargetAcctId = MTT.InputDetails.loanAcct   
+
+if (MTT.ChargeDetails.EventType == "LNKED") then
+	sv_j = MTT.InputDetails.loanAcct+" "+LTRIM(RTRIM(MID$(MTT.InputDetails.tranParticulars,0,32)))
+	MTT.PartTranDetails.Particulars=sv_j
+endif
+
+sv_z = urhk_MTTS_DefineChargePartTran("FEECR")
+#print(sv_z)
+###########################################################################################
+# Part Tran  .All charge credit transactions are done in a loop , because the number of
+# part trans is not known . All charge collections have to be in single currency
+#
+# Inputs :-   MTT.InputDetails.chargeCreditAmt       :- Charge amount
+#             MTT.InputDetails.chargeCreditAccount   :- Charge account at pttm
+#             MTT.InputDetails.chargeCreditCrncy     :- Charge currency
+#             MTT.InputDetails.valueDate             :- Value Date
+#             MTT.InputDetails.sysCalcChrgAmt        :- System calculated charge amount
+#             MTT.InputDetails.loanAcct              :- Used to populate cxl target acid
+#                                                       used in reversal
+###########################################################################################
+
+sv_r = urhk_MTTS_PopulateInputDetails("")
+#print(sv_z)
+#now we will have to go in a while loop for next records
+while (sv_r < 1)
+    sv_l = CDOUBLE(MTT.InputDetails.chargeCreditAmt)
+    MTT.PartTranDetails.Account=MTT.InputDetails.chargeCreditAccount
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#print(MTT.PartTranDetails.Account)
+    MTT.PartTranDetails.RefAmount=sv_l
+#print(MTT.PartTranDetails.RefAmount)
+    MTT.PartTranDetails.RefCurrency=MTT.InputDetails.chargeCreditCrncy
+    MTT.PartTranDetails.RateCode = ""
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct+" - Fee Collection during Rescheduling" 
+
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LARET"
+	sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_m == 0) then
+		call("getMTTTranPart.scr")
+	endif
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + " FROM tbaadm.LAM"
+			sv_s = sv_s + " WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR)"
+			sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.loanAcct+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+
+			print(MTT.PartTranDetails.RateCode)
+			IF(TRIM(MTT.PartTranDetails.RateCode) == "")THEN
+			#{
+				sv_s = "intRateCode|SELECT REPAY_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID=?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                                print(sv_s)
+				print(BANCS.INPARAM.BINDVARS)
+       	                        sv_d = urhk_dbselectWithBind(sv_s)
+                               	print(sv_d)
+				IF(sv_d == "0")THEN
+				#{
+					MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(MTT.PartTranDetails.RateCode)
+
+		#}
+		ENDIF
+
+	MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDate
+    MTT.PartTranDetails.Consolidate="N"
+    MTT.PartTranDetails.TranIdentifier="rschdl"
+    MTT.PartTranDetails.PTranBusinessType="LOANS"
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00718"
+
+    MTT.ChargeDetails.EventType = MTT.InputDetails.eventType
+    MTT.ChargeDetails.EventId = MTT.InputDetails.eventId
+	MTT.ChargeDetails.CompB2kId = MTT.InputDetails.CompB2kId
+    sv_x = CDOUBLE(MTT.InputDetails.sysCalcChrgAmt)
+    MTT.ChargeDetails.CalculatedAmount = sv_x
+    MTT.ChargeDetails.ActualAmount = sv_l
+    MTT.ChargeDetails.CollectionCrncy = MTT.InputDetails.chargeCreditCrncy
+    MTT.ChargeDetails.ChargeCifId = MTT.InputDetails.chargeCifId
+	MTT.ChargeDetails.TargetAcctId = MTT.InputDetails.loanAcct     
+
+	if (MTT.ChargeDetails.EventType == "LNKED") then
+		sv_j = MTT.InputDetails.loanAcct+" "+LTRIM(RTRIM(MID$(MTT.InputDetails.tranParticulars,0,32)))
+		MTT.PartTranDetails.Particulars=sv_j
+	endif
+
+    sv_z = urhk_MTTS_DefineChargePartTran("FEECR")
+#print(sv_z)
+
+   sv_r = urhk_MTTS_PopulateInputDetails("")
+#print(sv_z)
+DO
+sv_z = urhk_MTTS_EndDefinition("")
+#print(sv_z)
+
+
+#trace off
+end-->
+

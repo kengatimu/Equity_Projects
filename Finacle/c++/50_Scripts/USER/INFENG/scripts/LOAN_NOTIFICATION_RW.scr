@@ -1,0 +1,322 @@
+##########################################################################################
+# Source Name           : LOAN_NOTIFICATION_RW.scr
+# Date                  : 19-01-2022
+# Description           : Notification for Inactive dormant account  
+# Author                : Anand Pansare
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        19-02-2023    Anand Pansare          Original file
+###########################################################################################
+<--start
+trace on
+        lv_a=urhk_B2K_PrintRepos("BANCS")
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        lv_r = CLASSEXISTS("CUST","MESSAGING")
+        IF (lv_r == 0) THEN
+        #{
+                CREATECLASS("CUST","MESSAGING",5)
+        #}
+        ENDIF
+
+        lv_r = CLASSEXISTS("CUST","DATA")
+        IF (lv_r == 0) THEN
+        #{
+                CREATECLASS("CUST","DATA",5)
+        #}
+        ENDIF
+
+		
+	print(BANCS.STDIN.mySolId)
+	print(BANCS.STDIN.contextBankId)
+	CUST.MESSAGING.batchExecutingForDate = Mid$(BANCS.STDIN.batchExecutingForDate,0,10)	
+	print(CUST.MESSAGING.batchExecutingForDate)
+	CUST.MESSAGING.BODDate = Mid$(BANCS.STDIN.BODDate,0,10)	
+	print(CUST.MESSAGING.BODDate)
+	
+	lv_t ="REPAY_DATE|"
+	lv_t = lv_t + " select to_char(dc_cls_date,'DD-MM-YYYY') from tbaadm.gct where bank_id = '"+BANCS.STDIN.contextBankId+"'"
+
+	print(lv_t)
+	lv_z = urhk_dbSelectWithBind(lv_t)
+	print(lv_z)
+	IF(lv_z==0) THEN
+	#{
+		CUST.MESSAGING.REPAY_DATE =  BANCS.OUTPARAM.REPAY_DATE
+	ELSE
+		CUST.MESSAGING.REPAY_DATE = CUST.MESSAGING.batchExecutingForDate
+	#}
+	endif
+
+
+	lv_a = "loan_acct,loan_op_acct,clr_bal_amt,mgmt_fee|"
+	lv_a = lv_a + " select distinct gam.foracid , "
+	lv_a = lv_a + " (select (select foracid from tbaadm.gam g  where g.bank_id = '"+BANCS.STDIN.contextBankId+"' and g.acid = op_acid) from tbaadm.lam  "
+	lv_a = lv_a + " where lam.bank_id = '"+BANCS.STDIN.contextBankId+"' and lam.acid  = gam.acid ) as oprative_account ,clr_bal_amt,"
+	lv_a = lv_a + " nvl((select sum(pending_chrg_amt) from tbaadm.cxl  where bank_id = gam.bank_id and event_type = 'GCHRG' "
+	lv_a = lv_a + " and event_id in ('MANAGEMENT-FEE-MG500','MANAGEMENT-FEE-MG501','MANAGEMENT-FEE-MG504','MANAGEMENT-FEE-MG507',"
+	lv_a = lv_a + " 'MANAGEMENT-FEE-MG511','MANAGEMENT-FEE-MG512','MANAGEMENT-FEE-MG564','MANAGEMENT-FEE-MG592')"
+	lv_a = lv_a + " and target_acid = (select op_acid from tbaadm.lam l where l.bank_id = gam.bank_id and acid = gam.acid)  ),0) as mgmt_fee"
+	lv_a = lv_a + " from tbaadm.ltd,tbaadm.gam "
+	lv_a = lv_a + " where gam.bank_id = ltd.bank_id "
+	lv_a = lv_a + " and gam.acid = ltd.acid "
+	lv_a = lv_a + " and gam.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	lv_a = lv_a + " and ltd.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	lv_a = lv_a + " and gam.sol_id in (select sol_id from tbaadm.sst where del_flg = 'N' and set_id = '"+BANCS.STDIN.mySolId+"' "
+	lv_a = lv_a + " and sst.bank_id = '"+BANCS.STDIN.contextBankId+"') "
+	lv_a = lv_a + " and tran_date = to_Date('"+CUST.MESSAGING.REPAY_DATE+"','DD-MM-YYYY') "
+
+	print(lv_a)
+	lv_d = urhk_dbCursorOpenWithBind(lv_a)
+	print(lv_d)
+
+	IF(lv_d!=0) THEN
+	#{
+		lv_u = urhk_dbCursorClose(lv_a)
+		print(lv_u)
+	#}
+	ELSE
+	#{
+		CUST.MESSAGING.DB_CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.MESSAGING.DB_CURSOR_NUMBER)
+
+
+		lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+
+		IF(lv_c != "0")THEN
+		#{
+			print("OK NOTHING TO SEND")
+		#}
+		ENDIF
+
+		while(lv_c == 0)
+		#{
+				CUST.DATA.payOffAmount = ""
+
+                                CUST.MESSAGING.loan_acct 	= BANCS.OUTPARAM.loan_acct
+                                CUST.MESSAGING.loan_op_acct 	= BANCS.OUTPARAM.loan_op_acct
+                                CUST.MESSAGING.clr_bal_amt 	= BANCS.OUTPARAM.clr_bal_amt
+                                CUST.MESSAGING.mgmt_fee 	= BANCS.OUTPARAM.mgmt_fee
+                                print(CUST.MESSAGING.loan_acct)
+                                print(CUST.MESSAGING.loan_op_acct)
+                                print(CUST.MESSAGING.clr_bal_amt)
+                                print(CUST.MESSAGING.mgmt_fee)
+
+				CALL ("LOAN_NOTIFICATION_RW_PAYOFF.scr")
+
+				print(CUST.DATA.payOffAmount)
+				IF(CUST.DATA.payOffAmount=="")THEN
+				#{
+					CUST.DATA.payOffAmount = CUST.MESSAGING.clr_bal_amt	
+				#}
+				ENDIF
+
+				sv_a = ""
+				sv_a = sv_a + " insert into custom.loan_notification_temp "
+				sv_a = sv_a + " (foracid,bank_id,sol_id, alert_date, payoff_balance,mgmt_fee) "
+				sv_a = sv_a + " values "
+				sv_a = sv_a + " ('"+CUST.MESSAGING.loan_acct+"', '"+BANCS.STDIN.contextBankId+"', '"+BANCS.STDIN.mySolId+"',"
+				sv_a = sv_a +"TO_DATE('"+CUST.MESSAGING.BODDate+"','DD-MM-YYYY'),'"+CUST.DATA.payOffAmount+"','"+CUST.MESSAGING.mgmt_fee+"')"
+
+				sv_a = urhk_dbSQLWithBind(sv_a)
+				PRINT(sv_a)
+
+				IF(sv_a == 0)THEN
+				#{
+					sv_a = urhk_dbSQLWithBind("COMMIT")
+				#}
+				ELSE
+				#{
+					PRINT("FAILED TO UPDATE")
+				#}
+				ENDIF
+
+
+                                lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+                                print(lv_c)
+		#}
+		do
+		lv_c = urhk_dbCursorClose(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+	#}
+	ENDIF
+
+	sv_s = system("export LC_ALL=fr_FR.UTF-8")
+	print(sv_s)
+
+	sv_s = system("export NLS_LANG=FRENCH_FRANCE.AL32UTF8")
+	print(sv_s)
+
+
+	lv_s = ""
+	lv_s=lv_s + "output|"
+	lv_s=lv_s+"SELECT custom.fn_loan_repayment_alert('"+BANCS.STDIN.contextBankId+"','"+BANCS.STDIN.mySolId+"','"+CUST.MESSAGING.REPAY_DATE+"') FROM DUAL"
+
+	print(lv_s)
+	lv_z = urhk_dbSelectWithBind(lv_s)
+	print(lv_z)
+	IF(lv_z==0) THEN
+	#{
+		lv_r=urhk_dbSQLWithBind("commit")
+		print(lv_r)
+		lv_r=urhk_dbSQLWithBind("delete From custom.loan_notification_temp where sol_id = '"+BANCS.STDIN.mySolId+"'")
+		print(lv_r)
+	#}
+	endif
+
+	lv_s = ""
+	lv_s=lv_s + "output|"
+	lv_s=lv_s +"SELECT custom.fn_loan_arrears_alert('"+BANCS.STDIN.contextBankId+"','"+BANCS.STDIN.mySolId+"','"+CUST.MESSAGING.BODDate+"') FROM DUAL"
+
+	print(lv_s)
+	lv_z = urhk_dbSelectWithBind(lv_s)
+	print(lv_z)
+	IF(lv_z==0) THEN
+	#{
+		lv_r=urhk_dbSQLWithBind("commit")
+		print(lv_r)
+	#}
+	endif	
+
+	lv_s = ""
+	lv_s = lv_s + " cif_id,foracid,sno,alert_type,phoneno,msg1,msg2,msg3,msg4,msg5|"
+	lv_s = lv_s + " select cif_id,foracid,sno,alert_type,phoneno,"
+	lv_s = lv_s + " substr(massage,0,99) msg1, substr(massage,100,99) msg2, substr(massage,199,99) msg3,"
+	lv_s = lv_s + " substr(massage,299,99) msg4, substr(massage,399,99) msg5"
+	lv_s = lv_s + " from custom.loan_notification_tbl"
+	lv_s = lv_s + " where alert_date = to_date('"+CUST.MESSAGING.BODDate+"','DD-MM-YYYY')"
+	lv_s = lv_s + " and sol_id  = '"+BANCS.STDIN.mySolId+"'"
+	lv_s = lv_s + " and bank_id ='"+BANCS.STDIN.contextBankId+"'"
+	lv_s = lv_s + " and status_flg ='N'"
+
+	print(lv_s)
+	lv_d = urhk_dbCursorOpenWithBind(lv_s)
+	print(lv_d)
+
+	IF(lv_d!=0) THEN
+	#{
+		lv_u = urhk_dbCursorClose(lv_a)
+		print(lv_u)
+	#}
+	ELSE
+	#{
+		CUST.MESSAGING.DB_CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.MESSAGING.DB_CURSOR_NUMBER)
+
+
+		lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+
+		IF(lv_c != "0")THEN
+		#{
+			print("OK NOTHING TO SEND")
+		#}
+		ENDIF
+
+		while(lv_c == 0)
+		#{
+                                CUST.MESSAGING.cif_id 	= BANCS.OUTPARAM.cif_id
+                                print(CUST.MESSAGING.cif_id)
+                                CUST.MESSAGING.foracid 	= BANCS.OUTPARAM.foracid
+                                print(CUST.MESSAGING.foracid)
+                                CUST.MESSAGING.sno = BANCS.OUTPARAM.sno
+                                print(CUST.MESSAGING.sno)
+                                CUST.MESSAGING.alert_type 	= BANCS.OUTPARAM.alert_type
+                                print(CUST.MESSAGING.alert_type)
+                                CUST.MESSAGING.phoneno 	= BANCS.OUTPARAM.phoneno
+                                print(CUST.MESSAGING.phoneno)
+                                CUST.MESSAGING.massage 	= BANCS.OUTPARAM.msg1 + BANCS.OUTPARAM.msg2 + BANCS.OUTPARAM.msg3 + BANCS.OUTPARAM.msg4 + BANCS.OUTPARAM.msg5
+                                print(CUST.MESSAGING.massage)
+
+
+				CUST.MESSAGING.MOBILENUMBER = CUST.MESSAGING.phoneno
+				CUST.MESSAGING.MESSAGETEXT  = CUST.MESSAGING.massage
+
+				############Formatting the phone number
+				IF(CUST.MESSAGING.MOBILENUMBER !="")THEN
+				#{
+					lv_a=CUST.MESSAGING.MOBILENUMBER
+					PRINT(lv_a)
+
+					CUST.MESSAGING.BANKID = BANCS.STDIN.contextBankId
+					lv_l=CUST.MESSAGING.BANKID
+					print(lv_l)
+
+					lv_b=MID$(lv_a,0,1)
+
+					print(lv_b)
+
+					IF(CINT(lv_b)==0) THEN
+					#{
+
+						###Number starts with a zero, pad with the bank
+						##Get from second character to the last
+
+						lv_a=TRIM(lv_a)
+
+						lv_b=MID$(lv_a,1,30)
+
+						lv_c=TRIM(lv_b)
+						lv_c="2"+lv_l+lv_b
+						PRINT(lv_c)
+						CUST.MESSAGING.MOBILENUMBER=lv_c
+
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+				####Sending the record to external system
+
+				IF(CUST.MESSAGING.MOBILENUMBER!="") THEN
+				#{
+					CALL("smspushRW.scr")
+					print(CUST.MESSAGING.MOBILENUMBER)
+					CUST.MESSAGING.response = "1"
+				#}
+				ENDIF
+
+				#PRINT(CUST.MESSAGING.response)
+
+				if ((CINT(CUST.MESSAGING.response)==1) OR (CINT(CUST.MESSAGING.response)==2)) then
+				#{
+					lv_m = ""
+					lv_m = lv_m + " update custom.loan_notification_tbl"
+					lv_m = lv_m + " set status_flg = 'Y'"
+					lv_m = lv_m + " where sol_id= '"+BANCS.STDIN.mySolId+"'"
+					lv_m = lv_m + " and bank_id ='"+BANCS.STDIN.contextBankId+"'"
+					lv_m = lv_m + " and status_flg ='N'"
+					lv_m = lv_m + " and cif_id = '"+CUST.MESSAGING.cif_id+"'"
+					lv_m = lv_m + " and foracid = '"+CUST.MESSAGING.foracid+"'"
+					lv_m = lv_m + " and alert_date = to_date('"+CUST.MESSAGING.BODDate+"','DD-MM-YYYY')"
+					lv_m = lv_m + " and SNO = '"+CUST.MESSAGING.sno+"'"
+					lv_m = lv_m + " and alert_type = '"+CUST.MESSAGING.alert_type+"'"
+					lv_m = lv_m + " and phoneno = '"+CUST.MESSAGING.phoneno+"'"
+
+					print(lv_m)
+					lv_r=urhk_dbSQLWithBind(lv_m)
+					PRINT(lv_r)
+
+					lv_r = urhk_dbsqlWithBind("COMMIT")
+				#}
+				endif
+
+                                lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+                                print(lv_c)
+		#}
+		do
+		lv_c = urhk_dbCursorClose(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+	#}
+	ENDIF
+
+
+trace off
+end-->
+

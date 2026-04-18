@@ -1,0 +1,301 @@
+#-------------------------------------------------------------------------------------------------------------
+#    Name            : c2b_Inquire.scr
+#    Description     : Inquire Mpesa Transaction
+#    Date            : 18-08-2022
+#    Author          : SUNDAR
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : C2BMN
+#---------------------------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+libname CUSTOMSO
+
+	sv_r = REPEXISTS("CUST")
+
+        IF (sv_r == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST", "MPESA")
+
+        IF (sv_r == 0) THEN
+        #{
+                CREATECLASS("CUST", "MPESA", 5)
+        #}
+        ENDIF
+
+
+	sv_a=urhk_B2k_printRepos("BANCS")
+        PRINT(sv_a)
+	
+	CUST.MPESA.TranId = BANCS.INPUT.TranId
+	CUST.MPESA.MobileNo = BANCS.INPUT.MobileNo
+	CUST.MPESA.AccountNo = BANCS.INPUT.AccountNo
+	CUST.MPESA.Amount = BANCS.INPUT.Amount
+	CUST.MPESA.walletname = BANCS.INPUT.walletname
+	CUST.MPESA.reqid = "787866543312"
+	CUST.MPESA.Responsecode = "Faild"
+
+	print(CUST.MPESA.TranId)
+	print(CUST.MPESA.MobileNo)
+	print(CUST.MPESA.AccountNo)
+	print(CUST.MPESA.Amount)
+	print(CUST.MPESA.walletname)
+
+	sv_a ="reqid|SELECT to_char(sysdate,'ddmmyyyyhhmmss')  FROM DUAL "
+        print(sv_a)
+        sv_b= urhk_dbSelectWithBind(sv_a)
+        print(sv_b)
+
+        IF(sv_b == 0) then
+        #{
+		CUST.MPESA.reqid= BANCS.OUTPARAM.reqid
+                CUST.MPESA.RequestId ="MPES_" + BANCS.OUTPARAM.reqid
+                print(CUST.MPESA.RequestId)
+
+        ELSE
+
+                CUST.MPESA.RequestId = "1500977543928"
+        #}
+        ENDIF
+
+	CUST.MPESA.ResponseFile = "MPesa_Res_"+CUST.MPESA.reqid+".TXT"
+	CUST.MPESA.FilePath	= "/finacle/EQPPROD/Fin10218/APP/Finacle/FC/app/MPESA/Mpesa.jar"
+	CUST.MPESA.URL	= "http://10.11.6.111:2020/serve/mpesa-status/"
+
+	CUST.MPESA.InputField	=  "" 
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.RequestId + "  "
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.walletname+ "  "
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.TranId+ "  "
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.MobileNo + "  "
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.Amount + "  "
+	CUST.MPESA.InputField	=  CUST.MPESA.InputField + CUST.MPESA.URL + "  "
+
+	print(CUST.MPESA.InputField)
+	sv_t="java -jar  "+ CUST.MPESA.FilePath + "  "+ CUST.MPESA.InputField	 + " > "+ CUST.MPESA.ResponseFile
+	print(sv_t)			
+	sv_r=system(sv_t)
+	sv_a = urhk_getEnv("ONS_LOG_DIR")
+	print(BANCS.OUTPARAM.envValue)
+	print(sv_a)
+	if(sv_a == 1)then
+	#{
+		print("Env variable ONS/log not found")
+	#}
+	endif
+
+	##Getting Response Details
+	print(BANCS.STDIN.userId)
+	CUST.MPESA.ONS_path = BANCS.OUTPARAM.envValue
+	print(CUST.MPESA.ONS_path)
+	CUST.MPESA.ResponseFileLoc = CUST.MPESA.ONS_path +"/"+BANCS.STDIN.userId + "/" + CUST.MPESA.ResponseFile
+	#CUST.MPESA.ResponseFileLoc ="/finacle/EQPPROD/Fin10218/APP/Finacle/FC/app/CDCI_LOGS/AM03423/MPesa_Res_18082022020818.TXT"
+	print(CUST.MPESA.ResponseFileLoc)
+	sv_r = urtn_fileAccess(CUST.MPESA.ResponseFileLoc)
+	print(sv_r)
+	if(sv_r != 0)then
+	#{
+		CUST.MPESA.excmessageField = "File does not exists"
+		sv_z = urhk_SetOrbOut("Error_1|Error^File does not exist^txtFilename")
+		goto ENDOFSCRIPT
+	#}
+	else
+	#{
+		CUST.MPESA.fileopen = "Y"
+	#}
+	endif
+
+	##Reading Response File from API
+	print(CUST.MPESA.fileopen)
+	sv_s = urtn_fileOpen(CUST.MPESA.ResponseFileLoc + "|r")
+	if(sv_s < 0)then
+	#{
+		print("error in opening file")
+		sv_x = "Network is busy, Kindly try after again"
+		sv_c = "Y"
+                CUST.DATA.messageField = "Error While Processing the Request, Please try Again"
+                sv_z = urhk_SetOrbOut("Error_1|ERROR^"+CUST.DATA.messageField)
+                PRINT(sv_z)
+		sv_u = urtn_fileClose(CUST.MPESA.ResponseFileLoc)
+		print(sv_u)				
+		GOTO ENDOFSCRIPT
+	#}
+	else
+	#{
+		sv_k = urtn_fileRead(sv_s+"|CUST.MPESA.Record1")
+		CUST.MPESA.recNum =1
+		print(CUST.MPESA.Record1)
+		CUST.MPESA.ResponseMsg = ""
+		CUST.MPESA.Record1 = TRIM(CUST.MPESA.Record1)
+		sv_l=0
+		while(sv_k == 0)
+		#{
+			CUST.MPESA.Record1 = TRIM(CUST.MPESA.Record1)
+			print(CUST.MPESA.Record1)
+                        IF(CUST.MPESA.Record1 == "RESPONSE CODE : 200")THEN
+                        #{
+                                CUST.MPESA.Responsecode ="Success"
+                                print("Success Outbound call")
+                        #}
+                        ENDIF
+
+			if(CUST.MPESA.Record1 =="RESPONSE:")THEN
+			#{
+				sv_l=1
+				CUST.MPESA.ResponseMsg =  CUST.MPESA.ResponseMsg + CUST.MPESA.Record1
+				print(CUST.MPESA.Record1)
+				sv_k = urtn_fileRead(sv_s+"|CUST.MPESA.Record1")
+				CUST.MPESA.Record1 = TRIM(CUST.MPESA.Record1)
+				print(CUST.MPESA.Record1)
+				goto NEXTRECORD
+			#}
+			endif
+			if(sv_l==1)then
+			#{
+				CUST.MPESA.ResponseMsg =  CUST.MPESA.ResponseMsg + CUST.MPESA.Record1	
+			#}
+			ENDIF
+
+		NEXTRECORD:
+			sv_k = urtn_fileRead(sv_s+"|CUST.MPESA.Record1")
+			print(CUST.MPESA.recNum)
+			CUST.MPESA.recNum = CINT(CUST.MPESA.recNum) +1
+			print(CUST.MPESA.recNum)
+		#}
+		do
+	#}
+	endif			
+        IF(CUST.MPESA.Responsecode !="Success")THEN
+        #{
+                        sv_k = urhk_SetOrbOut("N|Error Receiving Response From M-Pesa Server")
+                        print(sv_k)
+			GOTO ENDOFSCRIPT	
+			
+        #}
+        ENDIF
+
+        print(CUST.MPESA.ResponseMsg)
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<responseDesc>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</responseDesc>")
+        CUST.MPESA.RespDescTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.RespDescTag)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.RespDescTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.RespDescTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.RespDesc  = MID$(CUST.MPESA.RespDescTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.RespDesc)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<responseCode>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</responseCode>")
+        CUST.MPESA.RespCodeTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.RespCodeTag)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.RespCodeTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.RespCodeTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.RespCode  = MID$(CUST.MPESA.RespCodeTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.RespCode)
+
+	IF(CUST.MPESA.RespCode=="00")THEN
+	#{
+	CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<senderName>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</senderName>")
+        CUST.MPESA.sendernameTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.sendernameTag)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.sendernameTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.sendernameTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.sendername  = MID$(CUST.MPESA.sendernameTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.sendername)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<amount>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</amount>")
+        CUST.MPESA.amountTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.amountTag)
+
+	CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.amountTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.amountTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.Resamount  = MID$(CUST.MPESA.amountTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.Resamount)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<mobileNumber>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</mobileNumber>")
+        CUST.MPESA.mobileNumberTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.mobileNumberTag)
+
+
+        
+	CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.mobileNumberTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.mobileNumberTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.ResmobileNumber  = MID$(CUST.MPESA.mobileNumberTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.ResmobileNumber)
+
+        CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.ResponseMsg,"<mpesaAccountReference>")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.ResponseMsg,"</mpesaAccountReference>")
+        CUST.MPESA.mpesaAccountReferenceTag  = MID$(CUST.MPESA.ResponseMsg,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos2))
+        print(CUST.MPESA.mpesaAccountReferenceTag)
+
+
+        
+	CUST.MPESA.pos1        = GETPOSITION(CUST.MPESA.mpesaAccountReferenceTag,">")
+        CUST.MPESA.pos2        = GETPOSITION(CUST.MPESA.mpesaAccountReferenceTag,"</")
+        CUST.MPESA.pos3        = cint(CUST.MPESA.pos2)-cint(CUST.MPESA.pos1)
+        CUST.MPESA.ResmpesaAccountReference  = MID$(CUST.MPESA.mpesaAccountReferenceTag,cint(CUST.MPESA.pos1),cint(CUST.MPESA.pos3)-1)
+        print(CUST.MPESA.ResmpesaAccountReference)
+
+	#}
+	ENDIF
+
+	RESULT:
+
+        IF(CUST.MPESA.RespCode=="00")THEN
+        #{
+
+
+		if(CUST.MPESA.RespDesc!="")then
+		#{
+			sv_k = urhk_SetOrbOut("Y|"+CUST.MPESA.RespDesc+"!"+CUST.MPESA.RespCode+"!"+CUST.MPESA.sendername+"!"+CUST.MPESA.Resamount+"!"+CUST.MPESA.ResmobileNumber+"!"+CUST.MPESA.ResmpesaAccountReference)
+			print(sv_k)
+		#}
+		else
+		#{
+			CUST.DATA.messageField = "Error While Processing the Request"
+			sv_z = urhk_SetOrbOut("Error_1|ERROR^"+CUST.DATA.messageField )
+			PRINT(sv_z)
+		#}
+		endif
+	
+	#}
+	ELSE
+	#{
+		if(CUST.MPESA.RespDesc!="")then
+		#{
+			sv_k = urhk_SetOrbOut("Y|"+CUST.MPESA.RespDesc+"!"+CUST.MPESA.RespCode)
+			print(sv_k)
+		#}
+		else
+		#{
+			CUST.DATA.messageField = "Error While Processing the Request"
+			sv_z = urhk_SetOrbOut("Error_1|ERROR^"+CUST.DATA.messageField )
+			PRINT(sv_z)
+		#}
+		endif
+
+	
+	#}
+	ENDIF
+
+ ENDOFSCRIPT:
+ EXITSCRIPT
+ TRACE OFF
+ END-->
+
+

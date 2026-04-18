@@ -1,0 +1,213 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebChnlLienChk.scr 
+#  Description     : 
+#  Date            : 29-11-2019
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             29-11-2019      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(classexists("CUST","ALERTS")==0)then
+                createclass("CUST","ALERTS",5)
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+	EBSRV.GLBDATA.NewAcctCnt = ""
+	EBSRV.GLBDATA.drDtdPatternCnt = ""
+	EBSRV.GLBDATA.crDtdPatternCnt = ""
+	EBSRV.GLBDATA.drHtdPatternCnt = ""
+	EBSRV.GLBDATA.crHtdPatternCnt = ""
+	EBSRV.GLBDATA.rdrDtdPatternCnt = ""
+	EBSRV.GLBDATA.rcrDtdPatternCnt = ""
+	EBSRV.GLBDATA.rdrHtdPatternCnt = ""
+	EBSRV.GLBDATA.rcrHtdPatternCnt = ""
+	EBSRV.GLBDATA.LienYN = ""
+        sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+        if(sv_u == 0)then
+                print(MTT.InputDetails.Argument1)
+                EBSRV.GLBDATA.TranAmt = trim(MTT.InputDetails.Argument1)
+		EBSRV.GLBDATA.TranAmt = cdouble(LEFT$(EBSRV.GLBDATA.TranAmt,14))
+		EBSRV.GLBDATA.CrAcctId = MTT.InputDetails.Argument2
+		EBSRV.GLBDATA.DccId = MTT.InputDetails.Argument3
+		EBSRV.GLBDATA.TranId = MTT.InputDetails.Argument4
+		EBSRV.GLBDATA.tranRemarks = EBSRV.GLBDATA.TranId 
+		EBSRV.GLBDATA.ptranType = MTT.InputDetails.Argument5 
+		EBSRV.GLBDATA.ModuleId = MTT.InputDetails.Argument6 
+        else
+                sv_u = urhk_MTTS_Close("")
+                print(sv_u)
+                goto VAYU
+        endif
+	print(EBSRV.GLBDATA.CrAcctId)
+	print(EBSRV.GLBDATA.ModuleId)
+	if(EBSRV.GLBDATA.ModuleId!="SAL")then
+		###sv_d = "cbcVal | select custom.fn_cbctm_chk(?SVAR,?SVAR,?NVAR,?SVAR)from dual "
+		sv_d = "cbcVal | select custom.fn_cbctmbl_chk(?SVAR,?SVAR,?NVAR,?SVAR)from dual "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.CrAcctId + "|" + EBSRV.GLBDATA.TranAmt + "|" + EBSRV.GLBDATA.ptranType
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_d)	
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+			print(BANCS.OUTPARAM.cbcVal)
+			print(left$(BANCS.OUTPARAM.cbcVal,1))
+			EBSRV.GLBDATA.LienYN = left$(BANCS.OUTPARAM.cbcVal,1) 
+		else
+			EBSRV.GLBDATA.LienYN = "N"
+		endif
+	endif
+	if(EBSRV.GLBDATA.ModuleId=="SAL")then
+		EBSRV.GLBDATA.LienYN = "Y"
+	endif
+	print(EBSRV.GLBDATA.LienYN)
+	if(EBSRV.GLBDATA.LienYN!="Y")then
+                goto VAYU
+	else
+		EBSRV.GLBDATA.durationMnths = "1"
+		EBSRV.GLBDATA.durationDays = "0"
+		EBSRV.GLBDATA.newDate = (BANCS.STDIN.BODDate + "|" + EBSRV.GLBDATA.durationMnths + "|" + EBSRV.GLBDATA.durationDays)
+		print(EBSRV.GLBDATA.newDate)
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(EBSRV.GLBDATA.newDate)
+		print(sv_u)
+		if(sv_u != 0)then
+			EBSRV.GLBDATA.LimExpiryDate = LEFT$(BANCS.STDIN.BODDate,10)
+			print(EBSRV.GLBDATA.LimExpiryDate)
+		else
+			EBSRV.GLBDATA.LimExpiryDate = BANCS.OUTPARAM.MODIFIED_DATE
+			print(EBSRV.GLBDATA.LimExpiryDate)
+		endif
+	       sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.CrAcctId)
+               if(sv_u==0)then
+                       EBSRV.GLBDATA.tranCrncy = BANCS.OUTPARAM.acctCrncyCode
+		       EBSRV.GLBDATA.TranAmt = BANCS.OUTPARAM.ClearBalance
+		       print(EBSRV.GLBDATA.TranAmt)
+                       sv_u = urhk_B2k_ForacidToAcid(EBSRV.GLBDATA.CrAcctId)
+                       if(sv_u==0)then
+                               EBSRV.GLBDATA.Cracid = BANCS.OUTPARAM.Acid
+			else
+				goto VAYU
+                       endif
+		else
+			goto VAYU
+              	endif 
+	endif
+	sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+	sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+	sv_s = sv_s + " where acid =?SVAR " 
+	sv_s = sv_s + " and bank_id =?SVAR) "
+	sv_s = sv_s + " and acid =?SVAR " 
+	sv_s = sv_s + " and bank_id =?SVAR "
+	BANCS.INPARAM.BINDVARS = EBSRV.GLBDATA.Cracid + "|" + BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.Cracid + "|" + BANCS.STDIN.contextBankId 
+	PRINT(BANCS.INPARAM.BINDVARS)
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		EBSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1	
+		EBSRV.GLBDATA.acid = BANCS.OUTPARAM.acid	
+		EBSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid	
+
+		BANCS.INPARAM.b2kId = EBSRV.GLBDATA.b2kid 
+                BANCS.INPARAM.acctNum = EBSRV.GLBDATA.CrAcctId 
+                BANCS.INPARAM.blockMode = "M"
+                BANCS.INPARAM.lienAmt =  cdouble(EBSRV.GLBDATA.TranAmt)* -1
+                BANCS.INPARAM.expiryDate = EBSRV.GLBDATA.LimExpiryDate 
+                BANCS.INPARAM.remarks = EBSRV.GLBDATA.tranRemarks 
+                BANCS.INPARAM.reasonCode = "LSTM"
+                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                sv_u = urhk_updateLien("")
+                if( sv_u != 0 )then
+                        sv_u = urhk_b2k_printrepos("BANCS")
+                        print(sv_u)
+                else
+                        print("lien")
+                endif
+                BANCS.INPARAM.b2kId = EBSRV.GLBDATA.b2kid
+                BANCS.INPARAM.acctNum = EBSRV.GLBDATA.CrAcctId
+                BANCS.INPARAM.blockMode = "M"
+                BANCS.INPARAM.lienAmt =  cdouble(EBSRV.GLBDATA.TranAmt)* 1
+                BANCS.INPARAM.expiryDate = EBSRV.GLBDATA.LimExpiryDate
+                BANCS.INPARAM.remarks = EBSRV.GLBDATA.tranRemarks
+                BANCS.INPARAM.reasonCode = "LSTM"
+                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                sv_u = urhk_updateLien("")
+                if( sv_u != 0 )then
+                        sv_u = urhk_b2k_printrepos("BANCS")
+                        print(sv_u)
+                else
+                        print("lien")
+                        CUST.ALERTS.AcctNum = EBSRV.GLBDATA.CrAcctId
+                        CUST.ALERTS.TranAmt = EBSRV.GLBDATA.TranAmt
+                        CUST.ALERTS.TranId = EBSRV.GLBDATA.TranId
+                        CUST.ALERTS.partTranType = EBSRV.GLBDATA.ptranType
+                        CUST.ALERTS.tranCrncyCode = EBSRV.GLBDATA.tranCrncy
+			if(EBSRV.GLBDATA.ModuleId!="SAL")then
+                        callscriptifexist("ebCommonAlert.scr")
+			endif
+                endif
+	ELSE
+                EBSRV.GLBDATA.amount1 ="0.00"
+                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + EBSRV.GLBDATA.CrAcctId )
+                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.crncyCode|" + EBSRV.GLBDATA.tranCrncy )
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.key.serial_num|0")
+                print(EBSRV.GLBDATA.TranAmt)
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.newLienAmt|" + EBSRV.GLBDATA.TranAmt + "|" + EBSRV.GLBDATA.tranCrncy)
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.oldLienAmt|" + EBSRV.GLBDATA.amount1 + "|" + EBSRV.GLBDATA.tranCrncy)
+                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|" + EBSRV.GLBDATA.LimExpiryDate )
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienReasonCode.refCode|LSTM")
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienRemarks|" + EBSRV.GLBDATA.tranRemarks )
+                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_0>.expiryDate|" + EBSRV.GLBDATA.LimExpiryDate )
+                ##sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_#>.requestedBy]
+                ##sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_#>.requestDept]
+                ##sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_#>.contactNum]
+                sv_u = urhk_ExecSrv("SRV_AddLienOnAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+                print(sv_u)
+                if(sv_u=="0")then
+                        print("lien")
+                        CUST.ALERTS.AcctNum = EBSRV.GLBDATA.CrAcctId
+                        CUST.ALERTS.TranAmt = EBSRV.GLBDATA.TranAmt
+                        CUST.ALERTS.TranId = EBSRV.GLBDATA.TranId
+                        CUST.ALERTS.partTranType = EBSRV.GLBDATA.ptranType
+                        CUST.ALERTS.tranCrncyCode = EBSRV.GLBDATA.tranCrncy
+			if(EBSRV.GLBDATA.ModuleId!="SAL")then
+                        callscriptifexist("ebCommonAlert.scr")
+			endif
+                else
+                        print("lien fail")
+                        EBSRV.GLBDATA.srvAcctId = EBSRV.GLBDATA.CrAcctId
+                        callscriptifexist("ebsrvHandler.scr")
+                        goto VAYU
+                endif
+	#}
+	ENDIF
+VAYU:
+        if(classexists("EBSRV","GLBDATA")==1) then
+                deleteclass("EBSRV","GLBDATA")
+        endif
+        if(repexists("EBSRV")==1) then
+                deleterep("EBSRV")
+        endif
+        exitscript
+##trace off
+end-->

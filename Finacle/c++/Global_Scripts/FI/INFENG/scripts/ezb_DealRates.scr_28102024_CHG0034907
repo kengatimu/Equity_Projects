@@ -1,0 +1,246 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_DealRates.scr   
+#  Description     : fetchs deal rates attached to a CIF   
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2023     Harrison Ruiru        Original Version
+#-----------------------------------------------------------------------------------------------
+##########
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+    sv_u=REPEXISTS("CUST")
+    IF(sv_u==0) THEN
+    #{
+        CREATEREP("CUST")
+    #}
+    ENDIF
+
+    sv_u=CLASSEXISTS("CUST", "EZB")
+    IF(sv_u==0) THEN
+    #{
+        CREATECLASS("CUST", "EZB", 5)
+    #}
+    ENDIF
+
+    sv_t=urhk_b2k_printrepos("BANCS")
+    print(sv_t)
+
+    #----------------------------------------------------------------------------------------------
+    # validations
+    #----------------------------------------------------------------------------------------------
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("CIFId"))== 0) ) THEN
+    #{
+        CUST.EZB.errMsg="please enter CIFId"
+        lv_a = "E9999"
+        sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        sv_u = urhk_SetOrbErr(sv_c)
+        exitscript
+    ELSE
+        CUST.EZB.cifId = BANCS.INPUT.CIFId
+        print(CUST.EZB.cifId)
+    #}
+    ENDIF
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("FixedDeals"))== 0) ) THEN
+    #{
+        CUST.EZB.fixedDeals = ""
+        CUST.EZB.errMsg="FixedDeals tag is required"
+        lv_a = "E9999"
+        sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        sv_u = urhk_SetOrbErr(sv_c)
+        exitscript
+    ELSE
+        CUST.EZB.fixedDeals = BANCS.INPUT.FixedDeals
+        print(CUST.EZB.fixedDeals)
+
+        IF( (CUST.EZB.fixedDeals !="Y") AND (CUST.EZB.fixedDeals !="N") )THEN
+        #{
+            CUST.EZB.errMsg="FixedDeals value Invalid. Provide Y/N. "
+            lv_a = "E9999"
+            sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+            sv_u = urhk_SetOrbErr(sv_c)
+            exitscript
+        #}
+        ENDIF
+
+
+        IF( (CUST.EZB.fixedDeals =="Y") AND (FIELDEXISTS(("BANCS").("INPUT").("FromCurrency"))== 0) )THEN
+        #{
+            CUST.EZB.fromCurrency = ""
+            CUST.EZB.errMsg="FromCurrency tag is required"
+            lv_a = "E9999"
+            sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+            sv_u = urhk_SetOrbErr(sv_c)
+            exitscript
+        #}
+        ENDIF
+
+        IF( (CUST.EZB.fixedDeals =="Y") AND (FIELDEXISTS(("BANCS").("INPUT").("ToCurrency"))== 0) )THEN
+        #{
+            CUST.EZB.toCurrency = ""
+            CUST.EZB.errMsg="ToCurrency tag is required"
+            lv_a = "E9999"
+            sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+            sv_u = urhk_SetOrbErr(sv_c)
+            exitscript
+        #}
+        ENDIF
+    #}
+    ENDIF
+
+    #----------------------------------------------------------------------------------------------
+    # Process Flow 1. FIXEDFLG N SEARCH BY CIF ONLY
+    #----------------------------------------------------------------------------------------------
+
+    sv_q = "dealDate,froCrncy,toCrncy,refAmt,buySell,rateCode,custRate,refNum,treaRate |"
+    sv_q = sv_q + "SELECT request_date,from_crncy_code,to_crncy_code,ref_amt,buy_or_sell, ratecode, cust_rate, tr_ref_num,treasury_rate "
+    sv_q = sv_q + " FROM tbaadm.ftrt "
+
+    IF(CUST.EZB.fixedDeals =="N")THEN
+    #{
+        sv_q = sv_q + " WHERE cif_id=?SVAR AND request_date=(select db_stat_date from tbaadm.gct where bank_id=?SVAR ) AND bank_id=?SVAR AND status='C' AND del_flg='N' "
+        BANCS.INPARAM.BINDVARS =  CUST.EZB.cifId +"|"+ BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId
+    ELSE 
+        IF( (FIELDEXISTS(("BANCS").("INPUT").("Amount"))== 1) )THEN
+        #{
+            print(BANCS.INPUT.Amount)
+            sv_q = sv_q + " WHERE ref_amt=?SVAR AND cif_id=?SVAR AND from_crncy_code=?SVAR AND to_crncy_code=?SVAR AND request_date=(select db_stat_date from tbaadm.gct where bank_id=?SVAR ) AND bank_id=?SVAR AND status='C' AND del_flg='N' "
+            BANCS.INPARAM.BINDVARS =  BANCS.INPUT.Amount +"|"+ CUST.EZB.cifId +"|"+BANCS.INPUT.FromCurrency+"|"+BANCS.INPUT.ToCurrency+"|"+BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId
+        ELSE 
+            print("No amount value passed")
+            sv_q = sv_q + " WHERE cif_id=?SVAR AND from_crncy_code=?SVAR AND to_crncy_code=?SVAR AND request_date=(select db_stat_date from tbaadm.gct where bank_id=?SVAR ) AND bank_id=?SVAR AND status='C' AND del_flg='N' "
+            BANCS.INPARAM.BINDVARS = CUST.EZB.cifId +"|"+BANCS.INPUT.FromCurrency+"|"+BANCS.INPUT.ToCurrency+"|"+BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId
+        #}
+        ENDIF 
+    #}
+    ENDIF 
+
+    print(sv_q)
+    print(BANCS.INPARAM.BINDVARS)
+
+    sv_c = urhk_dbcursorOpenWithBind(sv_q)
+    PRINT(sv_c)
+
+    IF (sv_c == 0)THEN
+    #{
+        CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        PRINT(CUST.EZB.cursor_number)
+
+        sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+        print(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+            sv_q = 0
+            print(sv_q)
+
+            WHILE (sv_d == 0)
+            #{
+                sv_q = sv_q + 1
+                print(sv_q)
+
+                CUST.EZB.sellFXRate = ""
+                CUST.EZB.buyFXRate = ""
+                CUST.EZB.null = ""
+
+                CUST.EZB.buySell = BANCS.OUTPARAM.buySell
+                print(CUST.EZB.buySell)
+
+                sv_v = "DealDate_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.dealDate
+
+                sv_v = "FroCrncy_" + FORMAT$(sv_q, "%d") 
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.froCrncy
+
+                sv_v = "ToCrncy_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.toCrncy
+
+                sv_v = "RefAmt_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.refAmt
+
+                sv_v = "RateCode_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.rateCode
+
+                sv_v = "CustRate_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.custRate
+
+                sv_v = "RefNum_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.refNum
+
+                sv_v = "TreaRate_" + FORMAT$(sv_q, "%d")
+                ("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.treaRate
+
+
+                sv_v = "DealDate_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealDate| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "FroCrncy_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealCurrencyFrom| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "ToCrncy_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealCurrencyTo| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "RefAmt_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealBookingAmount| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "RateCode_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.RateCode| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "CustRate_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealRate| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "TreaRate_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.TreasuryRate| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_v = "RefNum_" + FORMAT$(sv_q, "%d")
+                sv_t = "DealRate_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.DealReferenceNo| " + ("CUST").("EZB").(sv_v)
+                sv_u = urhk_SetOrbOut(sv_t)
+
+                sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+                print(sv_d)
+
+            #} 
+            DO 
+        ELSE
+            sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+            print(sv_x)
+            print(CUST.EZB.cursor_number)
+            CUST.EZB.errMsg="No record found for the payload"
+            lv_a = "E9999"
+            sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+            sv_u = urhk_SetOrbErr(sv_c)
+            exitscript
+        #}
+        ENDIF 
+
+        sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+        print(sv_x)
+        print(CUST.EZB.cursor_number)
+    ELSE
+        CUST.EZB.errMsg="No record found for the payload"
+        lv_a = "E9999"
+        sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        sv_u = urhk_SetOrbErr(sv_c)
+        exitscript
+    #}
+    ENDIF
+
+ENDSCRIPT:
+trace off
+END-->

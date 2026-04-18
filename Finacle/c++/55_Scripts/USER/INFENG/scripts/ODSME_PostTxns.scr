@@ -1,0 +1,243 @@
+#-----------------------------------------------------------------------------------------------
+
+<--START
+	TRACE ON
+
+	if(repexists("CUST") == 0)then
+                createrep("CUST")
+       	endif
+
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+       	endif
+	PRINT(CUST.DATA.tranId)
+	sv_x=MID$(BANCS.STDIN.BODDate,0,10)
+	PRINT(BANCS.STDIN.BODDate)
+	CUST.DATA.srvcallmode="E"
+	#---------------------------------------------------------------------------------------------------
+	# Checking for unposted transactions in DTD
+	#---------------------------------------------------------------------------------------------------
+	sv_s = "strandate|select DB_STAT_DATE from tbaadm.gct where bank_id=?SVAR "
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS )
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+
+	CUST.DATA.strandate=BANCS.OUTPARAM.strandate
+	PRINT(CUST.DATA.strandate)
+	CUST.DATA.chargeTranId = TRIM(CUST.DATA.tranId)
+	PRINT(CUST.DATA.chargeTranId)
+	sv_s = "tranid,trandate|SELECT TRAN_ID,TRAN_DATE FROM TBAADM.DTD WHERE TRIM(TRAN_ID)=?SVAR AND TRAN_DATE>=?SVAR and rownum<=1 AND BANK_ID=?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.chargeTranId + "|" + CUST.DATA.strandate + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.DATA.tranId=BANCS.OUTPARAM.tranid
+		print(CUST.DATA.tranId)
+		CUST.DATA.trandate= BANCS.OUTPARAM.trandate
+		print(CUST.DATA.trandate)
+
+		sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+		sv_u = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranId|"+CUST.DATA.tranId)
+		sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+		sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+		
+		IF(CUST.DATA.srvcallmode == "E")THEN
+		#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+		#}
+		ELSE
+		#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				print(sv_u)
+				
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		IF (sv_u != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+			ENDIF
+			
+			IF (sv_v > 0) THEN
+			#{
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					print(sv_e)
+					CUST.DATA.errMsg = sv_e
+
+					sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+					
+					CUST.DATA.status= "F"
+
+
+					sv_t = "ERROR| " +CUST.DATA.errMsg
+					sv_u = urhk_SetOrbOut(sv_t)
+					EXITSCRIPT
+
+				#}
+				DO
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+			#{
+				sv_d = 1
+				sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+				WHILE (sv_d <= sv_c)
+				#{
+					sv_f = FORMAT$(sv_d,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+					PRINT(sv_e)
+					
+					sv_d = sv_d + 1
+					sv_n = sv_n + 1
+					sv_d = sv_c + 1
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		sv_u = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranId|tranId")
+		sv_u = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranDate|tranDate")
+		sv_u = urhk_SetUrhkOut("tranDtl.ignoreXcpnFlg|ignoreXcpnFlg")
+		
+		IF(CUST.DATA.srvcallmode == "E")THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				print(sv_u)
+				sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+				print(sv_u)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				print(sv_u)
+				sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (sv_u != 0) THEN
+		#{
+			CUST.DATA.successOrFailure	= "F"
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+				#}
+			ELSE
+				#{
+				sv_v = 0
+			#}
+			ENDIF
+			
+			IF (sv_v > 0) THEN
+			#{
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					print(sv_e)
+					CUST.DATA.errMsg = sv_e
+					
+					sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+
+
+					CUST.DATA.status= "F"
+
+					sv_t = "ERROR| " +CUST.DATA.errMsg
+					sv_u = urhk_SetOrbOut(sv_t)
+					EXITSCRIPT
+
+				#}
+				DO
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+			#{
+				sv_d = 1
+				sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+				WHILE (sv_d <= sv_c)
+				#{
+					sv_f = FORMAT$(sv_d,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+					PRINT(sv_e)
+					
+					sv_d = sv_d + 1
+					sv_n = sv_n + 1
+					sv_d = sv_c + 1
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		
+		EXITSCRIPT
+END-->

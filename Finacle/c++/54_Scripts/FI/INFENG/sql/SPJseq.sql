@@ -1,0 +1,8 @@
+/
+create sequence CUSTOM.&1
+minvalue 1
+maxValue 99999999
+START WITH 60000001
+INCREMENT BY 1
+NOCACHE
+/

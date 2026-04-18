@@ -1,0 +1,226 @@
+#===========================================================================================*
+# Name                	:   .scr
+# Date                 	:   14-02-2013
+# Description  		 	:   This Script is used for authorise of customer id in biometric
+# Author                :   Chethan
+# Input       			:   BANCS.INPUT Repository
+# output      			:   BANCS.OUTPUT Repositor
+# Called Scripts      	:   <none>
+# Calling Script 	  	:   <none>
+# Reference           	:
+# Modification History  :
+# <Serial No.> 	<Date>         	<AuthorName>          	<Description>
+#--------------------------------------------------------------------------
+#   1     		14-02-2013    	Chethan.S  				Modified according to 10x standards.
+#   2     		16-10-2013    	Dileep Rajan  				Modified for addition and deletion
+#============================================================================================*
+<--START
+CHECKSUM="9403c9fb619ee93031eaf429d7c153aac34f3ec8f62a202e8f340f455b54739e"
+	#TRACE ON
+	
+	print(BANCS.INPUT.funcCode)
+	print(BANCS.INPUT.custId)
+	
+	IF(REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","BIOM") == 0) THEN
+	#{
+		CREATECLASS("CUST","BIOM",5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------
+	# Check whether the Mandatory fields entered
+	#------------------------------------------------------------
+	
+	CUST.BIOM.funcCode = BANCS.INPUT.funcCode
+	print(CUST.BIOM.funcCode)
+	
+	CUST.BIOM.custId = BANCS.INPUT.custId
+	print(CUST.BIOM.custId)
+	
+	IF ( CUST.BIOM.funcCode == "" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Please Select the function code from the drop down^funcCode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (( CUST.BIOM.funcCode != "A" ) AND (CUST.BIOM.funcCode != "D")) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Please Select the function code from the drop down^funcCode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF ( CUST.BIOM.custId == "" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^The Customer id must enter^custId")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = " cntryCode "
+	sv_s = sv_s + " | "
+	sv_s = sv_s + " SELECT (select ref_desc from tbaadm.rct where ref_code = cnma.cntry_code AND ref_rec_type = '03' AND bank_id = ?SVAR ) "
+	sv_s = sv_s + " FROM TBAADM.CMG,TBAADM.CNMA "
+	sv_s = sv_s + " WHERE cif_id = ?SVAR "
+	sv_s = sv_s + " AND CMG.cif_id = CNMA.addr_b2kid "
+	sv_s = sv_s + " AND sysdate BETWEEN CNMA.start_date AND CNMA.end_date "
+	sv_s = sv_s + " AND CMG.bank_id = CNMA.bank_id "
+	sv_s = sv_s + " AND CNMA.PREFERREDADDRESS = 'Y' "
+	sv_s = sv_s + " AND CNMA.bank_id = ?SVAR "
+	sv_s = sv_s + " AND rownum = 1 "
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.BIOM.custId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d == 0 ) THEN
+	#{
+		CUST.BIOM.cntryCode = BANCS.OUTPARAM.cntryCode
+		print(CUST.BIOM.cntryCode)
+		#}
+	ELSE
+		#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Invalid Customer Id^custId")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.BIOM.funcCode == "A" ) THEN
+	#{
+		
+		sv_s = "custId "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT count(cust_id) "
+		sv_s = sv_s + " FROM CUSTOM.C_BIO_CUST_OVERDUE "
+		sv_s = sv_s + " WHERE cust_id = ?SVAR "
+		sv_s = sv_s + " AND over_ride_flg = 'Y' "
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		sv_s = sv_s + " AND del_flg  = 'N' "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.BIOM.custId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0 ) THEN
+		#{
+			print(BANCS.OUTPARAM.custId)
+			IF(CINT(BANCS.OUTPARAM.custId) > 0 )THEN
+			#{
+				sv_z = urhk_SetOrbOut("Error_01|ERROR^Customer Id already exists ^custId")
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_s = "INSERT INTO CUSTOM.C_BIO_CUST_OVERDUE "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + " cntry_code,"
+		sv_s = sv_s + " cust_id, "
+		sv_s = sv_s + " over_ride_flg, "
+		sv_s = sv_s + " rcre_user_id, "
+		sv_s = sv_s + " rcre_time, "
+		sv_s = sv_s + " del_flg, "
+		sv_s = sv_s + " bank_id "
+		sv_s = sv_s + " ) "
+		sv_s = sv_s + " VALUES "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + "?SVAR, "
+		sv_s = sv_s + "?SVAR, "
+		sv_s = sv_s + "'Y', "
+		sv_s = sv_s + "?SVAR, "
+		sv_s = sv_s + "sysdate, "
+		sv_s = sv_s + "'N', "
+		sv_s = sv_s + "?SVAR "
+		sv_s = sv_s + " ) "
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.BIOM.cntryCode + "|" + CUST.BIOM.custId + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0 ) THEN
+		#{
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			print(sv_d)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_s = "custId "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT count(cust_id) "
+		sv_s = sv_s + " FROM CUSTOM.C_BIO_CUST_OVERDUE "
+		sv_s = sv_s + " WHERE cust_id = ?SVAR "
+		sv_s = sv_s + " AND over_ride_flg = 'Y' "
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.BIOM.custId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0 ) THEN
+		#{
+			print(BANCS.OUTPARAM.custId)
+			IF(CINT(BANCS.OUTPARAM.custId) == 0 )THEN
+			#{
+				sv_z = urhk_SetOrbOut("Error_01|ERROR^Customer Id not Added^custId")
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_s = "UPDATE CUSTOM.C_BIO_CUST_OVERDUE "
+		sv_s = sv_s + " set del_flg = 'Y', "
+		sv_s = sv_s + "  rcre_time = sysdate "
+		sv_s = sv_s + " WHERE cust_id = ?SVAR "
+		sv_s = sv_s + " AND over_ride_flg = 'Y' "
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.BIOM.custId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0 ) THEN
+		#{
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			print(sv_d)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	sv_g = "RESULT_MSG|Recorded authorised Successfully for bank " + BANCS.STDIN.contextBankId
+	sv_z = urhk_SetOrbOut(sv_g)
+	
+	ENDOFSCRIPT:
+		exitscript
+		
+END-->

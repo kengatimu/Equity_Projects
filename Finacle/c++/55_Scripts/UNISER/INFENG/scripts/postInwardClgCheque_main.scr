@@ -1,0 +1,167 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       postInwardClgCheque_main.scr
+# Description           :       This is the main script that gets triggered when postInwardClgCheque is called
+# Input                 :       Request XML
+# Output                :       Response XML
+# Called Script         :       None
+# Calling Script        :       Common_CreateRepos.scr, postInwardClgCheque_FetchInputDetails.scr,
+#				postInwardClgCheque_ValidateInputDetails.scr, postInwardClgCheque_FetchAccountDetails.scr,
+#				postInwardClgCheque_SendResponse.scr,Common_ErrorExit.scr
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           25-06-2013      	   Anik Soni         Original Version         1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="4c9f0d517f77308c917749cef9c25c7948e55dc83dcd1f0d6bc4b02c37b04929"
+	TRACE ON
+	
+	#sv_l = urhk_B2k_printrepos("BANCS")
+	#print(sv_l)
+	
+	#-------------------------------------------------------------------------------
+	# Calling create repository script
+	#-------------------------------------------------------------------------------
+	CALL("Common_Interface_CreateRepos.scr")
+	CUST.INTERFACE.successOrFailure = "S"
+	CUST.INTERFACE.srvErrFlg = "N"
+	CUST.INTERFACE.errorCode = ""
+	
+	#-------------------------------------------------------------------------------
+	# Getting Channel Information
+	#-------------------------------------------------------------------------------
+	
+	lv_a = urhk_GetChannelInfo("")
+	IF (FIELDEXISTS(BANCS.OUTPARAM.DccId)) THEN
+	#{
+		CUST.INTERFACE.ChannelId = BANCS.OUTPARAM.DccId
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	# Defaulting some Input variables for the Interface
+	#-------------------------------------------------------------------------------
+	
+	CUST.INTERFACE.TODFlag = "N"
+	CUST.INTERFACE.ErrorFlg = "N"
+	CUST.INTERFACE.PostingCode = "000"
+	CUST.INTERFACE.PostingDesc = "Normal Posting"
+	CUST.INTERFACE.TransactionType = "T"
+	CUST.INTERFACE.TransactionSubType = "CI"
+	CUST.INTERFACE.DrVNum = ""
+	CUST.INTERFACE.CrVNum = ""
+	CUST.INTERFACE.InstrType = "CHQ"
+	CUST.INTERFACE.drEventId = ""
+	CUST.INTERFACE.crEventId = ""
+	CUST.INTERFACE.TranDate1 = ""
+	CUST.INTERFACE.bankCode = ""
+	CUST.INTERFACE.solId = ""
+	CUST.INTERFACE.BODDate = ""
+	CUST.INTERFACE.PostSrlNum = ""
+	CUST.INTERFACE.TranRefNum = "9090"
+	CUST.INTERFACE.errorDesc = ""
+	#-------------------------------------------------------------------------------
+	# Fetching Input Fields from FI
+	#-------------------------------------------------------------------------------
+	CALL("postInwardClgCheque_FetchInputDetails.scr")
+	
+	#-------------------------------------------------------------------------------
+	# Checking if both the Part Transactions contain same Dr/Cr Indicator
+	#-------------------------------------------------------------------------------
+	IF(("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_0>.DrCrI") == "D") THEN
+	#{
+		IF(("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_1>.DrCrI") == "D") THEN
+		#{
+			CUST.INTERFACE.errorCode = "ERR069"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_0>.DrCrI") == "C") THEN
+	#{
+		IF(("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_1>.DrCrI") == "C") THEN
+		#{
+			CUST.INTERFACE.errorCode = "ERR070"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	# Validating Input Fields
+	#-------------------------------------------------------------------------------
+	CALL("postInwardClgCheque_ValidateInputDetails.scr")
+	
+	#-------------------------------------------------------------------------------
+	# Validating Input Fields
+	#-------------------------------------------------------------------------------
+	CALL("postInwardClgCheque_ValidateChqDetails.scr")
+	
+	
+	#-------------------------------------------------------------------------------
+	# Checking if the Transaction Amount exceeds the Effective  balance in Dr Account.
+	#-------------------------------------------------------------------------------
+	
+	lv_s = "Acid|SELECT ACID FROM TBAADM.GAM WHERE "
+	lv_s = lv_s + " FORACID = '" + CUST.INTERFACE.DrAcct + "'"
+	#lv_s = lv_s + " FOR UPDATE NOWAIT"
+	print(lv_s)
+	
+	lv_q = urhk_dbSelectForUpdateNoWait(lv_s)
+	print(lv_q)
+	IF(lv_q == 0) THEN
+	#{
+		CUST.INTERFACE.DrAcct1 = BANCS.OUTPARAM.Acid
+		print(CUST.INTERFACE.DrAcct1)
+	#}
+	ENDIF
+	
+	sv_b = urhk_getAcctDetailsInRepository(CUST.INTERFACE.DrAcct1)
+	IF(sv_b == 0) THEN
+	#{
+		CUST.INTERFACE.DrAcctBal = BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.INTERFACE.DrAcctBal)
+		
+	#}
+	ENDIF
+	
+	IF(CUST.INTERFACE.PostingCode == "000") THEN
+	#{
+		print(CUST.INTERFACE.DrTranAmt)
+		print(CUST.INTERFACE.DrAcctBal)
+		
+		IF(CDOUBLE(CUST.INTERFACE.DrTranAmt) > CDOUBLE(CUST.INTERFACE.DrAcctBal)) THEN
+		#{
+			CUST.INTERFACE.TODFlag = "Y"
+			CUST.INTERFACE.PostingCode = "100"
+			CUST.INTERFACE.PostingDesc = "Force Posting"
+			CUST.INTERFACE.TODAmount = CDOUBLE(CUST.INTERFACE.DrTranAmt) - CDOUBLE(CUST.INTERFACE.DrAcctBal)
+			print(CUST.INTERFACE.TODFlag)
+			print(CUST.INTERFACE.PostingCode)
+			print(CUST.INTERFACE.PostingDesc)
+			print(CUST.INTERFACE.TODAmount)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	# Posting the Cheque details
+	#-------------------------------------------------------------------------------
+	CALL("postInwardClgCheque_PostChqDetails.scr")
+	
+	#-------------------------------------------------------------------------------
+	# Send Response
+	#-------------------------------------------------------------------------------
+	
+	FINISH:
+		
+		CALL("postInwardClgCheque_SendResponse.scr")
+		
+		TRACE OFF
+END-->

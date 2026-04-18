@@ -1,0 +1,300 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_bulksbacctopn.scr
+#  Description     : This script will call SBA acctopening services to modify data present in custom table
+#  Date            : 21-08-2014
+#  Author          : Jane Ndirangu
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             21-08-2014      Jane Ndirangu		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="f5d026953a3d8a1d06f4bc2c5a34c584777dca1b6a93bd644ce15bf9b8ead845"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUSTS") == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUSTS","SBAAA") == 0) THEN
+	#{
+		CREATECLASS("CUSTS","SBAAA",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUSTS","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUSTS","CPARAM", 5)
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#Initialisig required repository variables
+	#------------------------------------------------------------------------------
+	CUSTS.SBAAA.errMsg = ""
+	
+	#------------------------------------------------------------------------------
+	#Finding count of records that need to be processed
+	#------------------------------------------------------------------------------
+	sv_s="custcount|"
+	sv_s = sv_s + " SELECT COUNT(1) "
+	sv_s = sv_s + " FROM CUSTOM.BULK_CIF "
+	sv_s = sv_s + " WHERE ENTITY_CRE_FLG='V14' "
+	#sv_s = sv_s + " AND SOL_ID= ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR AND CIF_ID is not null "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF (sv_d != 0) THEN
+	#{
+		CUSTS.SBAAA.errMsg = "DB ERROR!"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		print(BANCS.OUTPARAM.custcount)
+		IF (CINT(BANCS.OUTPARAM.custcount)== 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_s="foracid,solid,others,schmcode|"
+	sv_s = sv_s + " SELECT CIF_ID,sol_id,others,schm_code "
+	sv_s = sv_s + " FROM CUSTOM.BULK_CIF "
+	sv_s = sv_s + " WHERE ENTITY_CRE_FLG='V14' "
+	#sv_s = sv_s + " AND sol_id= ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR AND CIF_ID is not null "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_c)
+	
+	IF (sv_c==0) THEN
+	#{
+		CUSTS.SBAAA.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_k = urhk_dbCursorFetch(CUSTS.SBAAA.DbcursorNumber)
+		print(sv_k)
+		
+		WHILE (sv_k == 0)
+		#{
+			CUSTS.SBAAA.foracid	= BANCS.OUTPARAM.foracid
+			CUSTS.SBAAA.solid	= BANCS.OUTPARAM.solid
+			CUSTS.SBAAA.others	= BANCS.OUTPARAM.others
+			CUSTS.SBAAA.schmcode	= BANCS.OUTPARAM.schmcode
+			CUSTS.SBAAA.date	=MID$(BANCS.STDIN.BODDate,0,10)
+			
+			print(CUSTS.SBAAA.foracid)
+			print(CUSTS.SBAAA.solid)
+			print(CUSTS.SBAAA.others)
+			print(CUSTS.SBAAA.date)
+			print(CUSTS.SBAAA.schmcode)
+			
+			sv_a="count|"
+			sv_a = sv_a + " SELECT COUNT(1) "
+			sv_a = sv_a + " FROM tbaadm.gam "
+			sv_a = sv_a + " WHERE schm_code= ?SVAR "
+			#sv_a = sv_a + " AND SOL_ID= ?SVAR"
+			sv_a = sv_a + " AND cif_id= ?SVAR"
+			sv_a = sv_a + " AND bank_id = ?SVAR"
+			sv_a = sv_a + " AND free_text = ?SVAR"
+			print(sv_a)
+			BANCS.INPARAM.BINDVARS = CUSTS.SBAAA.schmcode + "|" + CUSTS.SBAAA.foracid + "|" + BANCS.STDIN.contextBankId + "|" + CUSTS.SBAAA.others
+			print(BANCS.INPARAM.BINDVARS)
+			sv_n = urhk_dbSelectWithBind(sv_a)
+			IF (sv_n != 0) THEN
+			#{
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				print(BANCS.OUTPARAM.count)
+				IF (CINT(BANCS.OUTPARAM.count)==0) THEN
+				#{
+					sv_s="cifid,acctname,shortname|"
+					sv_s = sv_s + " SELECT cif_id,cust_name,cust_short_name"
+					sv_s = sv_s + " FROM tbaadm.cmg "
+					sv_s = sv_s + " WHERE cif_id= ?SVAR"
+					sv_s = sv_s + " AND bank_id= ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.SBAAA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					PRINT(sv_d)
+					IF (sv_d == 0) THEN
+					#{
+						CUSTS.SBAAA.cifid	= BANCS.OUTPARAM.cifid
+						PRINT(CUSTS.SBAAA.cifid)
+						CUSTS.SBAAA.acctname	= BANCS.OUTPARAM.acctname
+						PRINT(CUSTS.SBAAA.acctname)
+						CUSTS.SBAAA.shortname	= BANCS.OUTPARAM.shortname
+						PRINT(CUSTS.SBAAA.shortname)
+						#}
+					ELSE
+						#{
+						GOTO ENDOFSCRIPT
+						
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					CUSTS.SBAAA.errMsg="Duplicate Account"
+					GOTO STEP2
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			
+			
+			#--------------------------------------------------------------------------------------------------------------
+			# Inputs for Account open services
+			# urhk_SetUrhkInp is used to set inputs
+			#--------------------------------------------------------------------------------------------------------------
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.custId.cifId|" + CUSTS.SBAAA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctName|" + CUSTS.SBAAA.acctname)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctShortName|" + CUSTS.SBAAA.shortname)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.basicInterest.intTblCode.tblCode|INTOD")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.glSubHeadCode.glSubHeadCode|35001")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.SBAAA.schmcode)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.freeText|" + CUSTS.SBAAA.others)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.custId.cifId|" + CUSTS.SBAAA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctOpnDate|" + BANCS.STDIN.BODDate)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.solId.solId|" + CUSTS.SBAAA.solid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.schmCode.schmCode|" + CUSTS.SBAAA.schmcode )
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.wtaxFlg.code|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.basicInterest.peggedFlg|N")
+			PRINT(sv_u)
+			
+			sv_u=urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.dailyCompIntFlg.code|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|foracid")
+			PRINT(sv_u)
+			
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.sectorCode.refCode|1")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.borrowerCategoryCode.refCode|INDIV")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.modeOfOperCode.refCode|SELF")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.industryType.refCode|2GB")
+			PRINT(sv_u)
+			
+			sv_u = urhk_ExecSrv("SRV_OpenSBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+			IF(sv_u == 0) THEN
+			#{
+				CUSTS.SBAAA.foracidnew = BANCS.OUTPARAM.foracid
+				PRINT(CUSTS.SBAAA.foracidnew)
+				
+				#----------------------------------------------------------------------------------------------------
+				# Update custom table status
+				#----------------------------------------------------------------------------------------------------
+				sv_s = "UPDATE CUSTOM.BULK_CIF "
+				sv_s = sv_s + " SET entity_cre_flg = 'S', "
+				sv_s = sv_s + " FORACID = ?SVAR "
+				sv_s = sv_s + " WHERE CIF_ID = ?SVAR "
+				sv_s = sv_s + " AND bank_id = ?SVAR "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = CUSTS.SBAAA.foracidnew + "|" + CUSTS.SBAAA.foracid + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				IF (sv_v > 0) THEN
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUSTS.SBAAA.foracid+" ' >>opened.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>opened.log")
+						print(sv_u)
+					#}
+					DO
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			STEP2:
+				
+				sv_k = urhk_dbCursorFetch(CUSTS.SBAAA.DbcursorNumber)
+				print(sv_k)
+				
+			#}
+			DO
+			
+			sv_c = urhk_dbCursorClose(CUSTS.SBAAA.DbcursorNumber)
+			print(sv_c)
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+		IF(CUSTS.SBAAA.errMsg != "") THEN
+		#{
+			sv_u = system("echo '"+CUSTS.SBAAA.errMsg+"' >>opened.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

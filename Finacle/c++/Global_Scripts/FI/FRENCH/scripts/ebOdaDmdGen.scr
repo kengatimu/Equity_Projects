@@ -1,0 +1,143 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebOdaDmdGen.scr 
+#  Description     : Tran
+#  Date            : 03-04-2020
+#  Author          : Vino Palani
+#  Menu Option     : AODLG Agent Demand Genaration(daily job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             03-04-2020      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+	sv_p = urhk_B2k_PrintRepos("BANCS")
+	print(sv_p)
+#fetch
+        sv_a = "rm -f AODLG.DAT"
+        sv_a = system(sv_a)
+        sv_a = "touch AODLG.DAT"
+        sv_a = system(sv_a)
+	sv_l = "dmdsrlNum,drAcct,dmdAmt|"
+	sv_l = sv_l + " select dep_srl_num,foracid,sum(dmd_amt-tot_adj_amt)as outstandingAmt "
+	sv_l = sv_l + " from custom.agddt "
+	sv_l = sv_l + " where bank_id=?SVAR "
+	sv_l = sv_l + " and sol_id in (select sol_id from tbaadm.sst where set_id=?SVAR and bank_id=?SVAR) "
+	sv_l = sv_l + " and to_date(dmd_date,'DD-MM-RR') <= to_date(?SVAR,'DD-MM-RR')"
+	sv_l = sv_l + " and del_flg='N' "
+	sv_l = sv_l + " and entity_cre_flg='Y' " 
+	sv_l = sv_l + " and tot_adj_amt < dmd_amt " 
+	sv_l = sv_l + " group by dep_srl_num,foracid,dmd_amt,tot_adj_amt "
+	print(sv_l)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+	####BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+	sv_c = urhk_dbCursorOpenWithBind(sv_l)
+	print(sv_c)
+	if(sv_c != 0)then
+		print("fetching failed")
+		goto VAYU
+	endif
+	sv_p = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_p)
+	sv_r = urhk_dbCursorFetch(sv_p)
+	print(sv_r)
+	if(sv_r != 0)then
+	    goto VAYU
+	endif
+	EBSRV.GLBDATA.record_count = 0
+	while(sv_r == 0)
+		EBSRV.GLBDATA.dmdsrlNum	=	BANCS.OUTPARAM.dmdsrlNum
+		EBSRV.GLBDATA.drAcct	=	BANCS.OUTPARAM.drAcct
+		EBSRV.GLBDATA.dmdAcct	=	BANCS.OUTPARAM.drAcct
+		EBSRV.GLBDATA.dmdAmt	=	BANCS.OUTPARAM.dmdAmt		
+		sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.drAcct)
+		print(sv_u)
+		if(sv_u==0)then
+                	EBSRV.GLBDATA.drBalance = BANCS.OUTPARAM.ClearBalance
+			EBSRV.GLBDATA.drCif  = BANCS.OUTPARAM.cifId
+			print(EBSRV.GLBDATA.drBalance)
+			print(EBSRV.GLBDATA.dmdAmt)
+			sv_d = "CrAcct|select foracid from tbaadm.gam  where bank_id=?SVAR "
+			sv_d = sv_d + " and schm_type='ODA' and schm_code='OD541' and cif_id=?SVAR "
+			sv_d = sv_d + " and acct_cls_flg='N' and del_flg='N' and entity_cre_flg='Y' and rownum<=1 " 
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.drCif
+			sv_u = urhk_dbSelectWithBind(sv_d)
+			if(sv_u==0)then
+				EBSRV.GLBDATA.crAcct = BANCS.OUTPARAM.CrAcct
+			else
+				EBSRV.GLBDATA.crAcct = ""
+			endif
+			sv_d = "ldrAcct,ldrBalance | select foracid ,clr_bal_amt from tbaadm.gam where bank_id=?SVAR "
+			sv_d = sv_d + " and acct_ownership<>'O' "
+			sv_d = sv_d + " and cif_id = ?SVAR " 
+			sv_d = sv_d + " and schm_code in ('SB100','SB126','CA207') "
+                        sv_d = sv_d + " and schm_type in ('SBA','CAA') "
+                        sv_d = sv_d + " and entity_cre_flg='Y' and del_flg='N' "
+                        sv_d = sv_d + " and acct_cls_flg<>'Y' "
+                        sv_d = sv_d + " and acct_cls_date is null "
+                        sv_d = sv_d + " and clr_bal_Amt >=1 "
+                        ####sv_d = sv_d + " and clr_bal_Amt >=?NVAR "
+                        sv_d = sv_d + " and FREZ_CODE <>'D' "
+                        sv_d = sv_d + " and rownum<=1 " 
+                        sv_d = sv_d + " order by schm_type desc " 
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +EBSRV.GLBDATA.drCif 
+			####BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +EBSRV.GLBDATA.drCif + "|" + EBSRV.GLBDATA.dmdAmt
+			print(sv_d)
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = urhk_dbSelectWithBind(sv_d)
+			if(sv_u==0)then
+				EBSRV.GLBDATA.ldrBalance = BANCS.OUTPARAM.ldrBalance
+				EBSRV.GLBDATA.ldrAcct = BANCS.OUTPARAM.ldrAcct
+			else
+				EBSRV.GLBDATA.ldrBalance = 0
+				EBSRV.GLBDATA.ldrAcct =""
+			endif
+			if(cdouble(EBSRV.GLBDATA.ldrBalance) >= 1)then
+				EBSRV.GLBDATA.drBalance = EBSRV.GLBDATA.ldrBalance
+				EBSRV.GLBDATA.drAcct = EBSRV.GLBDATA.ldrAcct
+				sv_a = EBSRV.GLBDATA.drAcct +"|" +EBSRV.GLBDATA.crAcct+"|"+EBSRV.GLBDATA.dmdAmt+"|"+EBSRV.GLBDATA.dmdsrlNum+"|"+EBSRV.GLBDATA.dmdAcct+"|"+EBSRV.GLBDATA.drBalance
+				sv_q = "echo '" + sv_a + "' >> AODLG.DAT"
+				print(sv_q)
+				sv_s = system(sv_q)
+				print(sv_s)
+			else
+				if(cdouble(EBSRV.GLBDATA.drBalance) >= 1)then
+					sv_a = EBSRV.GLBDATA.drAcct +"|" +EBSRV.GLBDATA.crAcct+"|"+EBSRV.GLBDATA.dmdAmt+"|"+EBSRV.GLBDATA.dmdsrlNum+"|"+EBSRV.GLBDATA.dmdAcct+"|"+EBSRV.GLBDATA.drBalance
+					sv_q = "echo '" + sv_a + "' >> AODLG.DAT"
+					print(sv_q)
+					sv_s = system(sv_q)
+					print(sv_s)
+				else
+					goto NXTL
+				endif
+			endif
+		else
+			goto NXTL
+		endif
+	NXTL:
+        sv_r = urhk_dbCursorFetch(sv_p)
+	if(sv_r!=0)then
+		print("fetch failed")
+		sv_u = urhk_dbCursorClose(sv_p)
+		print(sv_u)
+		goto VAYURUN
+	endif
+        do
+        sv_r = urhk_dbCursorClose(sv_p)	
+VAYURUN:
+        sv_s = "echo $B2K_SESSION_ID"
+        sv_n = "1"
+        sv_a = "nohup exebatch -n "+sv_n+" -i AODLG.DAT babx4061 $B2K_SESSION_ID ebOdaDmdGenT.scr @s"
+        sv_r = system(sv_a)
+        print(sv_r)
+
+VAYU:
+	exitscript
+trace off
+end-->

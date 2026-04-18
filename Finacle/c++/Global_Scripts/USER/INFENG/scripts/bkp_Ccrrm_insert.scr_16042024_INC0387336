@@ -1,0 +1,203 @@
+#---------------------------------------------------------------------------------
+#       Name                    : Ccrrm_insert.scr
+#       Description             : Sub Script for  DATAom Menu
+#       Date                    : 05-10-2023
+#       Author                  : JAMES GICHIRI
+#       Input                   : NA
+#       Output                  : NA
+#       Called Script   	: CccrMain.scr
+#       Menu Option             : 
+#----------------------------------------------------------------------------------
+#
+<--START
+TRACE ON
+	#--------------------------------------------------------
+	#create repository
+	#--------------------------------------------------------
+		IF (REPEXISTS("CUST") == 0 ) THEN
+		#{
+			CREATEREP("CUST")
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+		#{
+			CREATECLASS("CUST","DATA",5)
+		#}
+		ENDIF
+
+	#----------------------------------------------------------------------
+	# Printing Bancs Repository
+	#----------------------------------------------------------------------
+
+		sv_x = urhk_B2k_PrintRepos("BANCS")
+		print(sv_x)
+
+	#----------------------------------------------------------------------
+	# Variable Initialization
+	#----------------------------------------------------------------------
+
+
+			CUST.DATA.funCode		= BANCS.INPUT.funCode
+			PRINT(CUST.DATA.funCode)
+			
+			CUST.DATA.CUST_TYPE		= ""
+			CUST.DATA.REFCODE = CUST.CCRRM.refnumber
+
+			CUST.DATA.CIF_ID		= CUST.CCRRM.CIF_ID
+			PRINT(CUST.DATA.CIF_ID )
+
+			CUST.DATA.ACCT_NAME 		= CUST.CCRRM.ACCT_NAME
+			PRINT(CUST.DATA.ACCT_NAME)
+
+			CUST.DATA.RISK_SCORE		= CUST.CCRRM.RISK_SCORE
+			PRINT(CUST.DATA.RISK_SCORE)
+
+			CUST.DATA.RISK_RATING		= CUST.CCRRM.RISK_RATING
+			PRINT(CUST.DATA.RISK_RATING)
+		
+			BANCS.INPARAM.BINDVARS =  CUST.DATA.CIF_ID+"|"+BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+		
+			sv_q = "count|select count(1) from crmuser.accounts where orgkey=?SVAR and bank_id=?SVAR"
+			print(sv_q)
+
+			sv_u = urhk_dbSelectWithBind(sv_q)
+			PRINT(sv_u)
+
+			IF(sv_u == 0) THEN
+			#{
+				sv_t = BANCS.OUTPARAM.count
+				print(sv_t)	
+			#}
+			ENDIF
+			
+			CUST.CCRRM.STATUS_FLG = "U"
+			
+			IF(sv_t == 0) THEN
+			#{
+				CUST.CCRRM.VALID_FLG = "N"
+				print(CUST.CCRRM.VALID_FLG)
+				CUST.CCRRM.STATUS_FLG = "F"
+			#}
+			ELSE
+			#{
+				CUST.CCRRM.VALID_FLG = "Y"
+				print(CUST.CCRRM.VALID_FLG)
+				CUST.CCRRM.STATUS_FLG = "U"
+				
+			#}
+			ENDIF
+			
+		
+			
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.CIF_ID
+			print(BANCS.INPARAM.BINDVARS)
+		
+			sv_q = "orgkey,cust_type|select orgkey,(case when corp_id is not null then 'C' else 'I' end)cust_type "
+			sv_q = sv_q +"from crmuser.accounts where bank_id=?SVAR and orgkey = ?SVAR"
+			print(sv_q)
+
+			sv_u = urhk_dbSelectWithBind(sv_q)
+			PRINT(sv_u)
+
+			IF(sv_u == 0) THEN
+			#{
+				CUST.CCRRM.CIF_ID = BANCS.OUTPARAM.orgkey
+				print(CUST.CCRRM.CIF_ID)
+				CUST.DATA.CUST_TYPE = BANCS.OUTPARAM.cust_type
+				print(CUST.DATA.CUST_TYPE)
+			#}
+			ENDIF
+
+			IF(sv_u == 1) THEN
+			#{
+				CUST.DATA.CUST_TYPE = "X" 
+				print(CUST.DATA.CUST_TYPE)
+			#}
+			ENDIF
+
+					
+				IF(CUST.DATA.funCode == "U")THEN
+				#{
+					print("Start insert")
+
+					# Start ****************   Check for duplicate CIFs ***********************
+					sv_q = "cifcount|select count(*) from custom.ccrrm where cif_id=?SVAR and RISK_RATING =?SVAR and bank_id=?SVAR "
+					BANCS.INPARAM.BINDVARS = CUST.DATA.CIF_ID+"|"+CUST.DATA.RISK_RATING +"|"+BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					print(sv_q)
+
+					sv_u = urhk_dbSelectWithBind(sv_q)
+					PRINT(sv_u)
+
+					IF(sv_u == 0) THEN
+					#{
+						print(BANCS.OUTPARAM.cifcount)
+						IF(BANCS.OUTPARAM.cifcount == 1)THEN
+						#{
+							sv_s = "update CUSTOM.CCRRM set REF_CODE=?SVAR,RISK_SCORE=?SVAR,VALID_FLG=?SVAR,STATUS_CODE=?SVAR,ENTITY_CRE_FLG='N', "
+							sv_s = sv_s + "RCRE_USER_ID=?SVAR,LCHG_USER_ID=?SVAR,RCRE_TIME=SYSDATE,LCHG_TIME=SYSDATE "
+							sv_s = sv_s + "where cif_id=?SVAR and RISK_RATING =?SVAR and bank_id=?SVAR and status_code not in ('V','R')"
+							print(sv_s)
+							BANCS.INPARAM.BINDVARS = CUST.DATA.REFCODE+"|"+ CUST.DATA.RISK_SCORE+"|"+ CUST.CCRRM.VALID_FLG +"|"+CUST.CCRRM.STATUS_FLG + "|" +BANCS.STDIN.userId
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+  BANCS.STDIN.userId  +"|" + CUST.DATA.CIF_ID+"|"+CUST.DATA.RISK_RATING +"|"+BANCS.STDIN.contextBankId
+							print(BANCS.INPARAM.BINDVARS)
+							print(sv_s)
+							sv_d=urhk_dbSqlWithBind(sv_s)
+							IF (sv_d == 0)  THEN
+							#{
+
+							
+								sv_d = urhk_dbSQLWithBind("COMMIT")
+								IF(sv_d == 0)THEN
+								#{
+									print("Data updated successfully :" + CUST.DATA.CIF_ID )
+								#}
+								ELSE
+								#{
+									print("CIF uncer Verification :" + CUST.DATA.CIF_ID )
+								#}
+								ENDIF
+							#}	
+							ENDIF
+						#}
+						ELSE
+						#{
+							BANCS.INPARAM.BINDVARS =  CUST.DATA.REFCODE + "|" +CUST.DATA.CIF_ID+"|"+CUST.DATA.CUST_TYPE
+							BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS +"|"+CUST.DATA.ACCT_NAME +"|"+ CUST.DATA.RISK_SCORE +"|"+ CUST.DATA.RISK_RATING
+							BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS +"|"+CUST.CCRRM.VALID_FLG+"|"+CUST.CCRRM.STATUS_FLG+"|"+'N'+"|"+BANCS.STDIN.userId
+							BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS +"|"+ BANCS.STDIN.userId +"|"+ BANCS.STDIN.contextBankId
+							print(BANCS.INPARAM.BINDVARS)
+						
+							sv_a = "INSERT INTO CUSTOM.CCRRM(REF_CODE,CIF_ID,CUST_TYPE,ACCT_NAME,RISK_SCORE,RISK_RATING,VALID_FLG,STATUS_CODE,ENTITY_CRE_FLG"
+							sv_a = sv_a + ",RCRE_USER_ID,LCHG_USER_ID,RCRE_TIME,LCHG_TIME,BANK_ID)"
+							sv_a = sv_a + " values(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,SYSDATE,SYSDATE,?SVAR)"
+							print(sv_a)
+		
+							sv_b = urhk_dbSQLWithBind(sv_a)
+							PRINT(sv_b)
+							
+							IF(sv_b == "0")THEN
+							#{
+								print("Data Inserted successfully :" + CUST.DATA.CIF_ID )
+							#}
+							ENDIF
+							
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+					# Ends
+					 
+				
+				#}
+				ENDIF
+				
+				sv_z   =   urhk_SetOrbOut("SuccessOrFailure|Y")
+
+	ENDOFSCRIPT:
+
+	   EXITSCRIPT 
+END-->

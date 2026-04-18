@@ -1,0 +1,858 @@
+<--START
+CHECKSUM="8cad4ba628cb67eea0f38e0c7e254ef38a402e6b6fa5633c0926b01dc6bad5e0"
+	# For the scripts Some fields from SMH are dumped and Formetted message will be atken as output from script.
+	# Based on field values dumped ,customer can FORMAT the message for any PAYMENT SYSTEM.
+	#IME VERSION FOR DEPLOYEMENT Incident - IM324816
+	#Input to the script includes :-
+	#-------------------------------
+	#		BANCS.INPUT.PaysysId						BANCS.INPUT.RelatedSwSrlNum
+	#	    BANCS.INPUT.MTNum							BANCS.INPUT.RelatedMTNum
+	#		BANCS.INPUT.SwSrlNum						BANCS.INPUT.RecvrBIC
+	#		BANCS.INPUT.SolId							BANCS.INPUT.SenderBIC
+	#		BANCS.INPUT.EntityType						BANCS.INPUT.ValueDate
+	#		BANCS.INPUT.EntityId						BANCS.INPUT.TxnCrncy
+	#		BANCS.INPUT.Status							BANCS.INPUT.TranAmt
+	#		BANCS.INPUT.PDEFlag							BANCS.INPUT.SenderRefNum
+	#		BANCS.INPUT.STPFlag							BANCS.INPUT.PaysysMsg
+	#		BANCS.INPUT.TypeOfMessage
+	#-------------------------------------------------------
+	#   Change Tracker HREBC0001 
+	#
+	#Output from the script :-
+	#-------------------------------
+	#		BANCS.OUTPUT.FormattedPaysysMsg
+	#
+	#--------------------------------------------------------------------------
+	#	Create  Class of some global variables which could be used within diff. functions
+	
+	trace on
+	LIBNAME USRHKSO
+sv_r=urhk_B2k_PrintRepos("BANCS")
+	
+	IF (REPEXISTS("PAYSYS") == 0) THEN
+	#{
+		CREATEREP("PAYSYS")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("PAYSYS", "GLBDATA") == 0) THEN
+	#{
+		CREATECLASS("PAYSYS","GLBDATA",5)
+	#}
+	ENDIF
+	#Following variables are used -
+	PAYSYS.GLBDATA.MsgToSplit	=""
+	PAYSYS.GLBDATA.CurrTagNum	=""
+	PAYSYS.GLBDATA.PrevTagNum	=""
+	PAYSYS.GLBDATA.TagSubNum	=""
+	PAYSYS.GLBDATA.TagValue 	=""
+	PAYSYS.GLBDATA.TagLiteral	=""
+	PAYSYS.GLBDATA.PrevTagLiteral=""
+	PAYSYS.GLBDATA.CurrRecNum	=""
+	PAYSYS.GLBDATA.PrevRecNum	=""
+	PAYSYS.GLBDATA.MsgToken		=""
+	BANCS.OUTPUT.tcc=""
+	BANCS.OUTPUT.a720aa =""
+	BANCS.OUTPUT.a720ab =""
+	BANCS.OUTPUT.a721aa =""
+	BANCS.OUTPUT.a721ab =""
+	BANCS.OUTPUT.a722aa =""
+	BANCS.OUTPUT.a722ab =""
+	BANCS.OUTPUT.a723aa =""
+	BANCS.OUTPUT.a723ab =""
+	BANCS.OUTPUT.a724aa =""
+	BANCS.OUTPUT.a724ab =""
+	#---------------------------------------------------------------------------
+	
+	BANCS.OUTPUT.FormattedPaysysMsg = ""
+	BANCS.OUTPUT.successOrFailure = "S"
+	BANCS.OUTPUT.ErrorDesc = ""
+	
+	IF((BANCS.INPUT.PaysysId == "SWIFT") OR (BANCS.INPUT.PaysysId == "RTGS")) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.INPUT.RecvrBIC))THEN
+		#{
+			sv_a = BANCS.INPUT.RecvrBIC
+			sv_l = STRLEN(BANCS.INPUT.RecvrBIC)
+			IF(sv_l < 12) THEN
+			#{
+				WHILE(sv_l < 12)
+				#{
+					# Padding the Receiver BIC with X if BIC is less than 12 characters to make the BIC 12 characters long
+					sv_a = sv_a + 'X'
+					sv_l = sv_l + 1
+				#}
+				DO
+			#}
+			ENDIF
+			sv_b = Mid$(sv_a,0,8) + 'X' + Mid$(sv_a,9,STRLEN(sv_a) - 9)
+			PRINT(sv_b)
+			BANCS.INPUT.RecvrBIC = sv_b
+		#}
+		ENDIF
+		
+
+
+		#------------------------------------------------------------------------
+		# Changes for SenderBic append
+		#------------------------------------------------------------------------
+		
+		
+		IF(FIELDEXISTS(BANCS.INPUT.SenderBIC))THEN
+		#{
+			sv_b = Mid$(BANCS.INPUT.SenderBIC,0,8) + 'A' + Mid$(BANCS.INPUT.SenderBIC,9,STRLEN(BANCS.INPUT.SenderBIC) - 9)
+			PRINT(sv_b)
+			BANCS.INPUT.SenderBIC = sv_b
+			
+			sv_a = BANCS.INPUT.SenderBIC
+			sv_l = STRLEN(BANCS.INPUT.SenderBIC)
+			IF(sv_l < 12) THEN
+			#{
+				WHILE(sv_l < 12)
+				#{
+					# Padding the Sender BIC with X if BIC is less than 12 characters to make the BIC 12 characters long
+					sv_a = sv_a + 'X'
+					sv_l = sv_l + 1
+				#}
+				DO
+			#}
+			ENDIF
+			BANCS.INPUT.SenderBIC = sv_a
+			PRINT(BANCS.INPUT.SenderBIC)
+                   #Changes done by Eliud-EMTech for BCDC messages---->05-12-2020---->Changing BIC code for BCDC messages
+                   IF(BANCS.STDIN.contextBankId == "43")THEN
+                     sv_s = " solcount|select count(*) from tbaadm.sst where bank_id=?SVAR and set_id='BCDC' and entity_cre_Flg='Y' and del_flg='N'"
+                     sv_s = sv_s + " and sol_id in(select sol_id from tbaadm.smh where  bank_id=?SVAR and  execution_date in "
+                     sv_s = sv_s + " (select db_stat_date from tbaadm.gct where bank_id=?SVAR) and sw_srl_num=?SVAR) "
+
+                     PRINT(sv_s)
+
+                     BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId+"|"+BANCS.STDIN.contextBankId+"|"+BANCS.STDIN.contextBankId+"|"+BANCS.INPUT.SwSrlNum
+
+                     PRINT(BANCS.INPARAM.BINDVARS)
+                     sv_b=urhk_dbSelectWithBind(sv_s)
+                     PRINT(sv_b)
+                     IF (sv_b == 0) THEN
+                     #{
+                       PAYSYS.GLBDATA.solcount=BANCS.OUTPARAM.solcount
+                       print(PAYSYS.GLBDATA.solcount)
+  				IF(PAYSYS.GLBDATA.solcount>cint("0"))THEN
+					BANCS.INPUT.SenderBIC ="BCDCCDKIAXXX"     		     
+				ENDIF
+
+                     ENDIF
+                     ENDIF
+                  #Eliud changes Ends here  
+
+		#}
+		ENDIF
+		
+		print(BANCS.INPUT.SenderBIC)
+		
+#---  Receiver BIC HREBC0001 start ---#
+		
+		IF( (FIELDEXISTS(BANCS.STDIN.contextBankId)) AND (FIELDEXISTS(BANCS.INPUT.PaysysId)) )THEN
+		#{
+			IF((BANCS.STDIN.contextBankId == "43") AND (BANCS.INPUT.PaysysId == "RTGS") AND (BANCS.INPUT.MessageId == "202") )THEN
+			#{
+				IF (FIELDEXISTS(BANCS.INPUT.tag58a2) ) THEN
+				#{
+					IF(BANCS.INPUT.tag58a2 !="")THEN
+					#{
+						BANCS.INPUT.RecvrBIC = BANCS.INPUT.tag58a2
+						print(BANCS.INPUT.RecvrBIC)
+		
+						sv_a = BANCS.INPUT.RecvrBIC
+						sv_l = STRLEN(BANCS.INPUT.RecvrBIC)
+						IF(sv_l < 12) THEN
+						#{
+							WHILE(sv_l < 12)
+							#{
+								# Padding the Receiver BIC with X if BIC is less than 12 characters to make the BIC 12 characters long
+								sv_a = sv_a + 'X'
+								sv_l = sv_l + 1
+							#}
+							DO
+						#}
+						ENDIF
+
+						sv_b = Mid$(sv_a,0,8) + 'X' + Mid$(sv_a,9,STRLEN(sv_a) - 9)
+						PRINT(sv_b)
+						BANCS.INPUT.RecvrBIC = sv_b
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		
+		#---  Receiver BIC HREBC0001 end ---#
+
+
+		###############################################
+		#changes done as part of porting-2
+		###############################################
+		IF((BANCS.STDIN.contextBankId != "54")  AND (BANCS.STDIN.contextBankId != "55")  AND (BANCS.STDIN.contextBankId != "50") AND (BANCS.STDIN.contextBankId != "43")) THEN
+		#{
+			IF(BANCS.INPUT.TypeOfMessage != "M") THEN
+			#{
+				BANCS.OUTPUT.MessageHeader = "{1:F01" + BANCS.INPUT.SenderBIC + "0000000000}{2:I" + BANCS.INPUT.MessageId + BANCS.INPUT.RecvrBIC + BANCS.INPUT.MsgPriority + "}{4:"
+				PRINT(BANCS.OUTPUT.MessageHeader)
+				#}
+			ELSE
+				#{
+				BANCS.OUTPUT.MessageHeader = "{1:F01" + BANCS.INPUT.SenderBIC + "0000000000}{2:I" + "999" + BANCS.INPUT.RecvrBIC + BANCS.INPUT.MsgPriority + "}{4:"
+				PRINT(BANCS.OUTPUT.MessageHeader)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			IF(BANCS.INPUT.TypeOfMessage != "M") THEN
+			#{
+				BANCS.OUTPUT.MessageHeader = "{1:F01" + BANCS.INPUT.SenderBIC + "0000000000}{2:I" + BANCS.INPUT.MessageId + BANCS.INPUT.RecvrBIC + BANCS.INPUT.MsgPriority
+				PRINT(BANCS.OUTPUT.MessageHeader)
+				#}
+			ELSE
+				#{
+				BANCS.OUTPUT.MessageHeader = "{1:F01" + BANCS.INPUT.SenderBIC + "0000000000}{2:I" + "999" + BANCS.INPUT.RecvrBIC + BANCS.INPUT.MsgPriority
+				PRINT(BANCS.OUTPUT.MessageHeader)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		###############################################
+		#changes ends here
+		###############################################
+		IF ((BANCS.STDIN.contextBankId == "55") OR (BANCS.STDIN.contextBankId == "50")) THEN
+		#{
+			#sv_m = BANCS.INPUT.EntityId
+			IF(FIELDEXISTS(BANCS.INPUT.tag201))THEN
+			#{
+				sv_m = BANCS.INPUT.tag201
+				PRINT(sv_m)
+			#}
+			ELSE
+			#{
+				sv_m = ""
+			#}
+			ENDIF
+			IF(FIELDEXISTS(BANCS.INPUT.SenderRefNum))THEN
+			#{
+				sv_n  = BANCS.INPUT.SenderRefNum
+				PRINT(sv_n)
+			#}
+			ELSE
+			#{
+				sv_n = ""
+			#}
+			ENDIF
+			sv_m = MID$(sv_m,0,3)
+			PRINT(sv_m)
+			
+			IF(sv_m == "RTO") THEN
+		#{
+				#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:{103:TIS}}{4:"
+				BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:{103:TIS}"
+				IF(BANCS.INPUT.MessageId == "103") THEN
+				BANCS.INPARAM.inpCommand = "uetrexe"
+				sv_r = urtn_execSysCmd("")
+				print(sv_r)
+				sv_b = BANCS.OUTPUT.sysOutput_0
+				print(sv_b)
+				sv_b = GETPOSITION(BANCS.OUTPUT.sysOutput_0,"[")
+				print(sv_b)
+				sv_c = MID$(BANCS.OUTPUT.sysOutput_0,sv_b,36)
+				print(sv_c)
+				#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}"
+				BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}}" +"{4:"
+				print(BANCS.OUTPUT.MessageHeader)
+				BANCS.OUTPUT.UETR = sv_c
+				print(BANCS.OUTPUT.UETR)
+				PRINT(BANCS.OUTPUT.MessageHeader)
+				ENDIF
+			#}
+			ELSE
+			#{
+				#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{4:"
+				IF(BANCS.INPUT.MessageId == "103") THEN
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:"
+					PRINT(BANCS.OUTPUT.MessageHeader)
+					BANCS.INPARAM.inpCommand = "uetrexe"
+					sv_r = urtn_execSysCmd("")
+					print(sv_r)
+					sv_b = BANCS.OUTPUT.sysOutput_0
+					print(sv_b)
+					sv_b = GETPOSITION(BANCS.OUTPUT.sysOutput_0,"[")
+					print(sv_b)
+					sv_c = MID$(BANCS.OUTPUT.sysOutput_0,sv_b,36)
+					print(sv_c)
+					#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}"
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}}" +"{4:"
+					print(BANCS.OUTPUT.MessageHeader)
+					BANCS.OUTPUT.UETR = sv_c
+					print(BANCS.OUTPUT.UETR)
+				ELSE
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{4:"
+				ENDIF
+			ENDIF
+			
+			PRINT(BANCS.OUTPUT.MessageHeader)
+		#}
+		ENDIF
+		###############################################
+		#changes done as part of porting-2
+		###############################################
+		IF((BANCS.STDIN.contextBankId == "54") OR (BANCS.STDIN.contextBankId == "43"))THEN
+		#{
+			#sv_m = BANCS.INPUT.EntityId
+			IF(FIELDEXISTS(BANCS.INPUT.tag201))THEN
+				sv_m = BANCS.INPUT.tag201
+				PRINT(sv_m)
+			ELSE
+				sv_m = ""
+			ENDIF
+			IF(FIELDEXISTS(BANCS.INPUT.SenderRefNum))THEN
+				sv_n  = BANCS.INPUT.SenderRefNum
+				PRINT(sv_n)
+			ELSE
+				sv_n = ""
+			ENDIF
+			
+			sv_m = MID$(sv_m,0,3)
+			PRINT(sv_m)
+
+				IF ((BANCS.INPUT.MessageId == "202") and (BANCS.STDIN.contextBankId == "43")) THEN
+					sv_m="TTO"
+				ENDIF
+			
+			IF(sv_m == "RTO") THEN
+
+				sv_t= mid$(BANCS.INPUT.tag201,0,3)
+				IF ((BANCS.STDIN.contextBankId == "43") AND (sv_t=="RTO") and (BANCS.INPUT.PaysysId == "RTGS")) THEN
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:{103:CBC}"
+				ELSE
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:"
+				ENDIF
+				
+				IF(BANCS.INPUT.MessageId == "103") THEN
+					BANCS.INPARAM.inpCommand = "uetrexe"
+					sv_r = urtn_execSysCmd("")
+					print(sv_r)
+					sv_b = BANCS.OUTPUT.sysOutput_0
+					print(sv_b)
+					sv_b = GETPOSITION(BANCS.OUTPUT.sysOutput_0,"[")
+					print(sv_b)
+					sv_c = MID$(BANCS.OUTPUT.sysOutput_0,sv_b,36)
+					print(sv_c)
+					#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}"
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}}" +"{4:"
+					print(BANCS.OUTPUT.MessageHeader)
+					BANCS.OUTPUT.UETR = sv_c
+					print(BANCS.OUTPUT.UETR)
+				ENDIF
+
+				PRINT(BANCS.OUTPUT.MessageHeader)
+
+			ELSE
+
+				IF(BANCS.INPUT.MessageId == "103") THEN
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{3:"
+					PRINT(BANCS.OUTPUT.MessageHeader)
+					BANCS.INPARAM.inpCommand = "uetrexe"
+					sv_r = urtn_execSysCmd("")
+					print(sv_r)
+					sv_b = BANCS.OUTPUT.sysOutput_0
+					print(sv_b)
+					sv_b = GETPOSITION(BANCS.OUTPUT.sysOutput_0,"[")
+					print(sv_b)
+					sv_c = MID$(BANCS.OUTPUT.sysOutput_0,sv_b,36)
+					print(sv_c)
+					#BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}"
+					BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"{121:" + sv_c +"}}" +"{4:"
+					print(BANCS.OUTPUT.MessageHeader)
+					BANCS.OUTPUT.UETR = sv_c
+					print(BANCS.OUTPUT.UETR)
+				ENDIF
+
+				#erik header
+
+
+				IF(FIELDEXISTS(BANCS.INPUT.SenderRefNum))THEN
+
+					IF ((BANCS.INPUT.MessageId == "202") and (BANCS.STDIN.contextBankId == "43")) THEN
+						BANCS.INPUT.sendrecv=" ~ ~ ~ ~"
+						BANCS.INPARAM.BINDVARS = BANCS.INPUT.SenderRefNum +"|"+ BANCS.STDIN.contextBankId
+				
+						sv_x = "tcc,sendrecv|SELECT purpose_code,remit_info FROM TBAADM.PORD WHERE PYMT_REF_NUM  = ?SVAR AND BANK_ID = ?SVAR  and purpose_code in ('2103','1202','3205','1300','1500','1222') "
+						sv_w = urhk_dbSelectWithBind(sv_x)
+						PRINT(sv_w)
+						IF(sv_w == 0) THEN
+							BANCS.OUTPUT.tcc = BANCS.OUTPARAM.tcc
+							PRINT(BANCS.OUTPUT.tcc)
+							BANCS.INPUT.sendrecv=BANCS.OUTPARAM.sendrecv
+							PRINT(BANCS.INPUT.sendrecv)			
+						ENDIF
+
+					ENDIF
+
+				ENDIF
+				IF((BANCS.INPUT.MessageId == "202") and (BANCS.STDIN.contextBankId == "43") and (BANCS.OUTPUT.tcc != "") ) THEN
+					IF (BANCS.INPUT.MessageId == "202") THEN
+						BANCS.OUTPUT.MessageHeader =BANCS.OUTPUT.MessageHeader +"}{3:{103:CBC}}{4:"
+						print(BANCS.OUTPUT.MessageHeader)
+					ELSE
+						BANCS.OUTPUT.MessageHeader =BANCS.OUTPUT.MessageHeader +"{3:{103:CBC}}{4:"
+						print(BANCS.OUTPUT.MessageHeader)
+					ENDIF
+
+					print(BANCS.OUTPUT.tcc)
+
+					#sender to recvr info
+
+					IF(FIELDEXISTS(BANCS.INPUT.sendrecv))THEN
+
+						sv_z = strlen(BANCS.INPUT.sendrecv)
+										
+						sv_k = GETPOSITION(BANCS.INPUT.sendrecv,"~")
+						IF(sv_k != 0 ) THEN
+
+							BANCS.INPUT.remitter1= mid$(BANCS.INPUT.sendrecv,0,sv_k-1)
+							print(BANCS.INPUT.remitter1)
+							sv_l = strlen(BANCS.INPUT.remitter1)
+
+							BANCS.INPUT.remitterX = BANCS.INPUT.remitter1
+				
+							BANCS.INPUT.sendrecv2 = mid$(BANCS.INPUT.sendrecv,sv_k,sv_z-sv_l)
+							print(BANCS.INPUT.sendrecv2 )
+				
+							sv_k = GETPOSITION(BANCS.INPUT.sendrecv2,"~")
+							print(sv_k)
+							BANCS.INPUT.remitter2 = mid$(BANCS.INPUT.sendrecv2,0,sv_k-1)
+							print(BANCS.INPUT.remitter2)
+							sv_l = strlen(BANCS.INPUT.remitter1)
+
+
+							BANCS.INPUT.sendrecv3 = mid$(BANCS.INPUT.sendrecv2,sv_k,sv_z-sv_l)
+							print(BANCS.INPUT.sendrecv3 )
+
+							sv_k = GETPOSITION(BANCS.INPUT.sendrecv3,"~")
+							print(sv_k)
+							BANCS.INPUT.remitter3 = mid$(BANCS.INPUT.sendrecv3,0,sv_k-1)
+							print(BANCS.INPUT.remitter3 )
+							sv_l = strlen(BANCS.INPUT.remitter3 )
+
+							BANCS.INPUT.sendrecv4 = mid$(BANCS.INPUT.sendrecv3,sv_k,sv_z-sv_l)
+							print(BANCS.INPUT.sendrecv4 )
+
+
+							sv_k = GETPOSITION(BANCS.INPUT.sendrecv4 ,"~")
+							print(sv_k)
+							BANCS.INPUT.remitter4 = mid$(BANCS.INPUT.sendrecv4 ,0,sv_k-1)
+							print(BANCS.INPUT.remitter4 )
+							sv_l = strlen(BANCS.INPUT.remitter4 )
+
+								IF (BANCS.INPUT.MessageId == "202") THEN
+									BANCS.INPUT.remitter1 = BANCS.INPUT.remitter2
+									print(BANCS.INPUT.remitter1)
+								ENDIF
+  						ENDIF
+
+					ENDIF
+
+					if (BANCS.OUTPUT.tcc == "1222") then		
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="LOC"
+						#BANCS.OUTPUT.a721ab="KIN"
+						BANCS.OUTPUT.a721ab = BANCS.INPUT.remitterX
+						BANCS.OUTPUT.a722aa="RGIE"
+						BANCS.OUTPUT.a722ab=BANCS.INPUT.remitter1 #"KGL"
+						BANCS.OUTPUT.a723aa=""
+						BANCS.OUTPUT.a723ab="" #"EDOUARD MAKIM"
+						BANCS.OUTPUT.a724aa=""
+						BANCS.OUTPUT.a724ab=""
+
+					ENDIF
+
+					if (BANCS.OUTPUT.tcc == "1500") then		
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="LOC"
+						BANCS.OUTPUT.a721ab="KIN"
+						BANCS.OUTPUT.a722aa="ENT"
+						BANCS.OUTPUT.a722ab=BANCS.INPUT.remitter1 #"KGL"
+						BANCS.OUTPUT.a723aa="BEN"
+						BANCS.OUTPUT.a723ab=BANCS.INPUT.remitter2 #"EDOUARD MAKIM"
+						BANCS.OUTPUT.a724aa=""
+						BANCS.OUTPUT.a724ab=""
+
+					ENDIF
+
+
+					if (BANCS.OUTPUT.tcc == "1300") then		
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="MREJT"
+						BANCS.OUTPUT.a721ab=BANCS.INPUT.remitter1 #"OCT MAT7933780K"
+						BANCS.OUTPUT.a722aa=""
+						BANCS.OUTPUT.a722ab=""
+						BANCS.OUTPUT.a723aa=""
+						BANCS.OUTPUT.a723ab=""
+						BANCS.OUTPUT.a724aa=""
+						BANCS.OUTPUT.a724ab=""
+
+					ENDIF
+
+					if (BANCS.OUTPUT.tcc == "3205") then		
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="BNF"
+						BANCS.OUTPUT.a721ab= BANCS.INPUT.remitter1 #"BGFIBANK"
+						BANCS.OUTPUT.a722aa=""
+						BANCS.OUTPUT.a722ab=""
+						BANCS.OUTPUT.a723aa=""
+						BANCS.OUTPUT.a723ab=""
+						BANCS.OUTPUT.a724aa=""
+						BANCS.OUTPUT.a724ab=""
+
+					ENDIF
+
+					if (BANCS.OUTPUT.tcc == "1202") then		
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="MTF"
+						BANCS.OUTPUT.a721ab=  BANCS.INPUT.remitter1 #"COUVERTURE SOFIBAQUE"
+						BANCS.OUTPUT.a722aa="BNF"
+						BANCS.OUTPUT.a722ab= BANCS.INPUT.remitter2 #"SOFIBANQUE"
+						BANCS.OUTPUT.a723aa=""
+						BANCS.OUTPUT.a723ab=""
+						BANCS.OUTPUT.a724aa=""
+						BANCS.OUTPUT.a724ab=""
+
+					ENDIF
+
+					if (BANCS.OUTPUT.tcc == "2103") then
+
+						 sv_s = " ibannumber|select iban_number  from tbaadm.gam where foracid =?SVAR and bank_id =?SVAR and rownum=1 "
+						PRINT(sv_s)
+						BANCS.INPARAM.BINDVARS = BANCS.INPUT.SendersCustAccount +"|"+BANCS.STDIN.contextBankId
+
+						sv_b=urhk_dbSelectWithBind(sv_s)
+						PRINT(sv_b)
+						
+						IF (sv_b == 0) THEN
+					       
+							BANCS.OUTPUT.ibannumber=BANCS.OUTPARAM.ibannumber
+							print(BANCS.OUTPUT.ibannumber)
+						ELSE
+
+							BANCS.OUTPUT.ibannumber=""
+
+						ENDIF	
+			
+
+			
+						BANCS.OUTPUT.a720aa="TTC"
+						BANCS.OUTPUT.a720ab=BANCS.OUTPUT.tcc
+						BANCS.OUTPUT.a721aa="LOC"
+						BANCS.OUTPUT.a721ab=BANCS.INPUT.remitter1 #"KIN"
+						BANCS.OUTPUT.a722aa="BNF"
+						BANCS.OUTPUT.a722ab=BANCS.INPUT.remitter2  #"TRESOR PUB"
+						BANCS.OUTPUT.a723aa="MTF"
+						BANCS.OUTPUT.a723ab= BANCS.INPUT.remitter3 #"RELIQ 1ER CAT SEPT"
+						BANCS.OUTPUT.a724aa="IBAN"
+						BANCS.OUTPUT.a724ab= BANCS.OUTPUT.ibannumber #"00010100000000000000139"
+					ENDIF
+
+
+
+					#check field 722 already exists
+
+					
+
+					sv_m =        ":720:/"  +BANCS.OUTPUT.a720aa +"/"+BANCS.OUTPUT.a720ab + "|"
+					sv_m = sv_m  + ":721:/"+BANCS.OUTPUT.a721aa +"/"+ BANCS.OUTPUT.a721ab + "|"
+
+					IF (BANCS.INPUT.MessageId=="202") THEN
+
+						IF (FIELDEXISTS(BANCS.INPUT.tag721)) THEN
+							print(BANCS.INPUT.tag721)
+							print(BANCS.INPUT.PaysysMsg)
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":721:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+			
+						IF(FIELDEXISTS(BANCS.INPUT.tag722))THEN
+
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":722:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+
+
+						IF(FIELDEXISTS(BANCS.INPUT.tag723))THEN
+
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":723:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+
+						IF(FIELDEXISTS(BANCS.INPUT.tag724))THEN
+
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":724:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+
+						IF(FIELDEXISTS(BANCS.INPUT.tag725))THEN
+
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":725:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+
+						IF(FIELDEXISTS(BANCS.INPUT.tag726))THEN
+
+							sv_l = strlen(BANCS.INPUT.PaysysMsg)
+											
+							sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":726:")
+							IF(sv_k != 0 ) THEN
+								BANCS.INPUT.PaysysMsg1 = mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1)
+								print(BANCS.INPUT.PaysysMsg1)
+					
+								BANCS.INPUT.PaysysMsg2 = mid$(BANCS.INPUT.PaysysMsg,sv_k,sv_k+34)
+								print(BANCS.INPUT.PaysysMsg2)
+					
+								sv_b = GETPOSITION(BANCS.INPUT.PaysysMsg2,"|")
+								print(sv_b)
+					
+								BANCS.INPUT.PaysysMsg3 =  mid$(BANCS.INPUT.PaysysMsg,0,sv_k-1) + mid$(BANCS.INPUT.PaysysMsg,sv_k+sv_b,sv_l)
+								print(BANCS.INPUT.PaysysMsg3)
+					
+								BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg3
+								print(BANCS.INPUT.PaysysMsg)
+							ENDIF
+						ENDIF
+
+						if(BANCS.OUTPUT.a722ab != "") then
+							sv_m = sv_m  + ":722:/"+BANCS.OUTPUT.a722aa +"/"+ BANCS.OUTPUT.a722ab  + "|"
+							print(sv_m)
+						endif 
+
+
+						if(BANCS.OUTPUT.a723ab != "") then
+							sv_m = sv_m  + ":723:/"+BANCS.OUTPUT.a723aa +"/"+ BANCS.OUTPUT.a723ab  + "|"
+							print(sv_m)
+						endif 
+
+						if(BANCS.OUTPUT.a724ab!= "") then
+							sv_m = sv_m  + ":724:/"+BANCS.OUTPUT.a724aa+"/"+ BANCS.OUTPUT.a724ab+ "|"
+							print(sv_m)
+						endif 
+
+						print(sv_m)
+
+						print(BANCS.OUTPUT.FormattedPaysysMsg)
+
+						BANCS.INPUT.PaysysMsg=BANCS.INPUT.PaysysMsg + sv_m
+						print(BANCS.INPUT.PaysysMsg)
+					ENDIF
+
+				ELSE
+					print(BANCS.OUTPUT.MessageHeader)
+
+					#--- Header value 4 check HREBC0001 start ---#
+
+					IF(BANCS.INPUT.MessageId == "202")THEN
+					#{
+						sv_l = GETPOSITION(BANCS.OUTPUT.MessageHeader,"}{3:")
+						print(sv_l)
+
+						IF(sv_l != 0 ) THEN
+							print(BANCS.OUTPUT.MessageHeader)
+						ELSE
+							BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader +"}{3:{103:CBC}}{4:"
+						print(BANCS.OUTPUT.MessageHeader)
+						ENDIF
+					#}
+					ENDIF 
+
+					#--- Header value 4 check HREBC0001 end ---#
+
+					sv_k = GETPOSITION(BANCS.OUTPUT.MessageHeader,"}{4:")
+					IF(sv_k != 0 ) THEN
+						print(BANCS.OUTPUT.MessageHeader)
+					ELSE
+						BANCS.OUTPUT.MessageHeader = BANCS.OUTPUT.MessageHeader + "}{4:"
+						print(BANCS.OUTPUT.MessageHeader)
+					ENDIF
+				ENDIF
+		
+
+			ENDIF
+
+
+			PRINT(BANCS.OUTPUT.MessageHeader)
+			#Changes done by Eliud-EMTech for BCDC messages---->04-12-2020---->Changing the header
+			#Eliud changes Ends here
+		ENDIF
+
+
+		#------------------------------------------------------------------------
+		# Change the account to IBAN account number
+		#------------------------------------------------------------------------
+		
+		IF(BANCS.INPUT.MessageId=="940") then
+		
+			BANCS.INPUT.tag251="00011001300000085591714"
+			print(BANCS.INPUT.tag251)
+
+			BANCS.OUTPUT.tag251="00011001300000085591714"
+			print(BANCS.OUTPUT.tag251)
+
+		
+		ENDIF
+
+		###############################################
+		#changes ends here
+		###############################################
+		
+		IF(BANCS.INPUT.PDEFlag == "Y") THEN
+		#{
+			BANCS.OUTPUT.MessageFooter = "-} {5:{PDE:Y}}"
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.MessageFooter = "-}"
+		#}
+		ENDIF
+		
+		PAYSYS.GLBDATA.MsgToSplit = BANCS.INPUT.PaysysMsg
+		
+		#!!!! Check whether SMH message format is in current format (FiNACLE 7.0 ) or old format !!!!!
+		# If its in old format return FAILURE
+		# This could be tested by existance of field :201: i.r. TAG20
+		
+		sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":201:")
+		#check Presence of Tag 20 in multirec e.g. for 420 series
+		
+		IF(sv_k == 0) THEN
+		#{
+			sv_k = GETPOSITION(BANCS.INPUT.PaysysMsg,":201_1:")
+		#}
+		ENDIF
+		
+		IF(sv_k != 0 ) THEN
+		#{
+			CALL("TrfrSwiftMsg.scr")
+			print("Calling TrfrSwiftMsg")
+		#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_m = "Message is in old format for MessageId=[" + BANCS.INPUT.MessageId +"]" + "EntityType=["
+			sv_m = sv_m + BANCS.INPUT.EntityType +"], EntityId=["+BANCS.INPUT.EntityId+"].Hence skipping this message."
+			BANCS.OUTPUT.ErrorDesc = sv_m
+			print(BANCS.OUTPUT.ErrorDesc)
+		#}
+		ENDIF
+		
+	#}
+	ELSE
+		#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.ErrorDesc = "No formating script found for Payment SYSTEM [" + BANCS.INPUT.PaysysId +"]. Hence not formatted."
+	
+	#}
+	ENDIF
+	
+	
+	
+	EXITSCRIPT
+	trace off
+END-->
+

@@ -1,0 +1,164 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       CustTranInq_FetchAndValInpDtls.scr
+# Author                :       Eshan babbar
+# Description           :       This script validates the input provided in the request xml
+# Input                 :       TransactionID,TransactionDate
+# Output                :       None
+# Called Script         :       None
+# Calling Script        :       CustTranInq_main.scr                                                            
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           14-03-2012         Eshan babbar      Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--start
+TRACE ON
+
+	# Script body goes here
+	#========================================================	
+	# Checking if the Inputs are provided in Resquest
+	#========================================================
+	
+	#---Checking if transaction Id is null or not-------
+	sv_v = ""
+	sv_v = "CustTranInq_REQ.TransactionID"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v)) == 0)THEN
+	#{
+		#print("Enter Transaction ID in request XML.")
+		CUST.INTERFACE.successOrFailure="F"
+		CUST.INTERFACE.errorCode="ERR043"
+		GOTO ERROREXIT
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.tranID=("BANCS").("INPUT").(sv_v)
+		#print(CUST.INTERFACE.tranID)
+	#}
+	ENDIF
+
+	#---Checking if transaction Date is null or not-------
+	sv_v = ""
+	sv_v = "CustTranInq_REQ.TransactionDate"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v)) == 0)THEN
+	#{
+		#print("Enter Transaction Date in request XML.")
+		CUST.INTERFACE.successOrFailure="F"
+		CUST.INTERFACE.errorCode="ERR044"
+		GOTO ERROREXIT
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.inpTranDate=("BANCS").("INPUT").(sv_v)
+		CUST.INTERFACE.tranDate=CUST.INTERFACE.inpTranDate
+	#}
+	ENDIF
+
+	#---Checking if Bank ID is null or not-------	
+	sv_v = ""
+	sv_v = "CustTranInq_REQ.BankID"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v)) == 0)THEN
+	#{
+		#print("Enter Bank ID in request XML.")
+		CUST.INTERFACE.successOrFailure="F"
+		CUST.INTERFACE.errorCode="ERR045"
+		GOTO ERROREXIT
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.BankId = TRIM(("BANCS").("INPUT").(sv_v))
+		#print(CUST.INTERFACE.BankId)
+	#}
+	ENDIF	
+
+	#---Checking if the Reference Num exists or not-------	
+	sv_v = ""
+	sv_v = "CustTranInq_REQ.ReferenceNum"	
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v)) == 0)THEN
+	#{
+		CUST.INTERFACE.refNum=""
+		#print("Enter Reference Number")
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.refNum=("BANCS").("INPUT").(sv_v)
+		#print(CUST.INTERFACE.refNum)
+	#}
+	ENDIF
+	
+	#-- Calling script for validating/converting Date in DD-MM-YYYY format-------
+	COMMON.INPUT.inpDate = CUST.INTERFACE.tranDate
+	COMMON.INPUT.dateFmt = "DD-MM-YYYY"
+	CALL("Common_Interface_DateFormat.scr")
+	CUST.INTERFACE.tranDate = COMMON.OUTPUT.convDateFmt
+	#print(CUST.INTERFACE.tranDate)
+	
+	#---Checking Transaction Date is on Bod Date or not-------
+	sv_a=urhk_B2k_getDateDiffFromBODDate(CUST.INTERFACE.tranDate)
+	IF(sv_a == 0) THEN
+	#{
+		CUST.INTERFACE.dateDiff = BANCS.OUTPARAM.DateDiff
+		#print(CUST.INTERFACE.dateDiff)
+	#}
+	ENDIF
+	
+	IF (CUST.INTERFACE.dateDiff == 0) THEN
+	#{
+		CUST.INTERFACE.tableName = "TBAADM.DTD"
+		CUST.INTERFACE.shortName = "DTD"
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.tableName = "TBAADM.HTD"
+		CUST.INTERFACE.shortName = "HTD"
+	#}
+	ENDIF	
+	
+	#---Checking if record exists in DTD/HTD table-------
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.tranID
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|" + CUST.INTERFACE.tranDate
+	IF(CUST.INTERFACE.refNum != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|" + CUST.INTERFACE.refNum
+	#}
+	ENDIF
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|" + CUST.INTERFACE.BankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = ""
+	sv_s = sv_s + "countVal|SELECT COUNT(1) FROM "
+#	sv_s = sv_s + CUST.INTERFACE.tableName + " WHERE TRIM(TRAN_ID) = ?SVAR AND"
+	sv_s = sv_s + CUST.INTERFACE.tableName + " WHERE tran_id=lpad(?SVAR,9,' ')  AND"
+	sv_s = sv_s + " TRAN_DATE = TO_CHAR(TO_DATE(?SVAR,'DD-MM-YYYY'), 'DD-MON-YYYY') "
+	IF(CUST.INTERFACE.refNum != "") THEN
+	#{
+		sv_s = sv_s + " AND TRAN_RMKS = ?SVAR "
+	#}
+	ENDIF
+	sv_s = sv_s + " AND DEL_FLG = 'N' AND BANK_ID = ?SVAR "
+	#print(sv_s)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	#print(sv_d)
+	IF (sv_d == 0 ) THEN
+	#{
+		CUST.INTERFACE.countVal = BANCS.OUTPARAM.countVal
+		#print(CUST.INTERFACE.countVal)
+	#}
+	ELSE
+	#{
+		#print("No record exists for TranID, TranDate and BankID.")
+		CUST.INTERFACE.successOrFailure="F"
+		CUST.INTERFACE.errorCode="ERR041"
+		GOTO ERROREXIT
+
+	#}
+	ENDIF	
+	
+	IF(CUST.INTERFACE.countVal == 0) THEN
+	#{
+		#print("No record exists for TranID, TranDate and BankID.")
+		CUST.INTERFACE.successOrFailure="F"
+		CUST.INTERFACE.errorCode="ERR041"
+		GOTO ERROREXIT	
+	#}
+	ENDIF
+end-->

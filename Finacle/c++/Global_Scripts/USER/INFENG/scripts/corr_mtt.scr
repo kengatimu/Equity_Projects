@@ -1,0 +1,368 @@
+#############################################################################
+#    Name                       :   corr_mtt.scr 
+#    Date                       :   22-FEB-2021 
+#    Description                :   This script used To  Create Transaction IN Entered Status 
+#    Input                      :
+#    Output                     :   NA
+#    Author                     :   Manav M 
+#    Called From                :   HBJSTM Job ID - 99999 Sol 999 
+#    Calling Script             :   NA
+#    Reference                  :   NA
+#    Modification History       :   Anand Pansare 
+#				:   TO create transaction in Entered status 	 
+#############################################################################
+
+<--start
+trace on
+
+IF (REPEXISTS("INMB") == 0) THEN
+#{
+	CREATEREP("INMB")
+#}
+ENDIF
+
+IF (CLASSEXISTS("INMB","CORRDATA") == 0) THEN
+#{
+        CREATECLASS("INMB","CORRDATA",5)
+#}
+ENDIF
+
+print(CUST.DATA.seq_num)
+
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+
+	BANCS.INPARAM.PostTranFlg                       = "Y"
+	BANCS.INPARAM.CommitFlg                         = "Y"
+	BANCS.INPARAM.CheckExceptions                   = "N"
+	BANCS.INPARAM.InsertTranWithValidnFlg           = "N"
+	BANCS.INPARAM.ValidationFlag                    = "N"
+	BANCS.INPARAM.RestrictModifyInd                 = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw                  = "Y"
+	BANCS.INPARAM.IgnoreExcp                        = "I"
+
+	lv_z = urhk_MTTS_Initialize("")
+	PRINT (lv_z)
+
+MTT.TranDetails.TranDateDiff    = "0"
+MTT.TranDetails.TranType        = "T"
+MTT.TranDetails.TranSubType     = "BI"
+MTT.TranDetails.IgnoreExcp	= "I"
+MTT.TranDetails.PostFlag        = "N"
+MTT.TranDetails.PostTranFlag    = "N"
+
+
+sv_z = urhk_MTTS_populateInputDetails("")
+print(sv_z)
+
+if(sv_z !=0) then
+	MTT.Error.Description = "Error encountered in Populating Transaction"
+	sv_z = urhk_MTTS_ReportErrorCondition("")
+	goto END_DEFINITION
+endif
+
+################################################
+## The following will take care of Value date.
+################################################
+
+sv_a = "db_date|"
+sv_a = sv_a + "SELECT db_stat_date "
+sv_a = sv_a + "FROM tbaadm.gct "
+sv_a = sv_a + "WHERE bank_id = '"+BANCS.STDIN.contextBankId+"'"
+print(sv_a)
+sv_a = urhk_dbSelectWithBind(sv_a)
+
+IF (sv_a == "0") THEN
+	
+	CUST.DATA.db_date = BANCS.OUTPARAM.db_date
+	print(CUST.DATA.db_date)
+ELSE
+	CUST.DATA.db_date = ""
+ENDIF
+
+#CUST.DATA.to_date = "31-10-2013"
+#CUST.DATA.to_date = CUST.DATA.db_date
+#print(CUST.DATA.to_date)
+
+#sv_m = urhk_B2k_getDateDiffFromBODDate(CUST.DATA.to_date)
+#CUST.DATA.date_diff = BANCS.OUTPARAM.DateDiff
+#print(CUST.DATA.date_diff)
+
+sv_r = urhk_MTTS_DefineTransaction("CASHH_TRAN")
+
+print(sv_r)
+
+IF (sv_r != 0) THEN
+
+        MTT.Error.Description = "Error encountered in Define Transaction"
+        sv_r = urhk_MTTS_ReportErrorCondition("")
+        goto END_DEFINITION
+
+ENDIF
+
+#---------------Creation of DEBIT leg-----------------------------------
+
+CUST.DATA.Debit_amt = 0
+
+
+sv_a = "foracid,particular,tran_rmks,part_details,tran_amt,crncy_code,tran_code,value_date,rate,rate_code,ref_ccy|"
+sv_a = sv_a + "SELECT foracid,tran_particular,tran_rmks,part_details,tran_amt,currency,tran_code,to_char(value_date,'dd-mm-yyyy'),rate,rate_code,ref_ccy"
+sv_a = sv_a + "  FROM custom.corr c "
+sv_a = sv_a + " WHERE c.tran_indicator = 'D'"
+sv_a = sv_a + " and c.seq_num = '"+CUST.DATA.seq_num+"'"
+print(sv_a)
+sv_a = urhk_dbCursorOpenWithBind(sv_a)
+print(sv_a)
+
+IF (sv_a == 0) THEN
+#{
+	sv_a = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_a)
+	sv_b = urhk_dbCursorFetch(sv_a)
+	print(sv_b)
+	IF (sv_b == "0") THEN
+	#{
+		while(sv_b == 0)
+			CUST.DATA.foracid		= BANCS.OUTPARAM.foracid			
+			CUST.DATA.tran_particular	= BANCS.OUTPARAM.particular			
+			CUST.DATA.tran_rmks		= BANCS.OUTPARAM.tran_rmks			
+			CUST.DATA.part_details	= BANCS.OUTPARAM.part_details
+			CUST.DATA.tran_amt		= CDOUBLE(BANCS.OUTPARAM.tran_amt)
+			CUST.DATA.crncy_code	= BANCS.OUTPARAM.crncy_code
+			CUST.DATA.tran_code		= BANCS.OUTPARAM.tran_code
+			CUST.DATA.value_date	= BANCS.OUTPARAM.value_date
+			CUST.DATA.rate		= BANCS.OUTPARAM.rate
+			CUST.DATA.rate_code		= BANCS.OUTPARAM.rate_code
+			CUST.DATA.ref_ccy		= BANCS.OUTPARAM.ref_ccy
+			print(CUST.DATA.value_date)
+
+			#sv_m = urhk_B2k_getDateDiffFromBODDate(CUST.DATA.value_date)
+			#CUST.DATA.date_diff = BANCS.OUTPARAM.DateDiff
+			#print(CUST.DATA.date_diff)
+
+			CUST.DATA.value_date = CUST.DATA.value_date + " 00:00:00"	
+			sv_m = urhk_B2k_getDateDiffFromBODDate(CUST.DATA.value_date)
+			CUST.DATA.date_diff = BANCS.OUTPARAM.DateDiff
+			print(BANCS.OUTPARAM.DateDiff)	
+			print(CUST.DATA.date_diff)
+			CUST.DATA.Debit_amt = CDOUBLE(CUST.DATA.Debit_amt) + CDOUBLE(CUST.DATA.tran_amt)
+
+			MTT.PartTranDetails.Account             = CUST.DATA.foracid
+			MTT.PartTranDetails.RefAmount           = -CDOUBLE(CUST.DATA.tran_amt)
+			#MTT.PartTranDetails.Amount           	= ""
+			MTT.PartTranDetails.RefCurrency         = CUST.DATA.ref_ccy
+			MTT.PartTranDetails.TranCurrency        = CUST.DATA.crncy_code
+			MTT.PartTranDetails.Particulars         = CUST.DATA.tran_particular
+			MTT.PartTranDetails.Remarks             = CUST.DATA.tran_rmks
+			MTT.PartTranDetails.Consolidate         = "N"
+			MTT.PartTranDetails.ValueDate	        = CUST.DATA.date_diff
+			MTT.PartTranDetails.TranIdentifier      = "CASHH_TRAN"
+			MTT.PartTranDetails.ParticularsCode	= CUST.DATA.tran_code
+                        MTT.PartTranDetails.RateCode            = CUST.DATA.rate_code
+                        MTT.PartTranDetails.Rate                = CUST.DATA.rate
+
+			IF( TRIM(CUST.DATA.crncy_code) != "KES" ) THEN
+			#{
+			#}
+			ENDIF
+
+
+			IF (CUST.DATA.part_details != "") THEN
+			#{
+				MTT.PartTranDetails.ACPARTB2kId		= CUST.DATA.part_details
+				MTT.PartTranDetails.ACPARTB2kType	= "ACCNT"
+			#}
+			ENDIF
+
+			print(MTT.PartTranDetails.Account)
+			print(MTT.PartTranDetails.RefAmount)
+		#	print(MTT.PartTranDetails.Amount)
+			print(MTT.PartTranDetails.RefCurrency)
+			print(MTT.PartTranDetails.TranCurrency)
+			print(MTT.PartTranDetails.Particulars)
+			print(MTT.PartTranDetails.Remarks)
+			#print(MTT.PartTranDetails.ACPARTB2kId)
+			#print(MTT.PartTranDetails.ACPARTB2kType)
+			print(MTT.PartTranDetails.Consolidate)
+			print(MTT.PartTranDetails.ValueDate)
+			print(MTT.PartTranDetails.TranIdentifier)
+			print(MTT.PartTranDetails.Rate)
+
+
+			sv_t = urhk_MTTS_DefinePartTran("DEBIT")
+			print(sv_t)
+
+			IF (sv_t!=0) THEN
+			#{
+				MTT.Error.Description = "Unable to define credit part tran"
+				sv_t = urhk_MTTS_ReportErrorCondition("")
+				goto END_DEFINITION
+			#}
+			ENDIF
+
+			print(sv_a)
+			sv_b = urhk_dbCursorFetch(sv_a)
+			print(sv_b)
+		do
+	#}
+	ELSE
+	#{
+		MTT.Error.Description = "No Data Found For Cash Handling Charges for the Sol " 
+        	sv_r = urhk_MTTS_ReportErrorCondition("")
+	#}
+	ENDIF
+sv_h = urhk_dbCursorClose(sv_a)
+#}
+endif
+
+
+
+#-------------------------------------------------------------------------------------------------------------
+                               # Clear error message
+#--------------------------------------------------------------------------------------------------------------
+
+MTT.Error.Description   = ""
+BANCS.INPUT.TranStatus  = "S"
+
+#---------------End of DEBIT leg---------------------------------------
+
+
+#---------------Creation of CREDIT leg-----------------------------------
+CUST.DATA.Credit_amt = 0
+
+sv_a = "foracid,tran_amt,tran_indicator,tran_particular,tran_rmks,part_details,crncy_code,tran_code,rate,rate_code,ref_ccy|"
+sv_a = sv_a + "SELECT foracid,tran_amt,tran_indicator,tran_particular,tran_rmks,part_details,currency,tran_code,rate,rate_code,ref_ccy"
+sv_a = sv_a + "  FROM custom.corr c "
+sv_a = sv_a + " WHERE c.tran_indicator = 'C'"
+sv_a = sv_a + " and c.seq_num = '"+CUST.DATA.seq_num+"'"
+print(sv_a)
+sv_a = urhk_dbCursorOpenWithBind(sv_a)
+print(sv_a)
+
+IF (sv_a == 0) THEN
+#{
+	sv_a = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_a)
+	sv_b = urhk_dbCursorFetch(sv_a)
+	print(sv_b)
+	IF (sv_b == "0") THEN
+	#{
+		while(sv_b == 0)
+			CUST.DATA.foracid		= BANCS.OUTPARAM.foracid
+			CUST.DATA.tran_amt		= BANCS.OUTPARAM.tran_amt
+			CUST.DATA.tran_particular	= BANCS.OUTPARAM.tran_particular
+			CUST.DATA.tran_rmks		= BANCS.OUTPARAM.tran_rmks
+			CUST.DATA.part_details	= BANCS.OUTPARAM.part_details
+			CUST.DATA.crncy_code        = BANCS.OUTPARAM.crncy_code
+			CUST.DATA.tran_code	        = BANCS.OUTPARAM.tran_code
+			CUST.DATA.rate		= BANCS.OUTPARAM.rate
+			CUST.DATA.rate_code		= BANCS.OUTPARAM.rate_code
+			CUST.DATA.ref_ccy		= BANCS.OUTPARAM.ref_ccy
+
+			CUST.DATA.Credit_amt = CDOUBLE(CUST.DATA.Credit_amt) + CDOUBLE(CUST.DATA.tran_amt)
+
+			MTT.PartTranDetails.Account             = CUST.DATA.foracid
+			MTT.PartTranDetails.RefAmount           = (cdouble(CUST.DATA.tran_amt))
+			#MTT.PartTranDetails.Amount              = (cdouble(CUST.DATA.tran_amt))
+			MTT.PartTranDetails.RefCurrency         = CUST.DATA.ref_ccy
+			MTT.PartTranDetails.TranCurrency        = CUST.DATA.crncy_code
+			MTT.PartTranDetails.Particulars         = CUST.DATA.tran_particular
+			MTT.PartTranDetails.Remarks             = CUST.DATA.tran_rmks
+			MTT.PartTranDetails.Consolidate         = "N"
+			MTT.PartTranDetails.ValueDate           = CUST.DATA.date_diff
+			MTT.PartTranDetails.TranIdentifier      = "CASHH_TRAN"
+			MTT.PartTranDetails.ParticularsCode	= CUST.DATA.tran_code
+                        MTT.PartTranDetails.RateCode            = CUST.DATA.rate_code
+                        MTT.PartTranDetails.Rate                = CUST.DATA.rate
+                        #MTT.LAAddnlDetails.LoanAcctId           = CUST.DATA.foracid
+                        #MTT.LAAddnlDetails.DemandFlowId         = "COLLC"
+                        #MTT.LAAddnlDetails.OriginOfTran         = "TM"
+                        #MTT.LAAddnlDetails.TypeOfDemand         = "A"
+
+
+			IF (CUST.DATA.part_details != "") THEN
+			#{
+				MTT.PartTranDetails.ACPARTB2kId		= CUST.DATA.part_details
+				MTT.PartTranDetails.ACPARTB2kType	= "ACCNT"
+			#}
+			ENDIF
+
+			print(MTT.PartTranDetails.Account)
+			print(MTT.PartTranDetails.RefAmount)
+			#print(MTT.PartTranDetails.Amount)
+			print(MTT.PartTranDetails.RefCurrency)
+			print(MTT.PartTranDetails.TranCurrency)
+			print(MTT.PartTranDetails.Particulars)
+			print(MTT.PartTranDetails.Remarks)
+			print(MTT.PartTranDetails.Consolidate)
+			print(MTT.PartTranDetails.ValueDate)
+			print(MTT.PartTranDetails.TranIdentifier)
+			print(MTT.PartTranDetails.Rate)
+
+			sv_r = urhk_MTTS_DefinePartTran("CREDIT")
+
+			print(sv_r)
+
+			if (sv_r!=0)then
+				MTT.Error.Description = "Unable to define debit part tran"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				goto END_DEFINITION
+			endif
+
+			#-------------------------------------------------------------------------------------------------------------
+						       # Clear error message
+			#--------------------------------------------------------------------------------------------------------------
+
+					MTT.Error.Description   = ""
+					BANCS.INPUT.TranStatus  = "S"
+			#-------------------------------------------------------------------------------------------------------------
+
+			#---------------End of Credit leg---------------------------------------
+			print(sv_a)
+			sv_b = urhk_dbCursorFetch(sv_a)
+			print(sv_b)
+		do
+	#}
+	ELSE
+	#{
+		MTT.Error.Description ="No Data Found For Cash Handling Charges for the Sol " 
+        	sv_r = urhk_MTTS_ReportErrorCondition("")
+	#}
+	ENDIF
+sv_h = urhk_dbCursorClose(sv_a)
+#}
+endif
+
+print(CUST.DATA.Debit_amt)
+print(CUST.DATA.Credit_amt)
+
+
+sv_r = urhk_MTTS_EndDefinition("CASHH_TRAN")
+
+IF (sv_r!=0) THEN
+#{
+        MTT.Error.Description = "Unable to end definition"
+        sv_r = urhk_MTTS_ReportErrorCondition("")
+        goto END_DEFINITION
+#}	
+ELSE
+#{
+        #PRINT(BANCS.OUTPARAM.MTTTranId)
+#}
+ENDIF
+
+
+END_DEFINATION:
+
+sv_r = system("sleep 2")
+print(sv_r)
+
+sv_u = urhk_MTTS_Close("")
+print(sv_u)
+
+
+exitscript
+end-->
+

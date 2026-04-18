@@ -1,0 +1,377 @@
+<--start
+#trace on
+
+#IF (REPEXISTS("CUST") == 0) THEN
+#{
+ #       CREATEREP("CUST")
+#}
+#ENDIF
+#IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+#{
+  #      CREATECLASS("CUST", "INTERFACE", 5)
+#}
+#ENDIF
+
+#BANCS.INPUT.b2kId = "SC8026775"
+#BANCS.INPUT.b2kType= "ACCNT"
+#BANCS.INPUT.schmType="LAA"
+#BANCS.INPUT.Ovd_SLimit_Flg="B"
+
+#print(BANCS.INPUT.b2kId)
+#print(BANCS.INPUT.b2kType)
+#print(BANCS.INPUT.schmType)
+#print(BANCS.INPUT.Ovd_SLimit_Flg)
+
+# Initializint the OUTPUT variables
+
+CUST.INTERFACE.nonIntOverdueCount = 0
+CUST.INTERFACE.nonIntDmdAmt = 0
+CUST.INTERFACE.nonIntTotAdjAmt = 0
+CUST.INTERFACE.nonIntOverdueDate = ""
+CUST.INTERFACE.notIntOverduePerd = 0
+
+CUST.INTERFACE.intOverdueCount = 0
+CUST.INTERFACE.intOverduePerd = 0
+CUST.INTERFACE.intDmdAmt = 0
+CUST.INTERFACE.intTotAdjAmt = 0
+CUST.INTERFACE.intOverdueDate = 0
+CUST.INTERFACE.firstRephasedDmdDate = ""
+CUST.INTERFACE.nonIntOverdueAmount= 0
+CUST.INTERFACE.intOverdueAmount = 0
+CUST.INTERFACE.dateDiff = 0
+#CUST.INTERFACE.acid =""
+
+
+BANCS.OUTPUT.firstRephasedDmdDate = ""
+BANCS.OUTPUT.numNonIntOverdue = ""
+BANCS.OUTPUT.nonIntOverduePeriod = 0
+BANCS.OUTPUT.nonIntOverdueAmount = ""
+BANCS.OUTPUT.nonIntOverdueDate = ""
+BANCS.OUTPUT.numIntOverdue = ""
+BANCS.OUTPUT.intOverduePeriod = 0
+BANCS.OUTPUT.intOverdueAmount = ""
+BANCS.OUTPUT.intOverdueDate = ""
+BANCS.OUTPUT.laOverFlowAmt = ""
+BANCS.OUTPUT.totOverdueAmount = ""
+BANCS.OUTPARAM.dateDiff = ""
+BANCS.OUTPUT.minSancLimitExpDate = ""
+BANCS.OUTPUT.SucessOrFailure = "S"
+BANCS.OUTPUT.ErrorMsg = ""
+
+#Assigning the varaibles
+
+ 
+ BANCS.INPARAM.b2kId=CUST.INTERFACE.acid 
+ print (BANCS.INPARAM.b2kId)
+#BANCS.INPARAM.BINDVARS = CUST.INTERFACE.acid
+CUST.INTERFACE.b2kType= "ACCNT"
+#CUST.INTERFACE.b2kType = BANCS.INPARAM.b2kType
+CUST.INTERFACE.schmType ="LAA"
+BANCS.INPARAM.schmType = CUST.INTERFACE.schmType
+CUST.INTERFACE.Ovd_SLimit_Flg ="O"
+
+# Validation the scheme
+sv_q = "maxPendDmdDate,idmdOvduEomFlg,pdmdOvduEomFlg,repShdlNum,oFlowAmt,dmdsatisfymthd|"
+sv_q = sv_q + " SELECT MAX_PENDING_DMD_DATE,IDMD_OVDU_EOM_FLG,PDMD_OVDU_EOM_FLG,REP_SHDL_NUM , OFLOW_AMT ,DMD_SATISFY_MTHD "
+sv_q = sv_q + " FROM TBAADM.LAM WHERE ENTITY_CRE_FLG = ?SVAR"
+sv_q = sv_q + " AND DEL_FLG = ?SVAR "
+sv_q = sv_q + " AND ACID = ?SVAR "
+sv_q = sv_q + " AND BANK_ID = ?SVAR "
+print(sv_q)
+
+BANCS.INPARAM.BINDVARS = "Y|N|" + CUST.INTERFACE.acid + "|" + BANCS.STDIN.contextBankId
+
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbSelectWithBind(sv_q)
+print(sv_e)
+
+IF(sv_e != 0) THEN
+#{
+	BANCS.OUTPUT.SucessOrFailure = "F"
+	BANCS.OUTPUT.ErrorMsg = "Loan Account doesnot exist"
+	GOTO ERROREXIT
+#}
+ENDIF
+
+CUST.INTERFACE.maxPendDmdDat = BANCS.OUTPARAM.maxPendDmdDate
+CUST.INTERFACE.idmdOvduEomFlg = BANCS.OUTPARAM.idmdOvduEomFlg
+CUST.INTERFACE.pdmdOvduEomFlg = BANCS.OUTPARAM.pdmdOvduEomFlg
+CUST.INTERFACE.repShdlNum = BANCS.OUTPARAM.repShdlNum
+CUST.INTERFACE.oFlowAmt = BANCS.OUTPARAM.oFlowAmt
+CUST.INTERFACE.dmdsatisfymthd = BANCS.OUTPARAM.dmdsatisfymthd
+print(CUST.INTERFACE.dmdsatisfymthd)
+
+print(CUST.INTERFACE.maxPendDmdDat)
+
+IF(TRIM(CUST.INTERFACE.maxPendDmdDat) == "")THEN
+#{
+	BANCS.OUTPUT.SucessOrFailure = "F"
+	BANCS.OUTPUT.ErrorMsg = "Max pending demand date is null"
+	GOTO ERROREXIT
+#}
+ENDIF
+
+IF((CUST.INTERFACE.Ovd_SLimit_Flg != "O") AND (CUST.INTERFACE.Ovd_SLimit_Flg != "B"))THEN
+#{
+	BANCS.OUTPUT.SucessOrFailure = "F"
+	BANCS.OUTPUT.ErrorMsg = "Ovd_SLimit_Flg is not equal to O or B"
+	GOTO ERROREXIT
+#}
+ENDIF
+
+# Select from LDT
+sv_q = "shdl_num,dmd_flow_id,dmd_date,dmd_srl_num,dmd_ovdu_date|"
+sv_q = sv_q + " SELECT SHDL_NUM,DMD_FLOW_ID,DMD_DATE,DMD_SRL_NUM,DMD_OVDU_DATE FROM TBAADM.LDT WHERE "
+sv_q = sv_q + " DEL_FLG = ?SVAR "
+sv_q = sv_q + " AND ACID = ?SVAR "
+#sv_q = sv_q + " AND BOD_DATE = to_date(?SVAR,'DD-MM-YYYY HH24:MI:SS') "
+sv_q = sv_q + " AND BANK_ID = ?SVAR "
+
+
+sv_q = "acid,dmdFlowId,dmdData,dmdEffDate,dmdOvduDate,shdlNum,dmdSrlNum,dmdAmt,totAdjAmt,dmdType|"
+sv_q = sv_q + " SELECT LDT.ACID ,"
+sv_q = sv_q + " LDT.DMD_FLOW_ID,"
+sv_q = sv_q + " TO_CHAR(LDT.DMD_DATE, 'DD-MM-YYYY HH24:MI:SS') ,"
+sv_q = sv_q + " TO_CHAR(LDT.DMD_EFF_DATE,'DD-MM-YYYY HH24:MI:SS'),"
+sv_q = sv_q + " TO_CHAR(LDT.DMD_OVDU_DATE,'DD-MM-YYYY HH24:MI:SS'),"
+sv_q = sv_q + " LDT.SHDL_NUM , "
+sv_q = sv_q + " LDT.DMD_SRL_NUM, "
+sv_q = sv_q + " LDT.DMD_AMT , "
+sv_q = sv_q + " LDT.TOT_ADJ_AMT, "
+sv_q = sv_q + " LFM.DMD_TYPE "
+sv_q = sv_q + " FROM TBAADM.LDT,TBAADM.LFM "
+sv_q = sv_q + " WHERE"
+sv_q = sv_q + " LDT.BANK_ID= ?SVAR AND "
+sv_q = sv_q + " LFM.BANK_ID=?SVAR AND "
+sv_q = sv_q + " LDT.ACID = ?SVAR "
+sv_q = sv_q + " AND LDT.SHDL_NUM = ?SVAR "
+sv_q = sv_q + " AND LDT.DMD_EFF_DATE <= TO_DATE(?SVAR,'DD-MM-YYYY HH24:MI:SS')"
+sv_q = sv_q + " AND LDT.DEL_FLG != 'Y' "
+sv_q = sv_q + " AND LDT.DMD_FLOW_ID = LFM.FLOW_ID "
+sv_q = sv_q + " AND LDT.DMD_AMT != TOT_ADJ_AMT"
+
+print(sv_q)
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.acid 
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.repShdlNum + "|" + BANCS.STDIN.BODDate
+
+#BANCS.INPARAM.BINDVARS = "N|" + CUST.INTERFACE.acid + "|" +  BANCS.STDIN.contextBankId
+
+lv_c = urhk_dbCursorOpenWithBind(sv_q)
+PRINT(lv_c)
+IF(lv_c != 0)THEN
+#{
+        BANCS.OUTPUT.SucessOrFailure = "F"
+        BANCS.OUTPUT.ErrorMsg = "No Demands generated"
+        GOTO ERROREXIT
+#}
+ENDIF
+sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+PRINT(sv_n)
+sv_f = urhk_dbCursorFetch(sv_n)
+PRINT(sv_f)
+sv_i = 1
+WHILE(sv_f == 0)
+#{
+
+	print(BANCS.OUTPARAM.dmdFlowId)
+
+	CUST.INTERFACE.dmdFlowId = BANCS.OUTPARAM.dmdFlowId
+	CUST.INTERFACE.dmdOvduDate = BANCS.OUTPARAM.dmdOvduDate
+	CUST.INTERFACE.dmdAmt = BANCS.OUTPARAM.dmdAmt
+	CUST.INTERFACE.totAdjAmt =  BANCS.OUTPARAM.totAdjAmt
+
+
+
+	sv_q = "dmdTypeInd|select DMD_TYPE from tbaadm.LFM "
+	sv_q = sv_q + " where FLOW_ID = ?SVAR "
+	sv_q = sv_q + " AND DEL_FLG = 'N' "
+	sv_q = sv_q + " AND BANK_ID = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.OUTPARAM.dmdFlowId + "|" + BANCS.STDIN.contextBankId
+	
+	sv_e = urhk_dbSelectWithBind(sv_q)
+	print(sv_e)
+
+	IF(sv_e != 0) THEN
+	#{
+		BANCS.OUTPUT.SucessOrFailure = "F"
+		BANCS.OUTPUT.ErrorMsg = "Flow id is not able to derive"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	CUST.INTERFACE.dmdTypeInd = BANCS.OUTPARAM.dmdTypeInd
+	print(CUST.INTERFACE.dmdTypeInd)
+	print(CUST.INTERFACE.idmdOvduEomFlg)
+
+	IF(((CUST.INTERFACE.idmdOvduEomFlg == "Y") AND (CUST.INTERFACE.dmdTypeInd == "I" )) OR ((CUST.INTERFACE.pdmdOvduEomFlg == "Y") AND (CUST.INTERFACE.dmdTypeInd != "I" )))THEN
+	#{
+		sv_q = "lastDay| SELECT TO_CHAR(LAST_DAY(" + CUST.INTERFACE.dmdOvduDate + "),'DD-MM-YYYY') FROM DUAL"
+		sv_e = urhk_dbSelectWithBind(sv_q)
+		print(sv_e)
+
+		IF(sv_e != 0) THEN
+		#{
+			BANCS.OUTPUT.SucessOrFailure = "F"
+			BANCS.OUTPUT.ErrorMsg = "Flow id is not able to derive"
+			GOTO ERROREXIT
+		#}
+		ENDIF
+
+		CUST.INTERFACE.lastDay = BANCS.OUTPARAM.lastDay
+		CUST.INTERFACE.dmdOvduDate = CUST.INTERFACE.lastDay
+	#}
+	ENDIF
+
+	IF(CUST.INTERFACE.dmdTypeInd == "I")THEN
+	#{
+	
+		IF(TRIM(CUST.INTERFACE.dmdOvduDate) != "" )THEN
+		#{
+			BANCS.INPARAM.date2=CUST.INTERFACE.dmdOvduDate
+			BANCS.INPARAM.date1=BANCS.STDIN.BODDate
+
+			print(BANCS.INPARAM.date1)
+			print(BANCS.INPARAM.date2)
+			sv_j=urhk_B2k_dateDiff("")
+			sv_k=BANCS.OUTPARAM.dateDiff
+			print(sv_k)
+
+			IF (sv_k > 0)THEN
+			#{
+				if(sv_k > CINT(CUST.INTERFACE.intOverduePerd))THEN
+				#{
+					CUST.INTERFACE.intOverduePerd = CINT(sv_k) + 1
+					CUST.INTERFACE.intOverdueDate = CUST.INTERFACE.dmdOvduDate 
+				#}
+				ENDIF
+				CUST.INTERFACE.intDmdAmt = CDOUBLE(CUST.INTERFACE.intDmdAmt) + CDOUBLE(CUST.INTERFACE.dmdAmt)
+				CUST.INTERFACE.intTotAdjAmt = CDOUBLE(CUST.INTERFACE.intTotAdjAmt) + CDOUBLE(CUST.INTERFACE.totAdjAmt)
+				CUST.INTERFACE.intOverdueCount = CINT(CUST.INTERFACE.intOverdueCount) + 1
+			
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	#}
+	ELSE
+	#{
+
+                IF(TRIM(CUST.INTERFACE.dmdOvduDate) != "" )THEN
+                #{
+                        BANCS.INPARAM.date2=CUST.INTERFACE.dmdOvduDate
+                        BANCS.INPARAM.date1=BANCS.STDIN.BODDate
+
+                        print(BANCS.INPARAM.date1)
+                        print(BANCS.INPARAM.date2)
+                        sv_j=urhk_B2k_dateDiff("")
+                        sv_k=BANCS.OUTPARAM.dateDiff
+                        print(sv_k)
+
+                        IF (sv_k > 0)THEN
+                        #{
+				IF(sv_k > CINT(CUST.INTERFACE.notIntOverduePerd))THEN
+				#{
+					CUST.INTERFACE.notIntOverduePerd = CINT(sv_k) + 1
+					CUST.INTERFACE.nonIntOverdueDate = CUST.INTERFACE.dmdOvduDate	
+				#}
+				ENDIF
+				print(CUST.INTERFACE.dmdAmt)
+				print(CUST.INTERFACE.nonIntDmdAmt)
+				print(CUST.INTERFACE.totAdjAmt)
+				print(CUST.INTERFACE.nonIntTotAdjAmt)
+                                CUST.INTERFACE.nonIntDmdAmt = CDOUBLE(CUST.INTERFACE.nonIntDmdAmt) + CDOUBLE(CUST.INTERFACE.dmdAmt)
+				print(CUST.INTERFACE.nonIntDmdAmt)
+                                CUST.INTERFACE.nonIntTotAdjAmt = CDOUBLE(CUST.INTERFACE.nonIntTotAdjAmt) + CDOUBLE(CUST.INTERFACE.totAdjAmt)
+				print(CUST.INTERFACE.nonIntTotAdjAmt)
+                                CUST.INTERFACE.nonIntOverdueCount = CINT(CUST.INTERFACE.nonIntOverdueCount) +1 
+			#}
+			ENDIF
+
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	sv_i = sv_i + 1
+	sv_f = urhk_dbCursorFetch(sv_n)
+	PRINT(sv_f)
+
+#}
+DO
+lv_c = urhk_dbCursorClose(sv_n)
+PRINT(lv_c)
+IF(CUST.INTERFACE.repShdlNum != "01")THEN
+#{
+	CUST.INTERFACE.rephasedFlg = "Y"
+	sv_q = "flowStartDate|SELECT TO_CHAR(MIN(FLOW_START_DATE),'DD-MM-YYYY HH24:MI:SS') "
+	sv_q = sv_q + " FROM TBAADM.LRS WHERE "
+	sv_q = sv_q + " LRS.BANK_ID = ?SVAR " 
+	sv_q = sv_q + " and LRS.ACID = ?SVAR " 
+	sv_q = sv_q + " and LRS.SHDL_NUM = ?SVAR " 
+	sv_q = sv_q + " and LRS.DEL_FLG != 'Y' " 
+	sv_q = sv_q + " and LRS.ENTITY_CRE_FLG = 'Y' " 
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.acid + "|" + CUST.INTERFACE.repShdlNum
+
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbSelectWithBind(sv_q)
+	print(sv_e)
+
+	IF(sv_e != 0) THEN
+	#{
+		BANCS.OUTPUT.SucessOrFailure = "F"
+		BANCS.OUTPUT.ErrorMsg = "first rephasement flag is not able to derive"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	CUST.INTERFACE.firstRephasedDmdDate = BANCS.OUTPARAM.flowStartDate
+
+#}
+ENDIF
+
+
+BANCS.OUTPUT.firstRephasedDmdDate = CUST.INTERFACE.firstRephasedDmdDate
+BANCS.OUTPUT.numNonIntOverdue = CUST.INTERFACE.nonIntOverdueCount
+BANCS.OUTPUT.nonIntOverduePeriod = CUST.INTERFACE.notIntOverduePerd
+BANCS.OUTPUT.nonIntOverdueAmount = CDOUBLE(CUST.INTERFACE.nonIntDmdAmt) - CDOUBLE(CUST.INTERFACE.nonIntTotAdjAmt)
+BANCS.OUTPUT.nonIntOverdueDate = CUST.INTERFACE.nonIntOverdueDate
+BANCS.OUTPUT.numIntOverdue = CUST.INTERFACE.intOverdueCount
+BANCS.OUTPUT.intOverduePeriod = CUST.INTERFACE.intOverduePerd
+BANCS.OUTPUT.intOverdueAmount =  CDOUBLE(CUST.INTERFACE.intDmdAmt) - CDOUBLE(CUST.INTERFACE.intTotAdjAmt)
+BANCS.OUTPUT.intOverdueDate = CUST.INTERFACE.intOverdueDate 
+BANCS.OUTPUT.laOverFlowAmt = CUST.INTERFACE.oFlowAmt
+BANCS.OUTPUT.totOverdueAmount = CDOUBLE(BANCS.OUTPUT.nonIntOverdueAmount)+ CDOUBLE(BANCS.OUTPUT.intOverdueAmount)
+BANCS.OUTPARAM.dateDiff = CUST.INTERFACE.dateDiff
+BANCS.OUTPUT.minSancLimitExpDate = ""
+BANCS.OUTPUT.SucessOrFailure = "S"
+BANCS.OUTPUT.ErrorMsg = ""
+CUST.INTERFACE.dateArr = BANCS.OUTPUT.intOverduePeriod
+
+
+
+print(BANCS.OUTPUT.firstRephasedDmdDate)
+print(BANCS.OUTPUT.numNonIntOverdue)
+print(BANCS.OUTPUT.nonIntOverduePeriod)
+print(BANCS.OUTPUT.nonIntOverdueAmount)
+print(BANCS.OUTPUT.nonIntOverdueDate)
+print(BANCS.OUTPUT.numIntOverdue)
+print(BANCS.OUTPUT.intOverduePeriod)
+print(BANCS.OUTPUT.intOverdueAmount)
+print(BANCS.OUTPUT.intOverdueDate)
+print(BANCS.OUTPUT.laOverFlowAmt)
+print(BANCS.OUTPUT.totOverdueAmount)
+print(BANCS.OUTPARAM.dateDiff)
+print(BANCS.OUTPUT.minSancLimitExpDate)
+print(BANCS.OUTPUT.SucessOrFailure)
+print(BANCS.OUTPUT.ErrorMsg)
+
+
+ERROREXIT:
+
+EXITSCRIPT
+trace off
+end-->

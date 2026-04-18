@@ -1,0 +1,1711 @@
+#----------------------------------------------------------------------------------------------------------------
+#    Name               : pspmn001.scr
+#    Description        : This script will generate the custom list file for HPSP report
+#    Date               : 22-07-2013
+#    Author             : Nithya Murugesan
+#    Input              : acctNum,bankName,branchName,schm_desc,acctDateRange,extn_desc
+#    Output             : It gives the pass sheet printing report
+#    Called Script      : NA
+#    Calling Script     : pspfull1.mrt
+#    Menu Option        :
+#    Srl. No        Date            Author          Description.
+#    -------        ----            ------          ----------------
+#    1.0          22-07-2013      Nithya Murugesan  Original Version.
+#    2.0          02-08-2013      Vijaya V			Added bank id conditions/modified queries
+#	 3.0		  12-08-2013	  Vijaya V			Changed report title TOL-366708
+#	 4.0		  19-08-2013	  Vijaya V			for TOL - 367235
+#----------------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="3786283f117dc9155dafe21f38b0eb703de2a891d567f3f35bfcf89d02dd280a"
+	TRACE ON
+	LIBNAME CUSTOMSO
+	
+	#================================================
+	# Repository creation
+	#================================================
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	#================================================
+	# Fetching fromdate from env variable
+	#================================================
+	sv_r = urhk_getEnv("PSP")
+	CUST.DATA.date1=""
+	IF ((sv_r == 0) AND ((BANCS.OUTPARAM.envValue) != "")) THEN
+	#{
+		print(BANCS.OUTPARAM.envValue)
+		CUST.DATA.date1 = BANCS.OUTPARAM.envValue
+		#}
+	ELSE
+		#{
+		CUST.DATA.date1 = "01" + MID$(BANCS.STDIN.BODDate,2,8)
+		print(CUST.DATA.date1)
+	#}
+	ENDIF
+	
+	#================================================
+	# Fetching input values from mrt
+	#================================================
+	CUST.DATA.acctNum		= BANCS.INPUT.acctNum
+	print(CUST.DATA.acctNum)
+	CUST.DATA.page_number	= BANCS.INPUT.page_number
+	print(CUST.DATA.page_number)
+	CUST.DATA.pr_station	= BANCS.INPUT.pr_station
+	print(CUST.DATA.pr_station)
+	CUST.DATA.email_post_ind= BANCS.INPUT.email_post_ind
+	print(CUST.DATA.email_post_ind)
+	CUST.DATA.acct_name		= BANCS.INPUT.acct_name
+	print(CUST.DATA.acct_name)
+	CUST.DATA.acct_crncy_code= BANCS.INPUT.acct_crncy_code
+	print(CUST.DATA.acct_crncy_code)
+	CUST.DATA.pin_code		= BANCS.INPUT.prefer_pin_code
+	print(CUST.DATA.pin_code)
+	CUST.DATA.city_desc		= BANCS.INPUT.city_desc
+	print(CUST.DATA.city_desc)
+	CUST.DATA.prefer_email_id= BANCS.INPUT.prefer_email_id
+	print(CUST.DATA.prefer_email_id)
+	CUST.DATA.despatch_mode	= BANCS.INPUT.despatch_mode
+	print(CUST.DATA.despatch_mode)
+	CUST.DATA.srl_num		= BANCS.INPUT.srl_num
+	print(CUST.DATA.srl_num)
+	CUST.DATA.CR_TRAN_AMT 	= ""
+	CUST.DATA.DR_TRAN_AMT 	= ""
+	
+	
+	#================================================
+	# Replacing single quotes with space
+	#================================================
+	sv_s = "acct_name,city_desc|select replace(q'["+CUST.DATA.acct_name+"]',q'[']',q'[ ]'), replace(q'["+CUST.DATA.city_desc+"]',q'[']',q'[ ]')  from dual"
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	IF(sv_r == 0) THEN
+	#{
+		CUST.DATA.acct_name = BANCS.OUTPARAM.acct_name
+		print(CUST.DATA.acct_name)
+		CUST.DATA.city_desc = BANCS.OUTPARAM.city_desc
+		print(CUST.DATA.city_desc)
+	#}
+	ENDIF
+	
+	#================================================
+	# Finding fromdate and todate
+	#================================================
+	sv_s = "tstamp|SELECT TO_CHAR(sysdate,'DDMMYYHH24MISS') FROM DUAL"
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	CUST.DATA.tstamp 	= BANCS.OUTPARAM.tstamp
+	CUST.DATA.fromDate 	= MID$(BANCS.INPUT.acctDateRange,0,10)
+	CUST.DATA.toDate 	= MID$(BANCS.INPUT.acctDateRange,14,23)
+	print(CUST.DATA.fromDate)
+	print(CUST.DATA.toDate)
+	
+	sv_a = urhk_B2K_PrintRepos("BANCS")
+	print(sv_a)
+	
+	IF(CUST.DATA.date1 != "") THEN
+	#{
+		CUST.DATA.fromDate = CUST.DATA.date1
+		print(CUST.DATA.fromDate)
+		CUST.DATA.acctDateRange = CUST.DATA.fromDate + " to " + CUST.DATA.toDate
+	#}
+	ENDIF
+	
+	#================================================
+	# Finding process id
+	#================================================
+	sv_p = urhk_B2k_PID("")
+	IF(sv_p == 0 ) THEN
+	#{
+		CUST.DATA.Rpid = "psp_"+TRIM(BANCS.OUTPARAM.PID)+".log"
+		print(CUST.DATA.Rpid)
+		#}
+	ELSE
+		#{
+		CUST.DATA.Rpid = "123"
+		print(CUST.DATA.Rpid)
+	#}
+	ENDIF
+	
+	#================================================
+	# Calling com file to write product rpt into temp file
+	#================================================
+	sv_x = urhk_getFileLocation("COM|psp.com")
+	print(sv_x)
+	print(BANCS.OUTPARAM.fileLocation)
+	CUST.DATA.comPath = BANCS.OUTPARAM.fileLocation + "psp.com"
+	CUST.DATA.comPath = CUST.DATA.comPath + " " + CUST.DATA.Rpid
+	CUST.DATA.temp = CUST.DATA.comPath
+	print(CUST.DATA.temp)
+	sv_r = SYSTEM(CUST.DATA.temp)
+	BANCS.OUTPUT.success = "S"
+	
+	#================================================
+	# Reading temp file and getting porduct rpt filename
+	#================================================
+	sv_r = urhk_getEnv("TBA_PROD_ROOT")
+	sv_a = BANCS.OUTPARAM.envValue
+	print(sv_a)
+	CUST.DATA.filePath =  sv_a + "/" + "CDCI_LOGS" + "/" + BANCS.STDIN.userId + "/"
+	CUST.DATA.fileName = CUST.DATA.Rpid
+	print(CUST.DATA.fileName)
+	sv_t = urtn_fileOpen(CUST.DATA.fileName+"|r")
+	print(sv_t)
+	CUST.DATA.index = sv_t
+	print(CUST.DATA.index)
+	sv_t = urtn_fileRead(CUST.DATA.index + "|CUST.DATA.record")
+	print(sv_t)
+	print(CUST.DATA.record)
+	CUST.DATA.EMLpath=CUST.DATA.record
+	print(CUST.DATA.EMLpath)
+	CUST.DATA.record = RIGHT$(CUST.DATA.record,16)
+	print(CUST.DATA.record)
+	sv_u = urtn_fileClose(CUST.DATA.index)
+	
+	###############################################################################
+	# Getting the report list path
+	###############################################################################
+	CUST.DATA.sucRptName = "TMP" + CUST.DATA.tstamp
+	print(CUST.DATA.sucRptName)
+	CUST.DATA.emailTmpFile = "EML" + CUST.DATA.tstamp + ".RPT"
+	CUST.DATA.emailTmpFile1 = "EMLT" + CUST.DATA.tstamp + ".RPT"
+	print(CUST.DATA.emailTmpFile)
+	CUST.DATA.reportName = CUST.DATA.record
+	sv_s = urhk_getEnv("FIN_REPORTS_DIR")
+	print(sv_s)
+	sv_t = BANCS.OUTPARAM.envValue
+	print(sv_t)
+	sv_s = urhk_getEnv("ESTATEMENT_PATH")
+	print(sv_s)
+	CUST.DATA.eStatementPath = BANCS.OUTPARAM.envValue
+	print(CUST.DATA.eStatementPath)
+	CUST.DATA.listName = sv_t
+	CUST.DATA.listPath = CUST.DATA.listName+"/"+BANCS.STDIN.userId+"/"+CUST.DATA.reportName
+	print(CUST.DATA.listPath)
+	
+	CUST.DATA.tmpfile1 = "tempPsp.lst"
+	sv_l = "touch " + CUST.DATA.tmpfile1
+	print(sv_l)
+	sv_t = SYSTEM(sv_l)
+	print(sv_t)
+	CUST.DATA.tmpfile = CUST.DATA.listName+"/"+BANCS.STDIN.userId+"/"+"tempPsp.lst"
+	print(CUST.DATA.tmpfile)
+	IF(FIELDEXISTS(BANCS.INPUT.fileoutput))THEN
+	#{
+		IF(BANCS.INPUT.fileoutput != "")THEN
+		#{
+			sv_i = "cp " + '"' + BANCS.INPUT.fileoutput + '"' + " " +  '"' + CUST.DATA.tmpfile  + '"'
+			print(sv_i)
+			sv_c = SYSTEM(sv_i)
+			print(sv_c)
+			#}
+		ELSE
+			#{
+			sv_i = "cp " + '"' + CUST.DATA.listPath + '"' + " " +  '"' + CUST.DATA.tmpfile  + '"'
+			print(sv_i)
+			sv_c = SYSTEM(sv_i)
+			print(sv_c)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_i = "cp " + '"' + CUST.DATA.listPath + '"' + " " +  '"' + CUST.DATA.tmpfile  + '"'
+		print(sv_i)
+		sv_c = SYSTEM(sv_i)
+		print(sv_c)
+	#}
+	ENDIF
+	sv_i = "rm -f "+CUST.DATA.listPath
+	sv_c = SYSTEM(sv_i)
+	print(sv_c)
+	sv_l = "touch " + CUST.DATA.listPath
+	print(sv_l)
+	sv_t = SYSTEM(sv_l)
+	print(sv_t)
+	sv_a = "rm -f "+CUST.DATA.fileName
+	sv_c = SYSTEM(sv_a)
+	print(sv_a)
+	CUST.DATA.sucRptList = CUST.DATA.listPath
+	CUST.DATA.sucRptNamePath =CUST.DATA.listName+"/"+BANCS.STDIN.userId+"/"+ "TMP" + CUST.DATA.tstamp + ".rpt"
+	print(CUST.DATA.sucRptName)
+	CUST.DATA.sucRptTitle = "Statement Of Accounts Report - Final"
+	
+	#######################################################################################
+	#  Finding customer address details
+	#######################################################################################
+	sv_g = "custCif,ibanNum|select cif_id,iban_number "
+	sv_g = sv_g + " from tbaadm.gam "
+	sv_g = sv_g + " where gam.foracid = ?SVAR"
+	sv_g = sv_g + " AND gam.bank_id = ?SVAR"
+	print(sv_g)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.acctNum + "|" + BANCS.STDIN.contextBankId
+	
+	sv_d = urhk_dbSelectWithBind(sv_g)
+	print(sv_d)
+	IF(sv_d == 0) THEN
+	#{
+		CUST.DATA.custCif = BANCS.OUTPARAM.custCif
+		print(CUST.DATA.custCif)
+		CUST.DATA.ibanNum =  BANCS.OUTPARAM.ibanNum
+		PRINT(CUST.DATA.ibanNum)
+		#}
+	ELSE
+		#{
+		CUST.DATA.custCif = ""
+		print(CUST.DATA.custCif)
+	#}
+	ENDIF
+	
+	sv_g = "custAddr,custPin,custName|select cnma.address1,cnma.pin_code,name "
+	sv_g = sv_g + " from tbaadm.cnma,tbaadm.gct"
+	sv_g = sv_g + " where cnma.bank_id = gct.bank_id"
+	sv_g = sv_g + " AND cnma.addr_b2kid = ?SVAR"
+	sv_g = sv_g + " AND gct.db_stat_date between cnma.start_date AND cnma.end_date"
+	sv_g = sv_g + " AND cnma.preferredaddress = 'Y'"
+	sv_g = sv_g + " AND cnma.bank_id = ?SVAR"
+	print(sv_g)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.custCif + "|" + BANCS.STDIN.contextBankId
+	
+	sv_d = urhk_dbSelectWithBind(sv_g)
+	print(sv_d)
+	IF(sv_d == 0) THEN
+	#{
+		CUST.DATA.custAddr = BANCS.OUTPARAM.custAddr
+		print(CUST.DATA.custAddr)
+		CUST.DATA.custPin = BANCS.OUTPARAM.custPin
+		print(CUST.DATA.custPin)
+		CUST.DATA.custName = BANCS.OUTPARAM.custName
+		print(CUST.DATA.custName)
+		#}
+	ELSE
+		#{
+		CUST.DATA.custAddr = ""
+		print(CUST.DATA.custAddr)
+		CUST.DATA.custPin = ""
+		print(CUST.DATA.custPin)
+		CUST.DATA.custName = ""
+		print(CUST.DATA.custName)
+	#}
+	ENDIF
+	
+	IF((BANCS.STDIN.batchExecutingForDate == "") AND (BANCS.STDIN.moduleIdentity== "USER")) THEN
+	#{
+		CUST.DATA.mrtFileName = "pspfull1cust.mrt"
+		#######################################################################################
+		#  added for balace brought forward
+		#######################################################################################
+		sv_a = "fDate,bfDate|SELECT  TO_CHAR((TO_DATE('"+CUST.DATA.date1+"','DD-MM-YYYY')-1),'DD-MON-YYYY'),"
+		sv_a = sv_a + " TO_CHAR((TO_DATE('"+CUST.DATA.date1+"','DD-MM-YYYY')-1),'DD-MM-YYYY') from dual"
+		sv_d = urhk_dbSelectWithBind(sv_a)
+		print(BANCS.OUTPARAM.fDate)
+		CUST.DATA.fDate = BANCS.OUTPARAM.fDate
+		print(BANCS.OUTPARAM.bfDate)
+		CUST.DATA.bfDate = BANCS.OUTPARAM.bfDate
+		
+		CUST.DATA.BAL_AMT = ""
+		sv_o = urhk_B2k_ForacidToAcid(CUST.DATA.acctNum)
+		CUST.DATA.ACID = BANCS.OUTPARAM.Acid
+		print(CUST.DATA.ACID)
+		CUST.DATA.bankId = BANCS.STDIN.contextBankId
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.bankId + "|" + CUST.DATA.ACID + "|" + CUST.DATA.fDate
+		sv_s = "BFamt| select tbaadm.commonpackage.eabBal(?SVAR,?SVAR,?SVAR)"
+		sv_s = sv_s + " from DUAL"
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		
+		IF(sv_d != 0) THEN
+		#{
+			print("Query execution failed")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.DATA.BAL_AMT = BANCS.OUTPARAM.BFamt
+		print(CUST.DATA.BAL_AMT)
+		IF(CDOUBLE(CUST.DATA.BAL_AMT) > 0) THEN
+		#{
+			CUST.DATA.CR_TRAN_AMT = CUST.DATA.BAL_AMT
+			CUST.DATA.CR_TRAN_AMT = FORMAT$(CDOUBLE(CUST.DATA.CR_TRAN_AMT),"%.2f")
+			#}
+		ELSE
+			#{
+			CUST.DATA.DR_TRAN_AMT = CDOUBLE(CUST.DATA.BAL_AMT) * CDOUBLE("-1")
+			CUST.DATA.DR_TRAN_AMT = FORMAT$(CDOUBLE(CUST.DATA.DR_TRAN_AMT),"%.2f")
+		#}
+		ENDIF
+		
+		#######################################################################################
+		#  Forming the records as per list file
+		#######################################################################################
+		sv_l = "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "B/F.|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"	
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.bfDate+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		#sv_l = sv_l + CUST.DATA.CR_TRAN_AMT+"|"
+		sv_l = sv_l + "|"
+		#sv_l = sv_l + CUST.DATA.DR_TRAN_AMT+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + BANCS.INPUT.extn_desc+"|"
+		sv_l = sv_l + BANCS.INPUT.bankName+"|"
+		sv_l = sv_l + BANCS.INPUT.branchName+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + BANCS.INPUT.schm_desc+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + BANCS.INPUT.acctDateRange+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"	
+		sv_l = sv_l + "|"
+		#sv_l = sv_l + BANCS.INPUT.acctNum+"|"
+		sv_l = sv_l + CUST.DATA.ibanNum+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.acct_name+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.BAL_AMT+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.despatch_mode+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.srl_num+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.pin_code+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + CUST.DATA.prefer_email_id+"|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+		sv_l = sv_l + "|"
+
+sv_l = sv_l + "|"
+sv_l = sv_l + "|"
+sv_l = sv_l + "|"
+
+		CUST.DATA.custRecord = sv_l
+		print(sv_l)
+		
+		#########################################################################################
+		# Moving the records to the list file
+		#########################################################################################
+		CUST.DATA.lstName= CUST.DATA.listPath
+		print(CUST.DATA.lstName)
+		CUST.DATA.recordList=sv_l
+		sv_i = "echo " + '"' + CUST.DATA.recordList + '"' + ">>" + CUST.DATA.lstName
+		sv_p = SYSTEM(sv_i)
+		print(sv_p)
+		
+		########################################################################################
+		# Checking if from date lies before Migration Date
+		########################################################################################
+		sv_g = "coDate|SELECT parameter_value FROM CUSTOM.C_CPVALUE , CUSTOM.C_CPMASTER"
+		sv_g = sv_g + " WHERE "
+		sv_g = sv_g + " C_CPMASTER.bank_id = C_CPVALUE.bank_id  AND "
+		sv_g = sv_g + " C_CPMASTER.module_name = C_CPVALUE.module_name  AND "
+		sv_g = sv_g + " C_CPMASTER.parameter_id = C_CPVALUE.parameter_id AND "
+		sv_g = sv_g + " C_CPVALUE.del_flg != 'Y' AND "
+		sv_g = sv_g + " C_CPVALUE.entity_cre_flg = 'Y' AND "
+		sv_g = sv_g + " C_CPMASTER.bank_id = ?SVAR AND "
+		sv_g = sv_g + " C_CPMASTER.module_name = 'GENERAL' AND "
+		sv_g = sv_g + " C_CPVALUE.parameter_id = 'CUT_OVER_DATE' "
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		
+		sv_d = urhk_dbSelectWithBind(sv_g)
+		print(sv_d)
+		
+		IF(sv_d == 0) THEN
+		#{
+			print(BANCS.OUTPARAM.coDate)
+			CUST.DATA.coDate = BANCS.OUTPARAM.coDate
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.date1 = CUST.DATA.fromDate
+		BANCS.INPARAM.date2 = CUST.DATA.coDate
+		sv_u = urhk_B2k_dateDiff("")
+		
+		IF (sv_u == 0) THEN
+		#{
+			print(BANCS.OUTPARAM.dateDiff)
+			
+			IF (BANCS.OUTPARAM.dateDiff < 0) THEN
+			#{
+				####################REPORT################################
+				# Getting the Account balance amount
+				##########################################################
+				sv_o = urhk_B2k_ForacidToAcid(CUST.DATA.acctNum)
+				CUST.DATA.ACID = BANCS.OUTPARAM.Acid
+				print(CUST.DATA.ACID)
+				CUST.DATA.bankId = BANCS.STDIN.contextBankId
+				
+				###################################################################
+				# Getting the transaction details from C_HTD for the particular a/c
+				####################################################################
+				sv_o = urhk_B2k_ForacidToAcid(CUST.DATA.acctNum)
+				CUST.DATA.ACID = BANCS.OUTPARAM.Acid
+				print(CUST.DATA.ACID)
+				BANCS.INPARAM.BINDVARS = CUST.DATA.ACID + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.fromDate +"|"+ CUST.DATA.coDate
+				
+				sv_s = "PSTD_DATE,TRAN_DATE,VALUE_DATE,TRAN_AMT,TRAN_PARTICULAR,PART_TRAN_TYPE,GL_DATE,GL_DATE_DDMMYYYY,PSTD_TIME,tranId,partTranSrlNo|Select "
+				sv_s = sv_s + "TO_CHAR(PSTD_DATE,'DD-MM-YYYY'),"
+				sv_s = sv_s + "TO_CHAR(TRAN_DATE,'DD-MM-YYYY'),"
+				sv_s = sv_s + "TO_CHAR(VALUE_DATE,'DD-MM-YYYY'),"
+				sv_s = sv_s + "TRAN_AMT,"
+				sv_s = sv_s + "TRAN_PARTICULAR,"
+				sv_s = sv_s + "PART_TRAN_TYPE,"
+				sv_s = sv_s + " TO_CHAR(GL_DATE,'YYYY-MM-DD'), "
+				sv_s = sv_s + " TO_CHAR(GL_DATE,'DD-MM-YYYY'), "
+				sv_s = sv_s + " TO_CHAR(PSTD_DATE,'YYYY-MM-DDHH24:MI:SS'), "
+				sv_s = sv_s + " tran_id, "
+				sv_s = sv_s + " part_tran_srl_num "
+				sv_s = sv_s + " from CUSTOM.C_HTD"
+				sv_s = sv_s + " WHERE ACID = ?SVAR AND DEL_FLG = 'N' AND BANK_ID = ?SVAR AND PSTD_flg= 'Y'"
+				sv_s = sv_s + " AND tran_date BETWEEN TO_DATE(?SVAR,'DD-MM-YYYY') AND TO_DATE(?SVAR,'DD-MM-YYYY')"
+				sv_s = sv_s + " AND tran_particular != 'BALANCE TRANSFER'"
+				sv_s = sv_s + " ORDER BY gl_date, pstd_date, tran_id, part_tran_srl_num"
+				print(sv_s)
+				sv_d = urhk_dbCursorOpenWithBind(sv_s)
+				
+				IF(sv_d != 0) THEN
+				#{
+					print("Query execution failed")
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				print(sv_n)
+				sv_f = urhk_dbCursorFetch(sv_n)
+				print(sv_f)
+				sv_i = 0
+				#CUST.DATA.BAL_AMT = ""
+				
+				WHILE(sv_f == 0)
+				#{
+					CUST.DATA.CR_TRAN_AMT = ""
+					CUST.DATA.DR_TRAN_AMT = ""
+					CUST.DATA.TRAN_DATE = BANCS.OUTPARAM.TRAN_DATE
+					CUST.DATA.VALUE_DATE = BANCS.OUTPARAM.VALUE_DATE
+					CUST.DATA.TRAN_AMT = BANCS.OUTPARAM.TRAN_AMT
+					CUST.DATA.TRAN_PARTICULAR = BANCS.OUTPARAM.TRAN_PARTICULAR
+					CUST.DATA.TRAN_AMT = BANCS.OUTPARAM.TRAN_AMT
+					CUST.DATA.PSTD_DATE = BANCS.OUTPARAM.PSTD_DATE
+					CUST.DATA.PART_TRAN_TYPE = BANCS.OUTPARAM.PART_TRAN_TYPE
+					CUST.DATA.GL_DATE = BANCS.OUTPARAM.GL_DATE
+					CUST.DATA.GL_DATE_DDMMYYYY = BANCS.OUTPARAM.GL_DATE_DDMMYYYY
+					CUST.DATA.PSTD_TIME = BANCS.OUTPARAM.PSTD_TIME
+					CUST.DATA.tranId = BANCS.OUTPARAM.tranId
+					CUST.DATA.partTranSrlNo = BANCS.OUTPARAM.partTranSrlNo
+					print(CUST.DATA.partTranSrlNo)
+					
+					IF(CUST.DATA.PART_TRAN_TYPE == "C") THEN
+					#{
+						
+						CUST.DATA.CR_TRAN_AMT = CUST.DATA.TRAN_AMT
+						CUST.DATA.BAL_AMT = CDOUBLE(CUST.DATA.BAL_AMT) + CDOUBLE(CUST.DATA.CR_TRAN_AMT)
+						print(CUST.DATA.CR_TRAN_AMT)
+						print(CUST.DATA.BAL_AMT)
+						
+						#}
+					ELSE
+						#{
+						
+						CUST.DATA.DR_TRAN_AMT = CUST.DATA.TRAN_AMT
+						CUST.DATA.BAL_AMT = CDOUBLE(CUST.DATA.BAL_AMT) - CDOUBLE(CUST.DATA.DR_TRAN_AMT)
+						print(CUST.DATA.DR_TRAN_AMT)
+						print(CUST.DATA.BAL_AMT)
+					#}
+					ENDIF
+					
+					IF(sv_i == 0) THEN
+					#{
+						sv_a = "fDate|SELECT  TO_CHAR((TO_DATE('"+CUST.DATA.TRAN_DATE+"','DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+						sv_d = urhk_dbSelectWithBind(sv_a)
+						print(BANCS.OUTPARAM.fDate)
+						CUST.DATA.fDate = BANCS.OUTPARAM.fDate
+					#}
+					ENDIF
+					
+					sv_l = "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.partTranSrlNo+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.TRAN_PARTICULAR+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.TRAN_DATE+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.VALUE_DATE+"|"
+					sv_l = sv_l + CUST.DATA.PSTD_DATE+"|"
+					sv_l = sv_l + CUST.DATA.GL_DATE+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.PSTD_TIME+"|"
+					sv_l = sv_l + CUST.DATA.PART_TRAN_TYPE+"|"
+					sv_l = sv_l + CUST.DATA.CR_TRAN_AMT+"|"
+					sv_l = sv_l + CUST.DATA.DR_TRAN_AMT+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + BANCS.INPUT.extn_desc+"|"
+					sv_l = sv_l + BANCS.INPUT.bankName+"|"
+					sv_l = sv_l + BANCS.INPUT.branchName+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + BANCS.INPUT.schm_desc+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + BANCS.INPUT.acctDateRange+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					#sv_l = sv_l + BANCS.INPUT.acctNum+"|"
+					sv_l = sv_l + CUST.DATA.ibanNum+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.acct_name+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.BAL_AMT+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.despatch_mode+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.srl_num+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.pin_code+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + CUST.DATA.prefer_email_id+"|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+					sv_l = sv_l + "|"
+sv_l = sv_l + "|"
+sv_l = sv_l + "|"
+sv_l = sv_l + "|"
+					CUST.DATA.custRecord = sv_l
+					print(sv_l)
+					
+					#########################################################################################
+					# Moving the records to the list file
+					#########################################################################################
+					CUST.DATA.lstName= CUST.DATA.listPath
+					print(CUST.DATA.lstName)
+					CUST.DATA.recordList=sv_l
+					
+					sv_i = "echo " + '"' + CUST.DATA.recordList + '"' + ">>" + CUST.DATA.lstName
+					sv_p = SYSTEM(sv_i)
+					print(sv_p)
+					
+					sv_f = urhk_dbCursorFetch(sv_n)
+					sv_i = CINT(sv_i) + 1
+				#}
+				DO
+				sv_d = urhk_dbCursorClose(sv_n)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.DATA.mrtFileName = "pspfull1batch.mrt"
+		print("Batch Execution")
+	#}
+	ENDIF
+	
+	sv_i = "cat " +  CUST.DATA.tmpfile  + ">> " +   CUST.DATA.listPath
+	print(sv_i)
+	sv_c = SYSTEM(sv_i)
+	print(sv_c)
+	
+	###########################################################################################
+	# Report generation
+	###########################################################################################
+	sv_u = urhk_getFileLocation("MRT|"+CUST.DATA.mrtFileName)
+	print(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		sv_f = BANCS.OUTPARAM.fileLocation
+		sv_p = ""
+		sv_p = sv_p + sv_f + "pspfull1cust.mrt"
+		print(sv_p)
+		#sv_t = urtn_fileClose(CUST.DATA.sucFileIndex)
+		sv_m = ""
+		
+		sv_m = sv_m + sv_p + "|" + CUST.DATA.sucRptList+ "|" + CUST.DATA.sucRptName
+		print(sv_m)
+		
+		print(CUST.DATA.sucRptName)
+		
+		sv_x = urhk_getFileLocation("COM|pspmn001.com")
+		print(sv_x)
+		print(BANCS.OUTPARAM.fileLocation)
+		CUST.DATA.comPath = BANCS.OUTPARAM.fileLocation + "pspmn001.com"
+		
+		#CUST.DATA.comPath = CUST.DATA.comPath + " " + CUST.DATA.listPath + " " + CUST.DATA.sucRptName + " '" + CUST.DATA.page_number + "' '" + CUST.DATA.pr_station + "' '" + CUST.DATA.despatch_mode + "' '" + CUST.DATA.acctDateRange + "'" + " '" + CUST.DATA.acct_name + "'" + " '" + CUST.DATA.acct_crncy_code + "'" + " '" + CUST.DATA.pin_code + "'" + " '" + CUST.DATA.city_desc + "' '" + CUST.DATA.prefer_email_id + "' '" + BANCS.STDIN.userId + "' '" + CUST.DATA.mrtFileName + "' '" + CUST.DATA.custAddr + "'"
+		
+		sv_a = "pspVal1|" + CUST.DATA.listPath
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal2|" + CUST.DATA.sucRptName
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal3|" + CUST.DATA.page_number
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal4|" + CUST.DATA.pr_station
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal5|" + CUST.DATA.despatch_mode
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal6|" + CUST.DATA.acctDateRange
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		sv_a = "pspVal7|" + CUST.DATA.acct_name
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal8|" + CUST.DATA.acct_crncy_code
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal9|" + CUST.DATA.pin_code
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal10|" + CUST.DATA.city_desc
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal11|" +  CUST.DATA.prefer_email_id
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal12|" + BANCS.STDIN.userId
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal13|" + CUST.DATA.mrtFileName
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pspVal14|" + CUST.DATA.custAddr
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#sv_a = "pspVal15|" + CUST.DATA.acctNum
+		sv_a = "pspVal15|" + CUST.DATA.ibanNum
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+
+		sv_a = "pspVal16|" + BANCS.INPUT.schm_desc
+		sv_u = urhk_putEnv(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		print(CUST.DATA.comPath)
+		sv_r = SYSTEM(CUST.DATA.comPath)
+		
+		IF(sv_r == 0)THEN
+		#{
+			IF((CUST.DATA.despatch_mode == "A" ) OR (CUST.DATA.despatch_mode == "B") OR (CUST.DATA.despatch_mode == "D") OR (CUST.DATA.despatch_mode == "E"))THEN
+			#{
+				IF((BANCS.STDIN.batchExecutingForDate == "") AND (BANCS.STDIN.moduleIdentity== "USER")) THEN
+				#{
+					sv_w = getPosition(CUST.DATA.record,".EML")
+					IF ( sv_w > 0 ) THEN
+					#{
+						sv_i = "sed '/<\/pre>/d' " + '"' + CUST.DATA.sucRptNamePath + '"' + " > " + CUST.DATA.emailTmpFile
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "sed '/<br\/>/d' " + '"' + CUST.DATA.emailTmpFile + '"' + " > " + CUST.DATA.emailTmpFile1
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "sed '/<pre>/d' " + '"' + CUST.DATA.emailTmpFile1 + '"' + " > " + CUST.DATA.emailTmpFile
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "sed "+ '"' +"/<font size='1.5'>/d"+ '"' + " " + '"' + CUST.DATA.emailTmpFile + '"' + " > " + CUST.DATA.emailTmpFile1
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						#sv_i = "cp " + '"' + CUST.DATA.sucRptNamePath + '"' + " " +  '"' + CUST.DATA.eStatementPath  +"/"+ CUST.DATA.sucRptName+ ".RPT" + '"'
+						sv_i = "sed '/<\/font>/d'  " + CUST.DATA.emailTmpFile1 + " > " + '"' + CUST.DATA.eStatementPath +"/"+ CUST.DATA.sucRptName+ ".RPT" + '"'
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "rm -f " + CUST.DATA.emailTmpFile
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "rm -f " + CUST.DATA.emailTmpFile1
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					sv_w = getPosition(CUST.DATA.record,".EML")
+					IF ( sv_w > 0 ) THEN
+					#{
+						sv_i = "cp " + CUST.DATA.sucRptNamePath + " " + '"' + CUST.DATA.eStatementPath +"/"+ CUST.DATA.sucRptName+ ".RPT" + '"'
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "rm -f " + CUST.DATA.emailTmpFile
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+						
+						sv_i = "rm -f " + CUST.DATA.emailTmpFile1
+						print(sv_i)
+						sv_c = SYSTEM(sv_i)
+						print(sv_c)
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_s ="INSERT INTO CUSTOM.C_PSPFL ( "
+			sv_s = sv_s + " RPT_FILE_PATH ,"
+			sv_s = sv_s + " USER_ID ,"
+			sv_s = sv_s + " BANK_ID, "
+			sv_s = sv_s + " DEL_FLG,"
+			sv_s = sv_s + " RCRE_USER_TIME ) "
+			sv_s = sv_s + " VALUES(?SVAR,"
+			sv_s = sv_s + "?SVAR,"
+			sv_s = sv_s + "?SVAR, "
+			sv_s = sv_s + " 'N',SYSDATE)"
+			BANCS.INPARAM.BINDVARS = CUST.DATA.sucRptNamePath + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_s)
+			sv_d=urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			
+			IF(sv_d==0) THEN
+			#{
+				#sv_d = urhk_dbSQLWithBind("COMMIT")
+				print("commited")
+				#}
+			ELSE
+				#{
+				print("failed")
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		BANCS.OUTPUT.bsample = "S"
+		sv_j="PSP|"
+		sv_k = urhk_putEnv(sv_j)
+		print(sv_k)
+		#==============================================================
+		#Code has been added to delete the EML files getting generated.
+		#==============================================================
+		sv_w = getPosition(CUST.DATA.record,".EML")
+		IF ( sv_w > 0 ) THEN
+		#{
+			PRINT(CUST.DATA.record)
+			PRINT(CUST.DATA.reportName)
+			print(CUST.DATA.EMLpath)
+			
+			sv_i = "rm -f " + CUST.DATA.EMLpath
+			print(sv_i)
+			sv_c = SYSTEM(sv_i)
+			print(sv_c)
+			#}
+		#}
+		ENDIF
+		
+		ENDOFSCRIPT:
+	END-->
+	
+	

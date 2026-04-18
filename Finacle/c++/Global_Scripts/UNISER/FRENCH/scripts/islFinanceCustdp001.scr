@@ -1,0 +1,235 @@
+##########################################################################################
+# Source Name           : islFinanceCustdp001.scr
+# Date                  : 29-Aug-2013
+# Description           : Script to validate Islamic A/c and populate Operative A/c Details
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        29-Aug-2013   Mohan Raghu Arudi         Base Version
+###########################################################################################
+<--START
+CHECKSUM="e5cdeb9ad1a8b22ac87d9333284c5e816536b602e347650bc8896a71af8e2fdd"
+	TRACE ON
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether LADISB Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","LADISB")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Initialize Variables
+	###########################################################################################
+	
+	CUST.LADISB.loanAcct = ""
+	CUST.LADISB.loanAcctAcid = ""
+	CUST.LADISB.loanAcctSchmCode = ""
+	
+	CUST.LADISB.opAcct = ""
+	CUST.LADISB.opAcctAcid = ""
+	CUST.LADISB.opAcctSolId = ""
+	CUST.LADISB.opAcctName = ""
+	CUST.LADISB.opAcctCrncyCode = ""
+	
+	CUST.LADISB.islamicProdType = ""
+	CUST.LADISB.islLoanAcctFlg = "N"
+	
+	CUST.LADISB.errorFlg = "N"
+	CUST.LADISB.errorMsg = ""
+	
+	###########################################################################################
+	# Get Input from BANCS.INPUT Repository
+	###########################################################################################
+	
+	IF(FIELDEXISTS(BANCS.INPUT.loanAcct))THEN
+	#{
+		CUST.LADISB.loanAcct = TRIM(BANCS.INPUT.loanAcct)
+		PRINT(CUST.LADISB.loanAcct)
+	#}
+	ENDIF
+	
+	IF(CUST.LADISB.loanAcct == "")THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check if it is an Islamic Loan Account
+	###########################################################################################
+	
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcct + "|" + BANCS.STDIN.contextBankId
+	sv_s = "loanAcctAcid,loanAcctSchmCode|"
+	sv_s = sv_s + " SELECT ACID,SCHM_CODE"
+	sv_s = sv_s + " FROM TBAADM.GAM WHERE FORACID = ?SVAR"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0)THEN
+	#{
+		CUST.LADISB.loanAcctAcid = BANCS.OUTPARAM.loanAcctAcid
+		PRINT(CUST.LADISB.loanAcctAcid)
+		CUST.LADISB.loanAcctSchmCode = BANCS.OUTPARAM.loanAcctSchmCode
+		PRINT(CUST.LADISB.loanAcctSchmCode)
+		#}
+	ELSE
+		#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcctSchmCode + "|" + BANCS.STDIN.contextBankId
+	sv_s = "islamicProdType|SELECT TRIM(ISLAMIC_PRODUCT_TYPE) FROM TBAADM.GSP WHERE SCHM_CODE = ?SVAR"
+	sv_s = sv_s + " AND SCHM_TYPE = 'LAA'"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0)THEN
+	#{
+		CUST.LADISB.islamicProdType = BANCS.OUTPARAM.islamicProdType
+		PRINT(CUST.LADISB.islamicProdType)
+	#}
+	ENDIF
+	
+	IF(CUST.LADISB.islamicProdType == "")THEN
+	#{
+		CUST.LADISB.islLoanAcctFlg = "N"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.islLoanAcctFlg = "Y"
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Find the Customer Operative A/c for Islamic Loan Account.
+	###########################################################################################
+	
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcctAcid + "|" + BANCS.STDIN.contextBankId
+	sv_s = "opAcctAcid|SELECT OP_ACID FROM TBAADM.LAM WHERE ACID = ?SVAR"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0)THEN
+	#{
+		sv_b = BANCS.OUTPARAM.opAcctAcid
+		print(sv_b)
+		sv_u = urhk_B2k_AcidToForacid(sv_b)
+		IF(sv_u == 0)THEN
+		#{
+			CUST.LADISB.opAcct = BANCS.OUTPARAM.Foracid
+			print(CUST.LADISB.opAcct)
+			#}
+		ELSE
+			#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.opAcct + "|" + BANCS.STDIN.contextBankId
+	sv_s = "opAcctSolId,opAcctCrncyCode,opAcctName|"
+	sv_s = sv_s + " SELECT SOL_ID,ACCT_CRNCY_CODE,ACCT_NAME "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE FORACID = ?SVAR"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0)THEN
+	#{
+		CUST.LADISB.opAcctSolId = BANCS.OUTPARAM.opAcctSolId
+		PRINT(CUST.LADISB.opAcctSolId)
+		CUST.LADISB.opAcctCrncyCode = BANCS.OUTPARAM.opAcctCrncyCode
+		PRINT(CUST.LADISB.opAcctCrncyCode)
+		CUST.LADISB.opAcctName = BANCS.OUTPARAM.opAcctName
+		PRINT(CUST.LADISB.opAcctName)
+		#}
+	ELSE
+		#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Send Values to Front End
+	###########################################################################################
+	
+	ENDOFSCRIPT:
+		
+		IF(CUST.LADISB.errorMsg == "")THEN
+		#{
+			CUST.LADISB.errorMsg = " "
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.opAcct == "")THEN
+		#{
+			CUST.LADISB.opAcct = " "
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.opAcctSolId == "")THEN
+		#{
+			CUST.LADISB.opAcctSolId = " "
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.opAcctCrncyCode == "")THEN
+		#{
+			CUST.LADISB.opAcctCrncyCode = " "
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.opAcctName == "")THEN
+		#{
+			CUST.LADISB.opAcctName = " "
+		#}
+		ENDIF
+		
+		sv_u = urhk_SetOrbOut("errorFlg|"+CUST.LADISB.errorFlg)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("errorMsg|"+CUST.LADISB.errorMsg)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("islLoanAcctFlg|"+CUST.LADISB.islLoanAcctFlg)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("opAcct|"+CUST.LADISB.opAcct)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("opAcctSolId|"+CUST.LADISB.opAcctSolId)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("opAcctCrncyCode|"+CUST.LADISB.opAcctCrncyCode)
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("opAcctName|"+CUST.LADISB.opAcctName)
+		print(sv_u)
+		
+END-->

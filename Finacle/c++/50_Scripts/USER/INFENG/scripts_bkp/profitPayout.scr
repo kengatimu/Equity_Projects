@@ -1,0 +1,2418 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: profitPayout.scr
+# Type: NA|default
+# Description: Equityt Finacle 10.2.13 to 10.2.18 Porting
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+<--START
+CHECKSUM="e83c01a6a0305e09dfef0563224604a0f82cd0a0919e967ac22bc73967bd7211"
+	TRACE ON
+	IF (REPEXISTS("CUST")==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF(CLASSEXISTS("CUST","WITHTAX")==0)THEN
+	#{
+		CREATECLASS("CUST","WITHTAX",5)
+	#}
+	ENDIF
+	CUST.WITHTAX.count = "0"
+	
+	
+	sv_s = urhk_MTTS_PopulateInputDetails("")
+	IF(sv_s != 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.scriptError = "urhk_MTTS_PopulateInputDetails returns FAILURE"
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	sv_b = MTT.InputDetails.custAcNumber
+	#sv_a = MTT.InputDetails.startDate
+	sv_e = MTT.InputDetails.endDate
+	
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType="T"
+	MTT.TranDetails.TranSubType="IP"
+	MTT.TranDetails.Remarks="Profit Distribution Tran"
+	MTT.TranDetails.IgnoreExcp="I"
+	MTT.TranDetails.Consolidate="N"
+	MTT.TranDetails.PrintAdviceInd="N"
+	MTT.TranDetails.ReversalFlg="N"
+	MTT.TranDetails.InitSolId=BANCS.STDIN.mySolId
+	MTT.TranDetails.RestrictModifyInd="1"
+	MTT.PartTranDetails.Refnum=""
+	MTT.PartTranDetails.pref_amt_before_renewal=""
+	MTT.PartTranDetails.prft_amt_bfre_frst_renewal=""
+	sv_z= "PAYOUT TRAN"
+	sv_b = urhk_MTTS_DefineTransaction(sv_z)
+	IF (sv_b != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	MTT.TranDetails.TranDate          = "0"
+	MTT.TranDetails.TranType          = "T"
+	MTT.TranDetails.TranSubType       = "BI"
+	MTT.TranDetails.Remarks           = "Pre-Renewal Distribution Tran"
+	MTT.TranDetails.IgnoreExcp        = "I"
+	MTT.TranDetails.Consolidate       = "N"
+	MTT.TranDetails.PrintAdviceInd    = "N"
+	MTT.TranDetails.ReversalFlg       = "N"
+	MTT.TranDetails.InitSolId         = BANCS.STDIN.mySolId
+	MTT.TranDetails.RestrictModifyInd = "2"
+	MTT.PartTranDetails.Refnum        = ""
+	sv_b = urhk_MTTS_DefineTransaction("PRE RENEWAL TRAN")
+	IF (sv_b != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	WHILE(sv_s < 1)
+	#{
+		sv_a = MTT.InputDetails.startDate
+		sv_e = MTT.InputDetails.endDate
+		
+		PRINT(sv_a)
+		PRINT(sv_e)
+		BANCS.OUTPUT.profitSplitReq = "N"
+		#---USE VALUE DATE FOR TRANSACTION---#
+		sv_v = MTT.InputDetails.valueDateDiff
+		
+		IF( "" == sv_v ) THEN
+		#{
+			sv_v = "0"
+		#}
+		ENDIF
+		PRINT(MTT.InputDetails.payoutType)
+		IF (MTT.InputDetails.payoutType == "P") THEN
+		#{
+			#---CHECK WHETHER THE ACCOUNT HAS BEEN RENEWED IN-BETWEEN THE PD CYCLE, IF SO SPLITTING IS REQUIRED---#
+			PRINT("THE ACCOUNT HAS BEEN RENEWED IN-BETWEEN THE PD CYCLE")
+			
+			sv_b = MTT.InputDetails.custAcNumber
+			PRINT(sv_b)
+			PRINT(MTT.InputDetails.schmType)
+			PRINT(MTT.InputDetails.distrAcct)
+			IF( ( MTT.InputDetails.schmType == "TUA" ) AND ( MTT.InputDetails.custAcNumber == MTT.InputDetails.distrAcct ) ) THEN
+			#{
+				sv_q = "PRFT_RINVST_FLG|select PRFT_RINVST_FLG "
+				sv_q = sv_q+ " FROM TBAADM.TSP "
+				sv_q = sv_q+ " WHERE SCHM_CODE = ( SELECT SCHM_CODE FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR) "
+				sv_q = sv_q +" AND DEL_FLG != 'Y' "
+				sv_q = sv_q +" AND BANK_ID = ?SVAR "
+				BANCS.INPARAM.BINDVARS = MTT.InputDetails.custAcNumber + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+				PRINT(sv_q)
+				sv_d = urhk_dbSelectWithBind(sv_q)
+				IF(sv_d == 0) THEN
+				#{
+					sv_f = BANCS.OUTPARAM.PRFT_RINVST_FLG
+				#}
+				ENDIF
+				PRINT(BANCS.OUTPARAM.PRFT_RINVST_FLG)
+				
+				IF(BANCS.OUTPARAM.PRFT_RINVST_FLG == "N") THEN
+				#{
+					sv_p = " openeffdate,srlnum,Matdate|select to_char(open_effective_date, 'DD-MM-YYYY'),ren_srl_num, "
+					sv_p = sv_p + " to_char(maturity_date, 'DD-MM-YYYY') from TBAADM.TAM "
+					sv_p = sv_p + " where acid = (select acid from TBAADM.gam where foracid = ?SVAR) AND ren_srl_num != '0000' "
+					sv_p = sv_p + " AND open_effective_date <= TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS' )"
+					sv_p = sv_p + " AND maturity_date > TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS' )"
+					sv_p = sv_p + " AND open_effective_date > TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS' )"
+					BANCS.INPARAM.BINDVARS = sv_b + "|" + sv_e + "|" + sv_e + "|" + sv_a
+					PRINT(sv_p)
+					sv_r = urhk_dbSelectWithBind(sv_p)
+					IF(sv_r != 0)  THEN
+					#{
+						sv_p = " openeffdate,srlnum,Matdate|select to_char(open_effective_date, 'DD-MM-YYYY'),ren_srl_num,"
+						sv_p = sv_p + " to_char(maturity_date, 'DD-MM-YYYY') from TBAADM.RHT "
+						sv_p = sv_p + " where acid = (select acid from TBAADM.gam where foracid = '"+sv_b+"') "
+						sv_p = sv_p + " AND open_effective_date <= TO_DATE('"+sv_e+"', 'DD-MM-YYYY HH24:MI:SS' )"
+						sv_p = sv_p + " AND Maturity_date  > TO_DATE('"+sv_e+"', 'DD-MM-YYYY HH24:MI:SS' ) "
+						sv_p = sv_p + " AND open_effective_date > TO_DATE('"+sv_a+"','DD-MM-YYYY HH24:MI:SS' )"
+						BANCS.INPARAM.BINDVARS = sv_b + "|" + sv_e + "|" + sv_e + "|" + sv_a
+						PRINT(sv_p)
+						sv_r = urhk_dbSelectWithBind(sv_p)
+					#}
+					ENDIF
+					IF(sv_r != 0)  THEN
+					#{
+						BANCS.OUTPUT.profitSplitReq = "N"
+						#}
+					ELSE
+						#{
+						BANCS.INPARAM.date1=BANCS.OUTPARAM.openeffdate
+						PRINT(BANCS.OUTPARAM.openeffdate)
+						BANCS.INPARAM.date2=MTT.InputDetails.startDate
+						PRINT(MTT.InputDetails.startDate)
+						sv_g = 0
+						sv_r=urhk_B2k_dateDiff("")
+						sv_f = BANCS.OUTPARAM.dateDiff
+						IF(sv_f > 0 ) THEN
+						#{
+							BANCS.INPARAM.date1=MTT.InputDetails.endDate
+							PRINT(MTT.InputDetails.endDate)
+							BANCS.INPARAM.date2=MTT.InputDetails.startDate
+							PRINT(MTT.InputDetails.startDate)
+							sv_r=urhk_B2k_dateDiff("")
+							sv_g = BANCS.OUTPARAM.dateDiff
+						#}
+						ENDIF
+						PRINT(CDOUBLE(MTT.InputDetails.actualAmt))
+						PRINT(MTT.InputDetails.actualAmt)
+						PRINT(CDOUBLE(MTT.InputDetails.PrefProfAmt))
+						PRINT(sv_f)
+						PRINT(sv_g)
+						
+						sv_h = (CDOUBLE(MTT.InputDetails.actualAmt) * (CDOUBLE(sv_f)))/(CDOUBLE(sv_g) + 1)
+						sv_n = (CDOUBLE(MTT.InputDetails.PrefProfAmt) * (CDOUBLE(sv_f)))/(CDOUBLE(sv_g) + 1)
+						BANCS.INPARAM.InputAmount = sv_h
+						BANCS.INPARAM.RoundOffAmt = "0.01"
+						BANCS.INPARAM.RoundOffFlag= "N"
+						
+						sv_r = urhk_B2k_RoundOff("")
+						IF(sv_r == 0)THEN
+						#{
+							sv_h = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						#}
+						ENDIF
+						
+						BANCS.INPARAM.InputAmount = sv_n
+						sv_r = urhk_B2k_RoundOff("")
+						IF(sv_r == 0)THEN
+						#{
+							sv_n = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						#}
+						ENDIF
+						
+						MTT.PartTranDetails.prft_amt_bfre_frst_renewal = sv_h
+						PRINT(MTT.PartTranDetails.prft_amt_bfre_frst_renewal)
+						MTT.PartTranDetails.prft_amt_post_renewal = CDOUBLE(MTT.InputDetails.actualAmt) - (sv_h)
+						PRINT(MTT.PartTranDetails.prft_amt_post_renewal)
+						
+						MTT.PartTranDetails.pref_amt_before_renewal = sv_n
+						PRINT(MTT.PartTranDetails.pref_amt_before_renewal)
+						MTT.PartTranDetails.pref_amt_post_renewal = CDOUBLE(MTT.InputDetails.PrefProfAmt) - (sv_n)
+						PRINT(MTT.PartTranDetails.pref_amt_post_renewal)
+						
+						BANCS.OUTPUT.profitSplitReq = "Y"
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			PRINT(MTT.InputDetails.doOnlyBookingRevForFrozenAcct)
+			IF(MTT.InputDetails.doOnlyBookingRevForFrozenAcct == "Y") THEN
+			#{
+				sv_i = "FROZEN ACCOUNT ACCRUAL REVERSAL/"
+				
+				#Debit part tran for Payable
+				MTT.PartTranDetails.RefAmount = - CDOUBLE(MTT.InputDetails.bookedAmt)
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account =MTT.InputDetails.payableAcct
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+				MTT.PartTranDetails.ReportCode = ""
+				PRINT(MTT.PartTranDetails.RefAmount)
+				PRINT(MTT.PartTranDetails.Account)
+				sv_s = urhk_MTTS_DefinePartTran("DR")
+				
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				
+				#credit part tran for P&L Acct
+				MTT.PartTranDetails.RefAmount = CDOUBLE(MTT.InputDetails.bookedAmt)
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account = MTT.InputDetails.PLDrAcct
+				MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL CR"
+				MTT.PartTranDetails.ReportCode=""
+				sv_s = urhk_MTTS_DefinePartTran("CR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				PRINT(MTT.InputDetails.PrefProfAmt)
+				IF(CDOUBLE(MTT.InputDetails.PrefProfAmt) > 0) THEN
+				#{
+					sv_j = CDOUBLE(MTT.InputDetails.PrefProfAmt)
+					sv_u = MTT.InputDetails.shareAcid
+					
+					IF(MTT.InputDetails.prodType == "I") THEN
+					#{
+						sv_o = MTT.InputDetails.PLDrAcct
+						#}
+					ELSE
+						#{
+						sv_o = MTT.InputDetails.distrAcct
+					#}
+					ENDIF
+					
+					#Debit Part Tran ShareAccount
+					MTT.PartTranDetails.Account=sv_u
+					MTT.PartTranDetails.RefAmount=-sv_j
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate="N"
+					MTT.PartTranDetails.ProxyPstgInd="B"
+					MTT.PartTranDetails.Particulars= "Pref Profit Amt : " + MTT.InputDetails.custAcNumber
+					MTT.PartTranDetails.TranIdentifier=sv_z
+					MTT.PartTranDetails.PTranBusinessType="Preferential Amt debit"
+					MTT.PartTranDetails.Remarks="Pref Profit : Account Distribution Debit Part Tran"
+					sv_s = urhk_MTTS_DefinePartTran("DR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				PRINT(MTT.InputDetails.brokenPeriodProfOnClosure)
+				IF(MTT.InputDetails.brokenPeriodProfOnClosure == "N") THEN
+				#{
+					sv_i = "BROKEN PERIOD PAYOUT/"
+					#}
+				ELSE
+					#{
+					sv_i = "POOL PAYOUT/"
+				#}
+				ENDIF
+				PRINT(MTT.InputDetails.prodType)
+				IF(MTT.InputDetails.prodType == "I") THEN
+				#{
+					sv_x = CDOUBLE(MTT.InputDetails.bookedAmt)
+					sv_y = CDOUBLE(MTT.InputDetails.actualAmt)
+					PRINT(sv_x)
+					PRINT(sv_y)
+					IF(MTT.InputDetails.adjustFlg == "Y") THEN
+					#{
+						sv_p = CDOUBLE(MTT.InputDetails.indAmt)
+						sv_q = CDOUBLE(MTT.InputDetails.actualAmtIndPD)
+						PRINT(sv_p)
+						PRINT(sv_q)
+						IF ( sv_q > sv_p ) THEN
+						#{
+							sv_t = sv_q - sv_p
+							sv_o = sv_t
+							sv_l = 0
+							
+							sv_c = MTT.InputDetails.PLDrAcct
+							sv_d = MTT.InputDetails.distrAcct
+							#}
+						ELSE
+							#{
+							sv_t = sv_p - sv_q
+							PRINT(sv_t)
+							sv_o = 0
+							
+							# In the case of II flow, recover the amount from sundry account.
+							sv_l = CDOUBLE(MTT.InputDetails.recoverableAmt)
+							PRINT(sv_l)
+							IF( ( "IO" == MTT.InputDetails.flowType ) AND ( "Y" == MTT.InputDetails.ageEligible ) ) THEN
+							#{
+								# In the case of IO, if the Dr. account has sufficient balance for recovery,
+								# MTT.InputDetails.recoverableAmt will be zero, otherwise recoverableAmt will be:
+								# ( indAmt - actualAmtIndPD - clr_bal_amt of the Dr. account ).
+								
+								# The amount that can be recovered from the operative account is sv_o.
+								# Remaining amount sv_l should be recovered from the sundry account.
+								PRINT(sv_t)
+								PRINT(sv_l)
+								sv_o = sv_t - sv_l
+								PRINT(sv_o)
+								##################################################################################
+								#Child script will be called to update the custom table
+								#field tax_to_be_recovered = (sv_o*taxprcnt/100)
+								###############################################################################
+								# Customization for collection of With Holding Tax Starts-1
+								###############################################################################
+								
+								CUST.WITHTAX.drAccount 				= 	MTT.InputDetails.custAcNumber
+								CUST.WITHTAX.tranAmt 				= 	sv_o
+								PRINT(CUST.WITHTAX.tranAmt)
+								IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+								#{
+									CALL("wthmn040.scr")
+									IF(BANCS.OUTPUT.successOrFailure == "F") THEN
+									#{
+										EXITSCRIPT
+									#}
+									ENDIF
+								#}
+								ENDIF
+								
+								###############################################################################
+								# Customization for collection With Holding Tax Ends-1
+								###############################################################################
+							#}
+							ENDIF
+							
+							sv_d = MTT.InputDetails.PLDrAcct
+							sv_c = MTT.InputDetails.distrAcct
+						#}
+						ENDIF
+						#debit part tran for Acct
+						MTT.PartTranDetails.RefAmount = - sv_o
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account =sv_c
+						MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						#In case of error in Posting, do Proxy posting
+						MTT.PartTranDetails.ProxyPstgInd="B"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "ADJUSTPO DR"
+						
+						# populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_c
+						BANCS.INPARAM.DrCrInd="C"
+						MTT.PartTranDetails.ReportCode=MTT.InputDetails.rptCode
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						#debit part tran for Sundry
+						MTT.PartTranDetails.RefAmount = - sv_l
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = MTT.InputDetails.recoveryAcct
+						MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						#In case of error in Posting, do Proxy posting
+						MTT.PartTranDetails.ProxyPstgInd="B"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "ADJUSTPO DR"
+						
+						# populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_c
+						BANCS.INPARAM.DrCrInd="C"
+						MTT.PartTranDetails.ReportCode=MTT.InputDetails.rptCode
+						
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+						#credit part tran for Acct
+						MTT.PartTranDetails.RefAmount = sv_t
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account =sv_d
+						MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						IF( ( sv_q > sv_p ) AND ( MTT.InputDetails.ageEligible == "N" ) ) THEN
+						#{
+							MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+						ELSE
+							#{
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						#}
+						ENDIF
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "ADJUSTPO CR"
+						
+						MTT.PartTranDetails.ReportCode=""
+						# Populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_d
+						BANCS.INPARAM.DrCrInd="C"
+						MTT.PartTranDetails.ReportCode=MTT.InputDetails.rptCode
+						
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-2
+						###############################################################################
+						PRINT(sv_q)
+						PRINT(sv_p)
+						IF ( sv_q > sv_p ) THEN
+						#{
+							CUST.WITHTAX.drAccount 				= 	sv_d
+							PRINT(CUST.WITHTAX.drAccount)
+							CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+							CUST.WITHTAX.tranAmt 				= 	sv_t
+							PRINT(CUST.WITHTAX.tranAmt)
+							#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+							CUST.WITHTAX.RateCode				=   ""
+							CUST.WITHTAX.tranIdentifier			=	sv_z
+							IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+							#{
+								CALL("wthmn037.scr")
+								IF(CUST.WITHTAX.successOrFailure == "F") THEN
+								#{
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+									EXITSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection With Holding Tax Ends-2
+						###############################################################################
+						
+						#debit part tran for P &L Acct
+						MTT.PartTranDetails.RefAmount = -sv_p
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = MTT.InputDetails.PLDrAcct
+						MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "ADJUSTPO PL DR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						#Credit part tran for mppia Acct
+						MTT.PartTranDetails.RefAmount = sv_p
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = MTT.InputDetails.mppiaAcct
+						MTT.PartTranDetails.RefCurrency= MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "ADJUSTPO mppia CR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+					PRINT(MTT.InputDetails.acctClsFlg)
+					IF( MTT.InputDetails.acctClsFlg == "Y" ) THEN
+					#{
+						sv_h = MTT.InputDetails.distrAcct
+						sv_f = MTT.InputDetails.PLDrAcct
+						sv_g = MTT.InputDetails.payableAcct
+						
+						PRINT(sv_y)
+						PRINT(sv_x)
+						IF( sv_y >= sv_x ) THEN
+						#{
+							
+							#debit part tran for payable Acct
+							MTT.PartTranDetails.RefAmount = - sv_x
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_g
+							MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+							MTT.PartTranDetails.ReportCode = ""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							
+							sv_t = sv_y - sv_x
+							
+							
+							#debit part tran for P&L Acct
+							MTT.PartTranDetails.RefAmount = -sv_t
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_f
+							MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL DR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							#}
+						ELSE
+							#{
+							#debit part tran for payable Acct
+							MTT.PartTranDetails.RefAmount = - sv_x
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_g
+							MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+							MTT.PartTranDetails.ReportCode = ""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							
+							sv_t = sv_x - sv_y
+							
+							#credit part tran for P&L Acct
+							MTT.PartTranDetails.RefAmount = sv_t
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account = sv_f
+							MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL CR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						#credit part tran for customer Acct
+						
+						MTT.PartTranDetails.RefAmount =  sv_y
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_h
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier = sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PAYOUT CUST CR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-3
+						###############################################################################
+						CUST.WITHTAX.drAccount 				= 	sv_h
+						CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+						CUST.WITHTAX.tranAmt 				= 	sv_y
+						#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+						CUST.WITHTAX.RateCode				=   ""
+						CUST.WITHTAX.tranIdentifier			=	sv_z
+						IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+						#{
+							CALL("wthmn037.scr")
+							IF(CUST.WITHTAX.successOrFailure == "F") THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection With Holding Tax Ends-3
+						###############################################################################
+						
+						#}
+					ELSE
+						#{
+						
+						PRINT(sv_y)
+						PRINT(sv_x)
+						IF(sv_y >= sv_x) THEN
+						#{
+							IF(CDOUBLE(MTT.InputDetails.poolParkedAmt) > 0) THEN
+							#{
+								sv_u = CDOUBLE(MTT.InputDetails.poolParkedAmt) - sv_x
+								#}
+							ELSE
+								#{
+								sv_u = sv_y - sv_x
+							#}
+							ENDIF
+							
+							sv_k = MTT.InputDetails.PLDrAcct
+							sv_m = MTT.InputDetails.payableAcct
+							#}
+						ELSE
+							#{
+							sv_u = sv_x - sv_y
+							
+							sv_k = MTT.InputDetails.payableAcct
+							sv_m = MTT.InputDetails.PLDrAcct
+							
+						#}
+						ENDIF
+						PRINT(sv_u)
+						PRINT(sv_k)
+						PRINT(sv_m)
+						
+						#debit part tran for Acct
+						MTT.PartTranDetails.RefAmount = - sv_u
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_k
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO DR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+						#credit part tran for Acct
+						MTT.PartTranDetails.RefAmount = sv_u
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_m
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO Payable CR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+					
+					#--------------------------------PREFERENTIAL CR. TRANSACTIONS-------------------------------------#
+					sv_j = CDOUBLE(MTT.InputDetails.PrefProfAmt)
+					sv_u = MTT.InputDetails.shareAcid
+					sv_n = CDOUBLE( MTT.InputDetails.totActualPrefAmtForIndPd )
+					sv_k = sv_j - sv_n
+					
+					PRINT( sv_j )
+					PRINT( sv_n )
+					PRINT( sv_k )
+					PRINT( sv_u )
+					
+					# Park the preferential amount for the remaining period, after indicative payout period to sundry account. #
+					# This amount will be paid to the customer during next account level payout. #
+					
+					#Credit Part Tran For Sundry Account
+					PRINT(MTT.InputDetails.sundryAcct)
+					PRINT(sv_k)
+					MTT.PartTranDetails.Account          = MTT.InputDetails.sundryAcct
+					MTT.PartTranDetails.RefAmount        = sv_k
+					MTT.PartTranDetails.RefCurrency      = MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.RateCode         = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.ValueDate        = sv_v
+					MTT.PartTranDetails.Consolidate      = "N"
+					MTT.PartTranDetails.ProxyPstgInd     = "B"
+					MTT.PartTranDetails.Particulars      = "PrefAmtCr." + MTT.InputDetails.custAcNumber + "/" + sv_a + "/" + sv_e
+					MTT.PartTranDetails.TranIdentifier   = sv_z
+					MTT.PartTranDetails.PTranBusinessType= "Preferential amt. parked in sundry acct."
+					MTT.PartTranDetails.Remarks          = "PREF PROFIT CR. TO SUNDRY"
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("CR")
+					PRINT(sv_s)
+					
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					#Debit Part Tran For P&L Account
+					MTT.PartTranDetails.Account          = MTT.InputDetails.PLDrAcct
+					MTT.PartTranDetails.RefAmount        = sv_n
+					MTT.PartTranDetails.RefCurrency      = MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.RateCode         = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.ValueDate        = sv_v
+					MTT.PartTranDetails.Consolidate      = "N"
+					MTT.PartTranDetails.ProxyPstgInd     = "B"
+					MTT.PartTranDetails.Particulars      = "Offset P&L" + MTT.InputDetails.custAcNumber + "/" + sv_a + "/" + sv_e
+					MTT.PartTranDetails.TranIdentifier   = sv_z
+					MTT.PartTranDetails.PTranBusinessType= "Offset P&L Account."
+					MTT.PartTranDetails.Remarks          = "OFFSET P&L ACCT. CR. PART TRAN"
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("CR")
+					PRINT(sv_s)
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					
+					#credit the pool profit to mudareb share acct. if 'pay_int' flag is 'NO'
+					
+					PRINT(MTT.InputDetails.payProfitFlg)
+					IF( "N" == MTT.InputDetails.payProfitFlg ) THEN
+					#{
+						#debit part tran for payable
+						MTT.PartTranDetails.RefAmount = - sv_y
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = MTT.InputDetails.payableAcct
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO DR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+						#credit part tran for mudareb share acct.
+						PRINT(sv_y)
+						MTT.PartTranDetails.RefAmount = sv_y
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = MTT.InputDetails.distrAcct
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO Payable CR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-4
+						###############################################################################
+						CUST.WITHTAX.drAccount 				= 	MTT.InputDetails.distrAcct
+						CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+						CUST.WITHTAX.tranAmt 				= 	sv_y
+						#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+						CUST.WITHTAX.RateCode				=   ""
+						CUST.WITHTAX.tranIdentifier			=	sv_z
+						IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+						#{
+							CALL("wthmn037.scr")
+							IF(CUST.WITHTAX.successOrFailure == "F") THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Ends-4
+						###############################################################################
+						
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					sv_p = CDOUBLE(MTT.InputDetails.bookedAmt)
+					PRINT(sv_p)
+					IF( ( MTT.InputDetails.schmType == "CAA" ) OR ( MTT.InputDetails.schmType == "SBA" ) ) THEN
+					#{
+						sv_q = CDOUBLE(MTT.InputDetails.profitAmt)
+						#}
+					ELSE
+						#{
+						sv_q = CDOUBLE(MTT.InputDetails.actualAmt)
+					#}
+					ENDIF
+					
+					sv_h = MTT.InputDetails.distrAcct
+					sv_f = MTT.InputDetails.PLDrAcct
+					sv_g = MTT.InputDetails.payableAcct
+					
+					PRINT(sv_q)
+					PRINT(sv_p)
+					PRINT(sv_h)
+					PRINT(sv_f)
+					PRINT(sv_g)
+					
+					#Recovery for maturity prod during broken period.
+					PRINT(MTT.InputDetails.maturityProdBrknPdRecvryFlg)
+					IF( "Y" == MTT.InputDetails.maturityProdBrknPdRecvryFlg ) THEN
+					#{
+						#Expecting adjustments with booking is already done during closure.
+						
+						#debit part tran for distr. ACCT
+						MTT.PartTranDetails.RefAmount = -CDOUBLE(MTT.InputDetails.matProdBrknPdProfToBeRecovered)+CDOUBLE(MTT.InputDetails.PrefProfAmt)
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_h
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier = sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PAYOUT CUSTOMER DR"
+						MTT.PartTranDetails.ReportCode=""
+						MTT.PartTranDetails.ProxyPstgInd="B"
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("DR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+						#dedit part tran for P&L Acct
+						sv_t = CDOUBLE(MTT.InputDetails.matProdBrknPdProfToBeRecovered) - CDOUBLE( MTT.InputDetails.indBPProfForMatProd )
+						
+						
+						MTT.PartTranDetails.RefAmount = sv_t
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_f
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier =sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL DR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						
+						#credit part tran for MPPIA ACCT
+						MTT.PartTranDetails.RefAmount          = CDOUBLE( MTT.InputDetails.indBPProfForMatProd )
+						MTT.PartTranDetails.RateCode           = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account            = MTT.InputDetails.mppiaAcct
+						MTT.PartTranDetails.RefCurrency        = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate          = sv_v
+						MTT.PartTranDetails.Consolidate        = "N"
+						MTT.PartTranDetails.Particulars        = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						MTT.PartTranDetails.TranIdentifier     = sv_z
+						MTT.PartTranDetails.PTranBusinessType  = "PAYOUT OFFICE CR"
+						MTT.PartTranDetails.ReportCode=""
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						#}
+					ELSE
+						#{
+						PRINT(sv_q)
+						PRINT(sv_p)
+						IF( sv_q >= sv_p) THEN
+						#{
+							#debit part tran for payable Acct
+							MTT.PartTranDetails.RefAmount = - sv_p
+							PRINT(MTT.PartTranDetails.RefAmount)
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_g
+							PRINT(MTT.PartTranDetails.Account)
+							MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+							MTT.PartTranDetails.ReportCode = ""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							PRINT(sv_s)
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							#debit part tran for P&L Acct
+							sv_t = sv_q - sv_p
+							MTT.PartTranDetails.RefAmount = -sv_t
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_f
+							MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL DR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							PRINT(sv_s)
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							#}
+						ELSE
+							#{
+							#debit part tran for Payable ACCT
+							MTT.PartTranDetails.RefAmount = - sv_p
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =sv_g
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							PRINT(sv_s)
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							#credit part tran for P&L Acct
+							sv_t = sv_p - sv_q
+							PRINT(sv_t)
+							MTT.PartTranDetails.RefAmount = sv_t
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account = sv_f
+							MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier =sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL CR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							PRINT(sv_s)
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						PRINT(BANCS.OUTPUT.profitSplitReq)
+						PRINT(MTT.InputDetails.schmType)
+						PRINT(MTT.InputDetails.PrefProfAmt)
+						PRINT(sv_q)
+						#credit part tran for customer Acct
+						
+						PRINT(BANCS.OUTPUT.profitSplitReq)
+						PRINT(MTT.InputDetails.schmType)
+						IF( ( MTT.InputDetails.schmType == "TUA" ) AND ( BANCS.OUTPUT.profitSplitReq == "Y" ) ) THEN
+						#{
+							sv_n = MTT.PartTranDetails.pref_amt_post_renewal
+							PRINT(MTT.PartTranDetails.prft_amt_post_renewal)
+							MTT.PartTranDetails.RefAmount = CDOUBLE( MTT.PartTranDetails.prft_amt_post_renewal ) + CDOUBLE( sv_n )
+							PRINT(MTT.PartTranDetails.RefAmount)
+							#}
+						ELSE
+							#{
+							MTT.PartTranDetails.RefAmount =  sv_q + CDOUBLE( MTT.InputDetails.PrefProfAmt )
+						#}
+						ENDIF
+						PRINT(MTT.PartTranDetails.RefAmount)
+						CUST.WITHTAX.tranAmt = MTT.PartTranDetails.RefAmount
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_h
+						MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						PRINT(MTT.InputDetails.ageEligible)
+						IF(MTT.InputDetails.ageEligible == "N") THEN
+						#{
+							MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+						ELSE
+							#{
+							MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						#}
+						ENDIF
+						PRINT(MTT.PartTranDetails.Particulars)
+						MTT.PartTranDetails.TranIdentifier = sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PAYOUT CUST CR"
+						
+						# Populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_h
+						BANCS.INPARAM.DrCrInd="C"
+						sv_s=urhk_PopulateTranRptCode("")
+						IF(sv_s==0) THEN
+						#{
+							MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+						#}
+						ENDIF
+						PRINT(MTT.PartTranDetails.RefAmount)
+						PRINT(MTT.PartTranDetails.Account)
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						PRINT(sv_s)
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-5
+						###############################################################################
+						CUST.WITHTAX.drAccount 				= 	sv_h
+						CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+						#CUST.WITHTAX.tranAmt 				= 	sv_t
+						PRINT(CUST.WITHTAX.tranAmt)
+						#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+						CUST.WITHTAX.RateCode				=   ""
+						CUST.WITHTAX.tranIdentifier			=	sv_z
+						IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+						#{
+							CALL("wthmn037.scr")
+							IF(CUST.WITHTAX.successOrFailure == "F") THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Ends-5
+						###############################################################################
+						
+						
+						PRINT(MTT.InputDetails.schmType)
+						PRINT(BANCS.OUTPUT.profitSplitReq)
+						#credit part tran for Sundry Acct if Split Amt reqd. is YES #
+						PRINT(MTT.PartTranDetails.prft_amt_bfre_frst_renewal)
+						PRINT(MTT.PartTranDetails.pref_amt_before_renewal)
+						IF( ( MTT.InputDetails.schmType == "TUA" ) AND ( BANCS.OUTPUT.profitSplitReq == "Y" ) ) THEN
+						#{
+							MTT.PartTranDetails.RefAmount =  CDOUBLE( MTT.PartTranDetails.prft_amt_bfre_frst_renewal ) + CDOUBLE( MTT.PartTranDetails.pref_amt_before_renewal)
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account = MTT.InputDetails.sundryAcct
+							MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							IF(MTT.InputDetails.ageEligible == "N") THEN
+							#{
+								MTT.PartTranDetails.Particulars = MTT.InputDetails.sundryAcct+" : Cr Sundry for Split Amt "
+								#}
+							ELSE
+								#{
+								MTT.PartTranDetails.Particulars = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+							ENDIF
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PAYOUT SUNDRY CR"
+							
+							# Populate Distribution tran report code
+							BANCS.INPARAM.CustAcct = MTT.InputDetails.sundryAcct
+							BANCS.INPARAM.DrCrInd = "C"
+							sv_s=urhk_PopulateTranRptCode("")
+							IF(sv_s == 0) THEN
+							#{
+								MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+							#}
+							ENDIF
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							
+						#}
+						ENDIF
+						#MATURITY PRODUCT BROKEN PERIOD SPECIFIC PART TRANS
+						
+						IF( 0 != CDOUBLE( MTT.InputDetails.indBPProfForMatProd ) ) THEN
+						#{
+							#debit part tran for P&L ACCT
+							MTT.PartTranDetails.RefAmount 		= - CDOUBLE( MTT.InputDetails.indBPProfForMatProd )
+							MTT.PartTranDetails.RateCode 		= MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account 		= sv_f
+							MTT.PartTranDetails.RefCurrency	= MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate 		= sv_v
+							MTT.PartTranDetails.Consolidate 	= "N"
+							MTT.PartTranDetails.Particulars 	= sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier 	= sv_z
+							MTT.PartTranDetails.PTranBusinessType 	= "PAYOUT PL DR"
+							MTT.PartTranDetails.ReportCode		= ""
+							sv_s = urhk_MTTS_DefinePartTran("DR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							
+							#credit part tran for MPPIA ACCT
+							MTT.PartTranDetails.RefAmount 		= CDOUBLE( MTT.InputDetails.indBPProfForMatProd )
+							MTT.PartTranDetails.RateCode 		= MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account 		= MTT.InputDetails.mppiaAcct
+							MTT.PartTranDetails.RefCurrency 	= MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate 		= sv_v
+							MTT.PartTranDetails.Consolidate 	= "N"
+							MTT.PartTranDetails.Particulars 	= sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier 	= sv_z
+							MTT.PartTranDetails.PTranBusinessType 	= "PAYOUT OFFICE CR"
+							MTT.PartTranDetails.ReportCode=""
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+					#}
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+			
+			#Acct level payout
+			
+			#}
+		ELSE
+			#{
+			
+			sv_p = CDOUBLE(MTT.InputDetails.bookedAmt)
+			sv_q = CDOUBLE(MTT.InputDetails.profitAmt)
+			sv_r = CDOUBLE(MTT.InputDetails.poolParkedAmt)
+			sv_w = CDOUBLE(MTT.InputDetails.totalProfitAmt)
+			sv_y = CDOUBLE(MTT.InputDetails.parkedPrefFromSundry)
+			sv_x = CDOUBLE(MTT.InputDetails.recoverableAmt)
+			
+			PRINT(sv_p)
+			PRINT(sv_q)
+			PRINT(sv_r)
+			PRINT(sv_w)
+			PRINT(sv_y)
+			PRINT(sv_x)
+			
+			sv_x = CDOUBLE(MTT.InputDetails.recoverableAmt)
+			sv_f = MTT.InputDetails.PLDrAcct
+			sv_g = MTT.InputDetails.payableAcct
+			sv_h = MTT.InputDetails.custAcNumber
+			sv_i = MTT.InputDetails.distrAcct
+			
+			PRINT(MTT.InputDetails.ageEligible)
+			
+			IF(MTT.InputDetails.ageEligible == "N") THEN
+			#{
+				sv_h = MTT.InputDetails.sundryAcct
+				sv_i = MTT.InputDetails.sundryAcct
+			#}
+			ENDIF
+			
+			PRINT(MTT.InputDetails.ageEligible)
+			PRINT(sv_f)
+			PRINT(sv_g)
+			PRINT(sv_h)
+			PRINT(sv_i)
+			
+			PRINT(MTT.InputDetails.doOnlyBookingRevForFrozenAcct)
+			
+			IF(MTT.InputDetails.doOnlyBookingRevForFrozenAcct == "Y") THEN
+			#{
+				#Debit part tran for Payable
+				MTT.PartTranDetails.RefAmount = - CDOUBLE(MTT.InputDetails.bookedAmt)
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account =MTT.InputDetails.payableAcct
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = "FROZEN ACCOUNT ACCRUAL REVERSAL/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PAYOUT PAYABLE DR"
+				MTT.PartTranDetails.ReportCode = ""
+				sv_s = urhk_MTTS_DefinePartTran("DR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				
+				#credit part tran for P&L Acct
+				MTT.PartTranDetails.RefAmount = CDOUBLE(MTT.InputDetails.bookedAmt)
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account = MTT.InputDetails.PLDrAcct
+				MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = "FROZEN ACCOUNT ACCRUAL REVERSAL/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PAYOUT PL CR"
+				MTT.PartTranDetails.ReportCode=""
+				sv_s = urhk_MTTS_DefinePartTran("CR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				PRINT(sv_q)
+				PRINT(sv_p)
+				IF(sv_q >= sv_p) THEN
+				#{
+					#debit part tran for Acct
+					MTT.PartTranDetails.RefAmount = - sv_p
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.Account =sv_g
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+					MTT.PartTranDetails.TranIdentifier =sv_z
+					MTT.PartTranDetails.PTranBusinessType = "PO Payable DR"
+					MTT.PartTranDetails.ReportCode=""
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("DR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					
+					sv_t = sv_q - sv_p
+					#debit part tran for Acct
+					MTT.PartTranDetails.RefAmount = - sv_t
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.Account =sv_f
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+					MTT.PartTranDetails.TranIdentifier =sv_z
+					MTT.PartTranDetails.PTranBusinessType = "PO PL DR"
+					MTT.PartTranDetails.ReportCode=""
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("DR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					#debit part tran for Acct
+					MTT.PartTranDetails.RefAmount = - sv_q
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.Account =sv_g
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+					MTT.PartTranDetails.TranIdentifier =sv_z
+					MTT.PartTranDetails.PTranBusinessType = "PO Payable DR"
+					MTT.PartTranDetails.ReportCode=""
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("DR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					
+					sv_t = sv_p - sv_q
+					#debit part tran for Acct
+					MTT.PartTranDetails.RefAmount = - sv_t
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.Account =sv_g
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+					MTT.PartTranDetails.TranIdentifier =sv_z
+					MTT.PartTranDetails.PTranBusinessType = "PO Payable DR"
+					MTT.PartTranDetails.ReportCode=""
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("DR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+					
+					#credit part tran for Acct
+					MTT.PartTranDetails.RefAmount = sv_t
+					MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+					MTT.PartTranDetails.Account =sv_f
+					MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+					MTT.PartTranDetails.ValueDate = sv_v
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+					MTT.PartTranDetails.TranIdentifier =sv_z
+					MTT.PartTranDetails.PTranBusinessType = "PO PL CR"
+					MTT.PartTranDetails.ReportCode=""
+					PRINT(MTT.PartTranDetails.RefAmount)
+					PRINT(MTT.PartTranDetails.Account)
+					sv_s = urhk_MTTS_DefinePartTran("CR")
+					IF (sv_s != 0) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+						EXITSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				#debit part tran for Payable Acct
+				MTT.PartTranDetails.RefAmount = -sv_r
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account =sv_g
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PO Payable DR"
+				MTT.PartTranDetails.ReportCode=""
+				PRINT(MTT.PartTranDetails.RefAmount)
+				PRINT(MTT.PartTranDetails.Account)
+				sv_s = urhk_MTTS_DefinePartTran("DR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				
+				#debit part tran for Sundry Acct with pool preferential amt.
+				MTT.PartTranDetails.RefAmount          = -sv_y
+				MTT.PartTranDetails.RateCode           = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account            = MTT.InputDetails.sundryAcct
+				MTT.PartTranDetails.RefCurrency        = MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate          = sv_v
+				MTT.PartTranDetails.Consolidate        = "N"
+				MTT.PartTranDetails.Particulars        = "PoolPrefDr./" + MTT.InputDetails.custAcNumber + "/" + sv_a + "/" + sv_e
+				MTT.PartTranDetails.TranIdentifier     = sv_z
+				MTT.PartTranDetails.PTranBusinessType  = "PO Sundry DR Of Pool Parked Preferential"
+				MTT.PartTranDetails.Remarks            = "POOL PARKED PREF. DR. SUNDRY"
+				MTT.PartTranDetails.ReportCode         = ""
+				PRINT(MTT.PartTranDetails.RefAmount)
+				PRINT(MTT.PartTranDetails.Account)
+				sv_s = urhk_MTTS_DefinePartTran("DR")
+				PRINT(sv_s)
+				
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError      = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				
+				#if (flow is IO) then
+				PRINT(MTT.InputDetails.flowType)
+				IF (MTT.InputDetails.flowType == "IO") THEN
+				#{
+					#if recoverableAmt not equal to zero
+					IF (sv_x != 0) THEN
+					#{
+						#If recoverableAmt > TotalProfit
+						IF (sv_x >= sv_w) THEN
+						#{
+							#credit part tran for sundry/recoverable Acct
+							MTT.PartTranDetails.RefAmount =sv_w
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =MTT.InputDetails.recoveryAcct
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO SUNDRY CR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						#If recoverableAmt < TotalProfit
+						IF (sv_x < sv_w) THEN
+						#{
+							#credit part tran for sundry Acct
+							MTT.PartTranDetails.RefAmount =sv_x
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =MTT.InputDetails.recoveryAcct
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO SUNDRY CR"
+							MTT.PartTranDetails.ReportCode=""
+							PRINT(MTT.PartTranDetails.RefAmount)
+							PRINT(MTT.PartTranDetails.Account)
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							PRINT(sv_w)
+							PRINT(sv_x)
+							sv_w = sv_w - sv_x
+							PRINT(sv_w)
+							
+							#credit part tran for operative Acct
+							###############################################################################
+							# Customization for collection of With Holding Tax Starts-6
+							###############################################################################
+							IF(MTT.InputDetails.ageEligible != "N") THEN
+							#{
+								CUST.WITHTAX.drAccount 				= 	sv_i
+								CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+								CUST.WITHTAX.tranAmt 				= 	sv_w
+								#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+								CUST.WITHTAX.RateCode				=   ""
+								CUST.WITHTAX.tranIdentifier			=	sv_z
+								IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+								#{
+									CALL("wthmn042.scr")
+									IF(BANCS.OUTPUT.successOrFailure == "F") THEN
+									#{
+										EXITSCRIPT
+									#}
+									ENDIF
+									CALL("wthmn041.scr")
+									PRINT(CUST.WITHTAX.taxAmt)
+									PRINT(CUST.WITHTAX.tax_to_be_recovered)
+									IF(CUST.WITHTAX.taxAmt	>= CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+									#{
+										CUST.WITHTAX.crdtPrft = sv_w + CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)
+									#}
+									ENDIF
+									IF(CDOUBLE(CUST.WITHTAX.taxAmt)	< CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+									#{
+										CUST.WITHTAX.crdtPrft = sv_w
+									#}
+									ENDIF
+								#}
+								ENDIF
+								#{
+								#}
+							ELSE
+								#{
+								CUST.WITHTAX.crdtPrft = sv_w
+							#}
+							ENDIF
+							###############################################################################
+							# Customization for collection of With Holding Tax Ends-6
+							###############################################################################
+							
+							
+							#MTT.PartTranDetails.RefAmount =  CUST.WITHTAX.crdtPrft
+							MTT.PartTranDetails.RefAmount =  sv_w
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account = sv_i
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							IF(MTT.InputDetails.ageEligible == "N") THEN
+							#{
+								MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+								#}
+							ELSE
+								#{
+								MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+							ENDIF
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO OPER CR"
+							
+							
+							MTT.PartTranDetails.ReportCode=""
+							# Populate Distribution tran report code
+							BANCS.INPARAM.CustAcct=sv_h
+							BANCS.INPARAM.DrCrInd="C"
+							sv_s=urhk_PopulateTranRptCode("")
+							IF(sv_s==0) THEN
+							#{
+								MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+							#}
+							ENDIF
+							
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							###############################################################################
+							# Customization for collection of With Holding Tax Starts-7
+							###############################################################################
+							IF(MTT.InputDetails.ageEligible != "N") THEN
+							#{
+								PRINT(CUST.WITHTAX.taxAmt)
+								PRINT(CUST.WITHTAX.tax_to_be_recovered)
+								IF(CDOUBLE(CUST.WITHTAX.taxAmt)	>= CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+								#{
+									
+									CUST.WITHTAX.drAccount 				= 	sv_i
+									CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+									CUST.WITHTAX.tranAmt 				= 	CDOUBLE(CUST.WITHTAX.taxAmt)-CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)
+									#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+									CUST.WITHTAX.RateCode				=   ""
+									CUST.WITHTAX.tranIdentifier			=	sv_z
+									IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+									#{
+										CALL("wthmn039.scr")
+										IF(BANCS.OUTPUT.successOrFailure == "F") THEN
+										#{
+											EXITSCRIPT
+										#}
+										ENDIF
+									#}
+									ENDIF
+									
+									#Updating the custom table with amt as 0 as it is already adjusted
+									
+									#------------------------------------------------------------------------------------------------
+									# Checking if record already exists
+									#------------------------------------------------------------------------------------------------
+									BANCS.INPARAM.BINDVARS = ""
+									BANCS.INPARAM.BINDVARS = MTT.InputDetails.custAcNumber+ "|" + BANCS.STDIN.contextBankId
+									sv_s = "count|SELECT count(*)"
+									sv_s = sv_s + " FROM CUSTOM.C_WTHAOO"
+									sv_s = sv_s + " WHERE  FORACID = ?SVAR"
+									sv_s = sv_s + " AND BANK_ID = ?SVAR"
+									sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N'"
+									sv_s = sv_s + " AND NVL(ENTITY_CRE_FLG,'N')= 'Y'"
+									PRINT(sv_s)
+									sv_v = urhk_dbselectWithBind(sv_s)
+									PRINT(sv_v)
+									IF(sv_v == 0) THEN
+									#{
+										CUST.WITHTAX.count 	= BANCS.OUTPARAM.count
+										#}
+									ELSE
+										#{
+										CUST.WITHTAX.count 	= "0"
+									#}
+									ENDIF
+									IF(CINT(CUST.WITHTAX.count) == 0) THEN
+									#{
+										PRINT("No record exists")
+										#}
+									ELSE
+										#{
+										PRINT("ELSE")
+										CUST.WITHTAX.foracid = MTT.InputDetails.custAcNumber
+										CUST.WITHTAX.updateAmt = "0"
+										BANCS.INPARAM.BINDVARS =  CUST.WITHTAX.updateAmt +"|"+ BANCS.STDIN.userId + "|" + CUST.WITHTAX.foracid + "|" + BANCS.STDIN.contextBankId
+										PRINT(BANCS.INPARAM.BINDVARS)
+										sv_s = "UPDATE CUSTOM.C_WTHAOO SET TAX_TO_BE_RECOVERED = ?SVAR,LCHG_USER_ID = ?SVAR,LCHG_TIME = SYSDATE WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR "
+										PRINT(sv_s)
+										sv_d = urhk_dbSqlWithBind(sv_s)
+										PRINT(sv_d)
+										IF (sv_d != 0) THEN
+										#{
+											BANCS.OUTPUT.successOrFailure = "F"
+											BANCS.OUTPUT.scriptError = "Error in updating custom table "
+											EXITSCRIPT
+										#}
+										ENDIF
+									#}
+									ENDIF
+									#}
+								ELSE
+									#{
+									CUST.WITHTAX.foracid = MTT.InputDetails.custAcNumber
+									CUST.WITHTAX.updateAmt = CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)-CDOUBLE(CUST.WITHTAX.taxAmt)
+									BANCS.INPARAM.BINDVARS =  CUST.WITHTAX.updateAmt +"|"+ BANCS.STDIN.userId + "|" + CUST.WITHTAX.foracid + "|" + BANCS.STDIN.contextBankId
+									PRINT(BANCS.INPARAM.BINDVARS)
+									sv_s = "UPDATE CUSTOM.C_WTHAOO SET TAX_TO_BE_RECOVERED = ?SVAR,LCHG_USER_ID = ?SVAR,LCHG_TIME = SYSDATE WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR "
+									PRINT(sv_s)
+									sv_d = urhk_dbSqlWithBind(sv_s)
+									PRINT(sv_d)
+									IF (sv_d != 0) THEN
+									#{
+										BANCS.OUTPUT.successOrFailure = "F"
+										BANCS.OUTPUT.scriptError = "Error in updating custom table "
+										EXITSCRIPT
+									#}
+									ENDIF
+								#}
+								ENDIF
+							#}
+							ENDIF
+							
+							###############################################################################
+							# Customization for collection of With Holding Tax Ends-7
+							###############################################################################
+							
+						#}
+						ENDIF
+						
+						#}
+						#if recoverableAmt is equal to zero
+						#}
+					ELSE
+						#{
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-8
+						###############################################################################
+						IF(MTT.InputDetails.ageEligible != "N") THEN
+						#{
+							CUST.WITHTAX.drAccount 				= 	sv_i
+							CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+							CUST.WITHTAX.tranAmt 				= 	sv_w
+							#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+							CUST.WITHTAX.RateCode				=   ""
+							CUST.WITHTAX.tranIdentifier			=	sv_z
+							IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+							#{
+								CALL("wthmn042.scr")
+								IF(BANCS.OUTPUT.successOrFailure == "F") THEN
+								#{
+									EXITSCRIPT
+								#}
+								ENDIF
+								CALL("wthmn041.scr")
+								PRINT(CUST.WITHTAX.taxAmt)
+								PRINT(CUST.WITHTAX.tax_to_be_recovered)
+								IF(CUST.WITHTAX.taxAmt	>= CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+								#{
+									CUST.WITHTAX.crdtPrft = sv_w + CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)
+								#}
+								ENDIF
+								IF(CDOUBLE(CUST.WITHTAX.taxAmt)	< CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+								#{
+									CUST.WITHTAX.crdtPrft = sv_w
+								#}
+								ENDIF
+							#}
+							ENDIF
+							#{
+							#}
+						ELSE
+							#{
+							CUST.WITHTAX.crdtPrft = sv_w
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Ends-8
+						###############################################################################
+						#credit part tran for operative Acct
+						PRINT(sv_w)
+						PRINT(CUST.WITHTAX.crdtPrft)
+						#MTT.PartTranDetails.RefAmount =  CUST.WITHTAX.crdtPrft
+						MTT.PartTranDetails.RefAmount =  sv_w
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_i
+						MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						IF(MTT.InputDetails.ageEligible == "N") THEN
+						#{
+							MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+						ELSE
+							#{
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						#}
+						ENDIF
+						MTT.PartTranDetails.TranIdentifier = sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO OPER CR"
+						
+						# Populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_h
+						BANCS.INPARAM.DrCrInd="C"
+						sv_s=urhk_PopulateTranRptCode("")
+						IF(sv_s==0) THEN
+						#{
+							MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+						#}
+						ENDIF
+						
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-9
+						###############################################################################
+						IF(MTT.InputDetails.ageEligible != "N") THEN
+						#{
+							IF(CDOUBLE(CUST.WITHTAX.taxAmt)	>= CDOUBLE(CUST.WITHTAX.tax_to_be_recovered) ) THEN
+							#{
+								
+								CUST.WITHTAX.drAccount 				= 	sv_i
+								CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+								CUST.WITHTAX.tranAmt 				= 	CDOUBLE(CUST.WITHTAX.taxAmt)-CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)
+								#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+								CUST.WITHTAX.RateCode				=   ""
+								CUST.WITHTAX.tranIdentifier			=	sv_z
+								IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+								#{
+									CALL("wthmn039.scr")
+									IF(BANCS.OUTPUT.successOrFailure == "F") THEN
+									#{
+										EXITSCRIPT
+									#}
+									ENDIF
+								#}
+								ENDIF
+								
+								#Updating the custom table with amt as 0 as it is already adjusted
+								#------------------------------------------------------------------------------------------------
+								# Checking if record already exists
+								#------------------------------------------------------------------------------------------------
+								BANCS.INPARAM.BINDVARS = ""
+								BANCS.INPARAM.BINDVARS = MTT.InputDetails.custAcNumber+ "|" + BANCS.STDIN.contextBankId
+								sv_s = "count|SELECT count(*)"
+								sv_s = sv_s + " FROM CUSTOM.C_WTHAOO"
+								sv_s = sv_s + " WHERE  FORACID = ?SVAR"
+								sv_s = sv_s + " AND BANK_ID = ?SVAR"
+								sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N'"
+								sv_s = sv_s + " AND NVL(ENTITY_CRE_FLG,'N')= 'Y'"
+								#
+								PRINT(sv_s)
+								sv_v = urhk_dbselectWithBind(sv_s)
+								PRINT(sv_v)
+								IF(sv_v == 0) THEN
+								#{
+									CUST.WITHTAX.count 	= BANCS.OUTPARAM.count
+									#}
+								ELSE
+									#{
+									CUST.WITHTAX.count 	= "0"
+								#}
+								ENDIF
+								IF(CINT(CUST.WITHTAX.count) == 0) THEN
+								#{
+									PRINT("No record exists")
+									#}
+								ELSE
+									#{
+									CUST.WITHTAX.foracid = MTT.InputDetails.custAcNumber
+									CUST.WITHTAX.updateAmt = "0"
+									BANCS.INPARAM.BINDVARS =  CUST.WITHTAX.updateAmt +"|"+ BANCS.STDIN.userId + "|" + CUST.WITHTAX.foracid + "|" + BANCS.STDIN.contextBankId
+									PRINT(BANCS.INPARAM.BINDVARS)
+									sv_s = "UPDATE CUSTOM.C_WTHAOO SET TAX_TO_BE_RECOVERED = ?SVAR,LCHG_USER_ID = ?SVAR,LCHG_TIME = SYSDATE WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR "
+									PRINT(sv_s)
+									sv_d = urhk_dbSqlWithBind(sv_s)
+									PRINT(sv_d)
+									IF (sv_d != 0) THEN
+									#{
+										BANCS.OUTPUT.successOrFailure = "F"
+										BANCS.OUTPUT.scriptError = "Error in updating custom table "
+										EXITSCRIPT
+									#}
+									ENDIF
+								#}
+								ENDIF
+								
+								#}
+							ELSE
+								#{
+								CUST.WITHTAX.foracid = MTT.InputDetails.custAcNumber
+								CUST.WITHTAX.updateAmt = CDOUBLE(CUST.WITHTAX.tax_to_be_recovered)-CDOUBLE(CUST.WITHTAX.taxAmt)
+								BANCS.INPARAM.BINDVARS =  CUST.WITHTAX.updateAmt +"|"+ BANCS.STDIN.userId + "|" + CUST.WITHTAX.foracid + "|" + BANCS.STDIN.contextBankId
+								PRINT(BANCS.INPARAM.BINDVARS)
+								sv_s = "UPDATE CUSTOM.C_WTHAOO SET TAX_TO_BE_RECOVERED = ?SVAR,LCHG_USER_ID = ?SVAR,LCHG_TIME = SYSDATE WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR "
+								PRINT(sv_s)
+								sv_d = urhk_dbSqlWithBind(sv_s)
+								PRINT(sv_d)
+								IF (sv_d != 0) THEN
+								#{
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.scriptError = "Error in updating custom table "
+									EXITSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						###############################################################################
+						# Customization for collection of With Holding Tax Ends-9
+						###############################################################################
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					#if recoverableAmt not equal to zero
+					PRINT(sv_x)
+					IF (sv_x != 0) THEN
+					#{
+						#If recoverableAmt > TotalProfit
+						PRINT(sv_x)
+						PRINT(sv_w)
+						IF (sv_x > sv_w) THEN
+						#{
+							#credit part tran for sundry/recoverable Acct
+							MTT.PartTranDetails.RefAmount =sv_w
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account	=MTT.InputDetails.recoveryAcct
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO SUNDRY CR"
+							MTT.PartTranDetails.ReportCode=""
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						#If recoverableAmt < TotalProfit
+						IF (sv_x < sv_w) THEN
+						#{
+							#credit part tran for sundry Acct
+							MTT.PartTranDetails.RefAmount =sv_x
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =MTT.InputDetails.recoveryAcct
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO SUNDRY CR"
+							MTT.PartTranDetails.ReportCode=""
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							
+							
+							sv_w = sv_w - sv_x
+							
+							#sv_i= sv_w*0.15
+							#sv_w = sv_w - sv_i
+							
+							#credit part tran for cust Acct
+							MTT.PartTranDetails.RefAmount =  sv_w
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account = sv_h
+							MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							IF(MTT.InputDetails.ageEligible == "N") THEN
+							#{
+								MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+								#}
+							ELSE
+								#{
+								MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+							ENDIF
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO CUST CR"
+							
+							MTT.PartTranDetails.ReportCode=""
+							# Populate Distribution tran report code
+							BANCS.INPARAM.CustAcct=sv_h
+							BANCS.INPARAM.DrCrInd="C"
+							sv_s=urhk_PopulateTranRptCode("")
+							IF(sv_s==0) THEN
+							#{
+								MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+							#}
+							ENDIF
+							
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+							###############################################################################
+							# Customization for collection of With Holding Tax Starts-10
+							###############################################################################
+							# As its a II type so before crediting into cust account we can substract the wth tax amount
+							# and credit the same into the placeholder account set at scheme level
+							PRINT(MTT.InputDetails.ageEligible)
+							IF(MTT.InputDetails.ageEligible != "N") THEN
+							#{
+								CUST.WITHTAX.drAccount 				= 	sv_h
+								CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+								CUST.WITHTAX.tranAmt 				= 	sv_w
+								#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+								CUST.WITHTAX.RateCode				=   ""
+								CUST.WITHTAX.tranIdentifier			=	sv_z
+								IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+								#{
+									CALL("wthmn037.scr")
+									IF(CUST.WITHTAX.successOrFailure == "F") THEN
+									#{
+										BANCS.OUTPUT.successOrFailure = "F"
+										BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+										EXITSCRIPT
+									#}
+									ENDIF
+								#}
+								ENDIF
+							#}
+							ENDIF
+							
+							###############################################################################
+							# Customization for collection of With Holding Tax Ends-10
+							###############################################################################
+							
+						#}
+						ENDIF
+						
+						#If recoverableAmt == TotalProfit
+						IF (sv_x == sv_w) THEN
+						#{
+							#credit part tran for sundry/recoverable Acct
+							MTT.PartTranDetails.RefAmount =sv_w
+							MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+							MTT.PartTranDetails.Account =MTT.InputDetails.recoveryAcct
+							MTT.PartTranDetails.RefCurrency = MTT.InputDetails.custAcCrncy
+							MTT.PartTranDetails.ValueDate = sv_v
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							MTT.PartTranDetails.TranIdentifier = sv_z
+							MTT.PartTranDetails.PTranBusinessType = "PO SUNDRY CR"
+							MTT.PartTranDetails.ReportCode=""
+							sv_s = urhk_MTTS_DefinePartTran("CR")
+							IF (sv_s != 0) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+								EXITSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+						#}
+						#if recoverableAmt is equal to zero
+						#}
+					ELSE
+						#{
+						#credit part tran for cust Acct
+						PRINT(sv_w)
+						#sv_i= sv_w*0.15
+						#sv_w = sv_w - sv_i
+						
+						
+						MTT.PartTranDetails.RefAmount =  sv_w
+						MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+						MTT.PartTranDetails.Account = sv_h
+						MTT.PartTranDetails.RefCurrency =MTT.InputDetails.custAcCrncy
+						MTT.PartTranDetails.ValueDate = sv_v
+						MTT.PartTranDetails.Consolidate = "N"
+						IF(MTT.InputDetails.ageEligible == "N") THEN
+						#{
+							MTT.PartTranDetails.Particulars = "Parked Sundry, Criteria not met/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+							#}
+						ELSE
+							#{
+							MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+						#}
+						ENDIF
+						MTT.PartTranDetails.TranIdentifier = sv_z
+						MTT.PartTranDetails.PTranBusinessType = "PO CUST CR"
+						MTT.PartTranDetails.ReportCode=""
+						
+						# Populate Distribution tran report code
+						BANCS.INPARAM.CustAcct=sv_h
+						BANCS.INPARAM.DrCrInd="C"
+						sv_s=urhk_PopulateTranRptCode("")
+						IF(sv_s==0) THEN
+						#{
+							MTT.PartTranDetails.ReportCode=BANCS.OUTPARAM.RptCode
+						#}
+						ENDIF
+						
+						sv_s = urhk_MTTS_DefinePartTran("CR")
+						IF (sv_s != 0) THEN
+						#{
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+							EXITSCRIPT
+						#}
+						ENDIF
+						###############################################################################
+						# Customization for collection of With Holding Tax Starts-11
+						###############################################################################
+						# As its a II type so before crediting into cust account we can substract the wth tax amount
+						# and credit the same into the placeholder account set at scheme level
+						PRINT(MTT.InputDetails.ageEligible)
+						IF(MTT.InputDetails.ageEligible != "N") THEN
+						#{
+							CUST.WITHTAX.drAccount 				= 	sv_h
+							CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+							CUST.WITHTAX.tranAmt 				= 	sv_w
+							#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+							CUST.WITHTAX.RateCode				=   ""
+							CUST.WITHTAX.tranIdentifier			=	sv_z
+							IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+							#{
+								CALL("wthmn037.scr")
+								IF(CUST.WITHTAX.successOrFailure == "F") THEN
+								#{
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+									EXITSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						###############################################################################
+						# Customization for collection of With Holding Tax Ends-11
+						###############################################################################
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				#debit part tran for mppia Acct
+				MTT.PartTranDetails.RefAmount = - sv_q
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account = MTT.InputDetails.mppiaAcct
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PO Payable DR"
+				MTT.PartTranDetails.ReportCode=""
+				sv_s = urhk_MTTS_DefinePartTran("DR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+				
+				#credit part tran for P&L Acct
+				MTT.PartTranDetails.RefAmount = sv_q
+				MTT.PartTranDetails.RateCode = MTT.InputDetails.profitRateCode
+				MTT.PartTranDetails.Account =sv_f
+				MTT.PartTranDetails.RefCurrency=MTT.InputDetails.custAcCrncy
+				MTT.PartTranDetails.ValueDate = sv_v
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.Particulars = "Acct Payout/" + MTT.InputDetails.custAcNumber + "/" + sv_a + " to " + sv_e
+				MTT.PartTranDetails.TranIdentifier =sv_z
+				MTT.PartTranDetails.PTranBusinessType = "PO PL CR"
+				MTT.PartTranDetails.ReportCode=""
+				sv_s = urhk_MTTS_DefinePartTran("CR")
+				IF (sv_s != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+					EXITSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#------------------------------ TRANSACTION FOR PRE-RENEWAL PROFIT DISTRIBUTION -----------------------------------#
+		PRINT(MTT.InputDetails.schmType)
+		PRINT(BANCS.OUTPUT.profitSplitReq)
+		PRINT(MTT.InputDetails.prodType)
+		
+		IF( ( MTT.InputDetails.schmType == "TUA" ) AND ( BANCS.OUTPUT.profitSplitReq == "Y" ) AND  (MTT.InputDetails.prodType != "I")) THEN
+		#{
+			#Debit Sundry Accnt #
+			sv_n = MTT.PartTranDetails.pref_amt_before_renewal
+			sv_b = CDOUBLE( MTT.PartTranDetails.prft_amt_bfre_frst_renewal ) + CDOUBLE( sv_n )
+			
+			PRINT(sv_b)
+			
+			MTT.PartTranDetails.RefAmount           = - sv_b
+			MTT.PartTranDetails.RateCode            = MTT.InputDetails.profitRateCode
+			MTT.PartTranDetails.Account             = MTT.InputDetails.sundryAcct
+			MTT.PartTranDetails.RefCurrency         = MTT.InputDetails.custAcCrncy
+			MTT.PartTranDetails.ValueDate           = sv_v
+			MTT.PartTranDetails.Consolidate         = "N"
+			MTT.PartTranDetails.Particulars         = sv_i + MTT.InputDetails.sundryAcct + "/" + sv_a + "/" + sv_e
+			MTT.PartTranDetails.TranIdentifier      = "PRE RENEWAL TRAN"
+			MTT.PartTranDetails.PTranBusinessType   = "PO SUNDRY DR"
+			MTT.PartTranDetails.ReportCode          = ""
+			MTT.PartTranDetails.Remarks             = "PRE-RENEWAL PROFIT DR. SUNDRY"
+			
+			sv_s = urhk_MTTS_DefinePartTran("DR")
+			PRINT(sv_s)
+			IF (sv_s != 0) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.scriptError      = "urhk_MTTS_DefinePartTran returns FAILURE"
+				EXITSCRIPT
+			#}
+			ENDIF
+			
+			# Credit TU Account #
+			MTT.PartTranDetails.RefAmount           = sv_b
+			MTT.PartTranDetails.RateCode            = MTT.InputDetails.profitRateCode
+			MTT.PartTranDetails.Account             = MTT.InputDetails.distrAcct
+			MTT.PartTranDetails.RefCurrency         = MTT.InputDetails.custAcCrncy
+			MTT.PartTranDetails.ValueDate           = sv_v
+			MTT.PartTranDetails.Consolidate         = "N"
+			MTT.PartTranDetails.Particulars         = sv_i + MTT.InputDetails.custAcNumber + "/" + sv_a + "/" + sv_e
+			MTT.PartTranDetails.TranIdentifier      = "PRE RENEWAL TRAN"
+			MTT.PartTranDetails.PTranBusinessType   = "PAYOUT PAYABLE CR"
+			MTT.PartTranDetails.ReportCode          = ""
+			MTT.PartTranDetails.Remarks             = "PRE-RENEWAL PROFIT CR. CUST."
+			
+			sv_s = urhk_MTTS_DefinePartTran("CR")
+			###############################################################################
+			# Customization for collection of With Holding Tax Starts-12
+			###############################################################################
+			CUST.WITHTAX.drAccount 				= 	MTT.InputDetails.distrAcct
+			CUST.WITHTAX.wthFlgChkAcct			=   MTT.InputDetails.custAcNumber
+			CUST.WITHTAX.tranAmt 				= 	sv_b
+			#CUST.WITHTAX.RateCode				=   MTT.InputDetails.profitRateCode
+			CUST.WITHTAX.RateCode				=   ""
+			CUST.WITHTAX.tranIdentifier			=	"PRE RENEWAL TRAN"
+			IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+			#{
+				CALL("wthmn037.scr")
+				IF(CUST.WITHTAX.successOrFailure == "F") THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.scriptError = CUST.WITHTAX.scriptError
+					EXITSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+			###############################################################################
+			# Customization for collection With Holding Tax Ends-12
+			###############################################################################
+			
+			PRINT(sv_s)
+			IF (sv_s != 0) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.scriptError      = "urhk_MTTS_DefinePartTran returns FAILURE"
+				EXITSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#-----------------------------------------------------------------------------------------------------------------------#
+		
+		#Get the details of the next account from the LL.
+		sv_s = urhk_MTTS_PopulateInputDetails("")
+	#}
+	DO
+	
+	sv_m = urhk_MTTS_EndDefinition("PAYOUT TRAN")
+	PRINT(sv_m)
+	PRINT(BANCS.OUTPARAM.MTTTranId)
+	
+	sv_r = urhk_MTTS_EndDefinition("PRE RENEWED TRAN")
+	PRINT(sv_r)
+	PRINT(BANCS.OUTPARAM.MTTTranId)
+	
+	TRACE OFF
+	EXITSCRIPT
+END-->

@@ -1,0 +1,720 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: dailyLimChkCLAmn001.scr
+# Type:  NA|default
+# Description: Credit line accounts custom batch job.  Checks for limit expiry and get credited from operative account if balance is available.
+# Author: Meena_Andhavarapu
+# Date: 10/24/18 11:40 AM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="5ee8d8c9bf2cd1306541bc2d11bf78d9beaa407ab6a096d35da6f6c8a8a4a917"
+	# Script body goes here
+	TRACE ON
+	LIBNAME CUSTOMSO
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","CLA")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CLA",5)
+	#}
+	ENDIF
+	
+	CUST.CLA.opacid = ""
+	CUST.CLA.foracid = ""
+	CUST.CLA.linkAc = ""
+	CUST.CLA.sanctionLim = ""
+	CUST.CLA.effBal = ""
+	
+	sv_s = "timeStamp|select to_char(sysdate,'ddmmyyyyhhmiss') from dual"
+	PRINT(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.CLA.timeStamp = BANCS.OUTPARAM.timeStamp
+		PRINT(CUST.CLA.timeStamp)
+	#}
+	ENDIF
+	
+	PRINT(BANCS.STDIN.BODDate)
+	CUST.CLA.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+	CUST.CLA.errMsg = ""
+	CUST.CLA.failureFile = "failfile_dailyLimChkCLA_" + BANCS.STDIN.mySolId + ".lst"
+	
+	CUST.CLA.failFileIndex1 = ""
+	CUST.CLA.failFileIndex1 = urtn_fileOpen(CUST.CLA.failureFile + "|w")
+	CUST.CLA.successFile = "successFile_dailyLimChkCLA_" + BANCS.STDIN.mySolId + ".lst"
+	
+	CUST.CLA.successFileIndex1 = ""
+	CUST.CLA.successFileIndex1 = urtn_fileOpen(CUST.CLA.successFile + "|w")
+	
+	PRINT(CUST.CLA.failFileIndex1)
+	PRINT(CUST.CLA.successFileIndex1)
+	
+	
+	CUST.CLA.collectedAmt = ""
+	CUST.CLA.list_file_name = CUST.CLA.failureFile
+	CUST.CLA.title = "CreditLine Accounts Daily Limit Check Failure Report"
+	CUST.CLA.mrt_file_name = "dailyLimChkCLA.mrt"
+	CUST.CLA.rpt_file_name = "dailyLimChkCLAFail_" + CUST.CLA.timeStamp + ".rpt"
+	CUST.CLA.rpt =  "dailyLimChkCLAFail_" + CUST.CLA.timeStamp
+	
+	CUST.CLA.list_file_nameSuccess = CUST.CLA.successFile
+	CUST.CLA.titleSuccess = "CreditLine Accounts Daily Limit Check Success Report"
+	CUST.CLA.rpt_file_nameSuccess = "dailyLimChkCLASuc_" + CUST.CLA.timeStamp + ".rpt"
+	CUST.CLA.rptSuccess =  "dailyLimChkCLASuc_" +  CUST.CLA.timeStamp
+	
+	
+	##############################################################################################
+	#Checking the cparam setup if the account that is being opened is of Creditline type
+	##############################################################################################
+	
+	CUST.CLA.parameterId = "CREDITLINE_SCHEMES"
+	CUST.CLA.moduleName = "OT"
+	
+	PRINT(BANCS.STDIN.contextBankId)
+	PRINT(CUST.CLA.moduleName)
+	PRINT(CUST.CLA.parameterId)
+	
+	sv_a = ""
+	
+	#sv_a = sv_a + "available|select decode(count(1),0,'N','Y') FROM CUSTOM.C_CPVALUE , CUSTOM.C_CPMASTER "
+	sv_a = sv_a + "paramVal|select parameter_value FROM CUSTOM.C_CPVALUE , CUSTOM.C_CPMASTER "
+	sv_a = sv_a + " WHERE C_CPMASTER.bank_id = C_CPVALUE.bank_id  AND "
+	sv_a = sv_a + " C_CPMASTER.module_name = C_CPVALUE.module_name  AND "
+	sv_a = sv_a + " C_CPMASTER.parameter_id = C_CPVALUE.parameter_id AND "
+	sv_a = sv_a + " C_CPVALUE.del_flg != 'Y' AND "
+	sv_a = sv_a + " C_CPVALUE.entity_cre_flg = 'Y' AND "
+	sv_a = sv_a + " C_CPMASTER.bank_id = ?SVAR AND "
+	sv_a = sv_a + " C_CPMASTER.module_name = ?SVAR AND "
+	sv_a = sv_a + " C_CPVALUE.parameter_id = ?SVAR "
+	#sv_a = sv_a + " INSTR(','||parameter_value||',',','||'"
+	#sv_a = sv_a + CUST.CLA.parentSchmCode +"'||',') != 0 "
+	
+	PRINT(sv_a)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.moduleName + "|" + CUST.CLA.parameterId
+	
+	sv_d = urhk_dbSelectWithBind(sv_a)
+	PRINT(sv_a)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.paramVal)
+		CUST.CLA.paramVal = BANCS.OUTPARAM.paramVal
+		
+		##############################################################################################
+		#fetching the Creditline accounts based on the CPARAM value
+		##############################################################################################
+		
+		sv_l = ""
+####	sv_l = sv_l + "acid,foracid,linkedAc,sanctionLim|SELECT gam.acid, foracid, free_code_4, lht.sanct_lim "
+####	sv_l = sv_l + " FROM tbaadm.gam, tbaadm.lht, tbaadm.fcftt "
+####	sv_l = sv_l + " WHERE gam.entity_cre_flg = 'Y' AND gam.del_flg = 'N' "
+####	sv_l = sv_l + " AND lht.status= 'A' AND lht.supercede_flg = 'N' "
+####	sv_l = sv_l + "	AND lht.entity_cre_flg = 'Y' AND lht.del_flg = 'N' AND gam.schm_type = 'ODA'  AND  (select decode(count(1),0,'N','Y') from dual where"
+####	sv_l = sv_l + " INSTR(?SVAR,gam.schm_code) != 0) = 'Y' AND lht.lim_exp_date < to_date(?SVAR, 'DD-MM-YYYY') AND gam.acct_cls_flg != 'Y' "
+####	sv_l = sv_l + " AND gam.acid = lht.acid AND gam.acid = fcftt.acid "
+####	sv_l = sv_l + "	AND gam.sol_id = ?SVAR AND gam.bank_id = ?SVAR "
+		
+		sv_l = sv_l + " acid,foracid,linkedAcid,sanctionLim | select  x.acid , x.foracid, x.INT_DR_ACID ,  nvl(x.sanct_lim,0) sanct_lim " 
+		sv_l = sv_l + " from (select gam.foracid, gam.sol_id,gam.schm_code,gam.acid, nvl(clr_bal_amt,0) clr_bal_amt,  "
+		sv_l = sv_l + " nvl ( (   select   nvl(sum(sanct_lim),0) from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and status='A' "
+		sv_l = sv_l + " and del_flg='N' and acid=gam.acid ),0) sanct_lim ,gac.INT_DR_ACID from tbaadm.gam ,tbaadm.gac where gam.bank_id= ?SVAR and sol_id=?SVAR "
+		sv_l = sv_l + " and del_flg='N' and entity_cre_flg='Y' and acct_cls_flg='N' and clr_bal_amt <0  and schm_type='ODA'  "
+		sv_l = sv_l + " and (select decode(count(1),0,'N','Y') from dual where INSTR(?SVAR,gam.schm_code) != 0) = 'Y' "
+   	    sv_l = sv_l + " and gam.acid=gac.acid and gac.bank_id= ?SVAR and INT_DR_ACID is not null) x  where (x.sanct_lim+x.clr_bal_amt)<0  "
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUST.CLA.paramVal + "|" +  BANCS.STDIN.contextBankId
+		#BANCS.INPARAM.BINDVARS =  CUST.CLA.paramVal + "|" + CUST.CLA.BODDate + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+		#BANCS.INPARAM.BINDVARS = CUST.CLA.BODDate + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+		
+		
+		PRINT(sv_l)
+		sv_e = urhk_dbCursorOpenWithBind(sv_l)
+		
+		PRINT(sv_e)
+		
+		IF(sv_e!=0) THEN
+		#{
+			CUST.CLA.errMsg = "DB Error: | Error in opening cursor, Please contact DBA"
+			PRINT(CUST.CLA.errMsg)
+			sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+			PRINT(sv_b)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_n)
+		
+		sv_f = urhk_dbCursorFetch(sv_n)
+		
+		PRINT(sv_f)
+		
+		IF(sv_f!=0) THEN
+		#{
+			CUST.CLA.errMsg = "DB Error: | No accounts exist"
+			PRINT(CUST.CLA.errMsg)
+			sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+			PRINT(sv_b)
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+		
+		WHILE(sv_f == 0)
+		#{
+			PRINT(BANCS.OUTPARAM.acid)
+			PRINT(BANCS.OUTPARAM.foracid)
+			PRINT(BANCS.OUTPARAM.linkedAcid)
+			PRINT(BANCS.OUTPARAM.sanctionLim)
+			
+			CUST.CLA.opacid = BANCS.OUTPARAM.acid
+			CUST.CLA.foracid = BANCS.OUTPARAM.foracid
+			CUST.CLA.linkAcid = BANCS.OUTPARAM.linkedAcid
+			CUST.CLA.sanctionLim = BANCS.OUTPARAM.sanctionLim
+			
+			sv_r = urhk_getAcctDetailsInRepository(CUST.CLA.foracid)
+			
+			IF(sv_r != 0)THEN
+			#{
+				sv_q ="account is not found"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid +"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID
+				PRINT("account is not active")
+				#}
+			ELSE
+				#{
+				CUST.CLA.opsolid = BANCS.OUTPARAM.acctSolId
+				CUST.CLA.actcrncy = BANCS.OUTPARAM.acctCrncyCode
+				CUST.CLA.frezCode = BANCS.OUTPARAM.freezeCode
+				
+				PRINT(CUST.CLA.opsolid)
+				PRINT(CUST.CLA.actcrncy)
+				PRINT(CUST.CLA.frezCode)
+				PRINT(BANCS.OUTPARAM.clearBalance)
+				
+				sv_e = BANCS.OUTPARAM.clearBalance
+				PRINT(sv_e)
+				BANCS.INPARAM.InputAmount = sv_e
+				BANCS.INPARAM.RoundOffAmt =1
+				BANCS.INPARAM.RoundOffFlag = "L"
+				sv_r = urhk_B2k_RoundOff ("")
+				PRINT(sv_r)
+				IF(sv_r ==0) THEN
+				#{
+					sv_e = BANCS.OUTPARAM.OutputAmount
+				#}
+				ENDIF
+				
+				CUST.CLA.effavlamt = sv_e
+			#}
+			ENDIF
+			
+			##################################################
+			##to check if  account is not active
+			##################################################
+			
+			BANCS.INPARAM.BINDVARS = CUST.CLA.opacid + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_q="acctStat|select ACCT_STATUS from tbaadm.CAM where acid = ?SVAR AND entity_cre_flg = 'Y' AND del_flg = 'N' "
+			sv_q= sv_q + " AND bank_id=?SVAR"
+			PRINT(sv_q)
+			sv_r = urhk_dbselectWithBind(sv_q)
+			PRINT(sv_r)
+			IF (sv_r == 0) THEN
+			#{
+				CUST.CLA.acctStat = BANCS.OUTPARAM.acctStat
+				IF(CUST.CLA.acctStat!="A")THEN
+				#{
+					sv_q ="account is not active"
+					PRINT(sv_q)
+					sv_q = CUST.CLA.foracid+"|"+sv_q
+					sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					GOTO NEXTACID
+					PRINT("account is not active")
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				sv_q ="Acct status not fetched from CAM"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid+"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID
+				
+			#}
+			ENDIF
+			
+			PRINT(CUST.CLA.linkAcid)
+			
+			##################################################
+			#validate linked acct
+			##################################################
+			
+			sv_q="count |select count(1) from tbaadm.gam where bank_id= ?SVAR  and del_flg='N' and acct_cls_flg='N' and entity_cre_flg='Y' and acid= ?SVAR "
+			PRINT(sv_q)
+			
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.linkAcid
+			sv_r = urhk_dbselectWithBind(sv_q)
+			
+			IF (sv_r == 0) THEN
+			#{
+				CUST.CLA.count=BANCS.OUTPARAM.count
+				IF (CUST.CLA.count == 0) THEN
+				#{
+				sv_q ="Oprative account is invalid or closed"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid+"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_q="linkforacid |select foracid from tbaadm.gam where bank_id= ?SVAR  and del_flg='N' and acct_cls_flg='N' and entity_cre_flg='Y' and acid= ?SVAR"
+			PRINT(sv_q)
+			
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.linkAcid
+			sv_r = urhk_dbselectWithBind(sv_q)
+			
+			IF (sv_r == 0) THEN
+			#{
+				CUST.CLA.linkAc=BANCS.OUTPARAM.linkforacid
+				print(CUST.CLA.linkAc)
+			#}
+			ENDIF
+			
+			IF(sv_r != 0)THEN
+			#{
+				sv_q ="Linked account is invalid"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid+"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID
+			#}
+			ELSE
+				#{
+				
+				##################################################
+				##to check if linked account is not active
+				##################################################
+				
+				BANCS.INPARAM.BINDVARS = CUST.CLA.linkAc + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_q="acctStat|select ACCT_STATUS from tbaadm.smt where acid = (select acid from tbaadm.gam where foracid = ?SVAR "
+				sv_q = sv_q + " AND entity_cre_flg = 'Y' AND del_flg = 'N' AND acct_cls_flg != 'Y' ) "
+				sv_q= sv_q + " AND bank_id=?SVAR "
+				PRINT(sv_q)
+				sv_r = urhk_dbselectWithBind(sv_q)
+				PRINT(sv_r)
+				IF (sv_r == 0) THEN
+				#{
+					CUST.CLA.acctStat = BANCS.OUTPARAM.acctStat
+					IF(CUST.CLA.acctStat!="A")THEN
+					#{
+						sv_q ="Linked Ac is not active"
+						PRINT(sv_q)
+						sv_q = CUST.CLA.foracid+"|"+sv_q
+						sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+						PRINT(sv_b)
+						GOTO NEXTACID
+						PRINT("Linked Ac is not active")
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				PRINT(CUST.CLA.linkAc)
+				
+				################################################
+				#check bal of linked account
+				################################################
+				
+				sv_r = urhk_getAcctDetailsInRepository(CUST.CLA.linkAc)
+				
+				IF(sv_r != 0)THEN
+				#{
+					sv_q ="Linked Account is not found"
+					PRINT(sv_q)
+					sv_q = CUST.CLA.foracid +"|"+sv_q
+					sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+					PRINT(sv_b)
+					GOTO NEXTACID
+					PRINT("linked Acc is not active")
+					#}
+				ELSE
+					#{
+					CUST.CLA.linkAcSolid = BANCS.OUTPARAM.acctSolId
+					CUST.CLA.linkAcCrncy = BANCS.OUTPARAM.acctCrncyCode
+					CUST.CLA.frezCode = BANCS.OUTPARAM.freezeCode
+					
+					PRINT(CUST.CLA.linkAcSolid)
+					PRINT(CUST.CLA.linkAcCrncy)
+					
+					
+					sv_e = BANCS.OUTPARAM.EffAvailableAmt
+					PRINT(sv_e)
+					BANCS.INPARAM.InputAmount = sv_e
+					BANCS.INPARAM.RoundOffAmt =1
+					BANCS.INPARAM.RoundOffFlag = "L"
+					sv_r = urhk_B2k_RoundOff ("")
+					PRINT(sv_r)
+					IF(sv_r ==0) THEN
+					#{
+						sv_e = BANCS.OUTPARAM.OutputAmount
+					#}
+					ENDIF
+					
+					CUST.CLA.linkAcEffAvlAmt = sv_e
+				#}
+				ENDIF
+				PRINT(CUST.CLA.linkAcEffAvlAmt)
+				
+			#}
+			ENDIF
+			
+			##################################################################################
+			#to  check if linked acct has funds to credit CLA
+			##################################################################################
+			
+			
+			IF(CUST.CLA.linkAcEffAvlAmt <= 0)THEN
+			#{
+				sv_q ="Linked Operative Account has no funds to credit"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid +"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID
+				
+			#}
+			ENDIF
+			
+			##################################################################################
+			#to  check if linked acct has amount less than or greater than Sanction limit
+			#if less, the entire amount is credited, else the sanction lim is credited
+			##################################################################################
+			
+			PRINT(CUST.CLA.effavlamt)
+			PRINT(CUST.CLA.linkAcEffAvlAmt)
+			PRINT(CUST.CLA.sanctionLim)
+			
+			
+			sv_m = 0
+			sv_c = CDOUBLE(CUST.CLA.sanctionLim) + CDOUBLE(CUST.CLA.effavlamt)
+			
+			IF(sv_c >= 0)THEN
+			#{
+				sv_q =" Credit line Account is in credit or Account having sanction limit"
+				PRINT(sv_q)
+				sv_q = CUST.CLA.foracid +"|"+sv_q
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + sv_q)
+				PRINT(sv_b)
+				GOTO NEXTACID				
+		    #}
+			ELSE
+				#{
+				PRINT(sv_c)
+				IF(CDOUBLE(CUST.CLA.linkAcEffAvlAmt) <= -1 * (sv_c))THEN
+				#{
+					sv_m = CDOUBLE(CUST.CLA.linkAcEffAvlAmt)
+					print(sv_m)
+				#}
+				ELSE
+				#{
+					sv_m = -1 * (sv_c)
+					print(sv_m)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			PRINT(sv_m)
+			
+			CUST.CLA.effBal = sv_m
+			
+			####################################################################
+			#MTT BEGIN
+			####################################################################
+			
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			IF(sv_z!=0)THEN
+			#{
+				
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+				
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.PostTranFlg = "Y"
+			BANCS.INPARAM.CommitFlg = "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+			BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw = "Y"
+			BANCS.INPARAM.CheckExceptions = "Y"
+			sv_r = urhk_MTTS_Initialize("")
+			PRINT(sv_r)
+			
+			IF(sv_r!=0)THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+			#}
+			ENDIF
+			############################################
+			#Define Transaction
+			#############################################
+			MTT.TranDetails.TranID 					= ""
+			MTT.TranDetails.TranDate                = "0"
+			MTT.TranDetails.TranType                = "T"
+			MTT.TranDetails.PostFlag                = "Y"
+			MTT.TranDetails.TranSubType             = "BI"
+			MTT.TranDetails.ReversalFlag            = "N"
+			MTT.TranDetails.IgnoreExcp              = "I"
+			MTT.TranDetails.Consolidate             = "Y"
+			MTT.TranDetails.Remarks                 = "EXPIRED ODCL MOVEMENT"
+			sv_t = urhk_MTTS_DefineTransaction("CLA_LIM_CHK")
+			
+			IF (sv_t != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+				
+				GOTO NEXTACID
+			#}
+			ENDIF
+			
+			############################################
+			#Define debit Transaction
+			#############################################
+			
+			MTT.PartTranDetails.Account     = CUST.CLA.linkAc
+			MTT.PartTranDetails.RefCurrency = CUST.CLA.linkAcCrncy
+			MTT.PartTranDetails.Particulars = "DR FOR EXPIRED CREDIT LINE " + CUST.CLA.foracid 
+			MTT.PartTranDetails.Remarks = "EXPIRED Credit Line"
+			MTT.PartTranDetails.RefAmount = -CDOUBLE(CUST.CLA.effBal)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Consolidate = "Y"
+			MTT.PartTranDetails.TranIdentifier = "CLA_LIM_CHK"
+			MTT.PartTranDetails.CarveAmtFlg="Y"
+			sv_r = urhk_MTTS_DefinePartTran("CLA_LIM_CHK_DR")
+			PRINT(sv_r)
+			
+			IF (sv_r != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+				
+				GOTO NEXTACID
+			#}
+			ENDIF
+			
+			MTT.PartTranDetails.Account=CUST.CLA.foracid
+			MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CLA.effBal)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Particulars= "CR FOR EXPIRED CREDIT LINE " + CUST.CLA.linkAc 
+			MTT.PartTranDetails.RefCurrency= CUST.CLA.actcrncy
+			MTT.PartTranDetails.ValueDate="0"
+			MTT.PartTranDetails.ReportCode = ""
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="CLA_LIM_CHK"
+			MTT.PartTranDetails.PTranBusinessType=""
+			sv_o = urhk_MTTS_DefinePartTran("CLA_LIM_CHK_CR")
+			PRINT(sv_o)
+			IF(sv_o != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+				
+				GOTO NEXTACID
+			#}
+			ENDIF
+
+                        sv_r = urhk_putExceptionsIntoRepository("")
+                        PRINT(sv_r)
+		
+			sv_s = urhk_b2k_printRepos("EXCP")
+			
+			sv_r = urhk_MTTS_EndDefinition("")
+			PRINT(sv_r)
+			
+			IF(sv_r !=0) THEN
+			#{
+				sv_a = "Transaction Commit Failed"
+				PRINT(sv_a)
+				sv_h = urhk_MTTS_ReportErrorCondition("")
+				PRINT(sv_h)
+				IF(sv_h!=0)THEN
+				#{
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					PRINT(MTT.Error.Description)
+					CUST.CLA.errMsg=MTT.Error.Description
+					PRINT(CUST.CLA.errMsg)
+					sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+					PRINT(sv_b)
+					GOTO NEXTACID
+				#}
+				ENDIF
+				sv_h = urhk_MTTS_HandleExceptions("POST")
+				PRINT(sv_h)
+				sv_h=urhk_B2k_PrintRepos("MTT")
+				PRINT(sv_h)
+				
+			#}
+			ENDIF
+			
+			
+			PRINT(BANCS.OUTPARAM.MTTTranId)
+			CUST.CLA.resMsg = CUST.CLA.foracid + "|" + "EXPIRED ODCL FUND Movement . Tran:" + TRIM(BANCS.OUTPARAM.MTTTranId)
+			sv_b = urtn_fileWrite(CUST.CLA.successFileIndex1 + "|" + CUST.CLA.resMsg)
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			
+			IF(sv_z!=0)THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CLA.errMsg=MTT.Error.Description
+				PRINT(CUST.CLA.errMsg)
+				sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+				PRINT(sv_b)
+				GOTO NEXTACID
+			#}
+			ENDIF
+			
+			NEXTACID:
+				sv_f = urhk_dbCursorFetch(sv_n)
+				PRINT(sv_f)
+				
+			#}
+			DO
+			sv_c = urhk_dbCursorClose(sv_n)
+			PRINT(sv_c)
+			#}
+		ELSE
+			#{
+			CUST.CLA.errMsg = "CPARAM|CPARAM not maintained for Parameter Id: "+CUST.CLA.parameterId + " for OT in Entity: "+ BANCS.STDIN.contextBankId
+			PRINT(CUST.CLA.errMsg)
+			sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+			PRINT(sv_b)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+		IF(CUST.CLA.errMsg == "") THEN
+		#{
+			CUST.CLA.errMsg = " Other Accounts|Batch Job executed with out any Errors"
+			sv_b = urtn_fileWrite(CUST.CLA.failFileIndex1 + "|" + CUST.CLA.errMsg)
+			PRINT(sv_b)
+		#}
+		ENDIF
+		
+		sv_c = urtn_fileClose(CUST.CLA.failFileIndex1)
+		PRINT(sv_c)
+		sv_c = urtn_fileClose(CUST.CLA.successFileIndex1)
+		PRINT(sv_c)
+		
+		CUST.CLA.ERR000002 = "Failed "
+		PRINT(CUST.CLA.list_file_name)
+		sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CUST.CLA.mrt_file_name + " " + CUST.CLA.list_file_name + " " + CUST.CLA.rpt
+		PRINT(sv_r)
+		sv_r = SYSTEM(sv_r)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CLA.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CUST.CLA.rpt_file_name+" '" + CUST.CLA.title+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		
+		##############
+		
+		PRINT(CUST.CLA.list_file_nameSuccess )
+		sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CUST.CLA.mrt_file_name + " " + CUST.CLA.list_file_nameSuccess  + " " + CUST.CLA.rptSuccess
+		PRINT(sv_r)
+		sv_r = SYSTEM(sv_r)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CLA.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CUST.CLA.rpt_file_nameSuccess+" '" + CUST.CLA.titleSuccess+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		
+		
+		##############
+		
+		
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CLA.ERR000002 + "^DATE")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		sv_c = urtn_fileClose(CUST.CLA.failFileIndex1)
+		PRINT(sv_c)
+		
+		
+	FINISH:
+		TRACE OFF
+		
+END-->

@@ -1,0 +1,796 @@
+<--START
+CHECKSUM="8b95c049d1a2d500fe5e5df07dca682e8a44b740b609fcecca248f905c8603fc"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Script Name   : ParseSwiftMsg.scr
+	# Description   :
+	#                 This script formats the Input message details and converts
+	#                 SWIFT format to SMH standard.
+	#
+	# Called by     : ParsePaysysMsg.scr
+	#
+	# Input         : PAYSYS.GLBDATA.MsgDetails
+	#------------------------------------------------------------------------------
+	
+	BANCS.OUTPUT.MessageId		= ""
+	BANCS.OUTPUT.FormattedPaysysMsg = ""
+	BANCS.OUTPUT.TranAmt           = ""
+	BANCS.OUTPUT.TranCrncy         = ""
+	BANCS.OUTPUT.ValueDate         = BANCS.STDIN.BODDate
+	BANCS.OUTPUT.ExecutionDate     = ""
+	BANCS.OUTPUT.SenderRefNum      = ""
+	BANCS.OUTPUT.successOrFailure  = "S"
+	BANCS.OUTPUT.ErrorDesc         = ""
+	BANCS.OUTPUT.SolId             = ""
+	BANCS.OUTPUT.InstructedAmt     = ""
+	BANCS.OUTPUT.InstructedCrncy   = ""
+	BANCS.OUTPUT.EntityType        = ""
+	BANCS.OUTPUT.EntityId          = ""
+	IF(REPEXISTS("PAYSYS") == 0) THEN
+	#{
+		CREATEREP("PAYSYS")
+	#}
+	ENDIF
+	IF(CLASSEXISTS("PAYSYS","GLBDATA") == 0) THEN
+	#{
+		CREATECLASS("PAYSYS","GLBDATA",5)
+	#}
+	ENDIF
+	sv_n =0
+	sv_e =0
+	#sv_b stores identifier for sequence B in 202 Cover message
+	sv_b = ""
+	
+	PAYSYS.GLBDATA.MsgToSplit = PAYSYS.GLBDATA.MsgDetails
+	
+	WHILE(1)
+	#{
+		sv_l = strlen(PAYSYS.GLBDATA.MsgToSplit)
+		
+		IF(sv_l == 0) THEN
+		#{
+			GOTO OUTSIDELOOP
+		#}
+		ENDIF
+		
+		# Tokenization starts here:--------------------------------------------------
+		sv_a=getPosition(PAYSYS.GLBDATA.MsgToSplit,"|")
+		IF(sv_a != 0) THEN
+		#{
+			PAYSYS.GLBDATA.MsgToken = mid$(PAYSYS.GLBDATA.MsgToSplit,0,sv_a-1)
+			PAYSYS.GLBDATA.MsgToSplit = mid$(PAYSYS.GLBDATA.MsgToSplit,sv_a,sv_l-sv_a)
+			#}
+		ELSE
+			#{
+			# Processing last Token
+			PAYSYS.GLBDATA.MsgToken = PAYSYS.GLBDATA.MsgToSplit
+			PAYSYS.GLBDATA.MsgToSplit =""
+		#}
+		ENDIF
+		
+		sv_t = strlen(PAYSYS.GLBDATA.MsgToken)
+		##############################################################
+		#	removed from kenya
+		##############################################################
+		#if(BANCS.OUTPUT.MessageId == "707") then
+		#	sv_r = getPosition(PAYSYS.GLBDATA.MsgToken,":79")
+		#	if(sv_r != 0 ) then
+		#		# to find which instance of tag 79 is being read
+		#		sv_e = sv_e + 1
+		#		sv_n = 0
+		#		#print(sv_e)
+		#		#print(sv_n)
+		#	endif
+		#endif
+		###############################################################
+		sv_p = getPosition(PAYSYS.GLBDATA.MsgToken,":")
+		IF(sv_p == 1) THEN
+		#{
+			
+			PAYSYS.GLBDATA.CurrTagNum = mid$(PAYSYS.GLBDATA.MsgToken,sv_p,2)
+			PAYSYS.GLBDATA.TagLiteral = mid$(PAYSYS.GLBDATA.MsgToken,sv_p+2,1)
+			
+			
+			IF(PAYSYS.GLBDATA.TagLiteral==":") THEN
+			#{
+				PAYSYS.GLBDATA.TagLiteral = ""
+				PAYSYS.GLBDATA.TagValue   = RIGHT$(PAYSYS.GLBDATA.MsgToken, sv_t-(sv_p+3))
+				###################################
+				# removed from kenya
+				####################################
+				#if(((PAYSYS.GLBDATA.CurrTagNum =="21") and ((BANCS.OUTPUT.MessageId == "102") or (BANCS.OUTPUT.MessageId == "110"))) or ((PAYSYS.GLBDATA.CurrTagNum =="20") and ((BANCS.OUTPUT.MessageId == "203") or (BANCS.OUTPUT.MessageId == "410") or (BANCS.OUTPUT.MessageId == "422"))) or ((PAYSYS.GLBDATA.CurrTagNum =="61") and ((BANCS.OUTPUT.MessageId == "950") or(BANCS.OUTPUT.MessageId == "940")))) then
+				#	sv_n = sv_n + 1
+				#endif
+				################################
+				#}
+			ELSE
+				#{
+				PAYSYS.GLBDATA.TagLiteral = tolower( PAYSYS.GLBDATA.TagLiteral)
+				PAYSYS.GLBDATA.TagValue   = RIGHT$(PAYSYS.GLBDATA.MsgToken, sv_t-(sv_p+4))
+				
+				###################################
+				# removed from kenya
+				####################################
+				#if((PAYSYS.GLBDATA.CurrTagNum =="32") and (PAYSYS.GLBDATA.TagLiteral == "a") and (BANCS.OUTPUT.MessageId == "102")) then
+				# sv_n =0
+				#endif
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			PAYSYS.GLBDATA.CurrTagNum = PAYSYS.GLBDATA.PrevTagNum
+			PAYSYS.GLBDATA.TagValue = PAYSYS.GLBDATA.MsgToken
+		#}
+		ENDIF
+		# Tokenization ends here:------------------------------------------------------------
+		######################################################
+		# removed from kenya
+		######################################################
+		IF((BANCS.OUTPUT.MessageId == "202CV") AND (PAYSYS.GLBDATA.CurrTagNum == "50")) THEN
+		#{
+			sv_b = "B"
+		#}
+		ENDIF
+		##########################################################
+		#check for sender ref. num which is TAG20
+		IF(PAYSYS.GLBDATA.CurrTagNum == "20") THEN
+		#{
+			BANCS.OUTPUT.SenderRefNum = PAYSYS.GLBDATA.TagValue
+		#}
+		ENDIF
+		# Populate EntityId as Tag21 for MT750
+		###################################
+		# removed from kenya
+		#################################
+		# if((PAYSYS.GLBDATA.CurrTagNum == "21") and (BANCS.OUTPUT.MessageId == "750")) then
+		#      BANCS.OUTPUT.EntityId = PAYSYS.GLBDATA.TagValue
+		#      BANCS.OUTPUT.EntityType = "DOCCR"
+		# endif
+		################################
+		IF(PAYSYS.GLBDATA.CurrTagNum != PAYSYS.GLBDATA.PrevTagNum) THEN
+		#{
+			PAYSYS.GLBDATA.RecNum = 0
+			#Check for only those TAG which requires '/'
+			IF((PAYSYS.GLBDATA.CurrTagNum >= "50") AND (PAYSYS.GLBDATA.CurrTagNum <= "59")) THEN
+			#{
+				IF((PAYSYS.GLBDATA.TagLiteral == "a") OR ( PAYSYS.GLBDATA.TagLiteral == "b") OR ( PAYSYS.GLBDATA.TagLiteral == "c") OR (PAYSYS.GLBDATA.TagLiteral == "d") OR (PAYSYS.GLBDATA.TagLiteral == "k") OR (PAYSYS.GLBDATA.TagLiteral == "")) THEN
+				#{
+					#In case Tag is A/B/C/D/K then it should have "/" in first line for A1/B1/C1/D1/K1 else it will be started with A2/B2/C2/D2/K2
+					sv_k = getPosition(PAYSYS.GLBDATA.TagValue,"/")
+					IF(sv_k == 0) THEN
+					#{
+						PAYSYS.GLBDATA.RecNum = 1
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			#check for some special TAG's which doesn't have multiple records
+			sv_z = PAYSYS.GLBDATA.CurrTagNum + toupper(PAYSYS.GLBDATA.TagLiteral)
+			sv_s = getPosition("23B|23E|71A|13C|26T|77T|",sv_z)
+			IF(sv_s != 0 ) THEN
+			#{
+				PAYSYS.GLBDATA.RecNum = 0
+				
+			#}
+			ENDIF
+			IF(PAYSYS.GLBDATA.PrevTagLiteral != PAYSYS.GLBDATA.TagLiteral) THEN
+			#{
+				PAYSYS.GLBDATA.RecNum = 0
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#}
+		
+		#Handle special tag 42a here as  it may be after any other Tag 42.
+		IF(((PAYSYS.GLBDATA.CurrTagNum == "42") AND (PAYSYS.GLBDATA.PrevTagLiteral != PAYSYS.GLBDATA.TagLiteral))AND((PAYSYS.GLBDATA.TagLiteral == "a")OR( PAYSYS.GLBDATA.TagLiteral=="d"))) THEN
+		#{
+			PAYSYS.GLBDATA.RecNum = 0
+			sv_k = getPosition(PAYSYS.GLBDATA.TagValue,"/")
+			IF(sv_k == 0) THEN
+			#{
+				PAYSYS.GLBDATA.RecNum = 1
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		IF(BANCS.OUTPUT.FormattedPaysysMsg == "") THEN
+		#{
+			BANCS.OUTPUT.FormattedPaysysMsg = ":"
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + "|:"
+		#}
+		ENDIF
+		
+		
+		#   Handle Tag fields which has currency and amount field here and split them to separate fields.
+		IF((PAYSYS.GLBDATA.CurrTagNum == "32") OR (PAYSYS.GLBDATA.CurrTagNum == "33") OR (PAYSYS.GLBDATA.CurrTagNum == "34") OR((PAYSYS.GLBDATA.CurrTagNum == "71") AND ((PAYSYS.GLBDATA.TagLiteral =="g" ) OR (PAYSYS.GLBDATA.TagLiteral =="f"))))THEN
+		#{
+			IF(PAYSYS.GLBDATA.TagLiteral == "a") THEN
+			#{
+				#Format the 32A/33A field into 3 separate field for value date, currency and amount
+				BANCS.INPUT.PaysysDate = mid$(PAYSYS.GLBDATA.TagValue,0,6)
+				
+				call("PaysysToFinDate.scr")
+				sv_d = BANCS.OUTPUT.FinDate
+				sv_c = mid$(PAYSYS.GLBDATA.TagValue,6,3)
+				BANCS.INPUT.PaysysAmt = mid$(PAYSYS.GLBDATA.TagValue,9,15)
+				
+				call("PaysysToFinAmt.scr")
+				
+				sv_a = BANCS.OUTPUT.FinAmt
+				
+				############################################
+				# removed from kenya
+				############################################
+				#if(((BANCS.OUTPUT.MessageId == "110") or (BANCS.OUTPUT.MessageId == "410") or (BANCS.OUTPUT.MessageId == "422")) and (sv_n !=0)) then
+				#    sv_f = PAYSYS.GLBDATA.CurrTagNum + "a1_" + FORMAT$(sv_n,"%d") + ":" + sv_d
+				#    sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "a2_" + FORMAT$(sv_n,"%d") + ":" + sv_c
+				#    sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "a3_" + FORMAT$(sv_n,"%d") + ":" + sv_a
+				####################
+				#else
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + "a1:" + sv_d
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "a2:" + sv_c
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "a3:" + sv_a
+				print(sv_f)
+				#endif
+				
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+				
+				#In case of Tag 32 populate the folowing details
+				IF(PAYSYS.GLBDATA.CurrTagNum == "32") THEN
+				#{
+					BANCS.OUTPUT.ValueDate = sv_d
+					BANCS.OUTPUT.TranCrncy = sv_c
+					BANCS.OUTPUT.TranAmt   = sv_a
+				#}
+				ENDIF
+				IF((PAYSYS.GLBDATA.CurrTagNum == "33") AND (BANCS.OUTPUT.MessageId =="752")) THEN
+				#{
+					BANCS.OUTPUT.ValueDate = sv_d
+					BANCS.OUTPUT.TranCrncy = sv_c
+					BANCS.OUTPUT.TranAmt   = sv_a
+				#}
+				ENDIF
+			#}
+			ENDIF
+			IF(PAYSYS.GLBDATA.TagLiteral == "b") THEN
+			#{
+				#Format the 33B/32B field into 2 separate field for currency and amount
+				#######################################################
+				# added for kenya script
+				#######################################################
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + "b1:" + mid$(PAYSYS.GLBDATA.TagValue,0,3)
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"b2:"
+				print(sv_f)
+				##############################
+				# removed from kenaya
+				################################
+				#if(((BANCS.OUTPUT.MessageId == "102")or (BANCS.OUTPUT.MessageId == "203" ) or (BANCS.OUTPUT.MessageId == "110")) and ( sv_n != 0)) then
+				#    sv_f = PAYSYS.GLBDATA.CurrTagNum + "b1_" + FORMAT$(sv_n,"%d")
+				#    sv_f = sv_f + ":" + sv_b + mid$(PAYSYS.GLBDATA.TagValue,0,3)
+				#    sv_f = sv_f + "|:" + sv_b + PAYSYS.GLBDATA.CurrTagNum +"b2_" + FORMAT$(sv_n,"%d") + ":"
+				#################################
+				#else
+				sv_f = sv_b + PAYSYS.GLBDATA.CurrTagNum + "b1:" + mid$(PAYSYS.GLBDATA.TagValue,0,3)
+				sv_f = sv_f + "|:" +sv_b + PAYSYS.GLBDATA.CurrTagNum +"b2:"
+				#endif
+				
+				BANCS.INPUT.PaysysAmt = mid$(PAYSYS.GLBDATA.TagValue,3,15)
+				
+				call("PaysysToFinAmt.scr")
+				
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f + BANCS.OUTPUT.FinAmt
+				
+				#In case MT707/MT747 message either tag32/tag33 will be taken as Instructed amount & currency
+				IF((PAYSYS.GLBDATA.CurrTagNum == "32") AND ((BANCS.OUTPUT.MessageId == "707") OR (BANCS.OUTPUT.MessageId =="747"))) THEN
+				#{
+					BANCS.OUTPUT.InstructedCrncy = mid$(PAYSYS.GLBDATA.TagValue,0,3)
+					BANCS.OUTPUT.InstructedAmt   = BANCS.OUTPUT.FinAmt
+					
+				#}
+				ENDIF
+				
+				#If 33B is present then Instructed amount and Instructed Crncy are put as 33B fields.
+				IF(PAYSYS.GLBDATA.CurrTagNum == "33") THEN
+				#{
+					BANCS.OUTPUT.InstructedCrncy = mid$(PAYSYS.GLBDATA.TagValue,0,3)
+					BANCS.OUTPUT.InstructedAmt = BANCS.OUTPUT.FinAmt
+				#}
+				ENDIF
+				
+				# IN case of incoming 700 tag 32b will contain the tran amount. If
+				# not handled here, tran_amt and crcny_code in SMH go as null.
+				IF((PAYSYS.GLBDATA.CurrTagNum == "32")) THEN
+				#{
+					BANCS.OUTPUT.TranCrncy = mid$(PAYSYS.GLBDATA.TagValue,0,3)
+					BANCS.OUTPUT.TranAmt   = BANCS.OUTPUT.FinAmt
+				#}
+				ENDIF
+				
+				
+				#In case MT707/MT747 message either tag34 will be taken as tran amount & currency
+				IF((PAYSYS.GLBDATA.CurrTagNum == "34") AND ((BANCS.OUTPUT.MessageId=="707") OR (BANCS.OUTPUT.MessageId=="747"))) THEN
+				#{
+					BANCS.OUTPUT.TranCrncy = mid$(PAYSYS.GLBDATA.TagValue,0,3)
+					BANCS.OUTPUT.TranAmt   = BANCS.OUTPUT.FinAmt
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			IF(PAYSYS.GLBDATA.TagLiteral == "k") THEN
+			#{
+				#Format the 33K field into 4 separate field (Day/Month)(#of Days/Months)(Code)(Crncy)(Amt)
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + "k1:" + mid$(PAYSYS.GLBDATA.TagValue,0,1)
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"k2:"+mid$(PAYSYS.GLBDATA.TagValue,1,3)
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"k3:"+mid$(PAYSYS.GLBDATA.TagValue,4,2)
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"k4:"+mid$(PAYSYS.GLBDATA.TagValue,6,3)
+				BANCS.INPUT.PaysysAmt = mid$(PAYSYS.GLBDATA.TagValue,9,15)
+				
+				call("PaysysToFinAmt.scr")
+				sv_f = sv_f  + "|:" + PAYSYS.GLBDATA.CurrTagNum +"k5:" + BANCS.OUTPUT.FinAmt
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+			#}
+			ENDIF
+			IF((PAYSYS.GLBDATA.TagLiteral == "f") OR (PAYSYS.GLBDATA.TagLiteral == "g")) THEN
+			#{
+				IF((BANCS.OUTPUT.MessageId == "103") AND (PAYSYS.GLBDATA.TagLiteral	== "f"))  THEN
+				#{
+					sv_n = sv_n +1
+				#}
+				ENDIF
+				
+				#Format the 71F/71G field into 2 separate field for currency and amount
+				# commented for kenya
+				#if(((BANCS.OUTPUT.MessageId == "102") or (BANCS.OUTPUT.MessageId == "103")) and ( sv_n != 0)) then
+				#sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1_" + FORMAT$(sv_n,"%d") + ":" +  mid$(PAYSYS.GLBDATA.TagValue,0,3)
+				#sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +PAYSYS.GLBDATA.TagLiteral+"2_" + FORMAT$(sv_n,"%d")+ ":"
+				#else
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1:" + mid$(PAYSYS.GLBDATA.TagValue,0,3)
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +PAYSYS.GLBDATA.TagLiteral+"2:"
+				#endif
+				
+				BANCS.INPUT.PaysysAmt = mid$(PAYSYS.GLBDATA.TagValue,3,15)
+				
+				call("PaysysToFinAmt.scr")
+				
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f + BANCS.OUTPUT.FinAmt
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			#Handle other special tags here separately.
+			IF(PAYSYS.GLBDATA.CurrTagNum == "36") THEN
+			#{
+				# This is exchange rate field convert it Finacle format
+				#if((BANCS.OUTPUT.MessageId == "102") and (sv_n != 0)) then
+				#    sv_f = PAYSYS.GLBDATA.CurrTagNum + "1_" + FORMAT$(sv_n,"%d")+ ":"
+				#else
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + "1:"
+				#endif
+				
+				BANCS.INPUT.PaysysAmt = PAYSYS.GLBDATA.TagValue
+				
+				call("PaysysToFinAmt.scr")
+				
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f + BANCS.OUTPUT.FinAmt
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			
+			IF(PAYSYS.GLBDATA.CurrTagNum == "27") THEN
+			#{
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + "1:" + mid$(PAYSYS.GLBDATA.TagValue,0,1)
+				sv_f = sv_f + "|:272:" + mid$(PAYSYS.GLBDATA.TagValue,2,1)
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			IF(PAYSYS.GLBDATA.CurrTagNum == "31") THEN
+			#{
+				IF((PAYSYS.GLBDATA.TagLiteral == "c")OR(PAYSYS.GLBDATA.TagLiteral == "e")OR(PAYSYS.GLBDATA.TagLiteral == "d"))THEN
+				#{
+					BANCS.INPUT.PaysysDate = mid$(PAYSYS.GLBDATA.TagValue,0,6)
+					
+					call("PaysysToFinDate.scr")
+					
+					sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1:"+BANCS.OUTPUT.FinDate
+					BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+					IF(PAYSYS.GLBDATA.TagLiteral == "d") THEN
+					#{
+						sv_f="|:"+ PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"2:" + mid$(PAYSYS.GLBDATA.TagValue,6,29)
+						BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+					#}
+					ENDIF
+				#}
+				ENDIF
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			
+			IF(((PAYSYS.GLBDATA.CurrTagNum == "44") AND (PAYSYS.GLBDATA.TagLiteral == "c"))OR (PAYSYS.GLBDATA.CurrTagNum == "30"))THEN
+			#{
+				BANCS.INPUT.PaysysDate = mid$(PAYSYS.GLBDATA.TagValue,0,6)
+				
+				call("PaysysToFinDate.scr")
+				#####################################
+				#removed from kenya
+				#########################################
+				#    if((BANCS.OUTPUT.MessageId == "110") and (PAYSYS.GLBDATA.CurrTagNum == "30") and (sv_n != 0)) then
+				#       sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1_"+ FORMAT$(sv_n,"%d")+ ":" +BANCS.OUTPUT.FinDate
+				#   else
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1:"+BANCS.OUTPUT.FinDate
+				#endif
+				###################################################
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			###############################################
+			# removed from kenya
+			#################################################
+			#if((PAYSYS.GLBDATA.CurrTagNum == "79") and (BANCS.OUTPUT.MessageId == "707")) then
+			#{
+			#	sv_n = sv_n + 1
+			#
+			#	sv_f = PAYSYS.GLBDATA.CurrTagNum + FORMAT$(sv_n,"%d") + "_" + FORMAT$(sv_e,"%d") + ":" + PAYSYS.GLBDATA.TagValue
+			#
+			#	BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+			#	PAYSYS.GLBDATA.PrevTagNum = PAYSYS.GLBDATA.CurrTagNum
+			#	GOTO CONTINUELOOP
+			#}
+			#endif
+			###################################################
+			IF((PAYSYS.GLBDATA.CurrTagNum == "39") AND (PAYSYS.GLBDATA.TagLiteral == "a")) THEN
+			#{
+				#Format of the tag 39A is, 2!n/2!n
+				sv_p = getPosition(PAYSYS.GLBDATA.TagValue,"/")
+				IF(sv_p == 0) THEN
+				#{
+					sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1:"+ PAYSYS.GLBDATA.TagValue
+					#}
+				ELSE
+					#{
+					sv_x = mid$(PAYSYS.GLBDATA.TagValue,0,sv_p-1)
+					sv_y = mid$(PAYSYS.GLBDATA.TagValue,sv_p,2)
+					sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"1:"+sv_x + "|:"
+					sv_f = sv_f + PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"2:"+sv_y
+				#}
+				ENDIF
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			
+			#Handle special tag 60a/62a/64/65 Balance fields of 950 message
+			IF((PAYSYS.GLBDATA.CurrTagNum == "60") OR (PAYSYS.GLBDATA.CurrTagNum == "62") OR (PAYSYS.GLBDATA.CurrTagNum == "64") OR (PAYSYS.GLBDATA.CurrTagNum == "65")) THEN
+			#{
+				sv_f = PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+ "1:" +mid$(PAYSYS.GLBDATA.TagValue,0,1)
+				BANCS.INPUT.PaysysDate = mid$(PAYSYS.GLBDATA.TagValue,1,6)
+				
+				call("PaysysToFinDate.scr")
+				sv_f =  sv_f +"|:"+ PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+ "2:" + BANCS.OUTPUT.FinDate
+				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+"3:"+mid$(PAYSYS.GLBDATA.TagValue,7,3)
+				
+				BANCS.INPUT.PaysysAmt = mid$(PAYSYS.GLBDATA.TagValue,10,15)
+				call("PaysysToFinAmt.scr")
+				sv_f = sv_f +"|:"+ PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral+ "4:"+BANCS.OUTPUT.FinAmt
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+				GOTO CONTINUELOOP
+			#}
+			ENDIF
+			########################################
+			# removed from kenya
+			########################################
+			
+			#if(PAYSYS.GLBDATA.CurrTagNum == "21") then
+			#{
+			#    if(BANCS.OUTPUT.MessageId == "410")then
+			#	#{
+			#       sv_f = PAYSYS.GLBDATA.CurrTagNum + "1_" + FORMAT$(sv_n,"%d") + ":" + PAYSYS.GLBDATA.TagValue
+			#	#}
+			#    endif
+			#}
+			#endif
+			#
+			#if((PAYSYS.GLBDATA.CurrTagNum == "72") and (BANCS.OUTPUT.MessageId == "410")) then
+			#{
+			#	sv_f = PAYSYS.GLBDATA.CurrTagNum + FORMAT$(sv_n,"%d") + ":" + PAYSYS.GLBDATA.TagValue
+			#	sv_n = sv_n + 1
+			#
+			#    BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg+ sv_f
+			#    PAYSYS.GLBDATA.PrevTagNum = PAYSYS.GLBDATA.CurrTagNum
+			#    GOTO CONTINUELOOP
+			#}
+			#endif
+			#if(PAYSYS.GLBDATA.CurrTagNum == "61") then
+			#{
+			#	if(((BANCS.OUTPUT.MessageId == "940") or (BANCS.OUTPUT.MessageId =="950")) and (sv_n != 0)) then
+			#	#{
+			#			BANCS.INPUT.PaysysDate = mid$(PAYSYS.GLBDATA.TagValue,0,6)
+			#
+			#     		#call("PaysysToFinDate.scr")
+			#
+			#     		sv_f = PAYSYS.GLBDATA.CurrTagNum + "1_" + FORMAT$(sv_n,"%d") + ":" + BANCS.OUTPUT.FinDate
+			#     		# SWIFT date formate is YYMMDD and FiNACLE format is DD-MM-YYYY
+			#     		sv_h = mid$(PAYSYS.GLBDATA.TagValue,6,1)
+			#     		#sv_j INDEX of start of subfield 3
+			#     		#sv_v INDEX of start of subfield 6
+			#     		#sv_w INDEX of start of AMOUNT - subfield 5
+			#    		sv_j = 0
+			#     		if(urhk_B2k_isStringNumeric(sv_h) == 0) then
+			#     		#{
+			#       		#subfield 2 is there..
+			#         		sv_j = 10
+			#          		BANCS.INPUT.PaysysDate = mid$(BANCS.STDIN.BODDate,8,2) + mid$(PAYSYS.GLBDATA.TagValue,6,4)
+			#
+			#         		call("PaysysToFinDate.scr")
+			#
+			#         		sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "2_" + FORMAT$(sv_n,"%d") + ":" + BANCS.OUTPUT.FinDate
+			#     		#}
+			#    		else
+			#     		#{
+			#        		#subfield 2 (MMDD) is not there..
+			#         		sv_j = 6
+			#         		sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "2_" + FORMAT$(sv_n,"%d") + ":"
+			#     		#}
+			#     		endif
+			#	 	sv_i = mid$(PAYSYS.GLBDATA.TagValue,sv_j,2)
+			#
+			#		if((sv_i == "RC")OR(sv_i == "RD")) then
+			#		#{
+			#			sv_q = mid$(PAYSYS.GLBDATA.TagValue, sv_j+2, 1)
+			#        	if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#				#direct amount no subfield 4..
+			#             	sv_w = sv_j+2
+			#             	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_w,15)
+			#			#}
+			#         	else
+			#			#{
+			#             	#subfield 4 is there...
+			#             	sv_w = sv_j+3
+			#             	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_w,15)
+			#			#}
+			#         	endif
+			#         	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "3_" + FORMAT$(sv_n,"%d") + ":"+ mid$(PAYSYS.GLBDATA.TagValue,sv_j,2)
+			#		#}
+			#		else
+			#		#{
+			#			sv_q = mid$(PAYSYS.GLBDATA.TagValue,sv_j+1,1)
+			#        	if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#				#direct amount no subfield 4
+			#            	sv_w = sv_j+1
+			#            	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_w,15)
+			#			#}
+			#        	else
+			#			#{
+			#            	#subfield 4 is there...
+			#            	sv_w = sv_j+2
+			#				sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_w,15)
+			#				#}
+			#        	endif
+			#			sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "3_" + FORMAT$(sv_n,"%d") + ":"+ mid$(PAYSYS.GLBDATA.TagValue,sv_j,1)
+			#		 #}
+			#		endif
+			#     	sv_o = getposition(sv_u,",")
+			#     	sv_y = mid$(sv_u,0,sv_o-1)
+			#	 	sv_r = mid$(sv_u,sv_o,15-sv_o)
+			#	 	sv_s = ""
+			#	 	sv_p = 0
+			#		while(sv_p<STRLEN(sv_r))
+			#    		sv_m = mid$(sv_r,sv_p,1)
+			#    		if(urhk_B2k_isStringNumeric(sv_m) != 0) then
+			#			#{
+			#        		sv_s = mid$(sv_r,0,sv_p)
+			#        		sv_p = 100
+			#			#}
+			#    		else
+			#			#{
+			#        		sv_p = sv_p + 1
+			#			#}
+			#    		endif
+			#		do
+			#		sv_r= sv_y + "." + sv_s
+			#		BANCS.INPUT.PaysysAmt = sv_r
+			#
+			#		if(urhk_B2k_isStringNumeric(sv_q) != 0) then
+			#    		sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "4_" + FORMAT$(sv_n,"%d") + ":" + sv_q
+			#    	endif
+			#		sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "5_" + FORMAT$(sv_n,"%d") + ":" + BANCS.INPUT.PaysysAmt
+			#    	sv_v = sv_w + STRLEN(BANCS.INPUT.PaysysAmt)
+			#
+			#		if((sv_i == "RC")OR(sv_i == "RD")) then
+			#		#{
+			#			if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#            	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "6_" + FORMAT$(sv_n,"%d") + ":" + mid$(PAYSYS.GLBDATA.TagValue,sv_v,1)
+			#			#}
+			#        	else
+			#			#{
+			#    			sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "6_" + FORMAT$(sv_n,"%d") + ":" + mid$(PAYSYS.GLBDATA.TagValue,sv_v,1)
+			#			#}
+			#        	endif
+			#		#}
+			#    	else
+			#		#{
+			#        	if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "6_" + FORMAT$(sv_n,"%d") + ":" + mid$(PAYSYS.GLBDATA.TagValue,sv_v,1)
+			#			#}
+			#        	else
+			#			#{
+			#            	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "6_" + FORMAT$(sv_n,"%d") + ":" + mid$(PAYSYS.GLBDATA.TagValue,sv_v,1)
+			#			#}
+			#        	endif
+			#		#}
+			#    	endif
+			#
+			#		if((sv_i == "RC")OR(sv_i == "RD")) then
+			#		#{
+			#    		if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#	 			sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+1,3)
+			#	 			sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"7_" + FORMAT$(sv_n,"%d") + ":" + sv_u
+			#			#}
+			#        	else
+			#			#{
+			#				sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+1,3)
+			#				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"7_" + FORMAT$(sv_n,"%d") + ":" + sv_u
+			#			#}
+			#        	endif
+			#		#}
+			#    	else
+			#		#{
+			#        	if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#            	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+1,3)
+			#				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"7_" + FORMAT$(sv_n,"%d") + ":" + sv_u
+			#			#}
+			#        	else
+			#			#{
+			#           	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+1,3)
+			#				sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum +"7_" + FORMAT$(sv_n,"%d") + ":" + sv_u
+			#			#}
+			#        	endif
+			#		#}
+			#    	endif
+			#
+			#		sv_o = getPosition(PAYSYS.GLBDATA.TagValue,"/")
+			#		if((sv_i == "RC")OR(sv_i == "RD")) then
+			#		#{
+			#    		if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#        		sv_u = mid$(PAYSYS.GLBDATA.TagValue, sv_v + 4,sv_o-1)
+			#			#}
+			#        	else
+			#			#{
+			#            	sv_u = mid$(PAYSYS.GLBDATA.TagValue, sv_v + 4,sv_o-1)
+			#			#}
+			#        	endif
+			#		#}
+			#    	else
+			#		#{
+			#        	if(urhk_B2k_isStringNumeric(sv_q) == 0) then
+			#			#{
+			#            	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+4,sv_o-1)
+			#			#}
+			#        	else
+			#			#{
+			#            	sv_u = mid$(PAYSYS.GLBDATA.TagValue,sv_v+4,sv_o-1)
+			#			#}
+			#        	endif
+			#		#}
+			#    	endif
+			#    	sv_o = getPosition(sv_u,"/")
+			#    	sv_y = mid$(sv_u,0,sv_o-1)
+			#    	if(sv_o == 0) then
+			#		#{
+			#    		sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "8_" + FORMAT$(sv_n,"%d") + ":"
+			#		#}
+			#    	else
+			#		#{
+			#        	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "8_" + FORMAT$(sv_n,"%d") + ":" + sv_y
+			#		#}
+			#    	endif
+			#		sv_u = mid$(sv_u,sv_o+1,STRLEN(PAYSYS.GLBDATA.TagValue))
+			#    	if(sv_u == "") then
+			#		#{
+			#        	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "9_" + FORMAT$(sv_n,"%d") + ":"
+			#		#}
+			#    	else
+			#		#{
+			#        	sv_f = sv_f + "|:" + PAYSYS.GLBDATA.CurrTagNum + "9_" + FORMAT$(sv_n,"%d") + ":" + sv_u
+			#		#}
+			#    	endif
+			#	#}
+			#	endif
+			#
+			#	BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+			#	GOTO CONTINUELOOP
+			#}
+			#endif
+			##Handle the default cases here, which are not special tags
+			##################################################
+			IF(PAYSYS.GLBDATA.CurrTagNum != 0) THEN
+			#{
+				PAYSYS.GLBDATA.RecNum = cint(PAYSYS.GLBDATA.RecNum) + 1
+				
+				
+				sv_f = sv_b + PAYSYS.GLBDATA.CurrTagNum + PAYSYS.GLBDATA.TagLiteral + PAYSYS.GLBDATA.RecNum
+				
+				
+				IF(sv_n !=0) THEN
+				#{
+					IF((PAYSYS.GLBDATA.CurrTagNum == "77") AND (PAYSYS.GLBDATA.TagLiteral == "b")) THEN
+					#{
+						sv_f = sv_f
+						#}
+					ELSE
+						#{
+						sv_f = sv_f + "_" + FORMAT$(sv_n,"%d")
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				sv_f = sv_f +":"+PAYSYS.GLBDATA.TagValue
+				
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+				PAYSYS.GLBDATA.PrevTagNum = PAYSYS.GLBDATA.CurrTagNum
+				#}
+			ELSE
+				#{
+				
+				
+				sv_f = PAYSYS.GLBDATA.PrevTagNum + PAYSYS.GLBDATA.TagLiteral +PAYSYS.GLBDATA.RecNum
+				sv_f = sv_f +":"+PAYSYS.GLBDATA.TagValue
+				BANCS.OUTPUT.FormattedPaysysMsg = BANCS.OUTPUT.FormattedPaysysMsg + sv_f
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#}
+		#}
+		CONTINUELOOP:
+			PAYSYS.GLBDATA.PrevTagLiteral = PAYSYS.GLBDATA.TagLiteral
+		#}
+		DO
+	OUTSIDELOOP:
+		
+		BANCS.OUTPUT.ExecutionDate = BANCS.STDIN.BODDate
+		IF((BANCS.OUTPUT.MessageId == "103") OR (BANCS.OUTPUT.MessageId == "202") OR (BANCS.OUTPUT.MessageId == "202CV"))THEN
+		#{
+			sv_d = BANCS.OUTPUT.ValueDate
+			sv_x = urhk_B2k_getDateDiffFromBODDate(sv_d)
+			
+			IF (sv_x == 0) THEN
+			#{
+				IF(BANCS.OUTPARAM.DateDiff > 0)THEN
+				#{
+					BANCS.OUTPUT.ExecutionDate = BANCS.OUTPUT.ValueDate
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		call("DeriveSolIdForMsg.scr")
+		exitscript
+		TRACE OFF
+END-->

@@ -1,0 +1,140 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ttumdp002.scr
+# Author                :
+# Description           :       This script is to perform d-dup check for upload file
+#
+# Input                 :       NA
+# Output                :       NA
+# Called Script         :       None
+# Calling Script        :       httum_pre_process.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           23-09-2013         Venki	          original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="7e1b4365b29b497561157faf39db46076a723fe604e3f912692a6d61b6459b59"
+	TRACE ON
+	
+	LIBNAME CUSTOMSO
+	
+	BANCS.INPARAM.BINDVARS = "UPLOAD_INPUT_FILE_PATH" + '|' + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_s = "custOptnValue|"
+	sv_s = sv_s + "SELECT CUSTOPTN_VALUE "
+	sv_s = sv_s + "FROM TBAADM.COMT "
+	sv_s = sv_s + "WHERE CUSTOPTN_ID = ?SVAR "
+	sv_s = sv_s + "AND BANK_ID = ?SVAR "
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	CUST.TTUM.inputFilePath = BANCS.OUTPARAM.custOptnValue
+	print(CUST.TTUM.inputFilePath)
+	CUST.TTUM.inputFilePath = CUST.TTUM.inputFilePath + "/" + BANCS.STDIN.userId + "/"
+	print(CUST.TTUM.inputFilePath)
+	#--------------------------------------------------------
+	# Determining the checksum value
+	#--------------------------------------------------------
+	sv_e = "csum -h SHA1 " + CUST.TTUM.inputFilePath + CUST.TTUM.inputFileName + "|cut -f1 -d ' '>ttum.log"
+	print(sv_e)
+	sv_r = SYSTEM(sv_e)
+	
+	#--------------------------------------------------------
+	# Reading the check sum value from ttum.log
+	#--------------------------------------------------------
+	sv_t = urtn_fileOpen("ttum.log|r")
+	IF (sv_t < 0) THEN
+	#{
+		print("Lst file cannot be open")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.TTUM.dataFileIndex = sv_t
+	print(CUST.TTUM.dataFileIndex)
+	sv_e = urtn_fileRead(CUST.TTUM.dataFileIndex + "|CUST.TTUM.checkSum")
+	print(sv_e)
+	print(CUST.TTUM.checkSum)
+	
+	#--------------------------------------------------------
+	# Checking whether entry exist for same combination of
+	# menu id and check sum value in C_UCD
+	#--------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = "HTTUM" + "|" + BANCS.STDIN.contextBankId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.TTUM.checkSum
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "uplTime|SELECT TO_CHAR(UPL_TIME,'DD-MM-YYYY HH24:MI:SS') FROM CUSTOM.C_UCD WHERE MENU_ID = ?SVAR"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR AND CHECK_SUM = ?SVAR"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0) THEN
+	#{
+		CUST.TTUM.uplTime = BANCS.OUTPARAM.uplTime
+		
+		BANCS.INPUT.moduleName = "TTUM"
+		BANCS.INPUT.parameterId = "DUPCHK_DAYS"
+		CALL("getcparamvalue.scr")
+		IF (BANCS.OUTPUT.parameterVal != "") THEN
+		#{
+			CUST.TTUM.dupChkDays =  BANCS.OUTPUT.parameterVal
+			#}
+		ELSE
+			#{
+			CUST.TTUM.dupChkDays =  "0"
+		#}
+		ENDIF
+		
+		sv_s = "bodDate|SELECT TO_CHAR(SYSDATE,'DD-MM-YYYY HH24:MI:SS') FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d == 0) THEN
+		#{
+			CUST.TTUM.bodDate = BANCS.OUTPARAM.bodDate
+		#}
+		ENDIF
+		print(CUST.TTUM.bodDate)
+		print(CUST.TTUM.uplTime)
+		BANCS.INPARAM.date1 = CUST.TTUM.bodDate
+		BANCS.INPARAM.date2 = CUST.TTUM.uplTime
+		sv_e = urhk_B2k_dateDiff("")
+		PRINT(BANCS.OUTPARAM.dateDiff)
+		print(CUST.TTUM.dupChkDays)
+		IF(CINT(BANCS.OUTPARAM.dateDiff) <= CINT(CUST.TTUM.dupChkDays)) THEN
+		#{
+			print("Duplicate Record")
+			sv_u = SYSTEM("echo 'The content in " +BANCS.INPUT.INPUTFILE+ " has got uploaded recently'>ttum_dup.log")
+			print(sv_u)
+			CUST.TTUM.successOrFailure = "F"
+			sv_u = SYSTEM("rm -f ttum.log")
+			print(sv_u)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			print("No record found. Proceed with upload")
+		#}
+		ENDIF
+		
+		#}
+	ELSE
+		#{
+		print("No record found. Proceed with upload")
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF(FIELDEXISTS(CUST.TTUM.dataFileIndex))THEN
+		#{
+			IF(CUST.TTUM.dataFileIndex != "") THEN
+			#{
+				sv_u = urtn_fileClose(CUST.TTUM.dataFileIndex)
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		print(CUST.TTUM.successOrFailure)
+		
+		#trace off
+END-->

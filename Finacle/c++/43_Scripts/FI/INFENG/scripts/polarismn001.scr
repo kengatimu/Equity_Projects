@@ -1,0 +1,1130 @@
+#-------------------------------------------------------------------------------------
+#	Name			: catodscoremn001.scr
+#	Description		: The script is used For Maintaining credit  score limits
+#	Date			: 29-04-2013
+#	Author			: Saurabh Sinha
+#	Input			: NA
+#	Output			: NA
+#	Called Script	:
+#	Calling Script	: catodscoredp001.scr
+#	Menu Option		: CATODAPP
+#	Srl. No		Date			Author				Description.
+#	-------		----			------				----------------
+#	1.0			29-04-2013		Saurabh	Sinha		Original Version
+#	2.0			30-05-2013		Saurabh	Sinha 		Logic Updated
+#	3.0			24-07-2013		Bharath 			Modified for TOL 361668
+#	4.0			15-08-2013		Priyansh 			Modified for TOL 361668
+#	5.0			28-08-2013		Kalvin			Modified for TOL 369221
+#-------------------------------------------------------------------------------------
+<--START
+TRACE ON
+#-----------------------------------------------------------------
+# Creating Repository and classes
+#-----------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","CATOD") == 0) THEN
+#{
+	CREATECLASS("CUST","CATOD",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+#{
+	CREATECLASS("CUST","CPARAM",5)
+#}
+ENDIF
+
+sv_r = urhk_B2k_PrintRepos("BANCS")
+print(sv_r)
+#-----------------------------------------------------------------
+# Initialiizing required variables
+#-----------------------------------------------------------------
+CUST.CATOD.errMsg = ""
+
+#-------------------------------------------------------------------
+# Values coming FROM frontend
+#-------------------------------------------------------------------
+CUST.CATOD.Function 		=	BANCS.INPUT.funcCode
+CUST.CATOD.CurrencyCode 	= 	BANCS.STDIN.homeCrncyCode
+CUST.CATOD.cForacid		=	TRIM(BANCS.INPUT.foracid)
+CUST.CATOD.chargeAccount	=	TRIM(BANCS.INPUT.Chargeforacid)
+CUST.CATOD.Cashlmt		= 	BANCS.INPUT.employer
+CUST.CATOD.Txfrlmt		= 	BANCS.INPUT.amount
+CUST.CATOD.Clglmt 		= 	BANCS.INPUT.period
+CUST.CATOD.CashIntSolmt 	= 	BANCS.INPUT.score
+CUST.CATOD.userWorkClass        =       BANCS.STDIN.userWorkClass
+
+
+#-----------------------------------Modified for TOL 369221---------------------------#
+BANCS.INPARAM.BINDVARS =CUST.CATOD.cForacid	 + "|" + "N" + "|" + "Y"
+
+sv_s ="schmType,schmCode|"
+sv_s = sv_s + " SELECT SCHM_TYPE,SCHM_CODE FROM TBAADM.GAM "
+sv_s = sv_s + " WHERE  FORACID = ?SVAR "
+sv_s = sv_s + " AND DEL_FLG = ?SVAR "
+sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR"
+
+PRINT(sv_s)
+sv_u= urhk_dbSelectWithBind(sv_s)
+PRINT(sv_u)
+
+IF (sv_u == 0) THEN
+#{
+	CUST.CATOD.schmType=BANCS.OUTPARAM.schmType
+	CUST.CATOD.schmCode=BANCS.OUTPARAM.schmCode
+#}
+ELSE
+#{
+	CUST.CATOD.errorMsg="UNABLE TO FETCH SCHM TYPE FROM TABLE"
+	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+	print(sv_u)
+	sv_u = urhk_SetOrbOut("Error_0|ERROR^" + CUST.CATOD.errorMsg + "^acctNum")
+	print(sv_u)
+	GOTO ENDO
+#}
+ENDIF
+	
+PRINT(CUST.CATOD.schmType)
+PRINT(CUST.CATOD.schmCode)
+#-----------------------------------------------------------
+#               Fetching valid schmecode:
+#-----------------------------------------------------------
+BANCS.INPUT.moduleName = "CATODSCORE"
+BANCS.INPUT.parameterId = "ALWDSCHM"
+CALL("getcparamvalue.scr")
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+	print(BANCS.OUTPUT.parameterVal)
+	sv_l = STRLEN(BANCS.OUTPUT.parameterVal)
+	print(sv_l)
+	CUST.CATOD.sType=BANCS.OUTPUT.parameterVal
+	print(CUST.CATOD.sType)
+	WHILE(sv_l > 0)
+	#{
+		sv_g = GETPOSITION(CUST.CATOD.sType,",")
+		print(sv_g)
+		IF (sv_g == 0) THEN
+		#{
+			CUST.CATOD.alwSchmType = CUST.CATOD.sType
+			print(CUST.CATOD.alwSchmType)
+			CUST.CATOD.sType = ""
+		#}
+		ELSE
+		#{
+			CUST.CATOD.alwSchmType = TRIM(MID$(CUST.CATOD.sType,0,sv_g - 1))
+			CUST.CATOD.sType = MID$(CUST.CATOD.sType,sv_g,sv_l)
+		#}
+		ENDIF
+		print(CUST.CATOD.alwSchmType)
+		IF (CUST.CATOD.schmCode ==CUST.CATOD.alwSchmType) THEN
+		#{
+			GOTO LABEL1
+		#}
+		ENDIF
+		print(CUST.CATOD.sType)
+		sv_l = STRLEN(CUST.CATOD.sType)
+		print(sv_l)
+		IF (sv_l == 0) THEN
+		#{
+			#			CUST.CATOD.errMsg = "Scheme code not allowed for AutoTOD"
+			#			sv_e = CUST.CATOD.errMsg
+			#			sv_m = "funcCode"
+			#			sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+			#			sv_u = urhk_SetOrbOut(sv_e)
+			#			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	# }
+	DO
+#}
+ELSE
+#{
+	CUST.CATOD.errMsg = "ALLOWED SCHMECODE SETUP NOT DONE IN CPARAM"
+        sv_e = CUST.CATOD.errMsg
+        sv_m = "funcCode"
+        sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+        sv_u = urhk_SetOrbOut(sv_e)
+        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+	GOTO ENDOFSCRIPT
+# }
+ENDIF
+
+LABEL1:
+	#-----------------------------------Modified for TOL 369221---------------------------#
+	
+	#-----------------------------------------------------------------
+	# Getting Cparam Setups
+	#-----------------------------------------------------------------
+	call("catodscoredp001.scr")
+	IF (CUST.CATOD.errMsg != "") THEN
+	#{
+		sv_e = CUST.CATOD.errMsg
+		sv_m = "funcCode"
+		sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_e)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CATOD.headOfficeSolId = CUST.CPARAM.homeSolId
+	
+	print(CUST.CATOD.Function)
+	print(CUST.CATOD.CurrencyCode)
+	print(CUST.CATOD.cForacid)
+	print(CUST.CATOD.Cashlmt)
+	print(CUST.CATOD.Txfrlmt)
+	print(CUST.CATOD.Clglmt)
+	print(CUST.CATOD.CashIntSolmt)
+	print(CUST.CATOD.headOfficeSolId)
+	print(CUST.CATOD.userWorkClass)
+	
+	sv_s = "crclRoleId|"
+	sv_s = sv_s + " SELECT UPR.role_id"
+	sv_s = sv_s + " FROM TBAADM.UPR"
+	sv_s = sv_s + " WHERE UPR.user_id = ?SVAR"
+	sv_s = sv_s + " AND UPR.del_flg = 'N'"
+	sv_s = sv_s + " AND UPR.entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND UPR.home_bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" +BANCS.STDIN.contextBankId
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.CATOD.crclRoleId = BANCS.OUTPARAM.crclRoleId
+		#}
+	ELSE
+		#{
+		CUST.CATOD.crclRoleId = ""
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------------------
+	# Validating The values of Function
+	#------------------------------------------------------------------------------------------
+	IF ((CUST.CATOD.Function=="A") OR (CUST.CATOD.Function=="M") OR (CUST.CATOD.Function=="Z") OR (CUST.CATOD.Function=="V") OR (CUST.CATOD.Function=="Y")) THEN
+	#{
+		IF (CUST.CATOD.cForacid!="") THEN
+		#{
+			sv_s = "cifId,acid|"
+			sv_s = sv_s + " SELECT GAM.cif_id, GAM.acid"
+			sv_s = sv_s + " FROM TBAADM.GAM"
+			sv_s = sv_s + " WHERE GAM.del_flg = 'N'"
+			sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+			sv_s = sv_s + " AND GAM.acct_cls_flg ='N'"
+			sv_s = sv_s + " AND GAM.foracid = ?SVAR"
+			sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" +BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0)  THEN
+			#{
+				CUST.CATOD.custId = BANCS.OUTPARAM.cifId
+				print(CUST.CATOD.custId)
+				CUST.CATOD.acid = BANCS.OUTPARAM.acid
+				print(CUST.CATOD.acid)
+			#}
+			ENDIF
+			
+			sv_u = urhk_getAcctDetailsInRepository(CUST.CATOD.cForacid)
+			print(sv_u)
+			
+			IF (sv_u == 0) THEN
+			#{
+				CUST.CATOD.acctSolId  = BANCS.OUTPARAM.acctSolId
+				CUST.CATOD.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+				CUST.CATOD.schmType = BANCS.OUTPARAM.schmType
+				CUST.CATOD.schmCode = BANCS.OUTPARAM.schmCode
+				CUST.CATOD.glSubHeadCode = BANCS.OUTPARAM.glSubHeadCode
+				CUST.CATOD.acctOwner = BANCS.OUTPARAM.acctOwnerShip
+				print(CUST.CATOD.acctSolId)
+				print(CUST.CATOD.acctCrncyCode)
+				print(CUST.CATOD.schmType)
+				print(CUST.CATOD.schmCode)
+				print(CUST.CATOD.glSubHeadCode)
+				print(CUST.CATOD.acctOwner)
+				#}
+			ELSE
+				#{
+#				CUST.CATOD.errMsg = "Account number is Invalid"
+#				sv_e = CUST.CATOD.errMsg
+#				sv_m = "foracid"
+#				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+#				sv_u = urhk_SetOrbOut(sv_e)
+#				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+#				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			#------------------------------------------------------------------------------------------
+			# Validation Account Status
+			#------------------------------------------------------------------------------------------
+			sv_s = "acctStatus|"
+			sv_s = sv_s + " SELECT SMT.acct_status"
+			sv_s = sv_s + " FROM TBAADM.SMT"
+			sv_s = sv_s + " WHERE SMT.acid = ?SVAR"
+			sv_s = sv_s + " AND SMT.bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CATOD.acid + "|" + BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.CATOD.acctStatus = BANCS.OUTPARAM.acctStatus
+				print(CUST.CATOD.acctStatus)
+				#}
+			ELSE
+				#{
+				CUST.CATOD.acctStatus = ""
+			#}
+			ENDIF
+			
+			IF (CUST.CATOD.acctStatus != "A" ) THEN
+			#{
+				CUST.CATOD.errMsg = "Account is Dormant/Inactive"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "foracid"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			sv_a = cdouble(CUST.CATOD.Clglmt)
+			print(sv_a)
+			sv_b = cdouble(CUST.CATOD.CashIntSolmt)
+			print(sv_b)
+			sv_y = sv_a + sv_b
+			print(sv_y)
+
+			IF (sv_y != 100.00) THEN
+			#{
+				CUST.CATOD.errMsg = "Total Percentage should be equal to 100"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "Clglmt"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			print(CUST.CATOD.chargeAccount)
+
+			sv_s = "cifId2|"
+			sv_s = sv_s + " SELECT gam.cif_id"
+			sv_s = sv_s + " FROM TBAADM.gam"
+			sv_s = sv_s + " WHERE gam.foracid = ?SVAR"
+			sv_s = sv_s + " AND gam.bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CATOD.chargeAccount + "|" + BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.CATOD.cifId2 = BANCS.OUTPARAM.cifId2
+				print(CUST.CATOD.cifId2)
+				#}
+			ELSE
+				#{
+				CUST.CATOD.cifId2 = ""
+			#}
+			ENDIF
+			IF (CUST.CATOD.custId != CUST.CATOD.cifId2) THEN
+				CUST.CATOD.errMsg = "Enter the correct account Number"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "chargeAccount"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------------------
+	# IF Function Value is "A" OR "Y" THEN INSERTING INTO TABLE CRCL
+	#------------------------------------------------------------------------------------------
+	
+	IF ((CUST.CATOD.Function=="A") OR (CUST.CATOD.Function=="Y")) THEN
+	#{
+		IF (CUST.CATOD.Function=="A") THEN
+			sv_s = "count|"
+			sv_s = sv_s + " SELECT COUNT(1)"
+			sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES "
+			sv_s = sv_s + " WHERE ACCOUNT_NUMBER = ?SVAR"
+			sv_s = sv_s + " AND bank_id = ?SVAR"
+			sv_s = sv_s + " AND del_flg in ('Y','N') and CHARGE_TYPE!='ANNUAL' "
+			
+			print(sv_s)
+			
+			BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" +BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0)  THEN
+			#{
+				CUST.CATOD.count = BANCS.OUTPARAM.count
+				print(CUST.CATOD.count)
+			#}
+			ENDIF
+			
+			IF (CINT(CUST.CATOD.count) >= 1)  THEN
+			#{
+				CUST.CATOD.errMsg = "Record Already Exist. Use M as Function"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "funcCode"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ELSE
+			#{
+
+				
+			sv_s=urhk_getAcctDetailsInRepository(BANCS.INPUT.Chargeforacid)
+			PRINT(sv_s)
+			IF(sv_s == 0)THEN
+				CUST.CATOD.CurrencyCode = BANCS.OUTPARAM.acctCrncyCode
+				print (CUST.CATOD.CurrencyCode)
+			ELSE
+				Print ("Not valid account")
+			ENDIF
+				
+				
+				CUST.CATOD.del_flgpol="N"
+				print(CUST.CATOD.del_flgpol)
+
+				sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+				
+				sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+				BANCS.INPARAM.BINDVARS =  sv_h
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d =="0") THEN
+					CUST.CATOD.getboddate = BANCS.OUTPARAM.getboddate
+					print(CUST.CATOD.getboddate)
+				ENDIF
+				CUST.CATOD.sysdatepol=BANCS.STDIN.sysDate
+				print(CUST.CATOD.sysdatepol)
+				
+				sv_s = ""
+				sv_s = sv_s + " INSERT INTO"
+				sv_s = sv_s + "  CUSTOM.POLARIS_CHARGES"
+				sv_s = sv_s + " ("
+				sv_s = sv_s + " ACCOUNT_NUMBER ,"
+				sv_s = sv_s + " TOTAL_FEES,"
+				sv_s = sv_s + " CUSTOMER_PERCENT,"
+				sv_s = sv_s + " BIZ_PERCENT,"
+				sv_s = sv_s + " CHARGE_ACC,"
+				sv_s = sv_s + " CHARGE_CURRENCY,"
+				sv_s = sv_s + " BANK_ID,"
+				sv_s = sv_s + " DEL_FLG,"
+				sv_s = sv_s + " BOD_DATE,"
+				sv_s = sv_s + " SYSTEM_DATE,"
+				sv_s = sv_s + " ENTITY_CRE_FLG,"
+				sv_s = sv_s + " ENTERER_ID,"
+				sv_s = sv_s + " FUNCTION_CODE"
+				sv_s = sv_s + " )"
+				sv_s = sv_s + " VALUES"
+				sv_s = sv_s + " ("
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR"
+				sv_s = sv_s + " )"
+				print(sv_s)
+				
+				BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + CUST.CATOD.Txfrlmt
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.Clglmt + "|" + CUST.CATOD.CashIntSolmt
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  BANCS.INPUT.Chargeforacid
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.CurrencyCode + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.del_flgpol + "|" + CUST.CATOD.getboddate
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.sysdatepol + "|N|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + BANCS.STDIN.userId + "|" + BANCS.INPUT.funcCode 
+				sv_d = urhk_dbsqlWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d != 0)  THEN
+				#{
+					CUST.CATOD.errMsg = "Error in Adding Details"
+					sv_e = CUST.CATOD.errMsg
+					sv_m = "funcCode"
+					sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+					sv_u = urhk_SetOrbOut(sv_e)
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					GOTO ENDOFSCRIPT
+				#}
+				ELSE
+				#{
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		ENDIF
+
+		####
+		IF (CUST.CATOD.Function=="Y") THEN
+			sv_s = "count|"
+			sv_s = sv_s + " SELECT COUNT(1)"
+			sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES "
+			sv_s = sv_s + " WHERE ACCOUNT_NUMBER = ?SVAR"
+			sv_s = sv_s + " AND bank_id = ?SVAR"
+			sv_s = sv_s + " AND del_flg in ('Y','N') and CHARGE_TYPE='ANNUAL' "
+			
+			print(sv_s)
+			
+			BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" +BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			
+			IF (sv_d == 0)  THEN
+			#{
+				CUST.CATOD.count = BANCS.OUTPARAM.count
+				print(CUST.CATOD.count)
+			#}
+			ENDIF
+			
+			IF (CINT(CUST.CATOD.count) >= 1)  THEN
+			#{
+				CUST.CATOD.errMsg = "Record Already Exist. Use M as Function"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "funcCode"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ELSE
+			#{
+				
+
+						
+				sv_s=urhk_getAcctDetailsInRepository(BANCS.INPUT.Chargeforacid)
+				PRINT(sv_s)
+				IF(sv_s == 0)THEN
+					CUST.CATOD.CurrencyCode = BANCS.OUTPARAM.acctCrncyCode
+					print (CUST.CATOD.CurrencyCode)
+				ELSE
+					Print ("Not valid account")
+				ENDIF
+
+
+				CUST.CATOD.del_flgpol="N"
+				print(CUST.CATOD.del_flgpol)
+
+				sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+				print(sv_h)
+				#+365
+				#sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')+365),'MM/DD/YYYY') from dual"
+				sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'MM/DD/YYYY') from dual"
+				BANCS.INPARAM.BINDVARS =  sv_h
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d =="0") THEN
+					CUST.CATOD.getboddateo=" 00:00:00"
+					print(CUST.CATOD.getboddateo)
+					CUST.CATOD.getboddate = BANCS.OUTPARAM.getboddate
+					print(CUST.CATOD.getboddate)
+					CUST.CATOD.getboddate = CUST.CATOD.getboddate + CUST.CATOD.getboddateo
+					print(CUST.CATOD.getboddate)
+
+				ENDIF
+				CUST.CATOD.sysdatepol=BANCS.STDIN.sysDate
+				print(CUST.CATOD.sysdatepol)
+
+				CUST.CATOD.chargetype="ANNUAL"
+				print(CUST.CATOD.chargetype)
+
+				sv_f = mid$(BANCS.STDIN.BODDate,0,10)
+				sv_s = "nextrundate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+				BANCS.INPARAM.BINDVARS =  sv_f
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d =="0") THEN
+					CUST.CATOD.nextrundate = BANCS.OUTPARAM.nextrundate
+					print(CUST.CATOD.nextrundate)
+				ENDIF
+				
+				sv_s = ""
+				sv_s = sv_s + " INSERT INTO"
+				sv_s = sv_s + "  CUSTOM.POLARIS_CHARGES"
+				sv_s = sv_s + " ("
+				sv_s = sv_s + " ACCOUNT_NUMBER ,"
+				sv_s = sv_s + " TOTAL_FEES,"
+				sv_s = sv_s + " CUSTOMER_PERCENT,"
+				sv_s = sv_s + " BIZ_PERCENT,"
+				sv_s = sv_s + " CHARGE_ACC,"
+				sv_s = sv_s + " CHARGE_CURRENCY,"
+				sv_s = sv_s + " BANK_ID,"
+				sv_s = sv_s + " DEL_FLG,"
+				sv_s = sv_s + " BOD_DATE,"
+				sv_s = sv_s + " SYSTEM_DATE,"
+				sv_s = sv_s + " ENTITY_CRE_FLG,"
+				sv_s = sv_s + " ENTERER_ID,"
+				sv_s = sv_s + " FUNCTION_CODE,"
+				sv_s = sv_s + " NEXT_RUN_DATE,"
+				sv_s = sv_s + " CHARGE_TYPE"
+				sv_s = sv_s + " )"
+				sv_s = sv_s + " VALUES"
+				sv_s = sv_s + " ("
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " TO_DATE(?SVAR,'MM/DD/YYYY HH24:MI:SS'),"
+				sv_s = sv_s + " ?SVAR "
+				sv_s = sv_s + " )"
+				print(sv_s)
+				
+				BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + CUST.CATOD.Txfrlmt
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.Clglmt + "|" + CUST.CATOD.CashIntSolmt
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  BANCS.INPUT.Chargeforacid
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.CurrencyCode + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.del_flgpol + "|" + CUST.CATOD.getboddate
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.sysdatepol + "|N|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + BANCS.STDIN.userId + "|" + BANCS.INPUT.funcCode + "|" + CUST.CATOD.getboddate + "|" + CUST.CATOD.chargetype
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbsqlWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d != 0)  THEN
+				#{
+					CUST.CATOD.errMsg = "Error in Adding Details"
+					sv_e = CUST.CATOD.errMsg
+					sv_m = "funcCode"
+					sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+					sv_u = urhk_SetOrbOut(sv_e)
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					GOTO ENDOFSCRIPT
+				#}
+				ELSE
+				#{
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		ENDIF
+		####
+	#}
+	ENDIF
+	
+	
+	IF (CUST.CATOD.Function=="M") THEN
+	#{
+		sv_s = "count|"
+		sv_s = sv_s + " SELECT count(1)"
+		sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+		sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0)  THEN
+		#{
+			CUST.CATOD.count = BANCS.OUTPARAM.count
+			print(CUST.CATOD.count)
+		#}
+		ENDIF
+		
+		IF (CINT(CUST.CATOD.count)!= 0)  THEN
+		#{
+			
+			IF (CUST.CATOD.Txfrlmt!="")  THEN
+			#{
+				IF (CUST.CATOD.cForacid != "")  THEN
+				#{
+
+					
+					
+					sv_s=urhk_getAcctDetailsInRepository(BANCS.INPUT.Chargeforacid)
+					PRINT(sv_s)
+					IF(sv_s == 0)THEN
+					CUST.CATOD.CurrencyCode = BANCS.OUTPARAM.acctCrncyCode
+					print (CUST.CATOD.CurrencyCode)
+					ELSE
+					Print ("Not valid account")
+					ENDIF
+					
+					sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+
+					sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+					BANCS.INPARAM.BINDVARS =  sv_h
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					IF (sv_d =="0") THEN
+						CUST.CATOD.getboddate = BANCS.OUTPARAM.getboddate
+						print(CUST.CATOD.getboddate)
+					ENDIF
+					CUST.CATOD.sysdatepol=BANCS.STDIN.sysDate
+					print(CUST.CATOD.sysdatepol)
+					
+					sv_s = ""
+					sv_s = sv_s + " UPDATE CUSTOM.POLARIS_CHARGES"
+					sv_s = sv_s + " SET TOTAL_FEES = ?SVAR,"
+					sv_s = sv_s + " CUSTOMER_PERCENT = ?SVAR,"
+					sv_s = sv_s + " BIZ_PERCENT = ?SVAR,"
+					sv_s = sv_s + " CHARGE_ACC = ?SVAR,"
+					sv_s = sv_s + " BOD_DATE = ?SVAR,"
+					sv_s = sv_s + " SYSTEM_DATE = ?SVAR,"
+					sv_s = sv_s + " ENTERER_ID = ?SVAR,"
+					sv_s = sv_s + " CHARGE_CURRENCY = ?SVAR,"
+					sv_s = sv_s + " AUTH_ID = ?SVAR"
+					sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+					sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+					sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N'"
+					sv_s = sv_s + " AND POLARIS_CHARGES.ENTITY_CRE_FLG = 'Y'"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.CATOD.Txfrlmt + "|" + CUST.CATOD.Clglmt
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.CashIntSolmt + "|" + BANCS.INPUT.Chargeforacid
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  CUST.CATOD.getboddate + "|" + CUST.CATOD.sysdatepol
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.userId + "|" + CUST.CATOD.CurrencyCode   + "|!|" 
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+					sv_d = urhk_dbsqlWithBind(sv_s)
+					print(sv_d)
+						
+					IF (sv_d == 0)  THEN
+					#{
+						GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+						CUST.CATOD.errMsg = "Nothing to ModIFy"
+						sv_e = CUST.CATOD.errMsg
+						sv_m = "funcCode"
+						sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+						sv_u = urhk_SetOrbOut(sv_e)
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ELSE
+					#{
+					CUST.CATOD.errMsg = "Acct exist for Currncy.Use I-inquire to get Customer Accts & M to modIFy"
+					sv_e = CUST.CATOD.errMsg
+					sv_m = "funcCode"
+					sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+					sv_u = urhk_SetOrbOut(sv_e)
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.CATOD.errMsg = "Record Does Not Exist/Unverified status"
+			sv_e = CUST.CATOD.errMsg
+			sv_m = "funcCode"
+			sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+			sv_u = urhk_SetOrbOut(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF (CUST.CATOD.Function=="V") THEN
+	#{
+		
+		sv_s = "Entererid|"
+		sv_s = sv_s + " SELECT ENTERER_ID"
+		sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+		sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N' and (ENTITY_CRE_FLG='N' or AUTH_ID ='!')  and rownum<2 "
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0)  THEN
+		#{
+			CUST.CATOD.Entererid = BANCS.OUTPARAM.Entererid
+			print(CUST.CATOD.Entererid)
+			IF (CUST.CATOD.Entererid==BANCS.STDIN.userId) THEN
+			#{
+			
+				CUST.CATOD.errMsg = "Same user cannot verify"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "funcCode"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+				
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+
+		sv_s = "count|"
+		sv_s = sv_s + " SELECT count(1)"
+		sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+		sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N'"
+		sv_s = sv_s + " AND POLARIS_CHARGES.ENTITY_CRE_FLG = 'N' and rownum<2"
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0)  THEN
+		#{
+			CUST.CATOD.count = BANCS.OUTPARAM.count
+			print(CUST.CATOD.count)
+		#}
+		ENDIF
+		
+		IF (CINT(CUST.CATOD.count)!= 0)  THEN
+		#{
+			sv_s = ""
+			sv_s = sv_s + " UPDATE CUSTOM.POLARIS_CHARGES"
+			sv_s = sv_s + " SET ENTITY_CRE_FLG = 'Y',"
+			sv_s = sv_s + " AUTH_ID = ?SVAR"
+			sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+			sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+			sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N'"
+			sv_s = sv_s + " AND POLARIS_CHARGES.ENTITY_CRE_FLG = 'N' and rownum<2 "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.CATOD.cForacid + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			sv_d=urhk_dbSqlWithBind(sv_s)
+		        print(sv_d)
+			IF(sv_d == 0)THEN
+			#{
+				sv_s = "Entererid|"
+				sv_s = sv_s + " SELECT ENTERER_ID"
+				sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+				sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+				sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+				sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N' and rownum<2 "
+				print(sv_s)
+				
+				BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				
+				IF (sv_d == 0)  THEN
+				#{
+					CUST.CATOD.Entererid = BANCS.OUTPARAM.Entererid
+					print(CUST.CATOD.Entererid)
+
+					CUST.CATOD.del_flgpol="N"
+					print(CUST.CATOD.del_flgpol)
+
+					sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+
+					sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+					BANCS.INPARAM.BINDVARS =  sv_h
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					IF (sv_d =="0") THEN
+						CUST.CATOD.getboddate = BANCS.OUTPARAM.getboddate
+						print(CUST.CATOD.getboddate)
+					ENDIF
+					CUST.CATOD.sysdatepol=BANCS.STDIN.sysDate
+					print(CUST.CATOD.sysdatepol)
+							
+							sv_s = ""
+							sv_s = sv_s + " INSERT INTO"
+							sv_s = sv_s + "  CUSTOM.POLARIS_CHARGES_HIST"
+							sv_s = sv_s + " ("
+							sv_s = sv_s + " ACCOUNT_NUMBER ,"
+							sv_s = sv_s + " TOTAL_FEES,"
+							sv_s = sv_s + " CUSTOMER_PERCENT,"
+							sv_s = sv_s + " BIZ_PERCENT,"
+							sv_s = sv_s + " CHARGE_ACC,"
+							sv_s = sv_s + " CHARGE_CURRENCY,"
+							sv_s = sv_s + " BANK_ID,"
+							sv_s = sv_s + " DEL_FLG,"
+							sv_s = sv_s + " BOD_DATE,"
+							sv_s = sv_s + " SYSTEM_DATE,"
+							sv_s = sv_s + " ENTITY_CRE_FLG,"
+							sv_s = sv_s + " ENTERER_ID,"
+							sv_s = sv_s + " AUTH_ID,"
+							sv_s = sv_s + " FUNCTION_CODE"
+							sv_s = sv_s + " )"
+							sv_s = sv_s + " VALUES"
+							sv_s = sv_s + " ("
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR,"
+							sv_s = sv_s + " ?SVAR"
+							sv_s = sv_s + " )"
+							print(sv_s)
+							
+							BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + CUST.CATOD.Txfrlmt
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.Clglmt + "|" + CUST.CATOD.CashIntSolmt
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  BANCS.INPUT.Chargeforacid
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.CurrencyCode + "|" + BANCS.STDIN.contextBankId
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.del_flgpol + "|" + CUST.CATOD.getboddate
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.sysdatepol + "|Y|" + CUST.CATOD.Entererid
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.userId + "|" + BANCS.INPUT.funcCode 
+							sv_d = urhk_dbsqlWithBind(sv_s)
+							print(sv_d)
+							IF(sv_d == 0)THEN
+							#{
+								GOTO ENDOFSCRIPT
+							#}
+							ENDIF
+
+				#}
+				ENDIF
+			#}
+			ENDIF	
+		#}
+		ELSE
+		#{
+				sv_s = "count|"
+				sv_s = sv_s + " SELECT count(1)"
+				sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+				sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+				sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+				sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N'"
+				sv_s = sv_s + " AND POLARIS_CHARGES.AUTH_ID = '!' and rownum<2"
+				print(sv_s)
+				
+				BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				
+				IF (sv_d == 0)  THEN
+				#{
+					CUST.CATOD.count = BANCS.OUTPARAM.count
+					print(CUST.CATOD.count)
+				#}
+				ENDIF
+				IF (CINT(CUST.CATOD.count)!= 0)  THEN
+				#{
+					sv_s = ""
+					sv_s = sv_s + " UPDATE CUSTOM.POLARIS_CHARGES"
+					sv_s = sv_s + " SET AUTH_ID = ?SVAR"
+					sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+					sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+					sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N'"
+					#sv_s = sv_s + " AND POLARIS_CHARGES.ENTITY_CRE_FLG = 'N' and rownum<2"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.CATOD.cForacid + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					print(sv_d)
+
+					IF(sv_d == 0)THEN
+					#{
+						#sv_a = urhk_dbSqlWithBind("COMMIT")
+						#print(sv_a)
+
+						sv_s = "Entererid|"
+						sv_s = sv_s + " SELECT ENTERER_ID"
+						sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+						sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+						sv_s = sv_s + " AND POLARIS_CHARGES.BANK_ID = ?SVAR"
+						sv_s = sv_s + " AND POLARIS_CHARGES.DEL_FLG = 'N' and rownum<2"
+						print(sv_s)
+						
+						BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+						sv_d=urhk_dbSelectWithBind(sv_s)
+						print(sv_d)
+						
+						IF (sv_d == 0)  THEN
+						#{
+							CUST.CATOD.Entererid = BANCS.OUTPARAM.Entererid
+							print(CUST.CATOD.Entererid)
+
+							CUST.CATOD.del_flgpol="N"
+							print(CUST.CATOD.del_flgpol)
+
+							sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+
+							sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+							BANCS.INPARAM.BINDVARS =  sv_h
+							sv_d = urhk_dbSelectWithBind(sv_s)
+							print(sv_d)
+							IF (sv_d =="0") THEN
+								CUST.CATOD.getboddate = BANCS.OUTPARAM.getboddate
+								print(CUST.CATOD.getboddate)
+							ENDIF
+							CUST.CATOD.sysdatepol=BANCS.STDIN.sysDate
+							print(CUST.CATOD.sysdatepol)
+									
+									sv_s = ""
+									sv_s = sv_s + " INSERT INTO"
+									sv_s = sv_s + "  CUSTOM.POLARIS_CHARGES_HIST"
+									sv_s = sv_s + " ("
+									sv_s = sv_s + " ACCOUNT_NUMBER ,"
+									sv_s = sv_s + " TOTAL_FEES,"
+									sv_s = sv_s + " CUSTOMER_PERCENT,"
+									sv_s = sv_s + " BIZ_PERCENT,"
+									sv_s = sv_s + " CHARGE_ACC,"
+									sv_s = sv_s + " CHARGE_CURRENCY,"
+									sv_s = sv_s + " BANK_ID,"
+									sv_s = sv_s + " DEL_FLG,"
+									sv_s = sv_s + " BOD_DATE,"
+									sv_s = sv_s + " SYSTEM_DATE,"
+									sv_s = sv_s + " ENTITY_CRE_FLG,"
+									sv_s = sv_s + " ENTERER_ID,"
+									sv_s = sv_s + " AUTH_ID,"
+									sv_s = sv_s + " FUNCTION_CODE"
+									sv_s = sv_s + " )"
+									sv_s = sv_s + " VALUES"
+									sv_s = sv_s + " ("
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR,"
+									sv_s = sv_s + " ?SVAR"
+									sv_s = sv_s + " )"
+									print(sv_s)
+									
+									BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + CUST.CATOD.Txfrlmt
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.Clglmt + "|" + CUST.CATOD.CashIntSolmt
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  BANCS.INPUT.Chargeforacid
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.CurrencyCode + "|" + BANCS.STDIN.contextBankId
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.del_flgpol + "|" + CUST.CATOD.getboddate
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CATOD.sysdatepol + "|Y|" + CUST.CATOD.Entererid
+									BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.userId + "|" + BANCS.INPUT.funcCode 
+									sv_d = urhk_dbsqlWithBind(sv_s)
+									print(sv_d)
+									IF(sv_d == 0)THEN
+									#{
+										GOTO ENDOFSCRIPT
+									#}
+									ENDIF
+
+						#}
+						ENDIF
+						
+					#}
+					ELSE
+					#{
+					
+						#sv_d = urhk_dbSqlWithBind("ROLLBACK")
+						#print(sv_d)
+						CUST.CATOD.errMsg = "Error in Verifying Details"
+						sv_e = CUST.CATOD.errMsg
+						sv_m = "funcCode"
+						sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+						sv_u = urhk_SetOrbOut(sv_e)
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+	
+		#}
+		ENDIF
+		
+		
+		
+		
+		
+	#}
+	ENDIF
+	
+ENDOFSCRIPT:
+	IF(CUST.CATOD.errMsg == "") THEN
+	#{
+		IF ((CUST.CATOD.Function=="A") OR (CUST.CATOD.Function=="Y")) THEN
+		#{
+			sv_t = "Record Added Successfully"
+		#}
+		ENDIF
+		IF (CUST.CATOD.Function=="M")THEN
+		#{
+			sv_t = "Record Modified Successfully"
+		#}
+		ENDIF
+		IF (CUST.CATOD.Function=="V")THEN
+		#{
+			sv_t = "Record Verified Successfully"
+		#}
+		ENDIF
+		IF (CUST.CATOD.Function=="Z")THEN
+		#{
+			sv_t = "Record Closed Successfully"
+		#}
+		ENDIF
+		IF (CUST.CATOD.Function=="I")THEN
+		#{
+			sv_t = "Inquiry Option"
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+			exitscript
+		#}
+		ENDIF
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|" + sv_t
+		sv_z = urhk_SetOrbOut(sv_g)
+	#}
+	ENDIF
+
+	ENDO:	
+	TRACE OFF
+	EXITSCRIPT
+	END-->
+	
+	

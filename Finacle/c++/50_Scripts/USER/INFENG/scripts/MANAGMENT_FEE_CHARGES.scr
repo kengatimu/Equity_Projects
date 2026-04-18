@@ -1,0 +1,376 @@
+##########################################################################################
+# Source Name           : MANAGMENT_FEE_CHARGES.scr 
+# Date                  : 24-11-2014
+# Description           : Managment fee for rwanda  
+# Menu                  : batch job setup HBJSTM
+# Author                : Anand Pansare 
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1         04-11-2018   Anand Pansare             Original file
+###########################################################################################
+
+<--start
+TRACE ON
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+        CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+
+	CUST.DATA.Status = ""
+	CUST.DATA.fileStr = "MANAGMENT_FEE_"
+	CUST.DATA.extractFile = ""
+	CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	#CUST.DATA.BODDate = "17-03-2025"
+	
+	
+	sv_s = "currentDateTime,from_date,|SELECT TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS'),to_char(dc_cls_date+1,'DD-MM-YYYY') FROM TBAADM.GCT "
+	sv_s = sv_s + "WHERE BANK_ID = '"+BANCS.STDIN.contextBankId+"'"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d == 0)THEN
+	#{
+		CUST.DATA.currentDateTime = BANCS.OUTPARAM.currentDateTime
+		CUST.DATA.from_date = BANCS.OUTPARAM.from_date
+		print(CUST.DATA.currentDateTime)
+		print(CUST.DATA.from_date)
+	#}
+	ENDIF
+
+	CUST.DATA.extractFile = CUST.DATA.fileStr + CUST.DATA.currentDateTime + ".lst"
+	print(CUST.DATA.extractFile)
+
+	sv_s = "> "+  CUST.DATA.extractFile
+	sv_a = SYSTEM(sv_s)
+	print(sv_a)
+
+	
+
+	lv_q = ""
+	lv_q = lv_q + " update custom.managment_fee_tbl m "
+	lv_q = lv_q + " set flow_date =  (select "
+	lv_q = lv_q + " case "
+	lv_q = lv_q + " when  frequency = 'M' then add_months(flow_date,1) "
+	lv_q = lv_q + " when  frequency = 'Q' then add_months(flow_date,3) "
+	lv_q = lv_q + " when  frequency = 'T' then add_months(flow_date,4) "
+	lv_q = lv_q + " when  frequency = 'H' then add_months(flow_date,6) "
+	lv_q = lv_q + " when  frequency = 'Y' then add_months(flow_date,12)" 
+	lv_q = lv_q + " else flow_date "
+	lv_q = lv_q + " end next_flow_date   "
+	lv_q = lv_q + " from custom.managment_fee_tbl c "
+	lv_q = lv_q + " where c.loan_foracid = m.loan_foracid ) "
+	lv_q = lv_q + " where m.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	lv_q = lv_q + " and m.del_flg = 'N' "
+	lv_q = lv_q + " and m.flow_date between TO_DATE('"+CUST.DATA.from_date+"','DD-MM-YYYY') AND TO_DATE('"+CUST.DATA.BODDate+"','DD-MM-YYYY') "
+	lv_q = lv_q + " and m.loan_foracid in  ( "
+	lv_q = lv_q + " select foracid  from tbaadm.gam,tbaadm.gac "
+	lv_q = lv_q + " where gam.bank_id = gac.bank_id   "
+	lv_q = lv_q + " and gam.acid = gac.acid  "
+	lv_q = lv_q + " and chrge_off_flg = 'Y' "
+	lv_q = lv_q + " and gam.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	lv_q = lv_q + " and gam.sol_id = '"+BANCS.STDIN.mySolId+"' "
+	lv_q = lv_q + " and acct_ownership != 'O' "
+	lv_q = lv_q + " and acct_cls_date is null  "
+	lv_q = lv_q + " and schm_type = 'LAA') "
+
+	print(lv_q)
+	sv_a = urhk_dbSQLWithBind(lv_q)
+	PRINT(sv_a)
+
+	IF(sv_a == 0)THEN
+	#{
+		sv_a = urhk_dbSQLWithBind("COMMIT")
+		PRINT(sv_a)
+	ELSE
+		PRINT("FAILED TO UPDATE")
+	#}
+	ENDIF
+
+	sv_a = ""
+	sv_a = sv_a + " loan_foracid,loan_schm_code,loan_crncy_code,op_foracid,op_acid,tot_comm,flow_date,next_flow_date|"
+	sv_a = sv_a + " select loan_foracid,"
+	sv_a = sv_a + " gam.schm_code loan_schm_code,"
+	sv_a = sv_a + " gam.acct_crncy_code loan_crncy_code,"
+	sv_a = sv_a + " (select (select foracid from tbaadm.gam g where g.bank_id = lam.bank_id and g.acid = lam.op_acid) from tbaadm.lam "
+	sv_a = sv_a + " where lam.bank_id = m.bank_id and lam.acid =  gam.acid ) as op_foracid ,"
+	sv_a = sv_a + " (select op_acid from tbaadm.lam "
+	sv_a = sv_a + " where lam.bank_id = m.bank_id and lam.acid =  gam.acid ) as op_acid ,"
+	sv_a = sv_a + " (comm_amt+tax_amt) as tot_comm,"
+	sv_a = sv_a + " to_char(flow_date,'DD-MM-YYYY'),"
+	sv_a = sv_a + " to_char(case "
+	sv_a = sv_a + " when frequency = 'M' then add_months(flow_date,1)  "
+	sv_a = sv_a + " when frequency = 'Q' then add_months(flow_date,3)  "
+	sv_a = sv_a + " when frequency = 'T' then add_months(flow_date,4)  "
+	sv_a = sv_a + " when frequency = 'H' then add_months(flow_date,6)  "
+	sv_a = sv_a + " when frequency = 'Y' then add_months(flow_date,12)  "
+	sv_a = sv_a + " else flow_date end ,'DD-MM-YYYY') next_flow_date   "
+	sv_a = sv_a + " from custom.managment_fee_tbl m,tbaadm.gam,tbaadm.gac "
+	sv_a = sv_a + " where gam.bank_id = m.bank_id  "
+	sv_a = sv_a + " and gam.bank_id = gac.bank_id  "
+	sv_a = sv_a + " and gam.acid = gac.acid  "
+	sv_a = sv_a + " and gam.foracid = m.loan_foracid  "
+	sv_a = sv_a + " and gam.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	sv_a = sv_a + " and gam.sol_id = '"+BANCS.STDIN.mySolId+"' "
+	sv_a = sv_a + " and m.del_flg = 'N' "
+	sv_a = sv_a + " and chrge_off_flg != 'Y' "
+	sv_a = sv_a + " and gam.acct_cls_date is  null "
+	sv_a = sv_a + " and clr_bal_amt < 0  "
+	sv_a = sv_a + " and m.flow_date between TO_DATE('"+CUST.DATA.from_date+"','DD-MM-YYYY') AND TO_DATE('"+CUST.DATA.BODDate+"','DD-MM-YYYY') "
+	
+	print(sv_a)
+	sv_d = urhk_dbcursorOpenWithBind(sv_a)
+	IF(sv_d == 0)THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(sv_m)
+		sv_z = urhk_dbCursorFetch(sv_m)
+		print(sv_z)
+
+		if (sv_z != 0) then
+		#{
+			print("Account is not found for charges")
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		while( sv_z == 0)
+		#{
+			CUST.DATA.loan_foracid  = BANCS.OUTPARAM.loan_foracid
+			CUST.DATA.loan_schm_code= BANCS.OUTPARAM.loan_schm_code
+			CUST.DATA.loan_crncy_code= BANCS.OUTPARAM.loan_crncy_code
+			CUST.DATA.op_foracid    = BANCS.OUTPARAM.op_foracid
+			CUST.DATA.op_acid    	= BANCS.OUTPARAM.op_acid
+			CUST.DATA.tot_comm 	= BANCS.OUTPARAM.tot_comm
+			CUST.DATA.flow_date	= BANCS.OUTPARAM.flow_date
+			CUST.DATA.next_flow_date= BANCS.OUTPARAM.next_flow_date
+
+			print(CUST.DATA.loan_foracid)
+			print(CUST.DATA.loan_schm_code)
+			print(CUST.DATA.loan_crncy_code)
+			print(CUST.DATA.op_foracid)
+			print(CUST.DATA.op_acid)
+			print(CUST.DATA.tot_comm)
+			print(CUST.DATA.flow_date)
+			print(CUST.DATA.next_flow_date)
+			
+			### checking the account should not charged before on the same day ######
+			CUST.DATA.tran_particular = "MANAGEMENT-FEE-"+CUST.DATA.loan_foracid+"-"+CUST.DATA.flow_date	
+			
+			sv_s = ""
+			sv_s = sv_s + " cnt |"
+			sv_s = sv_s + " SELECT  count(*) "
+			sv_s = sv_s + " FROM tbaadm.dtd "
+			sv_s = sv_s + " where tran_date = to_Date(?SVAR,'DD-MM-YYYY') "
+			sv_s = sv_s + " and acid = ?SVAR  "
+			sv_s = sv_s + " and tran_rmks =  'COGE COMMISSION COLL' "
+			sv_s = sv_s + " and del_flg ='N' "
+			sv_s = sv_s + " and tran_particular ='"+CUST.DATA.tran_particular+"' "
+			sv_s = sv_s + " and bank_id = '"+BANCS.STDIN.contextBankId+"'"
+			
+			print(sv_s)
+			
+			BANCS.INPARAM.BINDVARS =  CUST.DATA.BODDate + "|" + CUST.DATA.op_acid
+			
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d != 0) THEN
+			#{
+					exitscript
+			#}
+			ELSE
+			#{
+				CUST.DATA.cnt= BANCS.OUTPARAM.cnt
+				print(CUST.DATA.cnt)
+			#}
+			ENDIF
+			
+			IF (CUST.DATA.cnt > 0) THEN
+			#{
+				GOTO nextrec
+			#}
+			ENDIF
+
+			CUST.DATA.chargeTranId = ""	
+					
+			CUST.DATA.eventId = "MANAGEMENT-FEE-"+CUST.DATA.loan_schm_code
+			CUST.DATA.eventId = "MANAGEMENT-FEE-MG592"
+			CUST.DATA.acctCrncyCode = CUST.DATA.loan_crncy_code 
+			CUST.DATA.TotalAmt = CUST.DATA.tot_comm +"|"+CUST.DATA.loan_crncy_code 
+			print(CUST.DATA.TotalAmt)	
+			CUST.DATA.Narration = "MANAGEMENT-FEE-"+CUST.DATA.loan_foracid+"-"+CUST.DATA.flow_date
+
+                        CUST.DATA.tranType      = "T"
+                        CUST.DATA.tranSubType   = "BI"
+                        CUST.DATA.tranDate      = CUST.DATA.BODDate 
+                        CUST.DATA.drAcctId      = CUST.DATA.op_foracid
+
+			call("CogeChgCollgchrgRW.scr")
+			
+			if(fieldexists(CUST.DATA.chargeTranId)) then
+			#{
+			
+				lv_a = ""
+				lv_a = lv_a + "lien_b2k_id,system_calc_amt,actual_amt_coll,pending_chrg_amt|"
+				lv_a = lv_a + " select "
+				lv_a = lv_a + " (select lien_b2k_id from tbaadm.pclt p where p.bank_id = cxl.bank_id "
+				lv_a = lv_a + " and p.cxl_srl_num = cxl.cxl_srl_num and  p.acid = cxl.target_acid  "
+				lv_a = lv_a + " and p.pttm_event_type = cxl.event_type  and  p.pttm_event_id = cxl.event_id "
+				lv_a = lv_a + "  ) lien_b2k_id, "
+				lv_a = lv_a + " system_calc_amt,"
+				lv_a = lv_a + " actual_amt_coll, "
+				lv_a = lv_a + " pending_chrg_amt "
+				lv_a = lv_a + " from tbaadm.cxl  "
+				lv_a = lv_a + " where bank_id = '"+BANCS.STDIN.contextBankId+"' "
+				lv_a = lv_a + " and event_type = 'GCHRG' "
+				lv_a = lv_a + " and event_id = '"+CUST.DATA.eventId+"'"
+				lv_a = lv_a + " and chrg_gl_date = to_date ('"+CUST.DATA.BODDate+"','DD-MM-YYYY') "
+				lv_a = lv_a + " and target_acid  = '"+CUST.DATA.op_acid+"' "
+				lv_a = lv_a + " and comp_b2kid= '"+CUST.DATA.gchSrlNum+"' "
+				print(lv_a)
+
+				sv_d=urhk_dbSelectWithBind(lv_a)
+				print(sv_d)
+				IF (sv_d == 0) THEN
+				#{
+					CUST.DATA.lien_b2k_id		= BANCS.OUTPARAM.lien_b2k_id
+					CUST.DATA.system_calc_amt	= BANCS.OUTPARAM.system_calc_amt
+					CUST.DATA.actual_amt_coll	= BANCS.OUTPARAM.actual_amt_coll
+					CUST.DATA.pending_chrg_amt	= BANCS.OUTPARAM.pending_chrg_amt
+					print(CUST.DATA.lien_b2k_id)
+					print(CUST.DATA.system_calc_amt)
+					print(CUST.DATA.actual_amt_coll)
+					print(CUST.DATA.pending_chrg_amt)
+				ELSE
+					CUST.DATA.lien_b2k_id           = ""
+					CUST.DATA.system_calc_amt       = CDOUBLE("0")
+					CUST.DATA.actual_amt_coll       = CDOUBLE("0") 
+					CUST.DATA.pending_chrg_amt      = CDOUBLE("0") 
+					print(CUST.DATA.lien_b2k_id)
+					print(CUST.DATA.system_calc_amt)
+					print(CUST.DATA.actual_amt_coll)
+					print(CUST.DATA.pending_chrg_amt)
+				#}
+				ENDIF
+
+				IF((CUST.DATA.lien_b2k_id == "") AND ( CUST.DATA.pending_chrg_amt == CDOUBLE("0")))THEN
+				#{
+					CUST.DATA.status ="Charges collected fully "+ CUST.DATA.actual_amt_coll
+				#}
+				ENDIF
+
+				IF((CUST.DATA.lien_b2k_id != "") AND (CUST.DATA.system_calc_amt == CUST.DATA.pending_chrg_amt))THEN
+				#{
+					CUST.DATA.status ="Lien Marked For Full Charge Amount " + CUST.DATA.pending_chrg_amt
+					CUST.DATA.chargeTranId = ""
+				#}
+				ENDIF
+
+				IF((CUST.DATA.lien_b2k_id != "") AND (CUST.DATA.pending_chrg_amt < CUST.DATA.system_calc_amt))THEN
+				#{
+					CUST.DATA.status ="Charge Collected "+CUST.DATA.actual_amt_coll+ " and Lien Marked "+CUST.DATA.pending_chrg_amt
+				#}
+				ENDIF
+			
+
+				#if (CUST.DATA.chargeTranId != "") then
+				#{
+					sv_u = system("echo ' Charge tran id :"+CUST.DATA.chargeTranId+"  Account Id : "+CUST.DATA.loan_foracid+" managment fee Amount :"+CUST.DATA.tot_comm+"' >>" + CUST.DATA.extractFile)
+
+					lv_a = ""
+					lv_a = lv_a + " insert into custom.managment_fee_coll_tbl "
+					lv_a = lv_a + " (bank_id, "
+					lv_a = lv_a + " loan_foracid, "
+					lv_a = lv_a + " op_foracid, "
+					lv_a = lv_a + " charg_tran_id, "
+					lv_a = lv_a + " charg_tran_date, "
+					lv_a = lv_a + " lien_b2k_id, "
+					lv_a = lv_a + " lchg_time, "
+					lv_a = lv_a + " lchg_user_id, "
+					lv_a = lv_a + " remark,"
+					lv_a = lv_a + " flow_date) "
+					lv_a = lv_a + " values ('"+BANCS.STDIN.contextBankId+"', "
+					lv_a = lv_a + " '"+CUST.DATA.loan_foracid+"', "
+					lv_a = lv_a + " '"+CUST.DATA.op_foracid+"', "
+					lv_a = lv_a + " '"+CUST.DATA.chargeTranId+"', "
+					lv_a = lv_a + " to_date ('"+CUST.DATA.BODDate+"','DD-MM-YYYY'), "
+					lv_a = lv_a + " '"+CUST.DATA.lien_b2k_id+"', "
+					lv_a = lv_a + " sysdate, "
+					lv_a = lv_a + " '"+BANCS.STDIN.userId+"', "
+					lv_a = lv_a + " '"+CUST.DATA.status+"',"
+					lv_a = lv_a + " to_date ('"+CUST.DATA.flow_date+"','DD-MM-YYYY'))"	
+
+					print(lv_a)
+					sv_a = urhk_dbSQLWithBind(lv_a)
+					PRINT(sv_a)
+
+					IF(sv_a == 0)THEN
+					#{
+						sv_a = urhk_dbSQLWithBind("COMMIT")
+					ELSE
+						PRINT("FAILED TO UPDATE")
+					#}
+					ENDIF
+
+					lv_a = ""
+					lv_a = lv_a + " update  custom.managment_fee_tbl "
+					lv_a = lv_a + " set last_coll_date = to_date ('"+CUST.DATA.flow_date+"','DD-MM-YYYY'),"
+					lv_a = lv_a + " flow_date =  to_date ('"+CUST.DATA.next_flow_date+"','DD-MM-YYYY') "
+					lv_a = lv_a + " where bank_id = '"+BANCS.STDIN.contextBankId+"' "
+					lv_a = lv_a + " and loan_foracid = '"+CUST.DATA.loan_foracid+"' "
+					lv_a = lv_a + " and del_flg = 'N' "	
+
+					print(lv_a)
+					sv_a = urhk_dbSQLWithBind(lv_a)
+					PRINT(sv_a)
+
+					IF(sv_a == 0)THEN
+					#{
+						sv_a = urhk_dbSQLWithBind("COMMIT")
+					ELSE
+						PRINT("FAILED TO UPDATE")
+					#}
+					ENDIF
+				#}
+				#endif
+			
+			#}
+			endif
+
+			nextrec:
+			
+			sv_z = urhk_dbCursorFetch(sv_m)
+			print(sv_z)
+		#}
+		do
+		sv_z = urhk_dbCursorClose(sv_m)			
+	#}	 
+	ELSE
+	#{
+		print("Account is not found")
+		EXITSCRIPT
+	#}
+	ENDIF
+		
+	CUST.DATA.title = "managment fee Report "
+	sv_t =  "exebatch babx4040  $B2K_SESSION_ID "+CUST.DATA.extractFile+" '" + CUST.DATA.title + "' MANAGER 1 N"
+	print(sv_t)
+	sv_t = system(sv_t)
+	print(sv_t)
+
+
+ENDOFSCRIPT:
+
+exitscript
+end-->
+					

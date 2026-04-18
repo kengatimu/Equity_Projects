@@ -1,0 +1,247 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       hdenomdp004.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to delete/insert data in table at modify mode.
+# Input                 :       Frontend field values
+# Output                :       None
+# Called Script         :       None
+# Calling Script        :       hdenommn005.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           07-05-2013         Nitin Prabhakar   original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="b1713b86bffe57d38d0adca11a399719daae392b4123e0c9955f9c3c9d95e53f"
+	TRACE ON
+	# In rak bank Code, similar to add mode
+	# In modify mode, If some NOTE/COIN Denomonation value are present with del_flg as 'Y'.
+	# For that,
+	# If the NOTE/COIN Denomonation value is same as the already NOTE/COIN Denomonation value
+	# present for currency with DEL_FLG as "Y", then they skip the insert statement and record
+	# with del_flg 'Y' will be there.
+	
+	# For record which didnt match with any existing NOTE/COIN Denomonation value with DEL_FLG as
+	# "Y", they insert new record with del_flg as 'N'.
+	
+	# For other existing records NOTE/COIN Denomonation value with DEL_FLG as 'Y' which doesnt match
+	# with any enter value by user, they are delete these record physically.
+	
+	# In this code flow,
+	# First, we are Deleteing all record physically present in table with Del_flg as 'N'
+	# But before fetching for modify, validating denomination value are still in use or not.
+	# if Denom is in use
+	# sending an error  'Transactions are in entered state cannot delete denomination'
+	# else
+	# coming in detail page and deleting all record physically and then insert all record entered
+	# by user with del_flg as 'N'.
+	
+	#--------------------------------------------------------------------------------------
+	# selecting rcreUser, rcreTime for selected currency.
+	#--------------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.crncyCode + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "rcreUser, rcreTime|"
+	sv_s = sv_s + " SELECT RCRE_USER_ID,TO_CHAR(RCRE_TIME,'DD-MM-YYYY HH24:MI:SS')"
+	sv_s = sv_s + " FROM CUSTOM.C_MDNM "
+	sv_s = sv_s + " WHERE CRNCY_CODE = ?SVAR AND bank_id = ?SVAR "
+	sv_s = sv_s + " AND ROWNUM<2 "
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		# throwing error
+		#CUST.DENOM.errorMsg = "Unable to select from C_MDNM."
+		CUST.INTERFACE.errorCode = "DENOM_ERR_016"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.DENOM.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.DENOM.fieldName = "abc"
+		CUST.DENOM.successFlg = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.DENOM.rcreUser = BANCS.OUTPARAM.rcreUser
+		print(CUST.DENOM.rcreUser)
+		CUST.DENOM.rcreTime = BANCS.OUTPARAM.rcreTime
+		print(CUST.DENOM.rcreTime)
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	# Delete the old records from table CUSTOM.C_MDNM with DEL_FLG as 'Y'
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.crncyCode
+	#BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|Y" + "|" + BANCS.STDIN.contextBankId
+	sv_s = "DELETE FROM CUSTOM.C_MDNM "
+	sv_s = sv_s + " WHERE CRNCY_CODE = ?SVAR"
+	#sv_s = sv_s + " AND DEL_FLG = ?SVAR AND bank_id = ?SVAR"
+	print(sv_s)
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		# throwing error
+		#CUST.DENOM.errorMsg = "Oracle Error - Try after sometime."
+		CUST.INTERFACE.errorCode = "DENOM_ERR_002"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.DENOM.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.DENOM.fieldName = "abc"
+		CUST.DENOM.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	# Initializing the counter values
+	#------------------------------------------------------------------------------
+	CUST.DENOM.coinDenomCounter = "01"
+	CUST.DENOM.noteDenomCounter = "01"
+	#------------------------------------------------------------------------------
+	# Loop for inserting the value for Note Denomination
+	#------------------------------------------------------------------------------
+	WHILE (CINT(CUST.DENOM.noteDenomCounter) < 16)
+	#{
+		print(CUST.DENOM.noteDenomCounter)
+		CUST.DENOM.denomInd = "N"
+		CUST.DENOM.denomValue = ("CUST").("DENOM").("noteDenom" + CUST.DENOM.noteDenomCounter)
+		print(CUST.DENOM.denomValue)
+		
+		IF (TRIM(CUST.DENOM.denomValue) != "") THEN
+		#{
+			#------------------------------------------------------------------------------
+			# Inserting data into table C_MDNM
+			#------------------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.crncyCode
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.denomInd
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.denomValue
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.rcreUser
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.rcreTime
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.userId
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.bankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "INSERT INTO CUSTOM.C_MDNM"
+			sv_s = sv_s + " NAME("
+			sv_s = sv_s + "SOL_ID,CRNCY_CODE,DENOM_IND,DENOM_VALUE,"
+			sv_s = sv_s + "RCRE_USER_ID,RCRE_TIME,LCHG_USER_ID,LCHG_TIME,"
+			sv_s = sv_s + "DEL_FLG,BANK_ID"
+			sv_s = sv_s + ") VALUES("
+			
+			sv_s = sv_s + "?SVAR,?SVAR,?SVAR,?SVAR,"
+			sv_s = sv_s + "?SVAR,TO_DATE(?SVAR,'DD-MM-YYYY HH24:MI:SS'),?SVAR,SYSDATE,"
+			sv_s = sv_s + "?SVAR,?SVAR"
+			
+			sv_s = sv_s + ")"
+			print(sv_s)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			IF(sv_d != 0)THEN
+			#{
+				# throwing error
+				#CUST.DENOM.errorMsg = "Unable to insert in table CUSTOM.C_MDNM."
+				CUST.INTERFACE.errorCode = "DENOM_ERR_015"
+				CALL("Common_Interface_GetErrorDesc.scr")
+				CUST.DENOM.errorMsg = CUST.INTERFACE.errorDesc
+				CUST.DENOM.fieldName = "abc"
+				CUST.DENOM.successFlg = "F"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		# increasing counter value
+		#------------------------------------------------------------------------------
+		CUST.DENOM.noteDenomCounter = CINT(CUST.DENOM.noteDenomCounter) + 1
+		print(CUST.DENOM.noteDenomCounter)
+		sv_l = STRLEN(CUST.DENOM.noteDenomCounter)
+		IF (sv_l != 2) THEN
+		#{
+			CUST.DENOM.noteDenomCounter = "0" + CUST.DENOM.noteDenomCounter
+		#}
+		ENDIF
+		print(CUST.DENOM.noteDenomCounter)
+	#}
+	DO
+	
+	#------------------------------------------------------------------------------
+	# Loop for inserting the value for Coin Denomination
+	#------------------------------------------------------------------------------
+	WHILE (CINT(CUST.DENOM.coinDenomCounter) < 16)
+	#{
+		print(CUST.DENOM.coinDenomCounter)
+		CUST.DENOM.denomInd = "C"
+		CUST.DENOM.denomValue = ("CUST").("DENOM").("coinDenom" + CUST.DENOM.coinDenomCounter)
+		print(CUST.DENOM.denomValue)
+		IF (TRIM(CUST.DENOM.denomValue) != "") THEN
+		#{
+			#------------------------------------------------------------------------------
+			# Inserting data into table C_MDNM
+			#------------------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.crncyCode
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.denomInd
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.denomValue
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.rcreUser
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.rcreTime
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.userId
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.bankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "INSERT INTO CUSTOM.C_MDNM"
+			sv_s = sv_s + " NAME("
+			sv_s = sv_s + "SOL_ID,CRNCY_CODE,DENOM_IND,DENOM_VALUE,"
+			sv_s = sv_s + "RCRE_USER_ID,RCRE_TIME,LCHG_USER_ID,LCHG_TIME,"
+			sv_s = sv_s + "DEL_FLG,BANK_ID"
+			sv_s = sv_s + ") VALUES("
+			
+			sv_s = sv_s + "?SVAR,?SVAR,?SVAR,?SVAR,"
+			sv_s = sv_s + "?SVAR,TO_DATE(?SVAR,'DD-MM-YYYY HH24:MI:SS'),?SVAR,SYSDATE,"
+			sv_s = sv_s + "?SVAR,?SVAR"
+			
+			sv_s = sv_s + ")"
+			print(sv_s)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			IF(sv_d != 0)THEN
+			#{
+				# throwing error
+				#CUST.DENOM.errorMsg = "Unable to insert in table CUSTOM.C_MDNM."
+				CUST.INTERFACE.errorCode = "DENOM_ERR_015"
+				CALL("Common_Interface_GetErrorDesc.scr")
+				CUST.DENOM.errorMsg = CUST.INTERFACE.errorDesc
+				CUST.DENOM.fieldName = "abc"
+				CUST.DENOM.successFlg = "F"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		# increasing counter value
+		#------------------------------------------------------------------------------
+		CUST.DENOM.coinDenomCounter = CINT(CUST.DENOM.coinDenomCounter) + 1
+		print(CUST.DENOM.coinDenomCounter)
+		sv_l = STRLEN(CUST.DENOM.coinDenomCounter)
+		IF (sv_l != 2) THEN
+		#{
+			CUST.DENOM.coinDenomCounter = "0" + CUST.DENOM.coinDenomCounter
+		#}
+		ENDIF
+		print(CUST.DENOM.coinDenomCounter)
+	#}
+	DO
+	# setting message for result page
+	CUST.DENOM.resultPageMsg = "Denomination details are modified successfully"
+	ENDOFSCRIPT:
+		EXITSCRIPT
+		TRACE OFF
+END-->

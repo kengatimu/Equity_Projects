@@ -1,0 +1,1241 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: s_laadisbmn007.scr
+#   Description		: Additional charges are collected after disbursment
+#   Date			: 31-03-2013
+#   Author			: Saurabh
+#   Input			: NA
+#   Output			: NA
+#   Called Script	:
+#   Calling Script	: getcparamvalue.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             12-03-2013      Saurabh				Original Version
+#	2.0				31-03-2013		Sateesh				Added report file creation through HPR and commit statement removed.
+#	3.0				02-08-2013		Bharath				Modified for TOL 364952
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="fe07f6b98277578129cd405c79aef186113bad5f27c7ba50ff2c3f71a83e0639"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_B2K_printRepos("BANCS")
+	print(sv_a)
+	
+	#-------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-------------------------------------------------------------------------------
+	CUST.LADISB.errMsg 		= ""
+	CUST.LADISB.loanType	= ""
+	CUST.LADISB.tranid		= ""
+	CUST.LADISB.tranMsg 	= ""
+	CUST.LADISB.MTTErrDesc	= ""
+	
+	#------------------------------------------------------------------------------
+	# Getting acctId code from front end
+	#------------------------------------------------------------------------------
+	sv_a = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+	CUST.LADISB.loanAcctId  = BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.loanAcctId)
+	
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.disburseAmt")
+	CUST.LADISB.disbAmt             = BANCS.OUTPARAM.srvValue
+	sv_a=getPosition(CUST.LADISB.disbAmt,"|")
+	sv_b=strlen(CUST.LADISB.disbAmt)
+	CUST.LADISB.disbAmt		=LEFT$(CUST.LADISB.disbAmt,sv_a-1)
+	print(CUST.LADISB.disbAmt)
+	
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.partTranLL.<rec_0>.tranRmks")
+	CUST.LADISB.tranPart	= BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.tranPart)
+	
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.partTranLL.<rec_0>.oapRefNum")
+	CUST.LADISB.refNum		= BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.refNum)
+	CUST.LADISB.refNum		= ""
+	
+	#------------------------------------------------------------------------------
+	# Exitscript if function code is Reversal
+	#------------------------------------------------------------------------------
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.reversalTranId")
+	CUST.LADISB.reversalTran = BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.reversalTran)
+	IF (CUST.LADISB.reversalTran != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Calling common script for common values
+	#------------------------------------------------------------------------------
+	print(CUST.LADISB.loanAcctId)
+	CALL("laadisbdp004.scr")
+	IF (CUST.LADISB.errMsg != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.LADISB.stepVal="7"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#################################################################################
+	# Inclusion for stima loan
+	#################################################################################
+	print(CUST.LADISB.loanType)
+	IF (CUST.LADISB.loanType == "S") THEN
+	#{
+		CUST.LADISB.tranMsg = "Stima Loan"
+		IF (CUST.LADISB.operAcctFlg == "N") THEN
+		#{
+			CUST.LADISB.errMsg = "Operative account not linked"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		print(CUST.LADISB.tranPart)
+		print(CUST.LADISB.refNum)
+		sv_w = getPosition(CUST.LADISB.tranPart,"/")
+		CUST.LADISB.refNum = MID$(CUST.LADISB.tranPart,0, (sv_w-1))
+		print(CUST.LADISB.refNum)
+		sv_y = STRLEN(CUST.LADISB.tranPart)
+		CUST.LADISB.tranPart = MID$(CUST.LADISB.tranPart,sv_w, sv_y)
+		print(CUST.LADISB.tranPart)
+		
+		#------------------------------------------------------------------
+		#  Calculatin lace and insurance Amount
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.laceAmt) != 0) THEN
+		#{
+			sv_i = CUST.CPARAM.stBacidLacAct + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+			print(sv_i)
+			sv_u = urhk_B2k_BacidToAcctId(sv_i)
+			IF (sv_u != 0 ) THEN
+			#{
+				CUST.LADISB.errMsg ="Lace Collection A/C not set up "
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			CUST.LADISB.laceCrAccnt = BANCS.OUTPARAM.AcctId
+			print(CUST.LADISB.laceCrAccnt)
+		#}
+		ENDIF
+		
+		IF (CDOUBLE(CUST.LADISB.insuAmt) != 0) THEN
+		#{
+			sv_i = CUST.CPARAM.stBacidInsAct + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+			print(sv_i)
+			sv_u = urhk_B2k_BacidToAcctId(sv_i)
+			IF (sv_u != 0 ) THEN
+			#{
+				CUST.LADISB.errMsg ="Insuarance A/C not set up"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			CUST.LADISB.insuCrAccnt = BANCS.OUTPARAM.AcctId
+			print(CUST.LADISB.insuCrAccnt)
+		#}
+		ENDIF
+		
+		
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("MTT")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","TranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","InputDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","LAAddnlDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","LAAddnlDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","Error",5)
+		#}
+		ENDIF
+		
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("BANCS")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("BANCS","INPARAM",5)
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+		
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "CI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = CUST.CPARAM.stTranDetailRmks1
+		
+		sv_r = urhk_MTTS_Initialize("")
+		print(sv_r)
+		
+		sv_v = "Stima"
+		print(sv_v)
+		
+		sv_u = urhk_MTTS_DefineTransaction("Stima")
+		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		CUST.LADISB.totalAmt=CDOUBLE(CUST.LADISB.laceAmt)+CDOUBLE(CUST.LADISB.contribution)+CDOUBLE(CUST.LADISB.insuAmt)
+		print(CUST.LADISB.totalAmt)
+		
+		IF (CDOUBLE(CUST.LADISB.laceAmt)!= 0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.laceCrAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode = CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.stParticulars1
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.laceAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.RefNum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (CDOUBLE(CUST.LADISB.insuAmt)!=0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.insuCrAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode = CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.stParticulars2
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.insuAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.RefNum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (CDOUBLE(CUST.LADISB.contribution) != 0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.loanAcctId
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode = CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.stParticulars3
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.contribution)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.RefNum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			MTT.PartTranDetails.PTranBusinessType="MAIN"
+			MTT.LAAddnlDetails.DemandFlowId=CUST.CPARAM.demandFlowId
+			MTT.LAAddnlDetails.TypeOfDemand=""
+			MTT.LAAddnlDetails.LoanAcctId = CUST.LADISB.loanAcctId
+			MTT.LAAddnlDetails.OriginOfTran=""
+			MTT.LAAddnlDetails.ReversalTranId=""
+			MTT.LAAddnlDetails.ReversalTranDate=""
+			MTT.LAAddnlDetails.ReversalPtranSrlNum=""
+			MTT.LAAddnlDetails.ReversalDmdSrlNum=""
+			MTT.LAAddnlDetails.AdvancePaymentFlg=""
+			MTT.LAAddnlDetails.PrincipalAmt=""
+			MTT.LAAddnlDetails.InterestAmt=""
+			MTT.LAAddnlDetails.OtherChrgAmt=""
+			MTT.LAAddnlDetails.BankChrgAmt=""
+			MTT.LAAddnlDetails.DemandSatisfyFlg=""
+			MTT.LAAddnlDetails.raiseDemandFlg=""
+			MTT.LAAddnlDetails.oFlowAdjFlg=""
+			MTT.LAAddnlDetails.DemandAmt=""
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Customer Debit Partran
+		#------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.LADISB.operAcctId
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+		MTT.PartTranDetails.Rate = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = CUST.CPARAM.stParticulars4
+		sv_a = CDOUBLE(CUST.LADISB.totalAmt)
+		sv_a= -(sv_a)
+		MTT.PartTranDetails.RefAmount = sv_a
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+		MTT.PartTranDetails.RefNum = CUST.LADISB.refNum
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_h = "D" + CUST.LADISB.operAcctId
+		sv_u = urhk_MTTS_definePartTran(sv_h)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#################################################################################
+	# Inculusion for Merchandizing - laptop project
+	#################################################################################
+	print(CUST.LADISB.laSchmCode)
+	CUST.LADISB.stepVal="5"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.LADISB.laSchmCode == CUST.CPARAM.lpSchmCode)  THEN
+	#{
+		CUST.LADISB.tranMsg = "Merchandizing Loan"
+		IF (CUST.LADISB.operAcctFlg == "N") THEN
+		#{
+			CUST.LADISB.errMsg = "Operative account not linked"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_s = "ysum|"
+		sv_s = sv_s + " SELECT"
+		sv_s = sv_s + " SUM(OD.det_sup_base_price)"
+		sv_s = sv_s + " FROM"
+		sv_s = sv_s + " CUSTOM.ORDER_DETAILS OD"
+		sv_s = sv_s + " WHERE"
+		sv_s = sv_s + " OD.det_ord_order_no =?SVAR"
+		sv_s = sv_s + " AND OD.bank_id 		=?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId 	+ "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			CUST.LADISB.errMsg 	= "Error in finding insu amount"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.insuAmt=BANCS.OUTPARAM.ysum
+			print(CUST.LADISB.insuAmt)
+		#}
+		ENDIF
+		
+		sv_s = "FreeCode6|"
+		sv_s = sv_s + " SELECT d.free_code_6"
+		sv_s = sv_s + " FROM TBAADM.GAM a, TBAADM.LAM b, TBAADM.GAM c, TBAADM.GAC d"
+		sv_s = sv_s + " WHERE a.acid = b.acid"
+		sv_s = sv_s + " AND b.op_acid = c.acid"
+		sv_s = sv_s + " AND d.acid = b.acid"
+		sv_s = sv_s + " AND a.entity_cre_flg ='Y'"
+		sv_s = sv_s + " AND a.del_flg = 'N'"
+		sv_s = sv_s + " AND a.foracid = ?SVAR "
+		sv_s = sv_s + " AND a.bank_id = b.bank_id"
+		sv_s = sv_s + " AND b.bank_id = c.bank_id"
+		sv_s = sv_s + " AND c.bank_id = d.bank_id"
+		sv_s = sv_s + " AND d.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId 	+ "|" +BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			CUST.LADISB.errMsg 	= "Error in finding free code6 value"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.freeCode6= BANCS.OUTPARAM.FreeCode6
+			print(CUST.LADISB.freeCode6)
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.freeCode6 !="") THEN
+		#{
+			sv_s = "codename|"
+			sv_s = sv_s + " SELECT RCT.ref_desc"
+			sv_s = sv_s + " FROM TBAADM.RCT"
+			sv_s = sv_s + " WHERE RCT.ref_code= ?SVAR"
+			sv_s = sv_s + " AND RCT.ref_rec_type='AG'"
+			sv_s = sv_s + " AND RCT.bank_id= ?SVAR"
+			BANCS.INPARAM.BINDVARS =  CUST.LADISB.freeCode6 + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d != 0) THEN
+			#{
+				CUST.LADISB.errMsg 	= "Error in finding ref_desc"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CUST.LADISB.codeName= BANCS.OUTPARAM.codename
+				print(CUST.LADISB.codeName)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (CDOUBLE(CUST.LADISB.insuAmt)!=0) THEN
+		#{
+			#----------------------------------------------------------------
+			#  ParameterId for FREECODE6
+			#---------------------------------------------------------------
+			BANCS.INPUT.parameterId = "LP_FRECD_" +CUST.LADISB.freeCode6
+			CALL ("getcparamvalue.scr")
+			IF (BANCS.OUTPUT.parameterVal != "") THEN
+			#{
+				CUST.CPARAM.lpFreeCode = BANCS.OUTPUT.parameterVal
+				print(CUST.CPARAM.lpFreeCode)
+				#}
+			ELSE
+				#{
+				CUST.LADISB.errMsg = "CPARAM setup not done for LP_FRECD_"+CUST.LADISB.freeCode6
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (CUST.CPARAM.lpSchmCode =="LA519") THEN
+		#{
+			
+			#####################################################################
+			sv_s = "applicationid,nationalid,dbstatdate |"
+			sv_s = sv_s + " SELECT applicationid,nationalid,db_stat_date "
+			sv_s = sv_s + " FROM CUSTOM.online_apps,TBAADM.gct "
+			sv_s = sv_s + " WHERE NATIONALID=("
+			sv_s = sv_s + 					" SELECT CMG.nat_id_card_num"
+			sv_s = sv_s + 					" FROM TBAADM.CMG"
+			sv_s = sv_s + 					" WHERE CMG.cif_id=("
+			sv_s = sv_s + 										" SELECT cif_id"
+			sv_s = sv_s + 										" FROM TBAADM.GAM"
+			sv_s = sv_s + 										" WHERE GAM.foracid = ?SVAR "
+			sv_s = sv_s + 										" AND GAM.bank_id= CMG.bank_id"
+			sv_s = sv_s + 										" )"
+			sv_s = sv_s +					" AND CMG.bank_id =GCT.bank_id"
+			sv_s = sv_s + 					" )"
+			sv_s = sv_s + " AND online_apps.statusflag= ?SVAR"
+			sv_s = sv_s + " AND online_apps.bank_id= GCT.bank_id"
+			sv_s = sv_s + " AND GCT.bank_id= ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId
+			BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.CPARAM.statusFlg+ "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d != 0) THEN
+			#{
+				CUST.LADISB.errMsg 	= "Error in finding applicationId"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CUST.LADISB.applicationId=BANCS.OUTPARAM.applicationid
+				print(CUST.LADISB.applicationId)
+				CUST.LADISB.nationalId=BANCS.OUTPARAM.nationalid
+				print(CUST.LADISB.nationalId)
+				CUST.LADISB.dbStatDate=BANCS.OUTPARAM.dbstatdate
+				print(CUST.LADISB.dbStatDate)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("MTT")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","TranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		print(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","InputDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","LAAddnlDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","LAAddnlDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","Error",5)
+		#}
+		ENDIF
+		
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("BANCS")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("BANCS","INPARAM",5)
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+		
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "CI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = CUST.CPARAM.lpTranDetailRmks1
+		
+		sv_r = urhk_MTTS_Initialize("")
+		print(sv_r)
+		
+		sv_v = "Stima"
+		print(sv_v)
+		
+		sv_u = urhk_MTTS_DefineTransaction("Stima")
+		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		IF (CDOUBLE(CUST.LADISB.insuAmt)!=0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.CPARAM.lpFreeCode
+			print(MTT.PartTranDetails.Account)
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			sv_p = CUST.LADISB.codeName + CUST.LADISB.loanAcctId
+			print(sv_p)
+			MTT.PartTranDetails.Particulars = sv_p
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.insuAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			sv_n = CUST.LADISB.codeName + CUST.LADISB.loanAcctId
+			print(sv_n)
+			MTT.PartTranDetails.Remarks = sv_n
+			MTT.PartTranDetails.RefNum = "Loan Advance"
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+			print(CUST.LADISB.loanAcctId)
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Customer Debit Partran
+		#------------------------------------------------------------------
+		MTT.PartTranDetails.Account =  CUST.LADISB.operAcctId
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+		MTT.PartTranDetails.Rate = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = CUST.CPARAM.lpParticulars1
+		sv_a = CDOUBLE(CUST.LADISB.insuAmt)
+		sv_a= -(sv_a)
+		MTT.PartTranDetails.RefAmount = sv_a
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = CUST.LADISB.loanAcctId
+		MTT.PartTranDetails.RefNum = "Loan Advance"
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_h = "D" + CUST.LADISB.operAcctId
+		sv_u = urhk_MTTS_definePartTran(sv_h)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		
+		IF (CUST.CPARAM.lpSchmCode =="LA519") THEN
+		#{
+			
+			IF (CUST.LADISB.freeCode6==CUST.CPARAM.freeCode6) THEN
+			#{
+				sv_s = "UPDATE CUSTOM.online_apps SET online_apps.loanaccountno= ?SVAR"
+				sv_s = sv_s + " , online_apps.loandisbursedate= ?SVAR"
+				sv_s = sv_s + " , online_apps.statusflag='3'"
+				sv_s = sv_s + " WHERE online_apps.applicationid= ?SVAR"
+				sv_s = sv_s + " AND online_apps.bank_id = ?SVAR"
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId + "|" + CUST.LADISB.dbStatDate + "|" + CUST.LADISB.applicationId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" +  BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					print(sv_d)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#################################################################################
+	# Inculusion for IPOS
+	#################################################################################
+	IF (CUST.LADISB.loanType == "I") THEN
+	#{
+		CUST.LADISB.tranMsg = "Shares Investments"
+		print(CUST.LADISB.tranPart)
+		print(CUST.LADISB.refNum)
+		sv_w = getPosition(CUST.LADISB.tranPart,"/")
+		CUST.LADISB.refNum = MID$(CUST.LADISB.tranPart,0, (sv_w-1))
+		print(CUST.LADISB.refNum)
+		sv_y = STRLEN(CUST.LADISB.tranPart)
+		CUST.LADISB.tranPart = MID$(CUST.LADISB.tranPart,sv_w, sv_y)
+		print(CUST.LADISB.tranPart)
+		
+		#------------------------------------------------------------------------------
+		# getting share account number from share_invest custom table
+		#------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = sv_s + " shareInvestAcctId|"
+		sv_s = sv_s + " SELECT A.share_invest_acct_id"
+		sv_s = sv_s + " FROM CUSTOM.SHARE_INVEST A"
+		sv_s = sv_s + " WHERE"
+		sv_s = sv_s + " A.loan_acct_id =?SVAR"
+		sv_s = sv_s + " AND A.DEL_FLG = 'N'"
+		sv_s = sv_s + " AND A.entity_cre_flg ='N'"
+		sv_s = sv_s + " AND A.srl_no = ("
+		sv_s = sv_s + 					" SELECT MAX(SHARE_INVEST.srl_no)"
+		sv_s = sv_s + 					" FROM CUSTOM.SHARE_INVEST"
+		sv_s = sv_s + 					" WHERE SHARE_INVEST.loan_acct_id= ?SVAR "
+		sv_s = sv_s + 					" AND SHARE_INVEST.bank_id = ?SVAR)"
+		sv_s = sv_s + " AND A.bank_id =?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAcctId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAcctId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			#CUST.LADISB.errMsg = "Error in getting rows from share_invest table"
+			#GOTO ENDOFSCRIPT
+			CUST.LADISB.shareInvestAcctId=""
+			#}
+		ELSE
+			#{
+			CUST.LADISB.shareInvestAcctId = BANCS.OUTPARAM.shareInvestAcctId
+			print(CUST.LADISB.shareInvestAcctId)
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.operAcctFlg == "N") THEN
+		#{
+			CUST.LADISB.errMsg = "Operative account not linked"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#------------------------------------------------------------------
+		#  Hardcoding the bacid
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.laceAmt)!=0) THEN
+		#{
+			sv_i = CUST.CPARAM.ipoBacidLacAct + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+			print(sv_i)
+			sv_u = urhk_B2k_BacidToAcctId(sv_i)
+			IF (sv_u != 0 ) THEN
+			#{
+				CUST.LADISB.errMsg ="Lace Collection A/C not set up "
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			CUST.LADISB.laceCrAccnt = BANCS.OUTPARAM.AcctId
+			print(CUST.LADISB.laceCrAccnt)
+		#}
+		ENDIF
+		IF (CDOUBLE(CUST.LADISB.insuAmt)!=0) THEN
+		#{
+			sv_i = CUST.CPARAM.ipoBacidInsAct + "|" +  BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+			print(sv_i)
+			sv_u = urhk_B2k_BacidToAcctId(sv_i)
+			IF (sv_u != 0 ) THEN
+			#{
+				CUST.LADISB.errMsg = "Insuarance A/C not set up "
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			CUST.LADISB.insuCrAccnt = BANCS.OUTPARAM.AcctId
+			print(CUST.LADISB.insuCrAccnt)
+		#}
+		ENDIF
+		IF (CDOUBLE(CUST.LADISB.lienAmt)!=0) THEN
+		#{
+			CUST.LADISB.lienAccnt = CUST.CPARAM.lienAccnt
+			print(CUST.LADISB.lienAccnt)
+		#}
+		ENDIF
+		IF (CDOUBLE(CUST.LADISB.cdsApp)!=0) THEN
+		#{
+			CUST.LADISB.applAccnt = CUST.CPARAM.applAccnt
+			print(CUST.LADISB.applAccnt)
+		#}
+		ENDIF
+		
+		CUST.LADISB.totalAmt=cdouble(CUST.LADISB.laceAmt)+cdouble(CUST.LADISB.lienAmt)+cdouble(CUST.LADISB.cdsApp)+cdouble(CUST.LADISB.insuAmt)+cdouble(CUST.LADISB.contrb100)
+		print(CUST.LADISB.totalAmt)
+		
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("MTT")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","TranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","InputDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","LAAddnlDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","LAAddnlDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","Error",5)
+		#}
+		ENDIF
+		
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("BANCS")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("BANCS","INPARAM",5)
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+		
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "CI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = CUST.CPARAM.ipoTranDetailRmks1
+		
+		sv_r = urhk_MTTS_Initialize("")
+		print(sv_r)
+		
+		sv_v = "Stima"
+		print(sv_v)
+		
+		sv_u = urhk_MTTS_DefineTransaction("Stima")
+		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		#------------------------------------------------------------------
+		# Credit parttran for shares investment collections account
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.contrb100) != 0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.shareInvestAcctId
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.LADISB.refNum +" "+CUST.LADISB.tranPart
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.contrb100)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.loanAcctId
+			MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#------------------------------------------------------------------
+		# Credit parttran for lace amount
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.laceAmt)!= 0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.laceCrAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.ipoParticulars1
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.laceAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#------------------------------------------------------------------
+		# Credit parttran for Insurance amount
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.insuAmt)!=0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.insuCrAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.ipoParticulars2
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.insuAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Credit parttran for lien amount
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.lienAmt)!=0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.lienAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.CPARAM.ipoParticulars3
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.lienAmt)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#------------------------------------------------------------------
+		# Credit parttran for cdsc application account
+		#------------------------------------------------------------------
+		IF (CDOUBLE(CUST.LADISB.cdsApp)!=0) THEN
+		#{
+			MTT.PartTranDetails.Account = CUST.LADISB.applAccnt
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+			MTT.PartTranDetails.Rate = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars =CUST.CPARAM.ipoParticulars4
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.LADISB.cdsApp)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+			MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "StimaLn"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			print(sv_r)
+			
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.LADISB.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Customer Debit Partran
+		#------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.LADISB.operAcctId
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode =CUST.CPARAM.rateCode
+		MTT.PartTranDetails.Rate = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = CUST.CPARAM.ipoParticulars5
+		sv_a = CDOUBLE(CUST.LADISB.totalAmt)
+		sv_a= -(sv_a)
+		MTT.PartTranDetails.RefAmount = sv_a
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = CUST.LADISB.tranPart
+		MTT.PartTranDetails.Refnum = CUST.LADISB.refNum
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_h = "D" + CUST.LADISB.operAcctId
+		sv_u = urhk_MTTS_definePartTran(sv_h)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		#------------------------------------------
+		#Update the status to the SHARE_INVEST table
+		#------------------------------------------
+		sv_s ="UPDATE CUSTOM.SHARE_INVEST"
+		sv_s = sv_s + " SET SHARE_INVEST.entity_cre_flg= 'Y',"
+		sv_s = sv_s + " SHARE_INVEST.tran_remarks=?SVAR"
+		sv_s = sv_s + " WHERE SHARE_INVEST.loan_acct_id =?SVAR"
+		sv_s = sv_s + " AND SHARE_INVEST.share_invest_acct_id =?SVAR"
+		sv_s = sv_s + " AND SHARE_INVEST.bank_id=?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.LADISB.tranid + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAcctId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.shareInvestAcctId +"|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			#CUST.LADISB.errMsg =" The table SHARE_INVEST not updated successfully "
+			#GOTO ENDOFSCRIPT
+			sv_d = 1
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	IF ((CUST.LADISB.laSchmCode == CUST.CPARAM.lpSchmCode) OR (CUST.LADISB.loanType == "I") OR (CUST.LADISB.loanType == "S"))  THEN
+	#{
+		sv_p = urhk_B2k_PID("")
+		CUST.LADISB.pid = TRIM(BANCS.OUTPARAM.PID)
+		print(CUST.LADISB.pid)
+		CUST.LADISB.fileName = "LADISB"+ CUST.LADISB.pid +".log"
+		print(CUST.LADISB.fileName)
+		IF (CUST.LADISB.tranid != "") THEN
+		#{
+			sv_s= " SUCCESSFULL: " + CUST.LADISB.tranMsg + " transcation & charges collected successfully Transaction ID:"
+			sv_s = sv_s +  CUST.LADISB.tranid
+			ONS.CUSTOM.custDataOut = ONS.CUSTOM.custDataIn + "~ladisbres|"+CUST.LADISB.tranid+"|"+CUST.LADISB.tranMsg
+			
+			sv_c = "echo '" + CUST.LADISB.tranid + "' > LADTmpTran.txt"
+			print(sv_c)
+			sv_a = system(sv_c)
+			print(sv_a)
+			#}
+		ELSE
+			#{
+			sv_s = "FAILED: " + CUST.LADISB.tranMsg + " transaction & charges were not posted...Proceed with manual intervention from Account."
+			sv_s = sv_s + " " + CUST.LADISB.MTTErrDesc
+			ONS.CUSTOM.custDataOut = ONS.CUSTOM.custDataIn + "~ladisbres|Charges not Collected|"+CUST.LADISB.tranMsg
+			#ONS.CUSTOM.custDataOut = "~ladisbres|"+CUST.LADISB.tranid+"|"+CUST.LADISB.tranMsg
+		#}
+		ENDIF
+		sv_s = "echo '" + sv_s + "' >"+CUST.LADISB.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		
+		#--------------------------------------------------------------------------------------------------------------
+		# For HPR Entry
+		#--------------------------------------------------------------------------------------------------------------
+		sv_s = "babx4040 ${B2K_SESSION_ID} "+CUST.LADISB.fileName+' '+'"'+"HLADISB Charges Report "+'"'+" MANAGER 1 N"
+		print(sv_s)
+		sv_a = system(sv_s)
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			sv_a = urhk_SRV_SetErr(CUST.LADISB.errMsg)
+			print(CUST.LADISB.errMsg)
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.MTTErrDesc != "" ) THEN
+		#{
+			#sv_a = urhk_SRV_SetErr(CUST.LADISB.MTTErrDesc)
+			print(CUST.LADISB.MTTErrDesc)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

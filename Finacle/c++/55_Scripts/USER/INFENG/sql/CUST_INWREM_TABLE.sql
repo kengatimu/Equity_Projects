@@ -1,0 +1,59 @@
+--DROP TABLE CUSTOM.CUST_INWREM_TABLE CASCADE CONSTRAINTS;
+
+CREATE TABLE CUST_INWREM_TABLE (
+	acid VARCHAR2 (11 Char), 
+	foracid VARCHAR2 (16 Char), 
+	zone_code VARCHAR2 (10 Char), 
+	zone_date DATE, 
+	sol_id VARCHAR2 (8 Char), 
+	ZONE_SRL_NUM VARCHAR2 (6 Char),
+	inst_num VARCHAR2 (16 Char), 
+	inst_amt NUMBER (20,4), 
+	rej_type CHAR (1 Byte),
+	rej_code_1 VARCHAR2 (2 Char),
+	RCRE_USER_ID VARCHAR2 (15 Char),
+	RCRE_TIME DATE,
+	bank_id VARCHAR2 (8 Char)
+)
+TABLESPACE CUSTOM_TBLS
+PCTUSED    40
+PCTFREE    10
+INITRANS   1
+MAXTRANS   255
+STORAGE    (
+            INITIAL          64K
+            MINEXTENTS       1
+            MAXEXTENTS       UNLIMITED
+            PCTINCREASE      0
+            FREELISTS        1
+            FREELIST GROUPS  1
+            BUFFER_POOL      DEFAULT
+           )
+LOGGING
+NOCOMPRESS
+NOCACHE
+NOPARALLEL
+NOMONITORING;
+
+CREATE UNIQUE INDEX CUSTOM.IDX_CUST_INWREM_TABLE ON CUSTOM.CUST_INWREM_TABLE
+(ZONE_CODE,ZONE_DATE,SOL_ID,ZONE_SRL_NUM, BANK_ID)
+LOGGING
+TABLESPACE CUSTOM_IDXSPACE
+PCTFREE    10
+INITRANS   50
+MAXTRANS   255
+STORAGE    (
+            INITIAL          64K
+            MINEXTENTS       1
+            MAXEXTENTS       UNLIMITED
+            PCTINCREASE      0
+            FREELISTS        32
+            FREELIST GROUPS  1
+            BUFFER_POOL      DEFAULT
+           )
+NOPARALLEL;
+
+
+grant all on CUST_INWREM_TABLE to tbagen,tbautil, tbaadm;
+
+

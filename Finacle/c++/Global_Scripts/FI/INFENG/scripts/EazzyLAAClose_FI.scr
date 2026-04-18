@@ -1,0 +1,160 @@
+##############################################################################################
+#   Name            : loan_clrs.scr
+#   Description     : loan closure api script
+#   Menu Option     : 
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             31-07-2025      Chirchir K     	Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUSTS")
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	ENDIF
+	
+	CUSTS.GLBDATA.errMsg = ""
+
+  	sv_a = urhk_GetChannelInfo("")
+  	print(sv_a)
+
+  	CUSTS.GLBDATA.DccId =BANCS.OUTPARAM.DccId
+  	print(CUSTS.GLBDATA.DccId)
+
+	#IF(CUSTS.GLBDATA.DccId != "CRS") THEN
+	#	exitscript
+	#ENDIF
+	  
+	print(CUST.INTERFACE.laAcctforacid)
+	CUSTS.GLBDATA.laForacid = CUST.INTERFACE.laAcctforacid
+
+	sv_w = urhk_getAcctDetailsInRepository(CUSTS.GLBDATA.laForacid)
+	IF (sv_w==0) THEN  
+	#{
+		CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+		print(CUSTS.GLBDATA.acid)
+
+		CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmCode
+		print(CUSTS.GLBDATA.schmcode)
+
+		CUSTS.GLBDATA.solid=BANCS.OUTPARAM.acctSolId
+		print(CUSTS.GLBDATA.solid)
+
+		CUSTS.GLBDATA.clsflg=BANCS.OUTPARAM.acctCloseflg
+		print(CUSTS.GLBDATA.clsflg)
+
+		CUSTS.GLBDATA.clrbal=BANCS.OUTPARAM.clearBalance
+		print(CUSTS.GLBDATA.clrbal)
+		
+        	IF (CUSTS.GLBDATA.clsflg =="Y") THEN
+        	#{
+                	print("The provide account is Already Closed")
+                	CUSTS.GLBDATA.errMsg="The Account is Already Closed "
+                	sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                	sv_u = urhk_SetOrbOut("Message|" + CUSTS.GLBDATA.errMsg)
+                	BANCS.OUTPUT.successOrFailure="F"
+                	GOTO ENDOFSCRIPT
+
+        	#}
+        	ENDIF
+
+		IF((CUSTS.GLBDATA.schmcode != "LA511") and (CUSTS.GLBDATA.schmcode != "LA512") and (CUSTS.GLBDATA.schmcode != "LA513")) THEN
+		#{
+				exitscript
+		#}
+		ENDIF
+
+		IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+            	#{
+                	sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+                 	print(sv_u)
+                	sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                	print(sv_u)
+            	#}
+		ENDIF
+	
+	#}	
+	ELSE
+	#{
+			CUSTS.GLBDATA.errMsg="Invalid account number"
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|" + CUSTS.GLBDATA.errMsg)
+                        BANCS.OUTPUT.successOrFailure="F"
+	        	GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	
+	sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.laForacid)
+	sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr|retain_all_output = Y")
+	print(sv_u)
+
+	IF (sv_u == 0 ) THEN
+	#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.laForacid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUSTS.GLBDATA.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUSTS.GLBDATA.schmcode)
+				PRINT(sv_u)
+				sv_u = urhk_ExecSrv("SRV_CloseLoanAcctAndVerify|retain_all_output = Y")
+				PRINT(sv_u)				
+	#}
+	ENDIF	
+		
+		IF (sv_u != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+					CUSTS.GLBDATA.errMsg = "Account Closure Failed"
+					sv_v = 0
+			#}
+			ENDIF
+
+			IF (sv_v > 0) THEN
+			#{
+				sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.laForacid+" ' >>closed.log")
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+					sv_u = system("echo '"+sv_e+"' >>closed.log")
+					print(sv_u)
+				#}
+				DO
+				CUSTS.GLBDATA.errMsg = sv_e
+			#}
+			ENDIF
+                        #sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|" + CUSTS.GLBDATA.errMsg)
+                        BANCS.OUTPUT.successOrFailure="F"
+	        #}	
+		ELSE
+            	#{
+                        #sv_u = urhk_SetOrbOut("SuccessOrFailure|S")
+                        sv_u = urhk_SetOrbOut("Message|Loan Account Closed Successfully")
+                        BANCS.OUTPUT.successOrFailure="S"
+		#}
+		ENDIF
+
+ENDOFSCRIPT:
+#trace off
+exitscript

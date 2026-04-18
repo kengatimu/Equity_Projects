@@ -1,0 +1,325 @@
+
+#-------------------------------------------------------------------------------------    
+#    Name				: mtnsweepmn003.scr
+#    Description     	: This is for job id - MTNBL (MTN BULK ACCOUNT SWEEP). Debit to 
+#						: MTN BULK ACCOUNT SWEET TO MTN COLLECTION ACCOUNT.
+#    Date            	: 24-03-2017
+#    Author          	: Sospeter
+#    Input           	: NA
+#    Output				: NA
+#    Called Script	 	: NA
+#    Calling Script	 	: getcparamvalue.scr
+#    Menu Option		: HBJSTM, HBJE
+#    Srl. No		Date			Author			Description.   
+#    -------		----			------			----------------
+#    1.0		05-01-2013			Umesh.G	 		Original Version
+#	 2.0        23-02-2013          Farhan          Removed the repository and classes
+#------------------------------------------------------------------------------------- 
+<--START 
+TRACE ON
+
+#------------------------------------------------------------------------------
+#       Creating repository and class
+#       Initializing the variables
+#       Getting all the values from CPARAM
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","MTNSWEEP") == 0) THEN
+#{
+	CREATECLASS("CUST","MTNSWEEP",5)
+#}
+ENDIF
+
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+CUST.MTNSWEEP.errMsg    = ""
+CUST.MTNSWEEP.crAccount = ""
+CUST.MTNSWEEP.drAccount = ""
+CUST.MTNSWEEP.desc      = ""
+CUST.MTNSWEEP.tranamt   = "0"
+CUST.MTNSWEEP.Response = ""
+
+sv_a = BANCS.STDIN.mySolId
+CUST.MTNSWEEP.solId = sv_a
+
+BANCS.INPUT.moduleName = "MTNSWEEP"
+BANCS.INPUT.parameterId = "MTNSWEEP_CRACCT"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.MTNSWEEP.crAccount = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.MTNSWEEP.errMsg = "Credit Account setup not done CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "MTNSWEEP"
+BANCS.INPUT.parameterId = "MTNSWEEP_DRACCT1"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.MTNSWEEP.drAccount =BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.MTNSWEEP.errMsg = "Debit Account setup not done CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "MTNSWEEP"
+BANCS.INPUT.parameterId = "MTNSWEEP_DESC1"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.MTNSWEEP.desc = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.MTNSWEEP.desc = ""
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "GENERAL"
+BANCS.INPUT.parameterId = "NORRATECODE"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.MTNSWEEP.refCode = BANCS.OUTPUT.parameterVal
+	PRINT(CUST.MTNSWEEP.refCode)
+#}
+ELSE
+#{
+	CUST.MTNSWEEP.errMsg = "NORRATECODE setup not done in CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Finding count of records that need to be processed
+#------------------------------------------------------------------------------
+sv_q="acid,bacid,drAccount,solId,bankId,balAmt|"
+sv_q = sv_q + "select acid,bacid,foracid,sol_id,bank_id,clr_bal_amt from tbaadm.gam where bank_id = ?SVAR and sol_id = ?SVAR and foracid = '4000140032266'"
+
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  CUST.MTNSWEEP.solId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_c = urhk_dbCursorOpenWithBind(sv_q)
+print(sv_c)
+
+IF (sv_c==0) then
+#{
+	CUST.MTNSWEEP.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_k = urhk_dbCursorFetch(CUST.MTNSWEEP.DbcursorNumber)
+	print(sv_k)
+
+	WHILE (sv_k == 0)
+	#{
+		CUST.MTNSWEEP.drAccount=BANCS.OUTPARAM.drAccount
+		print(CUST.MTNSWEEP.drAccount)
+		print(CUST.MTNSWEEP.crAccount)
+
+		#------------------------------------------------------------------------------
+		# Getting zoneDate, tranamt
+		# Creating narration for tran remarks
+		#------------------------------------------------------------------------------
+		sv_s = "clearBalance |SELECT clr_bal_amt "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE bank_id = ?SVAR "
+		sv_s = sv_s + "AND  foracid = ?SVAR "
+		sv_s = sv_s + "AND entity_cre_flg ='Y' "
+		sv_s = sv_s + "AND acct_cls_flg ='N' "
+		sv_s = sv_s + "AND del_flg ='N' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.MTNSWEEP.drAccount
+
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+
+		IF (sv_d == 0) THEN
+		#{
+			CUST.MTNSWEEP.amount = BANCS.OUTPARAM.clearBalance
+			print(CUST.MTNSWEEP.amount)
+		#}
+
+		ELSE
+		#{
+			CUST.MTNSWEEP.amount = "0"   		
+		#}
+		ENDIF
+
+		IF (CINT(CUST.MTNSWEEP.amount) == 0) THEN
+		#{
+		       EXITSCRIPT
+		#}
+		ENDIF
+
+		CUST.MTNSWEEP.narr = CUST.MTNSWEEP.desc
+		PRINT(CUST.MTNSWEEP.narr)
+		
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+
+        sv_r = REPEXISTS("MTT")
+        IF (sv_r == 0) THEN
+                CREATEREP("MTT")
+        ENDIF
+
+        sv_r = CLASSEXISTS("MTT","TranDetails")
+        IF (sv_r == 0) THEN
+                CREATECLASS("MTT","TranDetails",5)
+        ENDIF
+
+        sv_r = REPEXISTS("BANCS")
+        IF (sv_r == 0) THEN
+                CREATEREP("BANCS")
+        ENDIF
+
+        sv_r = CLASSEXISTS("BANCS","INPARAM")
+        IF (sv_r == 0) THEN
+                CREATECLASS("BANCS","INPARAM",5)
+        ENDIF
+
+#===================================
+# STEP 1 : INITIALIZE THE MTT
+#===================================
+
+BANCS.INPARAM.PostTranFlg 		= "Y"
+BANCS.INPARAM.CommitFlg 		= "Y"
+BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+BANCS.INPARAM.ValidationFlag 		= "Y"
+BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+BANCS.INPARAM.CheckExceptions 		= "N"
+
+
+
+#sv_r = urhk_MTTS_Initialize("")
+#print(sv_r)
+
+sv_u = urhk_MTTS_PopulateInputDetails("")
+
+print(BANCS.STDIN.BODDate)
+#MTT.TranDetails.TranDate= "0"
+MTT.TranDetails.TranType = "T"
+MTT.TranDetails.TranSubType = "BI"
+MTT.TranDetails.IgnoreExcp = "I"
+MTT.TranDetails.Consolidate = "Y"
+MTT.TranDetails.Remarks = "MTN SWEEP"
+
+
+sv_v = "PurchaseComm"
+print(sv_v)
+
+sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+print(sv_u)
+
+#sv_u = urhk_MTTS_PopulateInputDetails("")
+	#--------------------------------------------------
+	# Credit to HO	
+	#--------------------------------------------------
+
+				MTT.PartTranDetails.Account = CUST.MTNSWEEP.crAccount
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = CUST.MTNSWEEP.narr
+				MTT.PartTranDetails.RefAmount = cdouble(CUST.MTNSWEEP.amount)
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = ""
+				MTT.PartTranDetails.Refnum = "257777777711"
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "PurchaseIncome"
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				print(sv_r)
+
+			#------------------------------------------------------------------
+			# Debit From BR
+			#------------------------------------------------------------------
+
+				MTT.PartTranDetails.Account = CUST.MTNSWEEP.drAccount
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = CUST.MTNSWEEP.narr
+				sv_a = cdouble(CUST.MTNSWEEP.amount )
+				sv_a = -(sv_a)
+				print(sv_a)
+				MTT.PartTranDetails.RefAmount = sv_a
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "" 
+				MTT.PartTranDetails.Refnum = "257777777711" 
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+
+                
+		sv_h = "D" + CUST.MTNSWEEP.drAccount
+		sv_r = urhk_MTTS_definePartTran(sv_h)
+		IF (sv_r == 1) then
+		#{
+			print("Unable to create MTT Part transaction")
+			CUST.EQUIF.errMsg = "Transaction creation Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#############################
+		# Commit the transaction	
+		#############################
+		sv_u = urhk_MTTS_EndDefinition("")
+		print(sv_u)
+		
+		CUST.MTNSWEEP.TranId = BANCS.OUTPARAM.MTTTranId
+		print(CUST.MTNSWEEP.TranId)
+
+		##################################################
+		# If any error tran id will not be created
+		##################################################
+		IF ((sv_u != 0)  OR (CUST.MTNSWEEP.TranId==""))THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			print (MTT.Error.Description)
+			CUST.MTNSWEEP.ResStatus = "F"
+			CUST.MTNSWEEP.Response = "Transaction creation Failed."
+			BANCS.OUTPUT.successOrFailure = "F"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	
+
+		sv_k = urhk_dbCursorFetch(CUST.MTNSWEEP.DbcursorNumber)
+		print(sv_k)
+
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(CUST.MTNSWEEP.DbcursorNumber)
+	print(sv_c)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF(CUST.MTNSWEEP.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUST.MTNSWEEP.errMsg+"' >>MTNSWEEP.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

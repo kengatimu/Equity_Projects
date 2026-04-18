@@ -1,0 +1,158 @@
+#-------------------------------------------------------------------------------------------------------
+# Source Name           :   dcchrgmn002.scr
+# Date                  :   23-01-2013
+# Author                :   Manoj
+# Title                 :   DCCharges
+# Description           :	It is event based script for event type - DCAMD, event id -DCCHGEXP,
+#							DCCHGEXPLO and bacid EXPLCCONFM.It gets the dc expiry date and new expiry
+#							date for that DC.It gets getMonthDayDiff between bill date and due date
+#							and converts it into quarter. If the bill currency is KES based on the
+#							quarter count it calculates  charge amount and if the bill currency is
+#							not HomeCurency it considers the notional rate also for charge calculation.
+# Sources called        :   NA
+# Sources called from   :	NA
+# Modification History  :
+# <Serial No.>      <Date>          <Author Name>       <Description>
+# 1.0            23-01-2013     	Manoj        Original version
+# 2.0			 20-20-2013			Manoj		 Repository removed and exit script added
+#-------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="53bb886186675291aeb417055c66688bfcada2a6bab657bdeda08004b25855f2"
+	#TRACE ON
+	
+	#sv_r = urhk_B2k_PrintRepos("BANCS")
+	#--------------------------------------------------------------------------
+	# Initialise the CHRG repository
+	#--------------------------------------------------------------------------
+	sv_r = REPEXISTS("CHRG")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CHRG")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CHRG","DATA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CHRG","DATA",5)
+	#}
+	ENDIF
+	
+	CHRG.DATA.dcExpDate			= ""
+	CHRG.DATA.newExpiryDate		= ""
+	CHRG.DATA.numQrt 			= CDOUBLE("1")
+	CHRG.DATA.numOfMonths 		= CDOUBLE("1")
+	CHRG.DATA.numOfDays			= CDOUBLE("1")
+	CHRG.DATA.inputAmt			= CDOUBLE("0")
+	CHRG.DATA.calcAmt 			= CDOUBLE("0")
+	CHRG.DATA.convAmt			= CDOUBLE("0")
+	CHRG.DATA.amdRate			= CDOUBLE("0")
+	
+	#--------------------------------------------------------------------------
+	# Charge Calculation
+	#--------------------------------------------------------------------------
+	print(BANCS.INPUT.dcExpDate)
+	print(BANCS.INPUT.newExpiryDate)
+	CHRG.DATA.dcExpDate 	= LEFT$(BANCS.INPUT.dcExpDate,10)
+	CHRG.DATA.newExpiryDate = LEFT$(BANCS.INPUT.newExpiryDate,10)
+	print(CHRG.DATA.dcExpDate)
+	print(CHRG.DATA.newExpiryDate)
+	
+	#sv_s = (CHRG.DATA.dcExpDate + "|" + CHRG.DATA.newExpiryDate + "|" + "NO")
+	#sv_u = urhk_B2k_getMonthDayDiff(sv_s)
+	
+	BANCS.INPARAM.date1 = CHRG.DATA.dcExpDate
+	BANCS.INPARAM.date2 = CHRG.DATA.newExpiryDate
+	
+	sv_e=urhk_B2k_dateDiff("")
+	
+	IF (sv_e != 0) THEN
+	#{
+		print(BANCS.OUTPARAM.errorMesg)
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_d = CINT(BANCS.OUTPARAM.dateDiff)
+		
+		IF (sv_d < 0) THEN
+		#{
+			sv_d = sv_d * CINT("-1")
+		#}
+		ENDIF
+		
+		CHRG.DATA.numOfMonths = (sv_d)/CINT("30")
+		CHRG.DATA.numOfDays = (sv_d) - CINT(CHRG.DATA.numOfMonths)*CINT("30")
+		
+		#CHRG.DATA.numOfMonths 	= BANCS.OUTPARAM.numOfMonths
+		#CHRG.DATA.numOfDays 	= BANCS.OUTPARAM.numOfDays
+		#------------------------------------------------------------------------------------
+		# Total Number of Days
+		#------------------------------------------------------------------------------------
+		CHRG.DATA.numQrt = (CINT(CHRG.DATA.numOfMonths) * CINT("30")) + CINT(CHRG.DATA.numOfDays)
+		print(CHRG.DATA.numQrt)
+		#------------------------------------------------------------------------------------
+		# Total Number of Quarter
+		#------------------------------------------------------------------------------------
+		CHRG.DATA.numQrt = CDOUBLE(CHRG.DATA.numQrt) / CDOUBLE("90")
+		print(CHRG.DATA.numQrt)
+		sv_c = "."
+		sv_p = GETPOSITION(CHRG.DATA.numQrt,sv_c)
+		print(sv_p)
+		sv_o = MID$(CHRG.DATA.numQrt,sv_p,2)
+		
+		IF (sv_o != "00") THEN
+		#{
+			CHRG.DATA.numQrt = CINT(CHRG.DATA.numQrt) + CINT("1")
+			print(CHRG.DATA.numQrt)
+			CHRG.DATA.numQrt = CDOUBLE(CHRG.DATA.numQrt) / CDOUBLE("2")
+			print(CHRG.DATA.numQrt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (TRIM(BANCS.INPUT.inputCrncy) == BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		print(BANCS.INPUT.inputAmount)
+		CHRG.DATA.inputAmt = BANCS.INPUT.inputAmount
+		CHRG.DATA.calcAmt = (CDOUBLE(CHRG.DATA.inputAmt) * CDOUBLE(CHRG.DATA.numQrt)) / CDOUBLE("100")
+		print(CHRG.DATA.calcAmt)
+		print(BANCS.INPUT.minimumChargeAmount)
+		IF (CDOUBLE(CHRG.DATA.calcAmt) < CDOUBLE(BANCS.INPUT.minimumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = BANCS.INPUT.minimumChargeAmount
+			GOTO FINISH
+		#}
+		ENDIF
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		print(BANCS.INPUT.inputAmount)
+		print(BANCS.INPUT.inputCrncy)
+		print(BANCS.INPUT.rateCode)
+		CHRG.DATA.amdRate = BANCS.INPUT.amendRate
+		CHRG.DATA.inputAmt = BANCS.INPUT.inputAmount
+		CHRG.DATA.convAmt =  CDOUBLE(CHRG.DATA.amdRate) * CDOUBLE(CHRG.DATA.inputAmt)
+		print(CHRG.DATA.convAmt)
+		CHRG.DATA.calcAmt = (CDOUBLE(CHRG.DATA.convAmt) * CDOUBLE(CHRG.DATA.numQrt)) / CDOUBLE("100")
+		print(CHRG.DATA.calcAmt)
+		print(BANCS.INPUT.minimumChargeAmount)
+		
+		IF (CDOUBLE(CHRG.DATA.calcAmt) < CDOUBLE(BANCS.INPUT.minimumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = BANCS.INPUT.minimumChargeAmount
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	FINISH:
+		BANCS.OUTPUT.collAmount = CHRG.DATA.calcAmt
+		BANCS.OUTPUT.AmountWithNoDiscount = CHRG.DATA.calcAmt
+		BANCS.OUTPUT.collCrncy = BANCS.STDIN.homeCrncyCode
+		
+		#TRACE OFF
+		EXITSCRIPT
+END-->

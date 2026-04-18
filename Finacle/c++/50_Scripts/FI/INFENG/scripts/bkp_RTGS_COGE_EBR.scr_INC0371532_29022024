@@ -1,0 +1,494 @@
+#
+<--START
+TRACE ON
+        #--------------------------------------------------------
+        #create repository
+        #--------------------------------------------------------
+
+        IF (REPEXISTS("CUST") == 0 ) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+        IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+        #{
+                CREATECLASS("CUST","DATA",5)
+        #}
+        ENDIF
+
+	sv_s = urhk_B2k_PrintRepos("BANCS")
+	print(sv_s)
+
+        #----------------------------------------------------------------------
+        # Printing Bancs Repository
+        #----------------------------------------------------------------------
+	CUST.DATA.error = ""
+	CUST.DATA.intrestRate = "0.1"
+	CUST.DATA.period = ""
+	CUST.DATA.acctNum = ""
+	CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	
+	CUST.DATA.tranDate = BANCS.STDIN.BODDate
+	CUST.DATA.tranType = "T"
+	CUST.DATA.tranSubType ="BI"
+
+	CUST.DATA.partTranDetail_LowLimit="1"
+
+	CUST.DATA.glDate = BANCS.STDIN.BODDate
+	CUST.DATA.valueDate = BANCS.STDIN.BODDate
+
+	CUST.DATA.dbSerial_num ="1"						
+	CUST.DATA.debitPartTranType="D"
+	CUST.DATA.drAcct = BANCS.INPUT.DrAcct 
+	CUST.DATA.drTran = "Transfer/"+BANCS.INPUT.BenefPartyName
+	CUST.DATA.drCrncy= BANCS.INPUT.RemitCrncyCode 
+	CUST.DATA.debitTranParticular="Anual Charges"
+
+	CUST.DATA.crSerial_num ="2"
+	CUST.DATA.creditPartTranType ="C" 
+	IF(FIELDEXISTS(BANCS.INPUT.AwiAcct) == 1)THEN
+	#{
+		CUST.DATA.crAcct = BANCS.INPUT.BenefPartyAcct
+	#}
+	ELSE
+	#{
+		CUST.DATA.crAcct = BANCS.INPUT.BenefPartyAcct
+	#}
+	ENDIF
+	CUST.DATA.crCrncy = BANCS.INPUT.RemitCrncyCode 
+	CUST.DATA.creditTranParticular="Anual Charges"
+	CUST.DATA.bAcct = "" 
+
+	CUST.DATA.tranAmt = BANCS.INPUT.InstructedAmt
+
+	CUST.DATA.tranId=""
+PRINT(CUST.DATA.drAcct)
+lv_a = STRLEN(CUST.DATA.drAcct)
+IF(lv_a > 13)THEN
+#{	
+	sv_s = "spire_acct | select spire_acct from custom.coge_acct_map where substr(spire_acct,0,16)=?SVAR"
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = CUST.DATA.drAcct 
+
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	print(sv_u)
+
+	if(sv_u ==0) then
+	#{
+		CUST.DATA.drAcct= BANCS.OUTPARAM.spire_acct
+		print(CUST.DATA.drAcct)
+	#}
+	endif	
+
+	IF  ( STRLEN(CUST.DATA.drAcct) > 16 ) THEN
+	#{
+		BANCS.INPARAM.iban_number = CUST.DATA.drAcct
+		sv_u = urhk_getForacidFromIBANnumber("")
+		PRINT(sv_u)
+		IF(sv_u!=0) THEN
+		#{
+			lv_q = "acctNum | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+			lv_q = lv_q + "(SELECT FORACID FROM custom.coge_acct_map where SPIRE_ACCT = ?SVAR) "
+			PRINT(lv_q)
+
+			BANCS.INPARAM.BINDVARS = CUST.DATA.drAcct 
+			print(BANCS.INPARAM.BINDVARS)
+
+			lv_u = urhk_dbSelectWithBind(lv_q)
+			PRINT(lv_u)
+
+			IF(lv_u ==0 )THEN
+			#{
+				CUST.DATA.drAcct = BANCS.OUTPARAM.acctNum
+			#}
+			ELSE
+			#{
+				lv_e = urhk_SRV_SetErr("Coge Accts invalid")
+				exitscript
+			#}
+			ENDIF
+		ELSE
+			PRINT(BANCS.OUTPARAM.foracid)
+
+			CUST.DATA.drAcct = BANCS.OUTPARAM.foracid
+			BANCS.INPUT.uAccount = BANCS.OUTPARAM.foracid
+
+			IF (BANCS.INPUT.uAccount=="")THEN
+			#{
+				lv_q = "acctNum | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+				lv_q = lv_q + "(SELECT FORACID FROM custom.coge_acct_map where SPIRE_ACCT = ?SVAR) "
+				PRINT(lv_q)
+
+				BANCS.INPARAM.BINDVARS = CUST.DATA.acctNum
+				print(BANCS.INPARAM.BINDVARS)
+
+				lv_u = urhk_dbSelectWithBind(lv_q)
+				PRINT(lv_u)
+
+				IF(lv_u ==0 )THEN
+				#{
+					CUST.DATA.drAcct = BANCS.OUTPARAM.acctNum
+				#}
+				ELSE
+				#{
+					lv_e = urhk_SRV_SetErr("Coge Accts invalid")
+					exitscript
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF	
+
+#}
+else
+#{
+	sv_a = STRLEN(CUST.DATA.crAcct)
+	sv_b = 0
+	while(sv_a > 0)	
+	#{
+		sv_c = STRLEN(CUST.DATA.crAcct)
+		print(sv_c)
+		CUST.DATA.crAcct = MID$(CUST.DATA.crAcct,sv_b,sv_c-sv_b)
+		print(CUST.DATA.crAcct)
+		sv_b = GETPOSITION(CUST.DATA.crAcct, '-')
+		print(sv_b)
+		IF(sv_b == 0)THEN
+		#{
+			CUST.DATA.bAcct = CUST.DATA.bAcct + CUST.DATA.crAcct
+		#}
+		ENDIF	
+
+		sv_a = MID$(CUST.DATA.crAcct,0,sv_b-1)
+		IF(sv_a != "")THEN
+		#{
+			IF(CUST.DATA.bAcct == "")THEN
+			#{
+				CUST.DATA.bAcct = sv_a
+			#}
+			ELSE
+			#{
+				CUST.DATA.bAcct = CUST.DATA.bAcct + sv_a
+			#}
+			ENDIF
+
+			print(CUST.DATA.bAcct)
+		#}
+		ENDIF
+
+		PRINT(CUST.DATA.bAcct)
+
+		sv_s = "spire_acct | select spire_acct from custom.coge_acct_map where substr(spire_acct,0,16)=?SVAR"
+                print(sv_s)
+
+                BANCS.INPARAM.BINDVARS = CUST.DATA.bAcct 
+
+                sv_u = urhk_dbSelectWithBind(sv_s)
+                print(sv_u)
+
+                if(sv_u ==0) then
+                #{
+                        CUST.DATA.bAcct= BANCS.OUTPARAM.spire_acct
+                        print(CUST.DATA.bAcct)
+                #}
+                endif	
+
+		IF  ( STRLEN(CUST.DATA.bAcct) > 16 ) THEN
+		#{
+                        BANCS.INPARAM.iban_number =CUST.DATA.bAcct
+                        sv_u = urhk_getForacidFromIBANnumber("")
+                        PRINT(sv_u)
+                        IF(sv_u!=0) THEN
+			#{
+                                lv_q = "acctNum | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+                                lv_q = lv_q + "(SELECT FORACID FROM custom.coge_acct_map where SPIRE_ACCT = ?SVAR) "
+                                PRINT(lv_q)
+
+                                BANCS.INPARAM.BINDVARS = CUST.DATA.bAcct
+                                print(BANCS.INPARAM.BINDVARS)
+
+                                lv_u = urhk_dbSelectWithBind(lv_q)
+                                PRINT(lv_u)
+
+                                IF(lv_u ==0 )THEN
+                                #{
+                                        CUST.DATA.bAcct = BANCS.OUTPARAM.acctNum
+                                #}
+                                ELSE
+                                #{
+                                        lv_e = urhk_SRV_SetErr("Coge Accts invalid")
+                                        exitscript
+                                #}
+                                ENDIF
+                        ELSE
+				PRINT(BANCS.OUTPARAM.foracid)
+
+                                CUST.DATA.bAcct = BANCS.OUTPARAM.foracid
+                                BANCS.INPUT.uAccount = BANCS.OUTPARAM.foracid
+
+                                IF (BANCS.INPUT.uAccount=="")THEN
+				#{
+                                        lv_q = "acctNum | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+                                        lv_q = lv_q + "(SELECT FORACID FROM custom.coge_acct_map where SPIRE_ACCT = ?SVAR) "
+                                        PRINT(lv_q)
+
+                                        BANCS.INPARAM.BINDVARS = CUST.DATA.acctNum
+                                        print(BANCS.INPARAM.BINDVARS)
+
+                                        lv_u = urhk_dbSelectWithBind(lv_q)
+                                        PRINT(lv_u)
+
+                                        IF(lv_u ==0 )THEN
+                                        #{
+                                                CUST.DATA.bAcct = BANCS.OUTPARAM.acctNum
+                                        #}
+                                        ELSE
+                                        #{
+                                                lv_e = urhk_SRV_SetErr("Coge Accts invalid")
+                                                exitscript
+                                        #}
+                                        ENDIF
+				#}
+                                ENDIF
+			#}
+                        ENDIF
+		#}
+		ENDIF
+	#}
+	do
+#}
+ENDIF
+
+	IF(CUST.DATA.bAcct != "")THEN
+	#{
+		CUST.DATA.crAcct = CUST.DATA.bAcct
+	#}
+	ELSE
+	#{
+		PRINT(CUST.DATA.crAcct)
+	#}
+	ENDIF
+
+	lv_q = "clrBalAmt | SELECT CLR_BAL_AMT FROM TBAADM.GAM WHERE FORACID = ?SVAR "
+	PRINT(lv_q)
+
+	BANCS.INPARAM.BINDVARS = CUST.DATA.drAcct
+	PRINT(BANCS.INPARAM.BINDVARS)
+
+	lv_u = urhk_dbSelectWithBind(lv_q)
+	PRINT(lv_u)
+
+	IF(lv_u == 0)THEN
+	#{
+		CUST.DATA.clrBalAmt = BANCS.OUTPARAM.clrBalAmt
+		PRINT(CUST.DATA.clrBalAmt)
+	#}
+	ENDIF
+
+	IF(CDOUBLE(CUST.DATA.clrBalAmt) < CDOUBLE(CUST.DATA.tranAmt))THEN
+	#{
+		CUST.DATA.error = "INSUFFICIENT BALANCE IN THE DEBIT ACCOUNT"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF	
+	#--------------------------------------------------------------------
+	#       MTT Close
+	#--------------------------------------------------------------------
+
+		lv_u = urhk_MTTS_Close("")
+		print(lv_u)
+
+	#--------------------------------------------------------------------
+	#       MTT initialization
+	#--------------------------------------------------------------------
+
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.CommitFlg   = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.RestrictModifyInd   = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw   = "Y"
+
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		lv_u = urhk_MTTS_Initialize("")
+		print(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			print("Mtt initialized successfully")
+		#}
+		ELSE
+		#{
+			print("Mtt initialization failed")
+
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				PRINT(MTT.Error.Description)
+				CUST.DATA.error = MTT.Error.Description
+			#}
+			ENDIF
+
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+
+	#--------------------------------------------------------------------
+	#       MTT Definition
+	#--------------------------------------------------------------------
+
+		MTT.TranDetails.TranDate    = "0"
+		MTT.TranDetails.TranType    = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.PostFlag        = "Y"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+
+		lv_u = urhk_MTTS_DefineTransaction("TEST_TRAN")
+		print(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			print("Mtt defined successfully")
+		#}
+		ELSE
+		#{
+			print("Mtt definition failed")
+
+			lv_u = urhk_MTTS_ReportErrorCondition("")
+			print(lv_u)
+
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				PRINT(MTT.Error.Description)
+				CUST.DATA.error = MTT.Error.Description
+			#}
+			ENDIF
+
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------------
+	#       MTT Dr part tran1 Definition
+	#--------------------------------------------------------------------
+
+		MTT.PartTranDetails.Account = CUST.DATA.drAcct 
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.drCrncy
+		MTT.PartTranDetails.RefAmount   = -1 * CDOUBLE(CUST.DATA.tranAmt)
+		MTT.PartTranDetails.ValueDate   = "0"
+		MTT.PartTranDetails.Particulars = CUST.DATA.drTran
+		MTT.PartTranDetails.TranIdentifier = "TEST_TRAN"
+		MTT.PartTranDetails.Consolidate    = "N"
+
+		MTT.PartTranDetails.PostFlag      = "Y"
+
+		#MTT.PartTranDetails.RateCode = "TTB"
+
+		lv_u = urhk_MTTS_DefinePartTran("DR_TRAN")
+		print(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			print("Mtt DR part tran defined successfully")
+		#}
+		ELSE
+		#{
+			print("Mtt DR part tran definition failed")
+
+			lv_u = urhk_MTTS_ReportErrorCondition("")
+			print(lv_u)
+
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				PRINT(MTT.Error.Description)
+				CUST.DATA.error = MTT.Error.Description
+			#}
+			ENDIF
+
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------------
+	#       MTT Cr part tran Definition
+	#--------------------------------------------------------------------
+
+		MTT.PartTranDetails.Account = CUST.DATA.crAcct 
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.crCrncy
+		MTT.PartTranDetails.RefAmount   =  CUST.DATA.tranAmt 
+		MTT.PartTranDetails.ValueDate   = "0"
+		MTT.PartTranDetails.Particulars = CUST.DATA.drTran 
+		MTT.PartTranDetails.TranIdentifier = "TEST_TRAN"
+		MTT.PartTranDetails.Consolidate    = "N"
+
+		MTT.PartTranDetails.PostFlag      = "Y"
+
+
+		lv_u = urhk_MTTS_DefinePartTran("CR_TRAN")
+		print(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			print("Mtt CR part tran defined successfully")
+		#}
+		ELSE
+		#{
+			print("Mtt CR part tran definition failed")
+
+			lv_u = urhk_MTTS_ReportErrorCondition("")
+			print(lv_u)
+
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				PRINT(MTT.Error.Description)
+				CUST.DATA.error = MTT.Error.Description
+			#}
+			ENDIF
+
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------------
+	#       MTT end definition
+	#--------------------------------------------------------------------
+
+		lv_u = urhk_MTTS_EndDefinition("")
+		print(lv_u)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.DATA.error = MTT.Error.Description
+			lv_u = urhk_MTTS_ReportErrorCondition("")
+			print(lv_u)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.DATA.tranId)
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------------
+	#       MTT Close
+	#--------------------------------------------------------------------
+
+		lv_u = urhk_MTTS_Close("")
+		print(lv_u)
+
+ENDOFSCRIPT:	
+		PRINT(CUST.DATA.error)
+		PRINT(CUST.DATA.tranId)
+
+
+TRACE OFF
+END-->

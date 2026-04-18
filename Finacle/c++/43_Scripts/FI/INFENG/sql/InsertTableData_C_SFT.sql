@@ -1,0 +1,22 @@
+SET DEFINE OFF;
+Insert into CUSTOM.C_SFT
+   (SOURCE_ID, SOURCE_DESC, RCRE_USER_ID, RCRE_TIME, BANK_ID)
+ Values
+   ('SF001', 'LOANS', 'TBAADM', sysdate, '43');
+   
+Insert into CUSTOM.C_SFT
+   (SOURCE_ID, SOURCE_DESC, RCRE_USER_ID, RCRE_TIME, BANK_ID)
+ Values
+   ('SF002', 'DONATIONS', 'TBAADM', sysdate, '43');
+
+Insert into CUSTOM.C_SFT
+   (SOURCE_ID, SOURCE_DESC, RCRE_USER_ID, RCRE_TIME, BANK_ID)
+ Values
+   ('SF003', 'PAID IN EQUITY', 'TBAADM', sysdate, '43');
+   
+Insert into CUSTOM.C_SFT
+   (SOURCE_ID, SOURCE_DESC, RCRE_USER_ID, RCRE_TIME, BANK_ID)
+ Values
+   ('SF004', 'OTHERS', 'TBAADM', sysdate, '43');
+COMMIT;
+

@@ -1,0 +1,192 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#FileName       : ebOdaAgentMnRec.scr 
+#Desc           : tran
+#MenuId         : NA
+#CalledScript   :
+#Module         :
+#Date           : 19/06/2020
+#Author         : Vino Palani
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#+++++++++++++
+#Rep/Class
+#+++++++++++++
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        EQSRV.GLBDATA.errMsg    = ""
+	EQSRV.GLBDATA.tempDrAmt = 0
+#++++++++++++
+#transaction
+#++++++++++++
+        sv_a = urhk_MTTS_Close("")
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("MTT","TranDetails")==0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        if(classexists("MTT","PartTranDetails")==0)then
+                createclass("MTT","PartTranDetails",5)
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+        sv_a = urhk_MTTS_PopulateInputDetails("")
+        print(sv_a)
+        if(sv_a==0)then
+                MTT.InputDetails.TranId        = MTT.InputDetails.Argument1
+        else
+                MTT.InputDetails.TranId  = ""
+        endif
+	sv_d = "DrAmt,DrAcct|select sum(tran_amt),acid "
+	sv_d = sv_d + " from tbaadm.dtd " 
+	sv_d = sv_d + " where bank_id= ?SVAR "
+	sv_d = sv_d + " and tran_id = lpad(?SVAR,9,' ') " 
+	sv_d = sv_d + " and tran_date =to_date(?SVAR,'DD-MM-RR') "
+	sv_d = sv_d + " and part_tran_type = 'C' "
+	sv_d = sv_d + " and acid in  (select acid from tbaadm.gam where bank_id= ?SVAR "
+	sv_d = sv_d + " and acct_ownership<>'O' " 
+	sv_d = sv_d + " and schm_code='OD541') group by acid "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + MTT.InputDetails.TranId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+        ###sv_d = "dtdCnt,tranId,pstdFlg,tranDate,DrAcct,DrAmt,DrCrncy,DrSolId | "
+        ###sv_d = sv_d + " select count(*),tran_id,pstd_flg,tran_date,acid,tran_amt,tran_crncy_code,dth_init_sol_id "
+        ###sv_d = sv_d + " from tbaadm.dtd where bank_id=?SVAR and tran_id = lpad(?SVAR,9,' ') "
+        ###sv_d = sv_d + " and tran_date =to_date(?SVAR,'DD-MM-RR') and rownum<=1 "
+        ###sv_d = sv_d + " and exists ( select 1 from tbaadm.gam where acid=dtd.acid "
+	###sv_d = sv_d + " and bank_id=?SVAR and acct_ownership<>'O' and schm_code='OD541') "
+	###sv_d = sv_d + " and part_tran_type = 'C' "
+        ###sv_d = sv_d + " group by tran_id,pstd_flg,tran_date,acid,tran_amt,tran_crncy_code,dth_init_sol_id "
+        ###BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + MTT.InputDetails.TranId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+        print(BANCS.INPARAM.BINDVARS)
+        print(sv_d)
+        sv_u = urhk_dbSelectWithBind(sv_d)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.DrAmt = BANCS.OUTPARAM.DrAmt
+                EQSRV.GLBDATA.DrAcct = BANCS.OUTPARAM.DrAcct
+        else
+                EQSRV.GLBDATA.DrAcct = ""
+                EQSRV.GLBDATA.DrAmt = ""
+        endif
+        if(cdouble(EQSRV.GLBDATA.DrAmt) <=0)then
+                print("No OD541 Recovery Transactions")
+                exitscript
+        endif
+        sv_a= urhk_B2k_AcidToForacid(EQSRV.GLBDATA.DrAcct)
+        if(sv_a==0)then
+                EQSRV.GLBDATA.foracid = BANCS.OUTPARAM.Foracid
+        else
+                EQSRV.GLBDATA.foracid = ""
+        endif
+	sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.foracid)
+	print(sv_u)
+	if(sv_u==0)then
+		EQSRV.GLBDATA.drBalance = BANCS.OUTPARAM.ClearBalance
+		EQSRV.GLBDATA.drCif  = BANCS.OUTPARAM.cifId
+	endif
+#agddt
+	sv_d = "agentAcct,uniqNum,dmdEffDate,dmdAmt,totAdjAmt,OutStandingAmt,cifId | "
+	sv_d = sv_d + "  select foracid,dep_srl_num,dmd_eff_date,dmd_amt,tot_adj_amt,"
+	sv_d = sv_d + " dmd_amt-tot_adj_amt as outstanding,free_text1 "
+	sv_d = sv_d + " from custom.agddt "
+	sv_d = sv_d + " where bank_id=?SVAR and DEP_DCCID='BATCH' "
+	sv_d = sv_d + " and dep_command='CSWOP' " 
+	sv_d = sv_d + " and tot_adj_amt < dmd_amt "
+	sv_d = sv_d + " and del_flg='N' " 
+	sv_d = sv_d + " and free_text1=?SVAR "
+	sv_d = sv_d + " and entity_cre_flg='Y' "
+	sv_d = sv_d + " order by rcre_time asc "
+	sv_d = sv_d + " for update of tot_adj_amt "
+	print(sv_d)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drCif 
+	print(BANCS.INPARAM.BINDVARS)
+        sv_c = urhk_dbCursorOpenWithBind(sv_d)
+        print(sv_c)
+        if(sv_c != 0)then
+                print("fetching failed")
+                goto VAYU
+        endif
+        sv_p = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        print(sv_p)
+        sv_r = urhk_dbCursorFetch(sv_p)
+        print(sv_r)
+        if(sv_r != 0)then
+            goto VAYU
+        endif
+        EQSRV.GLBDATA.record_count = 0
+	print(EQSRV.GLBDATA.DrAmt)
+        while(sv_r == 0)
+		EQSRV.GLBDATA.agentAcct = BANCS.OUTPARAM.agentAcct
+		EQSRV.GLBDATA.uniqNum = BANCS.OUTPARAM.uniqNum
+		EQSRV.GLBDATA.dmdEffDate = BANCS.OUTPARAM.dmdEffDate
+		EQSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+		EQSRV.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+		EQSRV.GLBDATA.OutStandingAmt = BANCS.OUTPARAM.OutStandingAmt
+		EQSRV.GLBDATA.cifId = BANCS.OUTPARAM.cifId
+
+		print(EQSRV.GLBDATA.dmdAmt)
+		print(EQSRV.GLBDATA.totAdjAmt)
+		print(EQSRV.GLBDATA.OutStandingAmt)		
+		print(EQSRV.GLBDATA.DrAmt)
+		print(EQSRV.GLBDATA.tempDrAmt)
+
+		if((cdouble(EQSRV.GLBDATA.OutStandingAmt)<cdouble(EQSRV.GLBDATA.DrAmt)) and (cdouble(EQSRV.GLBDATA.DrAmt)>0))then
+			EQSRV.GLBDATA.upAmt = cdouble(EQSRV.GLBDATA.OutStandingAmt)
+			print(EQSRV.GLBDATA.upAmt)
+			EQSRV.GLBDATA.tempDrAmt = cdouble(EQSRV.GLBDATA.DrAmt) - cdouble(EQSRV.GLBDATA.OutStandingAmt)
+			EQSRV.GLBDATA.DrAmt = EQSRV.GLBDATA.tempDrAmt
+		endif
+		if((cdouble(EQSRV.GLBDATA.OutStandingAmt)>cdouble(EQSRV.GLBDATA.DrAmt)) and (cdouble(EQSRV.GLBDATA.DrAmt)>0))then
+			EQSRV.GLBDATA.upAmt = cdouble(EQSRV.GLBDATA.DrAmt)
+			print(EQSRV.GLBDATA.upAmt)
+			EQSRV.GLBDATA.tempDrAmt = "0" 
+			EQSRV.GLBDATA.DrAmt = EQSRV.GLBDATA.tempDrAmt
+		endif
+		if((cdouble(EQSRV.GLBDATA.OutStandingAmt)==cdouble(EQSRV.GLBDATA.DrAmt)) and (cdouble(EQSRV.GLBDATA.DrAmt)>0))then
+			EQSRV.GLBDATA.upAmt = cdouble(EQSRV.GLBDATA.DrAmt)
+			print(EQSRV.GLBDATA.upAmt)
+			EQSRV.GLBDATA.tempDrAmt = "0" 
+			EQSRV.GLBDATA.DrAmt = EQSRV.GLBDATA.tempDrAmt
+		endif
+		if(cdouble(EQSRV.GLBDATA.upAmt)>0)then
+			sv_d = "update custom.agddt set tot_adj_amt=tot_adj_amt + ?NVAR,"
+			sv_d = sv_d + " last_adj_date=to_date(?SVAR,'DD-MM-RR'),LCHG_USER_ID=?SVAR, " 
+			sv_d = sv_d + " lchg_time=sysdate,free_text2=?SVAR "
+			sv_d = sv_d + " where bank_id=?SVAR " 
+			sv_d = sv_d + " and dep_srl_num =?SVAR " 
+			sv_d = sv_d + " and del_flg='N' and entity_cre_flg ='Y' " 
+			print(sv_d)
+			print(EQSRV.GLBDATA.upAmt)
+			print(BANCS.STDIN.BODDate)
+			print(BANCS.STDIN.userId)
+			print(MTT.InputDetails.TranId)
+			BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.upAmt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + MTT.InputDetails.TranId + "|" + BANCS.STDIN.contextBankId  + "|" + EQSRV.GLBDATA.uniqNum
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = urhk_dbSqlWithBind(sv_d)
+			if(sv_u==0)then
+				sv_u = urhk_dbSqlWithBind("commit")
+				print(sv_u)
+				EQSRV.GLBDATA.upAmt = "0"
+			endif
+		endif
+        NXTL:
+        sv_r = urhk_dbCursorFetch(sv_p)
+        if(sv_r!=0)then
+                print("fetch failed")
+                sv_u = urhk_dbCursorClose(sv_p)
+                print(sv_u)
+                goto VAYURUN
+        endif
+        do
+        sv_r = urhk_dbCursorClose(sv_p)
+
+exitscript
+trace off
+end-->

@@ -1,0 +1,754 @@
+<--START
+CHECKSUM="0dc70d4f59a7f92cc21725768aeb45f5716105251425388650bbfad783ca33bf"
+	TRACE ON
+	
+	print("TEST")
+	
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print (sv_r)
+	
+	CUST.ATM.bodDate=BANCS.STDIN.BODDate
+	print(CUST.ATM.bodDate)
+	
+	print(CUST.ATM.todForacid)
+	
+	CUST.ATM.acctNo = CUST.ATM.todForacid
+	print(CUST.ATM.acctNo)
+	
+	BANCS.INPARAM.BINDVARS= CUST.ATM.acctNo+"|"+"Y|N"
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = " solid,schmType,custId,acctName|SELECT sol_id,SCHM_TYPE,CUST_ID,ACCT_NAME"
+	sv_s = sv_s + " FROM TBAADM.GAM  "
+	sv_s = sv_s + " WHERE  FORACID = ?SVAR "
+	sv_s = sv_s + " AND ENTITY_CRE_FLG= ?SVAR "
+	sv_s = sv_s + " AND DEL_FLG= ?SVAR "
+	PRINT(sv_s)
+	sv_d= urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d==0) THEN
+	#{
+		CUST.ATM.solId=BANCS.OUTPARAM.solid
+		print(CUST.ATM.solId)
+		CUST.ATM.schmType=BANCS.OUTPARAM.schmType
+		print(CUST.ATM.schmType)
+		CUST.ATM.custId=BANCS.OUTPARAM.custId
+		print(CUST.ATM.custId)
+		CUST.ATM.acctName=BANCS.OUTPARAM.acctName
+		print(CUST.ATM.acctName)
+		
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Finding maximum contract amount
+	#--------------------------------------------------------------------------
+	CUST.ATM.contractAmt=0
+	CUST.ATM.minAmt=0
+	CUST.ATM.maxcntrtamt=0
+	CUST.ATM.maxContractPeriod=0
+	CUST.ATM.contractPeriod ="12"
+	sv_s = "conAmt,maxcntrtamt,maxContractPeriod|"
+	sv_s = sv_s + " SELECT CONTRACT_AMT,MAX_CNTRT_AMT,MAX_CNTRT_PERIOD "
+	sv_s = sv_s + " FROM CUSTOM.CATOD_MASTER_TABLE "
+	sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND  ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND  DEL_FLG = 'N'"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.ATM.acctNo + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Error in finding maximum contract amount"
+		sv_z = "Msg|" + sv_m
+		#sv_u = urhk_SetOrbOut(sv_z)
+		CUST.ATM.todAcctStatus = "Error in finding maximum contract amount"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.ATM.contractAmt = BANCS.OUTPARAM.conAmt
+		print(CUST.ATM.contractAmt)
+		CUST.ATM.maxcntrtamt = BANCS.OUTPARAM.maxcntrtamt
+		print(CUST.ATM.maxcntrtamt)
+		CUST.ATM.maxContractPeriod = BANCS.OUTPARAM.maxContractPeriod
+		print(CUST.ATM.maxContractPeriod)
+		
+	#}
+	ENDIF
+	
+	print(CUST.ATM.contractAmt)
+	print(CUST.ATM.minAmt)
+	
+	
+	IF (CINT(CUST.ATM.contractAmt) < CINT(CUST.ATM.minAmt)) THEN
+	#{
+		
+		CUST.INTERFACE.errorCode="ACCM_ERR_017"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			CUST.ATM.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.ATM.errorMsg=CUST.INTERFACE.errorDesc
+			print(CUST.ATM.errorMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------
+	#Validate for the maximum contract amount from CPARAM
+	#-----------------------------------------------------------
+	BANCS.INPUT.moduleName = "CATODSCORE"
+	BANCS.INPUT.parameterId = "MAXCNTRTAMT"
+	CALL("getcparamvalue.scr")
+	
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		sv_l = STRLEN(BANCS.OUTPUT.parameterVal)
+		print(sv_l)
+		CUST.ATM.maxCntrctAmtCPARAM =BANCS.OUTPUT.parameterVal
+		print(CUST.ATM.maxCntrctAmtCPARAM)
+		
+		IF (CDOUBLE(CUST.ATM.maxCntrctAmtCPARAM) < CDOUBLE(CUST.ATM.contractAmt) ) THEN
+		#{
+			CUST.ATM.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ATM.errorMsg = "Maximum contract amount allowed  setup is not done in CPARAM"
+		sv_z = "Error_0|ERROR^" + CUST.ATM.errorMsg + "^contrctAmt"
+		CUST.ATM.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	print(CUST.ATM.contractAmt)
+	print(CUST.ATM.maxcntrtamt)
+	
+	IF (CINT(CUST.ATM.contractAmt) > CINT(CUST.ATM.maxcntrtamt)) THEN
+	#{
+		CUST.INTERFACE.errorCode="ACCM_ERR_018"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			CUST.ATM.errorMsg = "Could not fetch Parameter value for " +  CUST.INTERFACE.errorCode
+			print(CUST.ATM.errorMsg)
+			CUST.ATM.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.ATM.errorMsg=CUST.INTERFACE.errorDesc
+			print(CUST.ATM.errorMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF ( CINT(CUST.ATM.contractPeriod) > CINT( CUST.ATM.maxContractPeriod)) THEN
+	#{
+		CUST.INTERFACE.errorCode="ACCM_ERR_019"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			CUST.ATM.errorMsg = "Could not fetch Parameter value for " +  CUST.INTERFACE.errorCode
+			print(CUST.ATM.errorMsg)
+			CUST.ATM.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.ATM.errorMsg=CUST.INTERFACE.errorDesc
+			print(CUST.ATM.errorMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#----------------------------
+	#FETCHING THE CONTRACT ID
+	#-------------------------------
+	sv_s = "contractId|"
+	sv_s = sv_s + "SELECT  CUSTOM.ACCM_REQ_ID.nextval  FROM DUAL"
+	PRINT(sv_s)
+	sv_d= urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF(sv_d!=0) THEN
+	#{
+		CUST.INTERFACE.errorCode="ACCM_ERR_020"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			CUST.ATM.errorMsg = "Could not fetch Parameter value for " +  CUST.INTERFACE.errorCode
+			CUST.ATM.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.ATM.errorMsg=CUST.INTERFACE.errorDesc
+			print(CUST.ATM.errorMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ATM.contractId= BANCS.OUTPARAM.contractId
+		CUST.CTODA.contractId = CUST.ATM.contractId
+		print(CUST.CTODA.contractId)
+		print(CUST.ATM.contractId)
+	#}
+	ENDIF
+	#-----------------------------------
+	#Fetching the charges value
+	#------------------------------------
+	
+	
+	
+	
+	print(CUST.ATM.bodDate)
+	print(CUST.ATM.contractPeriod)
+	#CUST.ATM.date ="22-04-2013"
+	sv_a = CUST.ATM.bodDate +"|" + CUST.ATM.contractPeriod + "|" + "0"
+	print(sv_a)
+	sv_b = urhk_B2k_Add_MonthsDays_To_date(sv_a)
+	print(sv_b)
+	CUST.ATM.expiryDate=BANCS.OUTPARAM.MODIFIED_DATE
+	PRINT(CUST.ATM.expiryDate)
+	
+	print(CUST.ATM.acctNo)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.bodDate)
+	print("N")
+	print("N")
+	CUST.ATM.charges="200"
+	print(CUST.ATM.charges)
+	print(CUST.ATM.bodDate)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.bodDate)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.contractAmt)
+	CUST.CTODA.maxAvailAmt = CUST.ATM.contractAmt
+	print(CUST.CTODA.maxAvailAmt)
+	print(CUST.ATM.contractPeriod )
+	print(CUST.ATM.contractId)
+	print(CUST.ATM.schmType)
+	print(BANCS.STDIN.contextBankId )
+	print(CUST.ATM.solId )
+	print(CUST.ATM.expiryDate )
+	print(CUST.ATM.custId)
+	print(CUST.ATM.acctName)
+	
+	BANCS.INPARAM.BINDVARS=CUST.ATM.acctName+ "|"+ CUST.ATM.acctNo+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + "N" + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+ "Y" + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.ATM.charges + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractAmt + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractPeriod +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractId + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.schmType+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.solId +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.expiryDate +"|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+ "A" + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractAmt + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.custId
+	
+	sv_s = "INSERT INTO  CUSTOM.CATOD_SANCTION_TABLE ("
+	sv_s = sv_s +"ACCT_NAME,ACCT_NUM,CREATED_BY,"
+	sv_s = sv_s + "CREATED_DATE,DEL_FLG,ENTITY_CRE_FLG,FEE,"
+	sv_s = sv_s + "LCHG_DATE,LCHG_USER,"
+	sv_s = sv_s + "RCRE_DATE,RCRE_USER,REQ_AMT,REQ_PERIOD,"
+	sv_s = sv_s + "REQUEST_ID,SCHM_TYPE,BANK_ID,SOL_ID,EXPIRY_DATE,STATUS_FLG,SANCT_AMT,VERIFY_BY,VERIFY_DATE,SANCT_DATE,CUST_ID ) VALUES ("
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy	hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR)"
+	
+	PRINT(sv_s)
+	sv_d= urhk_dbSqlWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d!=0) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#############Code Change for Inserting Into the History Table as Well############
+	
+	
+	print(CUST.ATM.bodDate)
+	print(CUST.ATM.contractPeriod)
+	#CUST.ATM.date ="22-04-2013"
+	sv_a = CUST.ATM.bodDate +"|" + CUST.ATM.contractPeriod + "|" + "0"
+	print(sv_a)
+	sv_b = urhk_B2k_Add_MonthsDays_To_date(sv_a)
+	print(sv_b)
+	CUST.ATM.expiryDate=BANCS.OUTPARAM.MODIFIED_DATE
+	PRINT(CUST.ATM.expiryDate)
+	
+	print(CUST.ATM.acctNo)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.bodDate)
+	print("N")
+	print("N")
+	CUST.ATM.charges="200"
+	print(CUST.ATM.charges)
+	print(CUST.ATM.bodDate)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.bodDate)
+	print(BANCS.STDIN.userId)
+	print(CUST.ATM.contractAmt)
+	CUST.CTODA.maxAvailAmt = CUST.ATM.contractAmt
+	print(CUST.CTODA.maxAvailAmt)
+	print(CUST.ATM.contractPeriod )
+	print(CUST.ATM.contractId)
+	print(CUST.ATM.schmType)
+	print(BANCS.STDIN.contextBankId )
+	print(CUST.ATM.solId )
+	print(CUST.ATM.expiryDate )
+	print(CUST.ATM.custId)
+	print(CUST.ATM.acctName)
+	CUST.ATM.REMARKS="SANCTION REQUEST CREATED"
+	
+	
+	BANCS.INPARAM.BINDVARS=CUST.ATM.acctName+ "|"+ CUST.ATM.acctNo+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + "N" + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+ "Y" + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.ATM.charges + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.bodDate+ "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractAmt + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractPeriod +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.contractId + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.schmType+"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.solId +"|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.expiryDate +"|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+ "P" + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.custId + "|"
+	BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + CUST.ATM.REMARKS
+	
+	sv_s = "INSERT INTO  CUSTOM.CATOD_SANCTION_HIST_TABLE ("
+	sv_s = sv_s +"ACCT_NAME,ACCT_NUM,CREATED_BY,"
+	sv_s = sv_s + "CREATED_DATE,DEL_FLG,ENTITY_CRE_FLG,FEE,"
+	sv_s = sv_s + "LCHG_DATE,LCHG_USER,"
+	sv_s = sv_s + "RCRE_DATE,RCRE_USER,REQ_AMT,REQ_PERIOD,"
+	sv_s = sv_s + "REQUEST_ID,SCHM_TYPE,BANK_ID,SOL_ID,EXPIRY_DATE,STATUS_FLG,CUST_ID,REMARKS ) VALUES ("
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy	hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss'),"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR)"
+	
+	PRINT(sv_s)
+	sv_d= urhk_dbSqlWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d!=0) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	## charge start
+	
+	#-----------------------------------------------------------------
+	# Initialise is used to Check whether Class ATM exists.
+	# If not then creates that class.
+	# 5 stands for String Type data.
+	#-----------------------------------------------------------------
+	Initialise:
+		#------------------------------------------------------------------
+		#  Getting account to debit
+		#
+		#------------------------------------------------------------------
+		
+		CUST.ATM.drAccount=CUST.ATM.acctNo
+		CUST.ATM.DccId=BANCS.INPUT.DccId
+		print(CUST.ATM.DccId)
+		CUST.ATM.narr1="CHARGE"
+		
+		
+		IF (BANCS.INPUT.Foracid == "") THEN
+		#{
+			CUST.ATM.Amount = "0"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF (BANCS.INPUT.Command == "") THEN
+		#{
+			CUST.ATM.Amount = "0"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.ATM.cmd=BANCS.INPUT.Command
+			print(CUST.ATM.cmd)
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------
+		# getting the amount to split
+		#--------------------------------------------------------------------------
+		BANCS.INPUT.TranAmt=cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+		print(BANCS.INPUT.TranAmt)
+		BANCS.INPUT.TranAmt = CUST.ATM.contractAmt
+		print(BANCS.INPUT.TranAmt)
+		PRINT(BANCS.INPUT.SerialNum)
+		
+		#--------------------------------------------------------------------------
+		# Create the narration
+		#--------------------------------------------------------------------------
+		sv_e = MID$(BANCS.STDIN.BODDate,0,10)
+		print(sv_e)
+		sv_s = "sysdate "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT TO_CHAR((TO_DATE(?SVAR,'DD-MM-YYYY')),'DD-MM-YYYY') "
+		sv_s = sv_s + " FROM DUAL"
+		BANCS.INPARAM.BINDVARS = sv_e
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+		#{
+			CUST.ATM.sysdate = BANCS.OUTPARAM.sysdate
+			CUST.ATM.narr1 ="CONTRACT CHARGE" + "/" + BANCS.INPUT.SerialNum + "/" + CUST.ATM.sysdate
+			print(CUST.ATM.narr1)
+			#}
+		ELSE
+			#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("MTT")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","TranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("BANCS")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("BANCS","INPARAM",5)
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+		
+		sv_u = urhk_MTTS_Initialize("")
+		print(sv_u)
+		
+		IF (FIELDEXISTS(CUST.ATM.drAccount) == 1) THEN
+		#{
+			IF(CUST.ATM.drAccount != "" ) THEN
+			#{
+				sv_t= urhk_getAcctDetailsInRepository(CUST.ATM.drAccount)
+				print(sv_t)
+				IF (sv_t == 0) THEN
+				#{
+					BANCS.INPUT.SolId = BANCS.OUTPARAM.acctSolId
+					print(BANCS.INPUT.SolId)
+					BANCS.OUTPUT.SolId = BANCS.OUTPARAM.acctSolId
+					print(BANCS.OUTPUT.SolId)
+					BANCS.OUTPUT.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+					print(BANCS.OUTPUT.acctCrncyCode)
+					BANCS.OUTPUT.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+					print(BANCS.OUTPUT.EffAvailableAmt)
+					BANCS.OUTPUT.FxEffAvailableAmt = BANCS.OUTPARAM.FxEffAvailableAmt
+					print(BANCS.OUTPUT.FxEffAvailableAmt)
+					sv_c = BANCS.OUTPARAM.schmCode
+					print(sv_c)
+					sv_t = BANCS.OUTPARAM.schmType
+					print(sv_t)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		CUST.ATM.eventId="TODCEVT"
+		print(CUST.ATM.eventId)
+		CUST.ATM.eventType="GCHRG"
+		print(CUST.ATM.eventType)
+		
+		
+		print(CUST.ATM.eventId)
+		print(CUST.ATM.eventType)
+		print(BANCS.OUTPUT.acctCrncyCode)
+		
+		CUST.CONTRACT.contractAmt=CUST.ATM.contractAmt
+		print(CUST.CONTRACT.contractAmt )
+		CUST.CONTRACT.acctNum=CUST.ATM.acctNo
+		print(CUST.CONTRACT.acctNum)
+		CUST.CONTRACT.crncyCode=BANCS.OUTPUT.acctCrncyCode
+		print(CUST.CONTRACT.crncyCode)
+		
+		call ("copyBancsToCustC24.scr")
+		
+		MTT.ChargeDetails.EventId = CUST.ATM.eventId
+		MTT.ChargeDetails.EventType = CUST.ATM.eventType
+		MTT.ChargeDetails.ChrgInpCrncy = BANCS.STDIN.homeCrncyCode
+		
+		sv_y = "MiniCharges"
+		sv_u = urhk_MTTS_InitPtt(sv_y)
+		print(sv_u)
+		IF(sv_u != 0 ) THEN
+		#{
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.scriptError = "urhk_MTTS_InitPtt returns FAILURE"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_u = urhk_MTTS_GetPttRec(sv_y)
+		print(sv_u)
+		IF(sv_u == 0 ) THEN
+		#{
+			CUST.ATM.crForacid = MTT.PartTranDetails.Account
+			CUST.ATM.RefCurrency = MTT.ChargeDetails.CollectionCrncy
+			CUST.ATM.RefAmount = CDOUBLE(MTT.PartTranDetails.RefAmount)
+			sv_b = CDOUBLE(MTT.PartTranDetails.RefAmount)
+			print(MTT.PartTranDetails.Account)
+			print(MTT.ChargeDetails.CollectionCrncy)
+			print(MTT.PartTranDetails.RefAmount)
+			
+			sv_e = CDOUBLE(BANCS.OUTPUT.EffAvailableAmt)
+			print(sv_e)
+		#}
+		ENDIF
+		
+		#call ("copyCust24ToBancs.scr")
+		
+		sv_a = urhk_MTTS_Close("")
+		print(sv_a)
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+		
+		sv_u = urhk_MTTS_Initialize("")
+		print(sv_u)
+		
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "CI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = CUST.ATM.narr1
+		
+		sv_v = "PurchaseComm"
+		print(sv_v)
+		
+		sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		###################################################################################
+		# Check whether Debit Account id is partition account or not
+		###################################################################################
+		sv_s = "partnType,partnFlg|"
+		sv_s = sv_s + " select partitioned_type, partitioned_flg "
+		sv_s = sv_s + " from TBAADM.GAM "
+		sv_s = sv_s + " WHERE foracid = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.ATM.crForacid
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d == 0)THEN
+		#{
+			CUST.ATM.partnType= BANCS.OUTPARAM.partnType
+			CUST.ATM.partnFlg= BANCS.OUTPARAM.partnFlg
+			print(CUST.ATM.partnFlg)
+			#}
+		ELSE
+			#{
+			CUST.ATM.partnType = ""
+			CUST.ATM.partnFlg  = ""
+		#}
+		ENDIF
+		
+		#-------------------------------------------------------------------------------------------------------
+		# Credit Leg
+		#-------------------------------------------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.ATM.crForacid
+		IF( (CUST.ATM.partnType == "ACCNT") AND (CUST.ATM.partnFlg=="Y") ) THEN
+		#{
+			MTT.PartTranDetails.ACPARTB2kId=CUST.ATM.crForacid
+			MTT.PartTranDetails.ACPARTB2kType= "ACCNT"
+			print(CUST.ATM.partnType)
+		#}
+		ENDIF
+		
+		
+		
+		#--------------------------------------------------
+		# Income To EQUITY PURCHASES COMM A/C
+		#--------------------------------------------------
+		CUST.ATM.crForacid = MTT.PartTranDetails.Account
+		print(CUST.ATM.crForacid)
+		MTT.PartTranDetails.Account = CUST.ATM.crForacid
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode ="TTS"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+		MTT.PartTranDetails.RefAmount = sv_b
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = ""
+		MTT.PartTranDetails.RefNum = ""
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		MTT.ChargeDetails.EventType = CUST.ATM.eventType
+		MTT.ChargeDetails.EventId = CUST.ATM.eventId
+		sv_e = "PurchaseIncome"
+		sv_u = urhk_MTTS_DefineChargePartTran(sv_e)
+		print(sv_u)
+		
+		#------------------------------------------------------------------
+		# Debit Partran To MERCHANT PURCHASES COMM A/C
+		#------------------------------------------------------------------
+		print(CUST.ATM.drAccount)
+		MTT.PartTranDetails.Account = CUST.ATM.drAccount
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode ="TTS"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+		MTT.PartTranDetails.RefAmount = -sv_b
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = ""
+		MTT.PartTranDetails.RefNum = ""
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_h = "D" + CUST.ATM.drAccount
+		sv_u = urhk_MTTS_definePartTran(sv_h)
+		sv_u = urhk_MTTS_EndDefinition("")
+		print(sv_u)
+		sv_u = urhk_MTTS_Close("")
+		print(sv_r)
+		
+		print(BANCS.OUTPARAM.MTTTranId)
+		
+		IF (BANCS.OUTPARAM.MTTTranId!="") THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.scriptError = "charge Not collected"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		## charge end
+		
+		
+	ENDOFSCRIPT:
+END-->

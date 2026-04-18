@@ -1,0 +1,521 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpcodlpayAgentFloatTran.scr 
+#  Description     :
+#  Date            : 21-02-2023
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             21-02-2023      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(repexists("EBSRVOM")==0)then
+                createrep("EBSRVOM")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(classexists("EBSRVOM","GLBDATA")==0)then
+                createclass("EBSRVOM","GLBDATA",5)
+        endif
+        if(classexists("EBSRV","INTDATA")==0)then
+                createclass("EBSRV","INTDATA",5)
+        endif
+        EBSRV.GLBDATA.expModule = "CODLPAY"
+        EBSRV.GLBDATA.payErrDesc = ""
+        sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+        if(sv_u == 0)then
+                print(MTT.InputDetails.Argument1)
+                EBSRV.GLBDATA.OdAcctId = MTT.InputDetails.Argument1
+                EBSRV.GLBDATA.OpAcctId = MTT.InputDetails.Argument2
+                EBSRV.GLBDATA.RecoverAmt = MTT.InputDetails.Argument3
+                EBSRV.GLBDATA.FunctionC = MTT.InputDetails.Argument4
+                EBSRV.GLBDATA.usId = MTT.InputDetails.Argument5
+                BANCS.INPUT.OdAcctId = EBSRV.GLBDATA.OdAcctId
+                BANCS.INPUT.OpAcctId = EBSRV.GLBDATA.OpAcctId
+		EBSRV.GLBDATA.OrgOpAcctId = EBSRV.GLBDATA.OpAcctId
+                BANCS.INPUT.RepayAmount = EBSRV.GLBDATA.RecoverAmt
+                if(EBSRV.GLBDATA.FunctionC=="P")then
+                        BANCS.INPUT.RepayMode = "F"
+                endif
+                if(EBSRV.GLBDATA.FunctionC=="R")then
+                        BANCS.INPUT.RepayMode = "P"
+                endif
+                BANCS.INPUT.AcctCloseYN = "N"
+        else
+                sv_u = urhk_MTTS_Close("")
+                print(sv_u)
+        endif
+        if(fieldexists(BANCS.INPUT.OdAcctId)==1)then
+                EBSRV.GLBDATA.OdAcctId = BANCS.INPUT.OdAcctId
+        else
+                EBSRV.GLBDATA.OdAcctId = ""
+        endif
+        if(fieldexists(BANCS.INPUT.OpAcctId)==1)then
+                EBSRV.GLBDATA.OpAcctId = BANCS.INPUT.OpAcctId
+        else
+                EBSRV.GLBDATA.OpAcctId = ""
+        endif
+        if(fieldexists(BANCS.INPUT.RepayMode)==1)then
+                EBSRV.GLBDATA.RepayMode = BANCS.INPUT.RepayMode
+        else
+                EBSRV.GLBDATA.RepayMode = ""
+        endif
+        if(fieldexists(BANCS.INPUT.RepayAmount)==1)then
+                EBSRV.GLBDATA.RepayAmount = BANCS.INPUT.RepayAmount
+        else
+                EBSRV.GLBDATA.RepayAmount = ""
+        endif
+        if(EBSRV.GLBDATA.RepayMode=="")then
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|Invalid Repayment Mode")
+                BANCS.OUTPUT.successOrFailure="F"
+                EBSRV.GLBDATA.payErrDesc = "Invalid Repayment Mode"
+                goto REPAYVALERR
+                ###exitscript
+        endif
+	sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OdAcctId)
+	if(sv_u != 0)then
+	#{
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+		sv_u = urhk_SetOrbOut("Message|Invalid Agent Float Loan Account")
+		BANCS.OUTPUT.successOrFailure="F"
+		exitscript
+	#}
+	else
+	#{
+		EBSRV.GLBDATA.AgentOdCifId = BANCS.OUTPARAM.cifId
+		EBSRV.GLBDATA.AsolId     =       BANCS.OUTPARAM.acctSolId
+		EBSRV.GLBDATA.AschmType  =       BANCS.OUTPARAM.schmType
+		EBSRV.GLBDATA.AschmCode  =       BANCS.OUTPARAM.schmCode
+		EBSRV.GLBDATA.AcrncyCode =       BANCS.OUTPARAM.acctCrncyCode
+		EBSRV.GLBDATA.AacctClsFlg        =       BANCS.OUTPARAM.acctCloseflg
+		EBSRV.GLBDATA.AlaclearBalance      = BANCS.OUTPARAM.clearBalance
+		EBSRV.GLBDATA.AlaEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+		EBSRV.GLBDATA.Alacustid = BANCS.OUTPARAM.custId
+	#}
+	endif
+	sv_q = urhk_B2k_ForacidToAcid(EBSRV.GLBDATA.OdAcctId)
+	if(sv_q==0)then
+	#{
+		EBSRV.GLBDATA.odAcid = BANCS.OUTPARAM.Acid
+	#}
+	else
+	#{
+		EBSRV.GLBDATA.odAcid = ""
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+		sv_u = urhk_SetOrbOut("Message|Invalid Loan Account")
+		BANCS.OUTPUT.successOrFailure="F"
+		EBSRV.GLBDATA.payErrDesc = "Invalid Loan Account"
+		goto REPAYVALERR
+	#}
+	endif
+	sv_q = urhk_B2k_ForacidToAcid(EBSRV.GLBDATA.OrgOpAcctId)
+	if(sv_q==0)then
+	#{
+		EBSRV.GLBDATA.orgopAcid = BANCS.OUTPARAM.Acid
+	#}
+	else
+	#{
+		EBSRV.GLBDATA.orgopAcid = ""
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+		sv_u = urhk_SetOrbOut("Message|Invalid Operative Account")
+		BANCS.OUTPUT.successOrFailure="F"
+		EBSRV.GLBDATA.payErrDesc = "Invalid Operative Account"
+		goto REPAYVALERR
+	#}
+	endif
+	if(BANCS.INPUT.RepayMode=="F")then
+	#{
+                BANCS.INPUT.inpSolId = EBSRV.GLBDATA.AsolId 
+                BANCS.INPUT.inpAcctId = EBSRV.GLBDATA.OdAcctId 
+                BANCS.INPUT.inpCrncyCode = EBSRV.GLBDATA.AcrncyCode 
+                BANCS.INPUT.inpSchmCode = EBSRV.GLBDATA.AschmCode 
+                BANCS.INPUT.inpSchmCode = "ODA"
+                BANCS.INPUT.inpIntCrDr = "D"
+                sv_a = "nohup babx4061 $B2K_SESSION_ID vpicbxcomm408.scr "+EBSRV.GLBDATA.OdAcctId+" "+EBSRV.GLBDATA.AsolId+" "+BANCS.INPUT.inpCrncyCode+" "+BANCS.INPUT.inpSchmCode+" "+BANCS.INPUT.inpIntCrDr
+                print(sv_a)
+                sv_a = system(sv_a)
+                print(sv_a)
+                lv_p = urhk_b2k_sleep("5")
+                print(lv_p)
+		sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OdAcctId)
+		if(sv_u != 0)then
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+			sv_u = urhk_SetOrbOut("Message|Invalid Agent Float Loan Account")
+			BANCS.OUTPUT.successOrFailure="F"
+			EBSRV.GLBDATA.payErrDesc = "Invalid Agent Float Loan Account" 
+			goto REPAYVALERR
+		#}
+		else
+		#{
+			EBSRV.GLBDATA.AgentOdCifId = BANCS.OUTPARAM.cifId
+			EBSRV.GLBDATA.AsolId     =       BANCS.OUTPARAM.acctSolId
+			EBSRV.GLBDATA.AschmType  =       BANCS.OUTPARAM.schmType
+			EBSRV.GLBDATA.AschmCode  =       BANCS.OUTPARAM.schmCode
+			EBSRV.GLBDATA.AcrncyCode =       BANCS.OUTPARAM.acctCrncyCode
+			EBSRV.GLBDATA.AacctClsFlg        =       BANCS.OUTPARAM.acctCloseflg
+			EBSRV.GLBDATA.AlaclearBalance      = BANCS.OUTPARAM.clearBalance
+			EBSRV.GLBDATA.AlaEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+			EBSRV.GLBDATA.Alacustid = BANCS.OUTPARAM.custId
+		#}
+		endif
+		sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OpAcctId)
+		if(sv_u != 0)then
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+			sv_u = urhk_SetOrbOut("Message|Invalid operative Account")
+			BANCS.OUTPUT.successOrFailure="F"
+			EBSRV.GLBDATA.payErrDesc = "Invalid operative Account"
+			goto REPAYVALERR
+		#}
+		else
+		#{
+			EBSRV.GLBDATA.OpCifId = BANCS.OUTPARAM.cifId
+			EBSRV.GLBDATA.OsolId     =       BANCS.OUTPARAM.acctSolId
+			EBSRV.GLBDATA.OschmType  =       BANCS.OUTPARAM.schmType
+			EBSRV.GLBDATA.OschmCode  =       BANCS.OUTPARAM.schmCode
+			EBSRV.GLBDATA.OcrncyCode =       BANCS.OUTPARAM.acctCrncyCode
+			EBSRV.GLBDATA.OacctClsFlg        =       BANCS.OUTPARAM.acctCloseflg
+			EBSRV.GLBDATA.OclearBalance      = BANCS.OUTPARAM.clearBalance
+			EBSRV.GLBDATA.OEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+			EBSRV.GLBDATA.Ocustid = BANCS.OUTPARAM.custId
+		#}
+		endif
+		print(EBSRV.GLBDATA.AlaclearBalance)
+		if(cdouble(EBSRV.GLBDATA.AlaclearBalance)<0)then
+			EBSRV.GLBDATA.AlaclearBalance = -1 * cdouble(EBSRV.GLBDATA.AlaclearBalance)
+		else
+			exitscript
+		endif
+		print(EBSRV.GLBDATA.AlaclearBalance)
+		if(cdouble(EBSRV.GLBDATA.AlaclearBalance)>cdouble(EBSRV.GLBDATA.OclearBalance))then
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+			sv_u = urhk_SetOrbOut("Message|Insufficient Fund in Operative Account")
+			BANCS.OUTPUT.successOrFailure="F"
+			EBSRV.GLBDATA.payErrDesc = "Insufficient Fund in Operative Account"
+			goto REPAYVALERR
+		else
+			print(EBSRV.GLBDATA.AlaclearBalance)
+			EBSRV.GLBDATA.RepayAmount = cdouble(EBSRV.GLBDATA.AlaclearBalance)	
+		endif
+
+	#}
+	endif
+	sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+	sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+	sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+	sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.partTranSrlNum|1")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|"+BANCS.STDIN.homeCrncyCode )
+	print(EBSRV.GLBDATA.RepayAmount)
+	EBSRV.GLBDATA.tranAmt = cdouble(EBSRV.GLBDATA.RepayAmount)
+	print(EBSRV.GLBDATA.tranAmt)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode )
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|"+ EBSRV.GLBDATA.OpAcctId ) 
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+	EBSRV.GLBDATA.drRmks = "AgentFloat Recovery"
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+	if(BANCS.INPUT.RepayMode=="F")then
+		EBSRV.GLBDATA.drPart = "Payoff for:" + EBSRV.GLBDATA.OdAcctId
+	endif
+	if(BANCS.INPUT.RepayMode=="P")then
+		EBSRV.GLBDATA.drPart = "PartialPay for:" + EBSRV.GLBDATA.OdAcctId
+	endif
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|"+ EBSRV.GLBDATA.drPart )
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.partTranSrlNum|2")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|"+ BANCS.STDIN.homeCrncyCode )
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode )
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|"+ EBSRV.GLBDATA.OdAcctId ) 
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|"+BANCS.STDIN.BODDate)
+	EBSRV.GLBDATA.drRmks = "AgentFloat Recovery"
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+	if(BANCS.INPUT.RepayMode=="F")then
+		EBSRV.GLBDATA.crPart = "Payoff from:" + EBSRV.GLBDATA.OpAcctId 
+	endif
+	if(BANCS.INPUT.RepayMode=="P")then
+		EBSRV.GLBDATA.crPart = "PartialPay from:" + EBSRV.GLBDATA.OpAcctId 
+	endif
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|"+ EBSRV.GLBDATA.crPart )
+	sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+	sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+	##sv_u = urhk_ExecSrvNoCommit("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y")
+	sv_u = urhk_ExecSrv("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y")
+	print(sv_u)
+	if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+	#{
+	        print(BANCS.OUTPARAM.successOrFailure)
+		if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_u!=0))then
+			callscriptifexist("ebsrvHandler.scr")
+			if(fieldexists(EBSRV.GLBDATA.SrvError)==1)then
+				EBSRV.GLBDATA.srvMsg    = EBSRV.GLBDATA.SrvError
+				EBSRV.GLBDATA.srvErrorCode = "E0012"
+				EBSRV.GLBDATA.srvSF     = "F"
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+				sv_u = urhk_SetOrbOut("Message|" + EBSRV.GLBDATA.srvMsg )
+				BANCS.OUTPUT.successOrFailure="F"
+				lv_j = urhk_dbSqlWithBind("rollback")
+				print(lv_j)
+				EBSRV.GLBDATA.payErrDesc = EBSRV.GLBDATA.srvMsg
+				goto REPAYVALERR
+				####exitscript
+			endif
+		endif
+		if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_u==0))then
+			print(BANCS.OUTPARAM.tranId)
+			print(BANCS.OUTPARAM.tranDate)
+			EBSRV.GLBDATA.TranId = BANCS.OUTPARAM.tranId
+			EBSRV.GLBDATA.disbTranDate = BANCS.OUTPARAM.tranDate
+			print(EBSRV.GLBDATA.TranId)
+			print(EBSRV.GLBDATA.disbTranDate)
+			EBSRV.GLBDATA.payErrDesc = "S"
+		else
+			lv_j = urhk_dbSqlWithBind("rollback")
+			print(lv_j)
+			exitscript
+		endif
+	#}
+	endif
+REPAYVALERR:
+        if(fieldexists(EBSRV.GLBDATA.OdAcctId)==1)then
+                print(EBSRV.GLBDATA.OdAcctId)
+        else
+                EBSRV.GLBDATA.OdAcctId = ""
+        endif
+        if(fieldexists(EBSRV.GLBDATA.OpAcctId)==1)then
+                print(EBSRV.GLBDATA.OpAcctId)
+        else
+                EBSRV.GLBDATA.OpAcctId = ""
+        endif
+        if(fieldexists(EBSRV.GLBDATA.payErrDesc)==1)then
+                print(EBSRV.GLBDATA.payErrDesc)
+        else
+                EBSRV.GLBDATA.payErrDesc = ""
+        endif
+        if(fieldexists(EBSRV.GLBDATA.TranId)==1)then
+                print(EBSRV.GLBDATA.TranId)
+        else
+                EBSRV.GLBDATA.TranId =""
+        endif
+        sv_b = urhk_getEnv("FIN_REPORTS_DIR")
+        print(sv_b)
+        if (sv_b==0) then
+                EBSRV.GLBDATA.envValue = BANCS.OUTPARAM.envValue
+                print(EBSRV.GLBDATA.envValue)
+        endif
+# Log File
+        sv_s = "startTime|"
+        sv_s = sv_s + " select to_char(SYSDATE, 'YYYYMMDDHH24MISS') from dual"
+        print(sv_s)
+        sv_r = urhk_dbSelectWithBind(sv_s)
+        print(sv_r)
+        EBSRV.GLBDATA.startTime = BANCS.OUTPARAM.startTime
+        EBSRV.GLBDATA.successlogFile = "AgentLoanLoanPayment_" + EBSRV.GLBDATA.startTime + ".log"
+        print(EBSRV.GLBDATA.startTime)
+        print(EBSRV.GLBDATA.successlogFile)
+        sv_s = "touch " + EBSRV.GLBDATA.successlogFile
+        sv_d = SYSTEM(sv_s)
+        print(sv_d)
+print(EBSRV.GLBDATA.payErrDesc)
+#Failure
+        if((EBSRV.GLBDATA.payErrDesc!="")and(EBSRV.GLBDATA.payErrDesc!="S"))then
+                print("gen failure report")
+                EBSRV.GLBDATA.error = "F|" + EBSRV.GLBDATA.OdAcctId + "|" + EBSRV.GLBDATA.OpAcctId + "|" + EBSRV.GLBDATA.TranId + "|" + EBSRV.GLBDATA.payErrDesc
+                print(EBSRV.GLBDATA.error)
+                sv_s = "echo" + " '" +  EBSRV.GLBDATA.error + "' >>" + " " + EBSRV.GLBDATA.successlogFile
+                sv_d = system(sv_s)
+                print(sv_r)
+                EBSRV.GLBDATA.rptName = EBSRV.GLBDATA.OdAcctId
+                sv_s = "mrbx4004 $B2K_SESSION_ID vpcodlpaySucFai.mrt " + EBSRV.GLBDATA.successlogFile + " " + EBSRV.GLBDATA.rptName + "_RPT"
+                print(sv_s)
+                sv_d = system(sv_s)
+                print(sv_d)
+                EBSRV.GLBDATA.successlogFile = EBSRV.GLBDATA.rptName + "_RPT.rpt"
+                sv_x = "babx4040 $B2K_SESSION_ID " + EBSRV.GLBDATA.envValue + "/" + BANCS.STDIN.userId  +"/" + EBSRV.GLBDATA.successlogFile+  " 'Agent Loan Payment Failure' MANAGER 1 N"
+                print(sv_x)
+                sv_h = system(sv_x)
+                print (sv_h)
+        endif
+#Success
+        if((EBSRV.GLBDATA.payErrDesc=="S")and(EBSRV.GLBDATA.TranId!=""))then
+        #{
+                print("gen success report")
+                EBSRV.GLBDATA.error = "S|" + EBSRV.GLBDATA.OdAcctId + "|" + EBSRV.GLBDATA.OpAcctId + "|" + EBSRV.GLBDATA.TranId + "|" + EBSRV.GLBDATA.payErrDesc
+                print(EBSRV.GLBDATA.error)
+                sv_s = "echo" + " '" +  EBSRV.GLBDATA.error + "' >>" + " " + EBSRV.GLBDATA.successlogFile
+                sv_d = system(sv_s)
+                print(sv_r)
+                EBSRV.GLBDATA.rptName = EBSRV.GLBDATA.OdAcctId
+                sv_s = "mrbx4004 $B2K_SESSION_ID vpcodlpaySucFai.mrt " + EBSRV.GLBDATA.successlogFile + " " + EBSRV.GLBDATA.rptName + "_RPT"
+                print(sv_s)
+                sv_d = system(sv_s)
+                print(sv_d)
+                EBSRV.GLBDATA.successlogFile = EBSRV.GLBDATA.rptName + "_RPT.rpt"
+                sv_x = "babx4040 $B2K_SESSION_ID " + EBSRV.GLBDATA.envValue + "/" + BANCS.STDIN.userId  +"/" + EBSRV.GLBDATA.successlogFile+  " 'Agent Loan Payment Success' MANAGER 1 N"
+                print(sv_x)
+                sv_h = system(sv_x)
+                print (sv_h)
+		sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OdAcctId)
+		EBSRV.GLBDATA.AgentOdCifId = BANCS.OUTPARAM.cifId
+		print(EBSRV.GLBDATA.AgentOdCifId)
+		print(EBSRV.GLBDATA.RepayMode)
+		##########callscriptifexist("vpodlaChnlPayRecon.scr")
+		callscriptifexist("vpcodlpayAgentFloatRecon.scr")
+        #}
+        endif
+		EBSRV.GLBDATA.rRepayAmount = "0"
+                sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OdAcctId)
+                if(sv_u != 0)then
+                #{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|Invalid Agent Float Loan Account")
+                        BANCS.OUTPUT.successOrFailure="F"
+			exitscript
+                #}
+                else
+                #{
+                        EBSRV.GLBDATA.AgentOdCifId = BANCS.OUTPARAM.cifId
+                        EBSRV.GLBDATA.AsolId     =       BANCS.OUTPARAM.acctSolId
+                        EBSRV.GLBDATA.AschmType  =       BANCS.OUTPARAM.schmType
+                        EBSRV.GLBDATA.AschmCode  =       BANCS.OUTPARAM.schmCode
+                        EBSRV.GLBDATA.AcrncyCode =       BANCS.OUTPARAM.acctCrncyCode
+                        EBSRV.GLBDATA.AacctClsFlg        =       BANCS.OUTPARAM.acctCloseflg
+                        EBSRV.GLBDATA.AlaclearBalance      = BANCS.OUTPARAM.clearBalance
+                        EBSRV.GLBDATA.AlaEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+                        EBSRV.GLBDATA.Alacustid = BANCS.OUTPARAM.custId
+                #}
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.OpAcctId)
+                if(sv_u != 0)then
+                #{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|Invalid operative Account")
+                        BANCS.OUTPUT.successOrFailure="F"
+			exitscript
+                #}
+                else
+                #{
+                        EBSRV.GLBDATA.OpCifId = BANCS.OUTPARAM.cifId
+                        EBSRV.GLBDATA.OsolId     =       BANCS.OUTPARAM.acctSolId
+                        EBSRV.GLBDATA.OschmType  =       BANCS.OUTPARAM.schmType
+                        EBSRV.GLBDATA.OschmCode  =       BANCS.OUTPARAM.schmCode
+                        EBSRV.GLBDATA.OcrncyCode =       BANCS.OUTPARAM.acctCrncyCode
+                        EBSRV.GLBDATA.OacctClsFlg        =       BANCS.OUTPARAM.acctCloseflg
+                        EBSRV.GLBDATA.OclearBalance      = BANCS.OUTPARAM.clearBalance
+                        EBSRV.GLBDATA.OEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+                        EBSRV.GLBDATA.Ocustid = BANCS.OUTPARAM.custId
+                #}
+                endif
+		print(EBSRV.GLBDATA.AlaclearBalance)
+		if(cdouble(EBSRV.GLBDATA.AlaclearBalance)<0)then
+			EBSRV.GLBDATA.AlaclearBalance = -1 * cdouble(EBSRV.GLBDATA.AlaclearBalance)
+		else
+			exitscript
+		endif
+		print(EBSRV.GLBDATA.AlaclearBalance)
+		if(cdouble(EBSRV.GLBDATA.AlaclearBalance)>cdouble(EBSRV.GLBDATA.OclearBalance))then
+			exitscript
+		else
+			print(EBSRV.GLBDATA.AlaclearBalance)
+			EBSRV.GLBDATA.rRepayAmount = cdouble(EBSRV.GLBDATA.AlaclearBalance)	
+		endif
+	if(cdouble(EBSRV.GLBDATA.rRepayAmount)<=0)then
+		exitscript
+	endif
+        sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+        sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|CI")
+        sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+        sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+        sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+        sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.partTranSrlNum|1")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|"+BANCS.STDIN.homeCrncyCode )
+        print(EBSRV.GLBDATA.rRepayAmount)
+        EBSRV.GLBDATA.tranAmt = cdouble(EBSRV.GLBDATA.rRepayAmount)
+        print(EBSRV.GLBDATA.tranAmt)
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|"+ EBSRV.GLBDATA.OpAcctId )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+        EBSRV.GLBDATA.drRmks = "AgentFloat Recovery"
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+        if(BANCS.INPUT.RepayMode=="F")then
+                EBSRV.GLBDATA.drPart = "Payoff for:" + EBSRV.GLBDATA.OdAcctId
+        endif
+        if(BANCS.INPUT.RepayMode=="P")then
+                EBSRV.GLBDATA.drPart = "PartialPay for:" + EBSRV.GLBDATA.OdAcctId
+        endif
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|"+ EBSRV.GLBDATA.drPart )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+        sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.partTranSrlNum|2")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|"+ BANCS.STDIN.homeCrncyCode )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|"+ EBSRV.GLBDATA.OdAcctId )
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|"+BANCS.STDIN.BODDate)
+        EBSRV.GLBDATA.drRmks = "AgentFloat Recovery"
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+        if(BANCS.INPUT.RepayMode=="F")then
+                EBSRV.GLBDATA.crPart = "Payoff from:" + EBSRV.GLBDATA.OpAcctId
+        endif
+        if(BANCS.INPUT.RepayMode=="P")then
+                EBSRV.GLBDATA.crPart = "PartialPay from:" + EBSRV.GLBDATA.OpAcctId
+        endif
+        sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|"+ EBSRV.GLBDATA.crPart )
+        sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+        sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+        sv_u = urhk_ExecSrvNoCommit("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y")
+        print(sv_u)
+        if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_u!=0))then
+                        callscriptifexist("ebsrvHandler.scr")
+                        if(fieldexists(EBSRV.GLBDATA.SrvError)==1)then
+                                EBSRV.GLBDATA.srvMsg    = EBSRV.GLBDATA.SrvError
+                                EBSRV.GLBDATA.srvErrorCode = "E0012"
+                                EBSRV.GLBDATA.srvSF     = "F"
+                                lv_j = urhk_dbSqlWithBind("rollback")
+                        endif
+                endif
+                if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_u==0))then
+                        print(BANCS.OUTPARAM.tranId)
+                        print(BANCS.OUTPARAM.tranDate)
+                        EBSRV.GLBDATA.TranId = BANCS.OUTPARAM.tranId
+                        EBSRV.GLBDATA.disbTranDate = BANCS.OUTPARAM.tranDate
+                        print(EBSRV.GLBDATA.TranId)
+                        print(EBSRV.GLBDATA.disbTranDate)
+                else
+                        lv_j = urhk_dbSqlWithBind("rollback")
+                        print(lv_j)
+                        exitscript
+                endif
+        #}
+        endif
+        exitscript
+trace off
+end-->
+

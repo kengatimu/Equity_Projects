@@ -1,0 +1,282 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ChrgeCollectionLimit.scr
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#++++++++++
+        #sv_u = urhk_B2K_PrintRepos("BANCS")
+        #print(sv_u)
+        if(repexists("ONS")==0)then
+        #{
+                createrep("ONS")
+        #}
+        endif
+        if(classexists("ONS","CUSTOM")==0)then
+        #{
+                createclass("ONS","CUSTOM",5)
+        #}
+        endif
+        if(repexists("EQSRV")==0)then
+        #{
+                createrep("EQSRV")
+        #}
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+        #{
+                createclass("EQSRV","GLBDATA",5)
+        #}
+        endif
+     	lv_q = "foracid,amt,crncyCode|select foracid,sum(CLR_BAL_AMT),acct_crncy_code from custom.chrgefail where bank_id = ?SVAR and sol_id =?SVAR and PROCESSED='N' group by foracid,acct_crncy_code"
+
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+        print(lv_q)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        #{
+	EQSRV.GLBDATA.serial_num = "0"
+	EQSRV.GLBDATA.odAcctId = BANCS.OUTPARAM.foracid
+	EQSRV.GLBDATA.amt = BANCS.OUTPARAM.amt
+	EQSRV.GLBDATA.crncyCode = BANCS.OUTPARAM.crncyCode
+	EQSRV.GLBDATA.expiryDate = "07-03-2024"
+	EQSRV.GLBDATA.sanctionDate = BANCS.STDIN.BODDate
+	EQSRV.GLBDATA.applcbldate = BANCS.STDIN.BODDate
+	EQSRV.GLBDATA.reviewdate = "06-03-2024"
+	print(EQSRV.GLBDATA.odAcctId)
+
+	lv_z = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.odAcctId)
+	if(lv_z != 0) then
+		goto NXTREC
+	endif
+	EQSRV.GLBDATA.OdAcid = BANCS.OUTPARAM.acid
+	print(EQSRV.GLBDATA.OdAcid)
+        lv_s = "serial_num|select max(serial_num) from tbaadm.lht where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' and status='A' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.OdAcid
+        print(BANCS.INPARAM.BINDVARS)
+        print(lv_s)
+        lv_m = urhk_dbSelectWithBind(lv_s)
+        if(lv_m==0)then
+        #{
+                EQSRV.GLBDATA.serial_num = BANCS.OUTPARAM.serial_num
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.serial_num = "0"
+        #}
+        endif
+	#IF(EQSRV.GLBDATA.count >0) THEN
+	#{
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + EQSRV.GLBDATA.odAcctId)
+        print(sv_a)
+        sv_a = urhk_SetUrhkOut("limitHdr.schmCookie|schmCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.GAMCookie|GAMCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.sanctLimit|sanctLimit")
+        sv_a = urhk_SetUrhkOut("limitHdr.maxAlwdLimForAcct|maxAlwdLimForAcct")
+        sv_a = urhk_SetUrhkOut("limitHdr.count|count")
+        sv_a = urhk_SetUrhkOut("limitHdr.isLacType|isLacType")
+        #sv_a = urhk_SetUrhkOut("limitLL.<rec_0>.key.serial_num|serial_num")
+        #sv_a = urhk_SetUrhkOut("limitLL.<rec_0>.limitLevelIntFlg|limitLevelIntFlg")
+        #sv_a = urhk_SetUrhkOut("limitLL.<rec_0>.applicableDate|appldate")
+        sv_u = urhk_ExecSrv("SRV_FetchAcctSanctLimitForModify|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+                sv_s = "X"
+        #}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("modify Fetch success")
+                EQSRV.GLBDATA.schmCookie = BANCS.OUTPARAM.schmCookie
+                        print(EQSRV.GLBDATA.schmCookie)
+                EQSRV.GLBDATA.GAMCookie = BANCS.OUTPARAM.GAMCookie
+                        print(EQSRV.GLBDATA.GAMCookie)
+                EQSRV.GLBDATA.count  =  BANCS.OUTPARAM.count
+                        print(EQSRV.GLBDATA.count)
+                EQSRV.GLBDATA.isLacType  =  BANCS.OUTPARAM.isLacType
+                        print(EQSRV.GLBDATA.isLacType)
+                #EQSRV.GLBDATA.serial_num = BANCS.OUTPARAM.serial_num
+                #        print(EQSRV.GLBDATA.serial_num)
+                EQSRV.GLBDATA.sanctLimit = BANCS.OUTPARAM.sanctLimit 
+			print(EQSRV.GLBDATA.sanctLimit)
+                EQSRV.GLBDATA.maxAlwdLimForAcct = BANCS.OUTPARAM.maxAlwdLimForAcct
+			print(EQSRV.GLBDATA.maxAlwdLimForAcct)
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.odAcctId
+		EQSRV.GLBDATA.sanctLimit = "0"
+		EQSRV.GLBDATA.maxAlwdLimForAcct = "0"
+                callscriptifexist("ebsrvHandler.scr")
+                EQSRV.GLBDATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                EQSRV.GLBDATA.srvErrCode = "Failed : SRV_FetchAcctSanctLimitForModify "
+                EQSRV.GLBDATA.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + EQSRV.GLBDATA.srvErrMsg )
+                #goto EOS
+        #}
+        endif
+        sv_a = urhk_CopyOutToIn("")
+        print(sv_a)
+        sv_a = urhk_SetUrhkInp("limitHdr.GAMCookie|" + EQSRV.GLBDATA.GAMCookie )
+        sv_a = urhk_SetUrhkInp("limitHdr.schmCookie|" + EQSRV.GLBDATA.schmCookie )
+	#}
+	#ENDIF
+	print(EQSRV.GLBDATA.maxAlwdLimForAcct)
+	print(EQSRV.GLBDATA.amt)
+	#EQSRV.GLBDATA.maxAlwdLimForAcct = cdouble(EQSRV.GLBDATA.maxAlwdLimForAcct) + cdouble(EQSRV.GLBDATA.amt)
+	#print(EQSRV.GLBDATA.maxAlwdLimForAcct)
+        #if(EQSRV.GLBDATA.crncyCode!="")then
+        #{
+        #     	sv_a = urhk_SetUrhkInp("limitHdr.maxAlwdLimForAcct|" + EQSRV.GLBDATA.maxAlwdLimForAcct + "|" + EQSRV.GLBDATA.crncyCode)
+        #}
+       # else
+        #{
+        #        sv_a = urhk_SetUrhkInp("limitHdr.maxAlwdLimForAcct|" + EQSRV.GLBDATA.maxAlwdLimForAcct+ "|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        #endif
+
+        lv_s = "count1|select count(serial_num) from tbaadm.lht where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' and status ='A' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.OdAcid
+        print(BANCS.INPARAM.BINDVARS)
+        print(lv_s)
+        lv_m = urhk_dbSelectWithBind(lv_s)
+        if(lv_m==0)then
+        #{
+                EQSRV.GLBDATA.count1 = BANCS.OUTPARAM.count1
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.count1 = "0"
+        #}
+        endif
+        EQSRV.GLBDATA.serial_num = cint(EQSRV.GLBDATA.serial_num) + 1
+        print(EQSRV.GLBDATA.serial_num)
+	print(EQSRV.GLBDATA.amt)
+	lv_c = cint(EQSRV.GLBDATA.count1)
+	print(lv_c)
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + EQSRV.GLBDATA.odAcctId)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.key.serial_num|" + EQSRV.GLBDATA.serial_num)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.applicableDate|" + EQSRV.GLBDATA.applcbldate)
+        if(EQSRV.GLBDATA.crncyCode!="")then
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLimit|" + EQSRV.GLBDATA.amt + "|" + EQSRV.GLBDATA.crncyCode)
+        #}
+        else
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLimit|" + EQSRV.GLBDATA.amt + "|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        endif
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitLevelIntFlg|N")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.supercedeFlg|N")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.expiryDate|" + EQSRV.GLBDATA.expiryDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctDate|" + EQSRV.GLBDATA.sanctionDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyMth|0")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyDay|0")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyDate|" + EQSRV.GLBDATA.expiryDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.loanPaperDate|" + EQSRV.GLBDATA.applcbldate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitReviewDate|" + EQSRV.GLBDATA.reviewdate)
+	sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctRefNum|GPL")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctAuthCode.refCode|OTH")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLevelCode.refCode|OTHER")
+        if(EQSRV.GLBDATA.crncyCode!="")then
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.crncyCode|" + EQSRV.GLBDATA.crncyCode)
+        #}
+        else
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.crncyCode|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        endif
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.recordFlg|Y")
+
+        sv_a = urhk_ExecSrvNoCommit("SRV_AddAcctSanctLimitAndVerify|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = I|call_mode=N")
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+                sv_s = "X"
+        #}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("Sanction Limit Modified Successfully")
+		lv_y = "update custom.chrgefail set processed ='Y' where foracid = '"+EQSRV.GLBDATA.odAcctId+"' "
+		lv_x = urhk_dbSQLWithBind(lv_y)
+		IF(lv_x==0)THEN
+        	#{
+                	sv_d = urhk_dbSqlWithBind("COMMIT")
+                #}
+        	ENDIF
+
+	#}
+	else
+	#{
+                EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.odAcctId
+                callscriptifexist("ebsrvHandler.scr")
+                EQSRV.GLBDATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                EQSRV.GLBDATA.srvErrCode = "Failed : SRV_AddAcctSanctLimitAndVerify"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + EQSRV.GLBDATA.srvErrMsg )
+                #goto EOS
+	#}
+	endif
+               	 	NXTREC:
+                        #print(EQSRV.GLBDATA.srvErrMsg)
+                        #print(EQSRV.GLBDATA.srvErrCode)
+                        #print(EQSRV.GLBDATA.srvSucFail)
+                        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_z)
+                        if(sv_z!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+                                exitscript
+                        #}
+                        endif
+                        #EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        #EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        #print(EQSRV.GLBDATA.recmsg)
+        ##}
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+ 
+trace off
+end-->

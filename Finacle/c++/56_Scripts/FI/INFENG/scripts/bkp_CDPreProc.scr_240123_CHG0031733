@@ -1,0 +1,1628 @@
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: CDPreProc.scr
+# event: NA
+# description: CDPreProc
+#=================================================
+
+<--start
+trace on
+
+sv_r=urhk_B2k_PrintRepos("BANCS")
+print(sv_r)
+
+IF(BANCS.INPUT.Command == "ECHR") THEN
+#{
+        exitscript
+#}
+ENDIF
+
+
+#{
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST", "ATM")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "ATM", 5)
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "DATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "DATA", 5)
+	ENDIF
+
+#{
+
+if (BANCS.INPUT.Foracid!="") then
+call("vpUgAgentFloatCDPreProc.scr")
+if(fieldexists(BANCS.OUTPUT.successOrFailure)==1)then
+        if(BANCS.OUTPUT.successOrFailure=="F")then
+                exitscript
+        endif
+endif
+endif
+
+#Adding default ratecode
+CUST.ATM.RateCode ="CDCI_RATE_CODE|CRC"
+CUST.ATM.Put = urhk_putEnv(CUST.ATM.RateCode)
+print(CUST.ATM.Put)
+
+CUST.ATM.Get = urhk_getEnv("CDCI_RATE_CODE")
+IF(CUST.ATM.Get == 0 ) THEN
+	print(BANCS.OUTPARAM.envValue)
+ENDIF
+#-------------------------------------------------------------------------SB777 Block Start Edwin INC0146146 26102022
+if ((fieldexists(BANCS.INPUT.Foracid) == 1) and (fieldexists(BANCS.INPUT.ReservedField2) ==1)) then
+	if((BANCS.INPUT.Foracid!="") and (BANCS.INPUT.ReservedField2 !="BalEnq"))then
+		sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+		print(sv_h)
+		if(sv_h==0)then
+			CUST.ATM.schmCode=BANCS.OUTPARAM.schmCode	
+			print(CUST.ATM.schmCode)
+			if(CUST.ATM.schmCode=="SB777")then
+				CUST.ATM.DailYDebitLimit = "500000"
+                                sv_z = urhk_B2k_ForacidToAcid(BANCS.INPUT.Foracid)
+                                if(sv_z == 0)then
+                                        CUST.ATM.AcctAcid = BANCS.OUTPARAM.Acid
+                                endif
+
+                                ##sv_z ="sum|select cum_dr_amt from tbaadm.gam where bank_id ='56' and foracid =?SVAR "
+				sv_z ="sum|select sum(tran_amt) from tbaadm.dtd where bank_id ='56' and part_tran_type ='D' and pstd_flg ='Y' and acid =?SVAR "
+                                sv_z = sv_z + " and tran_date = (select to_char(db_stat_date ,'DD-MON-RRRR')  from tbaadm.gct where  Bank_id='56' )"
+                                print(sv_z)
+                                BANCS.INPARAM.BINDVARS = CUST.ATM.AcctAcid 
+                                print(BANCS.INPARAM.BINDVARS)
+                                sv_d = urhk_dbSelectWithBind(sv_z)
+                                print(sv_d)
+                                if(sv_d == 0)then
+                                        CUST.ATM.DailySum = BANCS.OUTPARAM.sum
+                                        print(CUST.ATM.DailySum)
+                                else
+                                        CUST.ATM.DailySum = "0"
+                                endif
+
+                                CUST.ATM.refAmt = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+				print(CUST.ATM.refAmt)
+                                CUST.ATM.TotDailyAmt = cdouble(CUST.ATM.DailySum) + cdouble(CUST.ATM.refAmt)
+                                print(CUST.ATM.TotDailyAmt)
+                                print(CUST.ATM.DailYDebitLimit)
+
+                                if(cdouble(CUST.ATM.TotDailyAmt)> cdouble(CUST.ATM.DailYDebitLimit))then
+                                        BANCS.OUTPUT.ReservedField3="Daily Transaction Debit limit exceed for SB777 scheme"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+				endif
+				CUST.ATM.MonthlyDebitLimit = "1000000"
+				sv_z ="sum|select cum_dr_amt from tbaadm.gam where bank_id ='56' and foracid =?SVAR "	
+				print(sv_z)
+				BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid	 
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_z)
+				print(sv_d)
+				if(sv_d == 0)then
+					CUST.ATM.MonthlySum = BANCS.OUTPARAM.sum
+					print(CUST.ATM.MonthlySum)
+				else
+					CUST.ATM.MonthlySum = "0"
+				endif
+				print(CUST.ATM.MonthlySum) 
+				CUST.ATM.MonthlySum = cdouble(CUST.ATM.MonthlySum) + cdouble(CUST.ATM.refAmt)
+				if(cdouble(CUST.ATM.MonthlySum)>cdouble(CUST.ATM.MonthlyDebitLimit))then
+					BANCS.OUTPUT.ReservedField3="Monthly Transaction Debit limit exceed for  SB777 scheme"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+				endif
+			endif
+		endif
+	endif
+endif
+#-------------------------------------------------------------------------SB777 Block End INC0146146 26102022
+##--------------------------URA duplicate check CHG0031249------------------------------------------
+IF (BANCS.INPUT.DccId == "EAZ") THEN
+	IF (BANCS.INPUT.Foracid!="") THEN
+		IF (BANCS.OUTPUT.CrForacid=="1038200435666") THEN
+			
+			sv_s = BANCS.INPUT.CardAcceptorName
+			print(sv_s)
+			sv_u = "statusbill|select substr(?SVAR,1,instr(?SVAR,'/') - 1) from dual "
+			print(sv_u)
+			BANCS.INPARAM.BINDVARS=sv_s +"|"+sv_s 
+			sv_w=urhk_dbSelectWithBind(sv_u)
+			print(sv_w)
+			CUST.ATM.statusbillref = BANCS.OUTPARAM.statusbill
+			print(CUST.ATM.statusbillref)
+
+			sv_z ="count|select count(*) from tbaadm.dtd where acid in (select acid from tbaadm.gam where foracid= ?SVAR) "
+			sv_z =sv_z + "and ref_num= ?SVAR and PART_TRAN_TYPE='C' and del_flg='N' and bank_id= ?SVAR "
+			print(sv_z)
+			BANCS.INPARAM.BINDVARS = BANCS.OUTPUT.CrForacid	 + "|" + CUST.ATM.statusbillref + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_z)
+			print(sv_d)
+			if(sv_d == 0)then
+				CUST.ATM.count = BANCS.OUTPARAM.count
+				print(CUST.ATM.count)
+				IF (CUST.ATM.count>0) THEN
+					BANCS.OUTPUT.ReservedField3="PRN ALREADY PROCESSED"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+
+				ENDIF
+			else
+				CUST.ATM.count = "0"
+			endif
+
+		ENDIF
+
+	ENDIF
+ENDIF
+
+## start restrict overdrawing
+IF (BANCS.INPUT.Foracid!="") THEN
+	print(BANCS.INPUT.Foracid)
+	IF ((BANCS.INPUT.Foracid=="1000110042264") OR (BANCS.INPUT.Foracid=="1000110022180") OR (BANCS.INPUT.Foracid=="1000110042220") OR (BANCS.INPUT.Foracid=="1000110042266") OR (BANCS.INPUT.Foracid=="1000110042285") OR (BANCS.INPUT.Foracid=="1000110042277") OR (BANCS.INPUT.Foracid=="1000110022270") OR (BANCS.INPUT.Foracid=="1000110042275")) THEN
+		sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+		print(sv_h)
+		IF (sv_h==0) THEN
+			sv_r = REPEXISTS("STDWFS")
+			IF (sv_r == 0) THEN
+				CREATEREP("STDWFS")
+			ENDIF
+			sv_r = CLASSEXISTS("STDWFS", "GLBDATA")
+			IF (sv_r == 0) THEN
+				CREATECLASS("STDWFS", "GLBDATA", 5)
+			ENDIF
+			STDWFS.GLBDATA.solidsh = BANCS.OUTPARAM.acctSolId
+			print(STDWFS.GLBDATA.solidsh)
+			STDWFS.GLBDATA.schmcodesh = BANCS.OUTPARAM.schmCode
+			print(STDWFS.GLBDATA.schmcodesh)
+			STDWFS.GLBDATA.schmType = BANCS.OUTPARAM.schmType
+			print(STDWFS.GLBDATA.schmType)
+			STDWFS.GLBDATA.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+			print(STDWFS.GLBDATA.EffAvailableAmttr)
+			STDWFS.GLBDATA.EffAvailableAmttr = rtrim(ltrim(STDWFS.GLBDATA.EffAvailableAmttr))
+			print(STDWFS.GLBDATA.EffAvailableAmttr)
+			STDWFS.GLBDATA.EffAvailableAmttr = cdouble(STDWFS.GLBDATA.EffAvailableAmttr)
+			print(STDWFS.GLBDATA.EffAvailableAmttr)
+			IF (FIELDEXISTS(BANCS.INPUT.TranAmt) == 1) THEN	
+				print(BANCS.OUTPUT.TranAmt)
+				STDWFS.GLBDATA.dedittr = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+				print(STDWFS.GLBDATA.dedittr)
+				print(STDWFS.GLBDATA.EffAvailableAmttr)
+				if (CINT(STDWFS.GLBDATA.EffAvailableAmttr) < CINT(STDWFS.GLBDATA.dedittr)) then 
+					print(" less amount exit ")
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+				endif
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+## end restrict overdrawing
+
+#--DRC intercountry restriction
+IF (BANCS.INPUT.DccId == "SWT") THEN
+	IF (fieldexists(BANCS.INPUT.DeviceId)==1) THEN
+		CUST.ATM.DeviceIddrc=MID$(BANCS.INPUT.DeviceId,0,3)
+		print(CUST.ATM.DeviceIddrc)
+		IF (CUST.ATM.DeviceIddrc=="EBC") THEN
+			BANCS.OUTPUT.ReservedField3="Intercountry Transaction Not allowed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			exitscript
+		ENDIF
+	ENDIF
+ENDIF
+
+CUST.ATM.errMsg = ""
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID8"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard8 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Cust Card setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "CUSTCARDID9"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard9 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Cust Card ID  setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.schmCode3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Schm COde 3 setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_9"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.schmCode9 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Schm Code 9 setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMTYPE_1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.schmType1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Schm Code 9 setup not done CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+#--------------------------------------------------------------------
+# Validation to check whether the account is verified
+#--------------------------------------------------------------------
+IF((FIELDEXISTS(BANCS.INPUT.Foracid) == 1) AND (BANCS.INPUT.Command != "RTXR")) THEN
+#{
+IF(BANCS.INPUT.Foracid != "")THEN
+#{
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+        sv_s = "acid|SELECT ACID FROM TBAADM.GAM WHERE ENTITY_CRE_fLG='Y' AND DEL_FLG='N' AND FORACID = ?SVAR AND BANK_ID = ?SVAR"
+        sv_u = urhk_dbselectWithBind(sv_s)
+        IF(sv_u != 0) THEN
+        #{
+                BANCS.OUTPUT.RespCode = "99"
+                BANCS.OUTPUT.successOrFailure="F"
+                exitscript
+        #}
+	ENDIF
+#}
+ENDIF  
+#}
+ENDIF
+
+#channel lien issue
+IF ((BANCS.INPUT.DccId == "EAZ") or (BANCS.INPUT.DccId == "OMK") or (BANCS.INPUT.DccId == "WYM")) THEN
+#{
+        IF (BANCS.INPUT.Command == "PCLR") THEN
+           #{
+	   print(BANCS.INPUT.DccId) 	
+           print("this is changed to advice PCLR")
+           BANCS.OUTPUT.Qualifier="9"
+           #}
+        ENDIF
+#}
+ENDIF
+
+    #-----------------------------------------------
+    # To Get The Input Sol Id from the Input SolId
+    #----------------------------------------------
+
+        IF(FIELDEXISTS(BANCS.INPUT.Foracid) == 1) THEN
+        #{
+		IF(BANCS.INPUT.Foracid  != "" ) THEN
+		#{
+                sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                print(sv_t)
+                IF (sv_t == 0) THEN
+                #{
+                        print(BANCS.INPUT.Foracid)
+                        BANCS.INPUT.SolId = BANCS.OUTPARAM.acctSolId
+                        BANCS.OUTPUT.SolId = BANCS.OUTPARAM.acctSolId
+			CUST.ATM.DbCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.ATM.DbCrncyCode)
+                #}
+                ENDIF
+		#}
+		ENDIF
+        #}
+        ENDIF
+
+    #-----------------------------------------------
+    # To Get The Input Sol Id from the Input SolId
+    #----------------------------------------------
+
+        IF (FIELDEXISTS(BANCS.INPUT.CrForacid) == 1) THEN
+        #{
+		 IF(BANCS.INPUT.CrForacid != "" ) THEN
+                #{
+
+                sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                print(sv_t)
+                IF (sv_t == 0) THEN
+                #{
+                        print(BANCS.INPUT.CrForacid)
+                        BANCS.INPUT.CrSolId = BANCS.OUTPARAM.acctSolId
+                        BANCS.OUTPUT.CrSolId = BANCS.OUTPARAM.acctSolId
+			CUST.ATM.CrCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.ATM.CrCrncyCode)
+                #}
+                ENDIF
+		#}
+		ENDIF
+        #}
+        ENDIF
+
+
+IF(((BANCS.INPUT.Command == "TRTR") OR (BANCS.INPUT.Command == "TRRR")) AND (BANCS.INPUT.DccId == "BWY")) THEN
+#{
+        #Checking if Multicurrency FundsTransfer Transaction
+        IF ((CUST.ATM.DbCrncyCode != CUST.ATM.CrCrncyCode) OR (BANCS.INPUT.TranCrncy != CUST.ATM.DbCrncyCode) OR (BANCS.INPUT.TranCrncy != CUST.ATM.CrCrncyCode)) THEN
+        #{
+                IF (FIELDEXISTS(BANCS.INPUT.ReservedField1)) THEN
+                #{
+                        IF (STRLEN(BANCS.INPUT.ReservedField1) >= 1) THEN
+                        #{
+				 IF (FIELDEXISTS(BANCS.INPUT.ReservedField3)) THEN
+				 	IF ((BANCS.INPUT.ReservedField3=="RTG") OR (BANCS.INPUT.ReservedField3=="SWT")) THEN
+						CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+						print(CUST.ATM.RateCode)
+					ELSE
+						#CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+						CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,82,5)
+						print(CUST.ATM.RateCode)
+					ENDIF
+				 ELSE
+					#CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+					CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,82,5)
+					print(CUST.ATM.RateCode)
+				 ENDIF
+				CUST.ATM.RateCode  = trim(CUST.ATM.RateCode)
+				print(CUST.ATM.RateCode)
+				print(BANCS.INPUT.ReservedField1)
+				#BANCS.INPUT.ReservedField1 =  MID$(BANCS.INPUT.ReservedField1,0,getposition(BANCS.INPUT.ReservedField1,"-")-1)
+				BANCS.OUTPUT.ReservedField1 =  MID$(BANCS.INPUT.ReservedField1,0,50)
+				print(BANCS.OUTPUT.ReservedField1)
+				CUST.ATM.RateCode ="CDCI_RATE_CODE|" + CUST.ATM.RateCode
+				CUST.ATM.Put = urhk_putEnv(CUST.ATM.RateCode)
+				print(CUST.ATM.Put)
+				
+				CUST.ATM.Get = urhk_getEnv("CDCI_RATE_CODE")
+				IF(CUST.ATM.Get == 0 ) THEN
+					print(BANCS.OUTPARAM.envValue)
+				ENDIF
+				BANCS.OUTPUT.successOrFailure="Y"
+                        #}
+                        ENDIF
+                #}
+                ENDIF
+        #}
+        ENDIF
+#}
+ENDIF
+
+sv_a= MID$(BANCS.INPUT.CustCardId,0,6)
+print(sv_a)
+IF  (BANCS.INPUT.DccId == "SWT")  THEN
+	IF ((sv_a != CUST.ATM.custCard8 ) AND (sv_a != CUST.ATM.custCard9 ) OR (BANCS.INPUT.ReservedField2=="CreditCard")) THEN
+		print ("Loro")
+		#--checking if record exists
+		sv_z = "Count|select count(1) from CUSTOM.C_SAF_DUP where BANK_ID = ?SVAR AND CUSTCARDID = ?SVAR"
+		print(sv_z)
+		sv_z = sv_z + " AND DCCID =?SVAR" 
+		sv_z = sv_z + " AND FORACID=?SVAR"
+		sv_z = sv_z + " AND TRANAMT=?SVAR"
+		sv_z = sv_z + " AND TRANCRNCY=?SVAR" 
+		sv_z = sv_z + " AND DEVICEID=?SVAR" 
+		sv_z = sv_z + " AND RESERVEDFIELD2=?SVAR" 
+		sv_z = sv_z + " AND PartTranType  ='C'" 
+		print(sv_z)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.CustCardId + "|" + BANCS.INPUT.DccId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +BANCS.INPUT.Foracid + "|" + BANCS.INPUT.TranAmt
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +BANCS.INPUT.TranCrncy + "|" + BANCS.INPUT.DeviceId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +BANCS.INPUT.ReservedField2
+		sv_u = urhk_dbSelectWithBind(sv_z)
+		IF ( sv_u != 0 ) then
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure="F"
+			exitscript
+		ELSE
+			print(BANCS.OUTPARAM.Count)
+			IF (BANCS.OUTPARAM.Count!="0")  then
+				BANCS.OUTPUT.RespCode = "77"
+				print(BANCS.OUTPUT.RespCode)
+				BANCS.OUTPUT.successOrFailure="F"
+				exitscript
+			ENDIF
+		ENDIF
+		BANCS.OUTPUT.successOrFailure = "S"
+		exitscript
+	ENDIF
+ENDIF
+IF (BANCS.INPUT.DccId == "C24") THEN
+	sv_x = "contra|select MERCH_PURCHASE_PAYABLE from CUSTOM.c_merchants where BANK_ID = ?SVAR AND MERCHANT_ID = ?SVAR"
+	sv_x = sv_x + " and DEL_FLG ='N' "
+	print(sv_x)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.CrForacid
+	sv_r =urhk_dbSelectWithBind(sv_x)
+	print(sv_r)
+	IF  (sv_r == "0") then
+		BANCS.INPUT.CrForacid= BANCS.OUTPARAM.contra
+		print(BANCS.INPUT.CrForacid)
+	ELSE
+		BANCS.OUTPUT.RespCode = "99"
+		BANCS.OUTPUT.successOrFailure = "F"
+		exitscript
+	ENDIF
+
+	BANCS.OUTPUT.successOrFailure = "S"
+	exitscript
+
+
+ENDIF
+
+print (BANCS.INPUT.Command)
+print (BANCS.INPUT.DccId)
+IF((FIELDEXISTS(BANCS.INPUT.Foracid) == 1) AND (BANCS.INPUT.Command !="RTXR")) THEN
+IF(BANCS.INPUT.Foracid != "")THEN
+#{
+#{
+
+sv_d = trim(BANCS.INPUT.Foracid)
+print(sv_d)
+sv_y = MID$(BANCS.INPUT.StlmntFee,24,2)
+print(sv_y)
+
+sv_q = "sol_id,schm_code,acctownershp|select sol_id,schm_code,ACCT_OWNERSHIP from tbaadm.gam "
+sv_q = sv_q + " where BANK_ID = ?SVAR AND foracid = ?SVAR"
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + sv_d
+sv_x = urhk_dbSelectWithBind(sv_q)
+print (sv_x)
+IF (sv_x==0) THEN
+	sv_k = BANCS.OUTPARAM.sol_id
+	print(sv_k)
+	sv_p = BANCS.OUTPARAM.schm_code
+	print(sv_p)
+	sv_s = BANCS.OUTPARAM.acctownershp
+	print(sv_s)
+ELSE
+	BANCS.OUTPUT.RespCode = "99"
+	BANCS.OUTPUT.successOrFailure = "F"
+	exitscript
+ENDIF
+
+
+#------------Check for office account
+
+IF  (BANCS.INPUT.DccId == "SWT")  THEN
+	IF (sv_s == "O") THEN
+		IF ((BANCS.INPUT.Command!="BLIR") AND (MID$(BANCS.INPUT.ReservedField2,0,3) != "MTN")) THEN
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			exitscript
+		ENDIF
+	ENDIF
+ENDIF
+#--------------------Float rebalancing Edwin Zico CTASK0013352 CHG0031321 24112022
+IF  ((BANCS.INPUT.DccId == "EAZ") OR (BANCS.INPUT.DccId == "OMU") OR (BANCS.INPUT.DccId == "SMS") OR (BANCS.INPUT.DccId == "WAR")  OR (BANCS.INPUT.DccId == "AIR") )THEN
+	IF ((BANCS.INPUT.ReservedField2!="BulkTR") AND (BANCS.INPUT.ReservedField2!="BulkHD") AND (BANCS.INPUT.ReservedField2!="CashIn") AND (BANCS.INPUT.ReservedField2!="CashOut")AND (BANCS.INPUT.ReservedField2!="SendMoney") AND (BANCS.INPUT.ReservedField2!="WithDrawNon")AND (BANCS.INPUT.ReservedField2!="SendMoneyEx")AND (BANCS.INPUT.ReservedField2!="PAYBILL") AND (BANCS.INPUT.ReservedField2!="MTNFLT")) THEN 
+		IF ((sv_s == "O") AND (sv_p != CUST.ATM.schmCode9 )) THEN
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			exitscript
+		ENDIF
+	ENDIF
+ENDIF
+
+IF  (BANCS.INPUT.DccId == "MTI") THEN
+
+    IF ((BANCS.INPUT.ReservedField2!="UNLOAD") AND (BANCS.INPUT.ReservedField2!="AgentUNLOAD") AND (BANCS.INPUT.ReservedField2!="ATMWD")) THEN
+
+	IF ((sv_s == "O") AND (sv_p != "INCOM")) THEN
+		BANCS.OUTPUT.RespCode = "99"
+		BANCS.OUTPUT.successOrFailure = "F"
+		exitscript
+	ENDIF
+
+    ENDIF
+
+ENDIF
+#-----------Check for blocked schm code
+
+sv_x = "Count|select count(1) from CUSTOM.C_MBM where BANK_ID = ?SVAR AND SOL_ID=?SVAR"
+sv_x = sv_x + " and SCHM_CODE=?SVAR"
+sv_x = sv_x + " and MBM_DATE=?SVAR"
+sv_x = sv_x + " and MBM_STATUS='B'"
+sv_x = sv_x + " and DEL_FLG='N'"
+
+print(sv_x)
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + sv_k + "|" + sv_p
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +left$(BANCS.STDIN.BODDate,10)
+
+sv_a = urhk_dbSelectWithBind(sv_x)
+print (sv_a)
+sv_b = BANCS.OUTPARAM.Count
+print(sv_b)
+
+IF (sv_b != "0") THEN
+	BANCS.OUTPUT.RespCode = "99"
+	BANCS.OUTPUT.successOrFailure = "F"
+	exitscript
+ENDIF
+
+IF (BANCS.INPUT.SolId != "") THEN
+
+	print(BANCS.INPUT.SolId)
+	print(BANCS.INPUT.Foracid)
+	sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+	IF (sv_h != 0) THEN
+		BANCS.OUTPUT.RespCode = "99"
+		BANCS.OUTPUT.successOrFailure = "F"
+		exitscript
+	ENDIF
+	IF ((BANCS.INPUT.Command !="MSCR") AND (BANCS.INPUT.Command !="FSIR")) THEN 
+		IF (BANCS.OUTPARAM.acctCloseflg=="Y") THEN
+			BANCS.OUTPUT.RespCode = "84"
+			BANCS.OUTPUT.successOrFailure = "F"
+			exitscript
+		ENDIF
+	ENDIF
+	print(BANCS.INPUT.TranAmt)
+	sv_s = BANCS.OUTPARAM.acctSolId
+	print(sv_s)
+	sv_c = BANCS.OUTPARAM.schmCode
+	print(sv_c)
+	sv_t = BANCS.OUTPARAM.schmType
+	print(sv_t)
+	sv_e = BANCS.OUTPARAM.EffAvailableAmt
+	print(sv_e)
+
+	#----inculusion for MTI Ministatement Checking for minimum balance
+
+	IF ((BANCS.OUTPUT.DccId=="WAR") OR (BANCS.OUTPUT.DccId=="EAZ") OR (BANCS.OUTPUT.DccId=="SMS") OR (BANCS.OUTPUT.DccId=="MTI") OR (BANCS.OUTPUT.DccId=="OMU")OR (BANCS.OUTPUT.DccId=="AIR")) THEN
+		IF  (BANCS.OUTPUT.Command == "MSIR") THEN
+			IF (sv_c != CUST.ATM.schmCode3 )THEN
+				print("MINI BAL")
+				sv_y = cdouble(BANCS.OUTPUT.TranAmt)/cdouble("100")
+				print(sv_y)
+				IF ( sv_e < sv_y ) THEN 
+					print(sv_e)
+					print(sv_y)
+					BANCS.OUTPUT.RespCode = "04"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+				ENDIF
+			ENDIF
+		ENDIF
+	
+	ENDIF
+	#----------checking for minimum balance
+
+	IF ((BANCS.INPUT.Qualifier != 9) OR (FIELDEXISTS(BANCS.INPUT.TranInfo) != 1)) THEN
+	#{
+		IF ((sv_t  == CUST.ATM.schmType1 ) AND (cdouble(sv_e) > cdouble("0"))) THEN
+		#{
+			print("in")
+			IF (sv_c !=  CUST.ATM.schmCode3 ) THEN
+			#{
+				print("in")
+				sv_x = "min_bal|SELECT ACCT_MIN_BALANCE FROM tbaadm.CSP WHERE BANK_ID = ?SVAR AND "
+				sv_x = sv_x + "SCHM_CODE=?SVAR "
+				sv_x = sv_x + "AND CRNCY_CODE=?SVAR"
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + sv_c + "|" + BANCS.OUTPUT.TranCrncy
+				sv_x = urhk_dbSelectWithBind(sv_x)
+				IF (sv_x == 0) THEN
+				#{
+					sv_m = BANCS.OUTPARAM.min_bal
+					print(sv_m)
+					IF ( (BANCS.OUTPUT.DccId=="WAR") OR (BANCS.OUTPUT.DccId=="POL") OR (BANCS.OUTPUT.DccId=="SMS") OR (BANCS.OUTPUT.DccId=="EFR") OR (BANCS.OUTPUT.DccId=="MTI") OR (BANCS.OUTPUT.DccId=="EAZ") OR (BANCS.OUTPUT.DccId=="OMU")OR (BANCS.OUTPUT.DccId=="AIR")) THEN
+					#{
+						IF (BANCS.INPUT.Command == "MSIR")THEN
+							sv_y = cdouble(BANCS.OUTPUT.TranAmt)/cdouble("100")
+							print(sv_y)
+							sv_m = sv_y + cdouble(sv_m)
+						         print(sv_m)
+						ELSE
+							sv_m = cdouble(sv_y) + cdouble(sv_m)
+							print(sv_m)
+						ENDIF
+						IF (BANCS.OUTPUT.DccId=="EFR") THEN
+						#{
+							IF (FIELDEXISTS(BANCS.INPUT.Foracid) == 1) THEN
+							#{
+								IF(BANCS.INPUT.Foracid != "" ) THEN
+								#{
+									sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+									print(sv_t)
+									IF (sv_t == 0) THEN
+									#{
+										BANCS.INPUT.SolId = BANCS.OUTPARAM.acctSolId
+										print(BANCS.INPUT.SolId)
+										BANCS.OUTPUT.SolId = BANCS.OUTPARAM.acctSolId
+										print(BANCS.OUTPUT.SolId)
+										BANCS.OUTPUT.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+										print(BANCS.OUTPUT.acctCrncyCode)
+										BANCS.OUTPUT.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+										print(BANCS.OUTPUT.EffAvailableAmt)
+										BANCS.OUTPUT.FxEffAvailableAmt = BANCS.OUTPARAM.FxEffAvailableAmt
+										print(BANCS.OUTPUT.FxEffAvailableAmt)
+										sv_c = BANCS.OUTPARAM.schmCode
+										print(sv_c)
+										sv_t = BANCS.OUTPARAM.schmType
+										print(sv_t)
+									#}
+									ELSE
+									#{
+										BANCS.OUTPUT.RespCode = "03"
+										BANCS.OUTPUT.successOrFailure="F"
+										exitscript
+									#}
+									ENDIF
+								#}
+								ENDIF
+							#}
+							ENDIF
+
+
+							IF (BANCS.INPUT.ReservedField2!="") THEN	
+								IF (BANCS.INPUT.ReservedField2=="efrstopCheque") THEN
+									CUST.ATM.eventId="STOP"
+									print(CUST.ATM.eventId)
+									CUST.ATM.eventType="STPMT"
+									print(CUST.ATM.eventType)
+								ENDIF
+								IF (BANCS.INPUT.ReservedField2=="efrwithdrawal") THEN
+									CUST.ATM.eventId="WITHDRAW"
+									print(CUST.ATM.eventId)
+									CUST.ATM.eventType="TRANF"
+									print(CUST.ATM.eventType)
+								ENDIF
+								IF (BANCS.INPUT.ReservedField2=="efrministate") THEN
+									CUST.ATM.eventId="ADHOC"
+									print(CUST.ATM.eventId)
+									CUST.ATM.eventType="PSPA"
+									print(CUST.ATM.eventType)
+								ENDIF
+							ENDIF
+								IF ((BANCS.INPUT.ReservedField2=="efrministate") OR (BANCS.INPUT.ReservedField2=="efrwithdrawal") OR (BANCS.INPUT.ReservedField2=="efrstopCheque")) THEN
+		#{
+								print(CUST.ATM.eventId)
+								print(CUST.ATM.eventType)
+								print(BANCS.OUTPUT.acctCrncyCode)
+								IF (REPEXISTS("MTT") == 0) THEN
+								#{
+									CREATEREP("MTT")
+								#}
+								ENDIF
+								IF (REPEXISTS("CUST") == 0) THEN
+								#{
+									CREATEREP("CUST")
+								#}
+								ENDIF
+								
+								IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+								#{
+									CREATECLASS("CUST", "DATA", 5)
+								#}
+								ENDIF
+								IF (CLASSEXISTS("MTT", "ChargeDetails") == 0) THEN
+								#{
+									CREATECLASS("MTT", "ChargeDetails", 5)
+								#}
+								ENDIF
+								IF (CLASSEXISTS("MTT", "InputDetails") == 0) THEN
+								#{
+									CREATECLASS("MTT", "InputDetails", 5)
+								#}
+								ENDIF
+								IF (CLASSEXISTS("MTT", "PartTranDetails") == 0) THEN
+								#{
+									CREATECLASS("MTT", "PartTranDetails", 5)
+								#}
+								ENDIF
+								
+								IF (CLASSEXISTS("MTT", "TranDetails") == 0) THEN
+								#{
+									CREATECLASS("MTT", "TranDetails", 5)
+								#}
+								ENDIF
+								
+								print(CUST.ATM.eventId)
+								CUST.DATA.chargeId = CUST.ATM.eventId
+								
+								print(BANCS.OUTPUT.acctCrncyCode)
+								CUST.DATA.Crrncy = BANCS.OUTPUT.acctCrncyCode
+								
+								print(BANCS.OUTPUT.TranAmt)
+								CUST.DATA.Amt = BANCS.OUTPUT.TranAmt
+								
+								MTT.TranDetails.TranDate = "0"
+								MTT.TranDetails.TranType = "C"
+								MTT.TranDetails.TranSubType = "CR"
+								
+								BANCS.INPARAM.PostTranFlg = "X"
+								BANCS.INPARAM.CommitFlg = "N"
+								BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+								#BANCS.INPARAM.ValidationFlag            = "Y"
+								BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+								BANCS.INPARAM.ErrorCheckForLuw = "N"
+								BANCS.INPARAM.CheckExceptions = "Y"
+								#BANCS.INPARAM.proxyPostFlg              = "Y"
+								
+								sv_a = urhk_MTTS_Initialize("")
+								print(sv_a)
+								
+								
+								MTT.TranDetails.TranDateDiff = "0"
+								MTT.TranDetails.IgnoreExcp = "I"
+								#MTT.TranDetails.Consolidate = "N"
+								#MTT.TranDetails.ReversalFlag = "N"
+								MTT.TranDetails.Remarks = "CURRENCY EXCHANGE - DX"
+								MTT.TranDetails.PostFlag = "X"
+								#MTT.TranDetails.ErrorCheckForLuw = "N"
+								
+								#MTT.TranDetails.IgnoreExcp="Y"
+								MTT.TranDetails.Consolidate = "Y"
+								#MTT.TranDetails.ReversalFlag="Y"
+								
+								sv_b = urhk_MTTS_DefineTransaction("CHRG")
+								print(sv_b)
+								
+								sv_r = urhk_MTTS_PopulateInputDetails("")
+								print(sv_r)
+								
+								IF (sv_r != "0") THEN
+								#{
+									sv_u = urhk_TBAF_DispMesg("Unable to Define MTT transaction")
+									GOTO FINISH
+								#}
+								ENDIF
+								
+								MTT.ChargeDetails.EventType = CUST.ATM.eventType
+								#print(BANCS.INPUT.chargeId)
+								#print(BANCS.INPUT.Crrncy)
+								MTT.ChargeDetails.EventId = CUST.DATA.chargeId
+								MTT.ChargeDetails.ChrgInpCrncy = BANCS.STDIN.homeCrncyCode	
+								MTT.PartTranDetails.ValueDateDiff = "0"
+								MTT.ChargeDetails.ChrgInpAmount = CUST.DATA.Amt
+								
+								sv_a = urhk_MTTS_InitPtt("CHRG")
+								print(sv_a)
+
+								sv_r = urhk_MTTS_ReportErrorCondition("")
+								print(sv_r)
+								print (MTT.Error.Description)
+								
+								print(MTT.ChargeDetails.MultipleCrncyChrg)
+								
+								sv_r = urhk_MTTS_PopulateInputDetails("")
+								print(sv_r)
+								
+								
+								if (sv_a != 0) then
+								#{
+									sv_a = urhk_MTTS_ReportErrorCondition("")
+									sv_y = urhk_SetOrbOut("F|ERROR")
+									GOTO ENDOFSCRIPT
+								#}
+								endif
+								
+								
+								if (sv_a == 0) then
+								#{
+									
+									sv_u = urhk_MTTS_GetPttRec("CHRG")
+									print(sv_u)
+									
+									
+									if (sv_u == 0) then
+									#{
+										
+										print(MTT.ChargeDetails.CalculatedAmount)
+										print(MTT.ChargeDetails.ActualAmount)
+										print(MTT.ChargeDetails.CollectionCrncy)
+										print(MTT.ChargeDetails.ModifyFlg)
+										print(MTT.PartTranDetails.RefCurrency)
+										print(MTT.PartTranDetails.Account)
+										print(MTT.PartTranDetails.RefAmount)
+										print(MTT.PartTranDetails.Amount)
+										print(MTT.PartTranDetails.Particulars)
+										IF(sv_u == 0 ) THEN
+											sv_b = CDOUBLE(MTT.PartTranDetails.RefAmount)
+											print(sv_b)
+											print(MTT.PartTranDetails.RefAmount)
+
+											sv_g = CDOUBLE(BANCS.OUTPUT.EffAvailableAmt)
+											print(sv_g)
+											IF (sv_c != "SB190") THEN
+												print("charge")
+												IF ((BANCS.INPUT.Command=="FSIS") OR (BANCS.INPUT.ReservedField2=="efrstopCheque") ) THEN
+													sv_y = CDOUBLE(MTT.PartTranDetails.RefAmount)
+													print(sv_y)
+													IF ( sv_g < sv_y ) THEN 
+														print(sv_g)
+														print(sv_y)
+														BANCS.OUTPUT.RespCode = "04"
+														BANCS.OUTPUT.successOrFailure = "F"
+														goto ENDOFSCRIPT
+													ENDIF
+												ENDIF
+												IF (BANCS.INPUT.ReservedField2=="efrwithdrawal") THEN
+													print(BANCS.INPUT.TranAmt)
+													sv_l = CDOUBLE(BANCS.INPUT.TranAmt)/cdouble("100")
+													print(sv_l)
+													sv_i = CDOUBLE(MTT.PartTranDetails.RefAmount)
+													print(sv_i)
+													sv_y = sv_l + CDOUBLE(MTT.PartTranDetails.RefAmount)
+													print(sv_y)
+													IF ( sv_g < sv_y ) THEN 
+														print(sv_g)
+														print(sv_y)
+														BANCS.OUTPUT.RespCode = "04"
+														BANCS.OUTPUT.successOrFailure = "F"
+														goto ENDOFSCRIPT
+													ENDIF
+												ENDIF
+											ENDIF
+										ENDIF
+									#}
+									else
+									#{
+										sv_a = urhk_MTTS_ReportErrorCondition("")
+										sv_u = urhk_b2k_PrintRepos("MTT")
+										sv_u = urhk_b2k_PrintRepos("BANCS")
+										sv_y = urhk_SetOrbOut("F|ERROR")
+										GOTO ENDOFSCRIPT
+									#}
+									endif
+									
+								#}
+								endif
+								sv_r = urhk_MTTS_EndDefinition("")
+								print(sv_r)
+								
+								sv_r = urhk_MTTS_Close("")
+								print(sv_r)
+							#}
+							ENDIF
+							IF (BANCS.INPUT.ReservedField2=="efrministate") THEN
+							#{
+								print(BANCS.INPUT.Foracid)
+
+								CUST.DATA.CHARGEDFLG = "N"
+								print(CUST.DATA.CHARGEDFLG)
+								CUST.DATA.NORECRDS = "20"
+								print(CUST.DATA.NORECRDS)
+								CUST.DATA.STATUS = "N"
+								print(CUST.DATA.STATUS)
+
+								sv_s = "INSERT INTO "
+								sv_s = sv_s + " CUSTOM.EFR_STATEMENTS "
+								sv_s = sv_s + " ( "
+								sv_s = sv_s + " FORACID, "
+								sv_s = sv_s + " CHARGED_FLG, " 
+								sv_s = sv_s + " NO_RECRDS, "
+								sv_s = sv_s + " STATUS, "
+								sv_s = sv_s + " STATM_DATE, "
+								sv_s = sv_s + " BANK_ID "
+								sv_s = sv_s + " ) "
+								sv_s = sv_s + " values "
+								sv_s = sv_s + " ( "
+								sv_s = sv_s + " ?SVAR,"
+								sv_s = sv_s + " ?SVAR, "
+								sv_s = sv_s + " ?SVAR,"
+								sv_s = sv_s + " ?SVAR, "
+								sv_s = sv_s + " ?SVAR, "
+								sv_s = sv_s + " ?SVAR )"
+
+								BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + CUST.DATA.CHARGEDFLG +"|"+ CUST.DATA.NORECRDS + "|" + CUST.DATA.STATUS + "|"+ BANCS.STDIN.sysDate +"|" + BANCS.STDIN.contextBankId
+								print(BANCS.INPARAM.BINDVARS)
+								print(sv_s)
+								sv_d = urhk_dbSqlWithBind(sv_s)
+
+								IF (sv_d == 0) then
+								#{
+									#sv_d = urhk_dbSqlWithBind("COMMIT")
+								#}
+								ENDIF
+							#}
+							ENDIF
+						ENDIF
+					ELSE
+						#+++++ exempting UNHCR Charge
+						if (fieldexists(BANCS.INPUT.CustCardId)==1) then
+							CUST.DATA.fieldTwo = mid$(BANCS.INPUT.CustCardId,0,6)
+						else
+							CUST.DATA.fieldTwo = ""
+						endif
+						print(CUST.DATA.fieldTwo)
+						if(CUST.DATA.fieldTwo != "519895")then
+							sv_m = cdouble("30") + cdouble(sv_m)
+							print(sv_m)
+						else
+							sv_m = 0
+						endif
+					#}
+					ENDIF
+
+					sv_n = LEFT$(BANCS.INPUT.TranAmt,14)
+					print(sv_n)
+
+					sv_a = cdouble(sv_e) - cdouble(sv_n)
+					print(sv_a)
+
+					IF (sv_m > sv_a) THEN
+						IF ( (BANCS.OUTPUT.DccId=="WAR") OR (BANCS.OUTPUT.DccId=="POL") OR (BANCS.OUTPUT.DccId=="OMU") OR (BANCS.OUTPUT.DccId=="SMS") OR (BANCS.OUTPUT.DccId=="MTI") OR (BANCS.OUTPUT.DccId=="EAZ")OR (BANCS.OUTPUT.DccId=="AIR")) THEN
+							IF (BANCS.INPUT.Command == "MSIR") THEN
+								BANCS.OUTPUT.RespCode = "04"
+								BANCS.OUTPUT.successOrFailure = "F"
+								exitscript
+							ENDIF
+						ENDIF
+						IF ((BANCS.INPUT.Command == "CWDR") OR (BANCS.INPUT.Command == "PATR") OR (BANCS.INPUT.Command == "PARR") OR (BANCS.INPUT.Command == "DBTR") OR (BANCS.INPUT.Command == "PRCR")) THEN
+							IF ((MID$(BANCS.INPUT.ReservedField2,0,7) != "AUTOTOD") AND (BANCS.INPUT.DccId != "EFR")) THEN
+								IF ((BANCS.INPUT.Command == "PATR") AND (BANCS.INPUT.ReservedField2 =="UNBLOCK")) THEN
+									IF (BANCS.INPUT.CrForacid!="")  THEN
+										BANCS.OUTPUT.RespCode = "04"
+										BANCS.OUTPUT.successOrFailure = "F"
+										exitscript
+									ENDIF
+								ELSE
+									BANCS.OUTPUT.RespCode = "04"
+									BANCS.OUTPUT.successOrFailure = "F"
+									exitscript
+								ENDIF
+							ENDIF
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+
+	IF (BANCS.INPUT.SolId != sv_s) THEN
+		#BANCS.OUTPUT.SolId = BANCS.OUTPARAM.acctSolId
+		BANCS.OUTPUT.SolId = sv_s 
+		print(BANCS.OUTPUT.SolId)
+	ENDIF
+#}
+ENDIF
+#}
+ENDIF
+ENDIF
+Print(BANCS.INPUT.CrForacid)
+print(BANCS.INPUT.Foracid)
+IF (FIELDEXISTS(BANCS.INPUT.CrForacid)) THEN
+	IF  (BANCS.INPUT.CrSolId != "") THEN
+	IF (strlen(BANCS.INPUT.CrForacid) > 0) THEN
+	#{
+		print(BANCS.INPUT.CrSolId)
+		print(BANCS.INPUT.CrForacid)
+		sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+		IF (sv_h != 0) THEN
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+			exitscript
+		ENDIF
+		print(BANCS.OUTPARAM.acctSolId)
+		print(sv_s)
+		#------Change for Eazzy
+		IF ((BANCS.OUTPUT.DccId=="WAR") OR (BANCS.OUTPUT.DccId=="EAZ") OR (BANCS.OUTPUT.DccId=="SMS") OR (BANCS.OUTPUT.DccId=="OMU")OR (BANCS.OUTPUT.DccId=="AIR")) THEN
+			IF ((BANCS.OUTPUT.ReservedField1=="MinStat")OR (BANCS.OUTPUT.ReservedField1=="BalEnq")) THEN
+				sv_z= BANCS.INPUT.CrForacid
+				print(sv_z)
+				sv_x = "originalSol|select sol_id from tbaadm.gam where BANK_ID = ?SVAR AND foracid=?SVAR"
+				sv_x = sv_x + " and DEL_FLG ='N' "
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + sv_z
+				sv_r =urhk_dbSelectWithBind(sv_x)
+				print(sv_r)
+				IF (sv_r == "0") THEN
+					BANCS.OUTPUT.CrSolId = BANCS.OUTPARAM.originalSol
+					sv_s = BANCS.OUTPARAM.originalSol
+					print(BANCS.OUTPUT.CrSolId)
+				ENDIF
+			ENDIF
+		ENDIF
+
+		#-------change for eBanking
+		IF (BANCS.INPUT.DccId != "BWY")  THEN
+			print(BANCS.OUTPUT.CrSolId)
+			sv_z= BANCS.INPUT.CrForacid
+			print(sv_z)
+			sv_x = "originalSol|select sol_id from tbaadm.gam where BANK_ID = ?SVAR AND foracid=?SVAR"
+			sv_x = sv_x + " and DEL_FLG ='N' "
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + sv_z
+			sv_r =urhk_dbSelectWithBind(sv_x)
+			print(sv_r)
+			IF (sv_r == "0") THEN
+				BANCS.OUTPUT.CrSolId = BANCS.OUTPARAM.originalSol
+				print(BANCS.OUTPUT.CrSolId)
+			ENDIF
+		ELSE
+			sv_z= BANCS.INPUT.CrForacid
+			print(sv_z)
+			sv_x = "originalSol|select sol_id from tbaadm.gam where BANK_ID = ?SVAR AND foracid=?SVAR"
+			sv_x = sv_x + " and DEL_FLG ='N' "
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + sv_z
+			sv_r =urhk_dbSelectWithBind(sv_x)
+			print(sv_r)
+			IF (sv_r == "0") THEN
+				BANCS.OUTPUT.CrSolId = BANCS.OUTPARAM.originalSol
+				print(BANCS.OUTPUT.CrSolId)
+			ENDIF
+			
+		ENDIF
+	#}
+	ENDIF
+	ENDIF
+ENDIF
+
+#---------Check for Frozen,Account Status
+IF((FIELDEXISTS(BANCS.INPUT.Foracid) == 1) AND (BANCS.INPUT.Command !="RTXR")) THEN
+IF(BANCS.INPUT.Foracid != "")THEN
+#{
+#{
+sv_a = "OWNERSHIP|select gam.ACCT_OWNERSHIP from tbaadm.gam where BANK_ID = ?SVAR AND gam.foracid = ?SVAR"
+print(sv_a)
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+sv_r = urhk_dbSelectWithBind(sv_a)	
+print(sv_r)
+IF (sv_r == 0) THEN
+	print(BANCS.OUTPARAM.OWNERSHIP)
+ENDIF
+IF (BANCS.OUTPARAM.OWNERSHIP !="O") THEN 
+	sv_a = "frezCode,acctStatus|select nvl(trim(gam.frez_code),'N'),smt.acct_status from tbaadm.gam,tbaadm.smt " 
+	sv_a = sv_a + " where GAM.BANK_ID = ?SVAR AND gam.acid = smt.acid and gam.foracid = ?SVAR AND GAM.bank_id = sMT.bank_id "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+	sv_r = urhk_dbSelectWithBind(sv_a)	
+	print(sv_r)
+	IF(sv_r == 0) THEN
+		print(BANCS.OUTPARAM.frezCode)
+		print(BANCS.OUTPARAM.acctStatus)
+		print(BANCS.INPUT.Command)
+		print(BANCS.OUTPUT.DccId)
+	ENDIF
+	IF (BANCS.INPUT.Command == "MSIR") THEN
+		print("MTI-mini")
+		IF ( (BANCS.OUTPUT.DccId=="WAR") OR (BANCS.OUTPUT.DccId=="OMU") OR (BANCS.OUTPUT.DccId=="SMS") OR(BANCS.OUTPUT.DccId=="MTI") OR (BANCS.OUTPUT.DccId=="EAZ")OR (BANCS.OUTPUT.DccId=="AIR")) THEN 
+			print("MTI-mini")
+			IF (BANCS.OUTPARAM.frezCode == "D") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF (BANCS.OUTPARAM.frezCode == "T") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				 exitscript
+			ENDIF
+			call ("copyBancsToCustC24.scr")
+			call ("Ministatement.scr")
+			call ("copyCust24ToBancs.scr")
+		        print ("success")
+		ENDIF
+			
+	ENDIF
+
+	IF (BANCS.INPUT.Command == "CWDR") THEN
+			
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			 print("niko ndani ")
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		
+	ENDIF
+	IF (BANCS.INPUT.Command == "CWRR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		
+	ENDIF
+	IF  (BANCS.INPUT.Command == "PATR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		
+	ENDIF
+	IF  (BANCS.INPUT.Command == "PARR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		
+	ENDIF
+	IF (BANCS.OUTPUT.DccId !="C24")  THEN
+		IF (BANCS.INPUT.Command == "DBTR") THEN
+			IF (BANCS.OUTPARAM.frezCode == "D") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF (BANCS.OUTPARAM.frezCode == "T") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF ((BANCS.OUTPARAM.acctStatus != "A") AND (BANCS.OUTPARAM.acctStatus != "I")) THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+		ENDIF
+		IF (BANCS.INPUT.Command == "DBRR")THEN
+			IF (BANCS.OUTPARAM.frezCode == "D") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF (BANCS.OUTPARAM.frezCode == "T") THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+			IF ((BANCS.OUTPARAM.acctStatus != "A") AND (BANCS.OUTPARAM.acctStatus != "I")) THEN
+				BANCS.OUTPUT.RespCode = "99"	
+				BANCS.OUTPUT.successOrFailure = "F" 
+				exitscript	
+			ENDIF
+		ENDIF
+	ENDIF
+	IF  (BANCS.INPUT.Command == "PRCR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		
+	ENDIF
+	IF  (BANCS.INPUT.Command == "PRRR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript
+		ENDIF
+	ENDIF
+	IF  (BANCS.INPUT.Command == "CDAR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF ((BANCS.OUTPARAM.acctStatus != "A") AND (BANCS.OUTPARAM.acctStatus != "I")) THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+	ENDIF
+	IF  (BANCS.INPUT.Command == "TRTR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.INPUT.DccId == "POL") THEN
+			IF (BANCS.OUTPUT.ReservedField2=="EAZYBIZCHRG") THEN
+				print("okayyy")
+			ELSE
+				IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+				#{
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					EXITSCRIPT
+				#}
+				ENDIF
+			ENDIF
+		ELSE
+			IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			#{
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+				EXITSCRIPT
+			#}
+			ENDIF
+		ENDIF
+	ENDIF
+	IF  (BANCS.INPUT.Command == "TRRR") THEN
+		IF (BANCS.OUTPARAM.frezCode == "D") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.OUTPARAM.frezCode == "T") THEN
+			BANCS.OUTPUT.RespCode = "99"	
+			BANCS.OUTPUT.successOrFailure = "F" 
+			exitscript	
+		ENDIF
+		IF (BANCS.INPUT.DccId == "POL") THEN
+			IF (BANCS.OUTPUT.ReservedField2=="EAZYBIZCHRG") THEN
+				print("okayyy")
+			ELSE
+				IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+				#{
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					EXITSCRIPT
+				#}
+				ENDIF
+			ENDIF
+		ELSE
+			IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+			#{
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+				EXITSCRIPT
+			#}
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+#}
+ENDIF
+#}
+ENDIF
+
+IF (BANCS.INPUT.CrForacid!="") THEN
+	IF  (BANCS.INPUT.DccId == "WPD")  THEN
+		IF (BANCS.INPUT.ReservedField2 != "") THEN 
+			CUST.ATM.reversed2 = BANCS.INPUT.ReservedField2
+			print(CUST.ATM.reversed2)
+			sv_k = MID$(BANCS.INPUT.ReservedField2,0,5)
+			print(sv_k)
+			sv_w = MID$(BANCS.INPUT.ReservedField2,5,14)
+			print(sv_w)
+			if (sv_k =="BILL:") THEN
+				sv_v=mid$(CUST.ATM.reversed2,19,20)
+				print(sv_v)
+				BANCS.OUTPUT.RefNum = trim(sv_v)
+				print(BANCS.OUTPUT.RefNum)
+				sv_z = BANCS.INPUT.ReservedField1
+				print(sv_z)
+				sv_x = "acctnum|select ACCTNUM from custom.c_cic_bills where REFNUM=?SVAR and BANK_ID=?SVAR "
+				sv_x = sv_x + " and DEL_FLG ='N' "
+				BANCS.INPARAM.BINDVARS =sv_z + "|"+ BANCS.STDIN.contextBankId
+				sv_r =urhk_dbSelectWithBind(sv_x)
+				print(sv_r)
+				IF (sv_r == "0") THEN
+					CUST.ATM.crForacid1 = BANCS.OUTPARAM.acctnum
+					print(CUST.ATM.crForacid1)
+				ELSE
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+					exitscript
+				ENDIF
+			
+
+				IF (CUST.ATM.crForacid1 == "XXXXXX") THEN
+					sv_u = "billercode,accountnumber,accountname |"
+					sv_u = sv_u + " select FREE_TEXT5,FREE_TEXT1,BILLER_NAME from tbaadm.brgt where FREE_TEXT1=?SVAR "
+					print(sv_u)
+					BANCS.INPARAM.BINDVARS =CUST.ATM.crForacid1
+					sv_w=urhk_dbSelectWithBind(sv_u)
+					print(sv_w)
+					IF (sv_w !=0) THEN 
+						BANCS.OUTPUT.RespCode = "99"
+						BANCS.OUTPUT.successOrFailure="F"
+						exitscript
+					ELSE
+						CUST.ATM.billercode = BANCS.OUTPARAM.billercode
+						print(CUST.ATM.billercode)
+						CUST.ATM.accountnumber = BANCS.OUTPARAM.accountnumber
+						print(CUST.ATM.accountnumber)
+						CUST.ATM.accountname = BANCS.OUTPARAM.accountname
+						print(CUST.ATM.accountname)
+						print(BANCS.INPUT.CardAcceptorName)
+						print(BANCS.INPUT.TranAmt)
+						sv_g = MID$(BANCS.INPUT.TranAmt,0,14)
+						print(sv_g)
+						CUST.ATM.amountsvg = cdouble(sv_g)
+						print(CUST.ATM.amountsvg)
+
+						sv_q = " Eslipdetails| select custom.TPB_PKG.CALLUPGBVWSFUNCTION(?SVAR,?SVAR,?SVAR) from dual"
+						print(sv_q)
+						BANCS.INPARAM.BINDVARS=CUST.ATM.billercode+ "|"+ BANCS.OUTPUT.RefNum +"|"+ CUST.ATM.amountsvg
+
+						sv_w=urhk_dbSelectWithBind(sv_q)
+						print(sv_w)
+						IF ( sv_w != 0 ) then
+							BANCS.OUTPUT.RespCode = "99"
+							BANCS.OUTPUT.successOrFailure="F"
+							exitscript
+						ELSE
+							CUST.ATM.Eslipdetails = BANCS.OUTPARAM.Eslipdetails
+							print(CUST.ATM.Eslipdetails)
+							IF (CUST.ATM.Eslipdetails=="") THEN
+								BANCS.OUTPUT.RespCode = "99"
+								BANCS.OUTPUT.successOrFailure="F"
+								exitscript
+							ELSE
+								sv_s = CUST.ATM.Eslipdetails
+								print(sv_s)
+								sv_u = "statusbill,EslipDetails1|select substr(?SVAR,1,instr(?SVAR,'?') - 1) ,substr(?SVAR,instr(?SVAR,'?') + 1) from dual "
+								print(sv_u)
+								BANCS.INPARAM.BINDVARS=sv_s +"|"+sv_s +"|"+sv_s +"|"+sv_s 
+								sv_w=urhk_dbSelectWithBind(sv_u)
+								print(sv_w)
+								CUST.ATM.statusbill = BANCS.OUTPARAM.statusbill
+								print(CUST.ATM.statusbill)
+								CUST.ATM.EslipDetails1 = BANCS.OUTPARAM.EslipDetails1
+								print(CUST.ATM.EslipDetails1)
+
+								IF (CUST.ATM.statusbill=="false") THEN
+									BANCS.OUTPUT.RespCode = "99"
+									BANCS.OUTPUT.successOrFailure="F"
+									exitscript
+								ELSE
+									BANCS.OUTPUT.successOrFailure="S"
+								ENDIF
+							ENDIF
+						ENDIF
+					ENDIF
+				ENDIF
+			endif
+		ENDIF	
+	ENDIF
+ENDIF
+IF ((BANCS.INPUT.DccId =="EAZ") OR (BANCS.INPUT.DccId=="TPG")) THEN
+	IF (BANCS.INPUT.ReservedField2 !="") THEN
+		IF ((BANCS.INPUT.ReservedField2=="P2PIntraMerWCB")  OR (BANCS.INPUT.ReservedField2 =="PAYPALWD") OR (BANCS.INPUT.ReservedField2=="P2PIntraMer") OR (BANCS.INPUT.ReservedField2=="P2PIntraMerPayBill") ) THEN
+			sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+			print(sv_t)
+			IF (sv_t == 0) THEN
+				print(BANCS.INPUT.CrForacid)
+				CUST.ATM.solidsh = BANCS.OUTPARAM.acctSolId
+				#print(CUST.ATM.solidsh)
+				CUST.ATM.schmcodesh = BANCS.OUTPARAM.schmCode
+				#print(CUST.ATM.schmcodesh)
+				CUST.ATM.schmType = BANCS.OUTPARAM.schmType
+				print(CUST.ATM.schmType)
+				CUST.ATM.clearBalance = BANCS.OUTPARAM.clearBalance
+				print(CUST.ATM.clearBalance)
+				CUST.ATM.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+				print(CUST.ATM.EffAvailableAmttr)
+				CUST.ATM.lienAmt = BANCS.OUTPARAM.lienAmt
+				print(CUST.ATM.lienAmt)
+				IF (FIELDEXISTS(BANCS.OUTPUT.StlmntFee)) THEN
+					#print(BANCS.OUTPUT.StlmntFee)
+					IF (BANCS.OUTPUT.StlmntFee == "") THEN
+						CUST.ATM.FeeAmount = "0"
+					ELSE
+						CUST.ATM.FeeAmount = mid$(BANCS.OUTPUT.StlmntFee,20,12)
+						#print(CUST.ATM.FeeAmount)
+						CUST.ATM.FeeAmount = CDOUBLE(CUST.ATM.FeeAmount)/CDOUBLE("100")
+						#print(CUST.ATM.FeeAmount)
+					ENDIF
+					
+					IF (CDOUBLE(CUST.ATM.EffAvailableAmttr) < CDOUBLE(CUST.ATM.FeeAmount)) THEN
+						IF (BANCS.INPUT.DccId =="EAZ") THEN
+							IF (CINT(CUST.ATM.lienAmt) > 0)  THEN
+								IF ((CINT(CUST.ATM.clearBalance) < 0) OR (CINT(CUST.ATM.clearBalance) ==0) OR (CINT(CUST.ATM.clearBalance) < CINT(CUST.ATM.lienAmt))) THEN 
+									IF (FIELDEXISTS(CUST.ATM.FeeAmount)) THEN
+										print(CUST.ATM.FeeAmount)
+										CUST.ATM.FeeAmountabs = CDOUBLE(CUST.ATM.FeeAmount)
+										print(CUST.ATM.FeeAmountabs)
+										CUST.ATM.ReservedField3abs = LTRIM(BANCS.OUTPUT.ReservedField3,'0')
+										print(CUST.ATM.ReservedField3abs)
+										BANCS.INPUT.Fee=""
+										print(BANCS.INPUT.Fee)
+										BANCS.OUTPUT.Fee=""
+										print(BANCS.OUTPUT.Fee)
+										IF (FIELDEXISTS(CUST.ATM.FeeAmountabs)) THEN
+											#print(CUST.ATM.FeeAmountabs)
+											#call("merlimercheapay.scr")
+											BANCS.OUTPUT.RespCode = "04"
+											BANCS.OUTPUT.successOrFailure = "F"
+											exitscript
+										ENDIF
+										EXITSCRIPT
+									ENDIF
+								ENDIF
+							ENDIF
+						ENDIF
+						BANCS.OUTPUT.RespCode = "04"
+						BANCS.OUTPUT.successOrFailure = "F"
+						exitscript
+						#call("copyBancsToCustC24.scr")
+						#call("feesadd01.scr")
+						#call("copyCust24ToBancs.scr")
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+
+IF (BANCS.INPUT.Command == "PATR") THEN
+    IF (((BANCS.INPUT.DccId=="EAZ")or (BANCS.INPUT.DccId=="OMU")) AND (BANCS.INPUT.ReservedField2=="LAPAY")) THEN
+    #CUST.ATM.Param = "'" + BANCS.INPUT.SerialNum +  "' '" + BANCS.INPUT.Foracid + "' '" + BANCS.INPUT.CrForacid + "' '" + BANCS.OUTPUT.CardAcceptorName + "' '" + BANCS.INPUT.ReservedField3 + "' '"+ BANCS.OUTPUT.TranAmt + "' @s"
+    #print(CUST.ATM.Param)
+    #sv_z = "babx4061 $B2K_SESSION_ID LAAPayment.scr " + CUST.ATM.Param
+    #print(sv_z)
+    #sv_r=system(sv_z)
+
+    #print(sv_r)
+
+                        call ("copyBancsToCustC24.scr")
+                        CALL("LAAPayment.scr")
+                        call ("copyCust24ToBancs.scr")
+    ENDIF
+
+ENDIF
+IF (BANCS.INPUT.DccId =="POL")  THEN
+	IF (BANCS.INPUT.ReservedField2 !="") THEN
+		IF (BANCS.INPUT.ReservedField2 =="EAZYBIZCHRG") THEN
+			sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+			print(sv_t)
+			IF (sv_t == 0) THEN
+				CUST.ATM.solidsh = BANCS.OUTPARAM.acctSolId
+				#print(CUST.ATM.solidsh)
+				CUST.ATM.schmcodesh = BANCS.OUTPARAM.schmCode
+				#print(CUST.ATM.schmcodesh)
+				CUST.ATM.schmType = BANCS.OUTPARAM.schmType
+				print(CUST.ATM.schmType)
+				CUST.ATM.clearBalance = BANCS.OUTPARAM.clearBalance
+				print(CUST.ATM.clearBalance)
+				CUST.ATM.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+				print(CUST.ATM.EffAvailableAmttr)
+				CUST.ATM.lienAmt = BANCS.OUTPARAM.lienAmt
+				print(CUST.ATM.lienAmt)
+				CUST.ATM.FeeAmount = CDOUBLE(BANCS.OUTPUT.TranAmt)/CDOUBLE("100")
+				print(CUST.ATM.FeeAmount)
+				IF (FIELDEXISTS(CUST.ATM.FeeAmount)) THEN
+					call("copyBancsToCustC24.scr")
+					call("feesadd01pol.scr")
+					call("copyCust24ToBancs.scr")
+					IF (FIELDEXISTS(CUST.ATM.Sucessfail1)) THEN
+						IF (CUST.ATM.Sucessfail1=="N") THEN
+							CUST.ATM.errMsg ="Check Data and Account "
+							BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+							 BANCS.OUTPUT.successOrFailure = "F"
+							 BANCS.OUTPUT.RespCode = "99"
+							 exitscript
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+
+IF ( BANCS.INPUT.Command ==  "MSCR" ) THEN
+#{
+        call("CDProcessorUSTR.scr")
+#}
+ENDIF
+	IF ((BANCS.INPUT.DccId=="WAR") AND (BANCS.INPUT.ReservedField2=="LAPAY")) THEN 
+                        call ("copyBancsToCustC24.scr")
+                        CALL("LAAPayment.scr")
+                        call ("copyCust24ToBancs.scr")
+	ENDIF
+	#ENDIF
+
+ENDOFSCRIPT:
+IF(CUST.ATM.errMsg != "" ) THEN
+#{
+    print(CUST.ATM.errMsg)
+    BANCS.OUTPUT.successOrFailure = "F"
+    BANCS.OUTPUT.RespCode = "99"
+#}
+ENDIF
+
+
+EXITSCRIPT
+
+trace off
+end-->
+

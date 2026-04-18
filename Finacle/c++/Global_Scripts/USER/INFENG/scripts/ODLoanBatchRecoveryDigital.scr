@@ -1,0 +1,493 @@
+#===============================================================================
+# IMPORTANT: HTARACO Batch
+# category: Script Name Based
+# script: ODLoanBatchRecoveryDigital.scr
+# Author : Dennis Chirchir
+#reploy
+#===============================================================================
+<--START
+CHECKSUM="3db140f9b87703bd8fd7b1a2621962aeceb64d3cc76bf198abd494b5df851cda"
+	TRACE ON
+
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("CUSTOM")==0)then
+                createrep("CUSTOM")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(classexists("CUSTOM","GLBDATA")==0)then
+                createclass("CUSTOM","GLBDATA",5)
+        endif
+
+	#---------------------------------------------------------------------------------------
+	# Pick data for recovery
+	#---------------------------------------------------------------------------------------
+	sv_a = "OdForacid,schmCode,OdClrBal,pendingPrin,pendingInt,chrgOffDate,opAccount|"
+	sv_a = sv_a + " select * from ( "
+	sv_a = sv_a + " select foracid,schm_code,clr_bal_amt,(CHRGE_OFF_PRINCIPAL-PRINCIPAL_RECOVERY) as pending_prin,(INT_SUSPENSE_AMT-INTEREST_RECOVERY) as pending_int,chrge_off_date, "
+	sv_a = sv_a + " (Select free_text_1 from tbaadm.gac where gam.acid=acid and gam.bank_id=bank_id) as oper_acct from tbaadm.gam,tbaadm.ta_cot a "
+	sv_a = sv_a + " where gam.acid=a.acid and gam.bank_id = ?SVAR and a.bank_id=gam.bank_id "
+	sv_a = sv_a + " and acct_cls_flg='N' and CHRGE_OFF_DATE is not null "
+	sv_a = sv_a + " and (Select free_text_1 from tbaadm.gac where gam.acid=acid and gam.bank_id=bank_id) in(select foracid from tbaadm.gam where clr_bal_amt>0) "
+	sv_a = sv_a + " and schm_code in('OD541','OD542','OD543','OD544','OD545','OD546','OD549','OD552','DL002','ML001') and sol_id = ?SVAR "
+	sv_a = sv_a + " and gam.acid not in(select acid from tbaadm.gac where free_text_12 ='FRAUD' and gac.acid=gam.acid and bank_id = ?SVAR )) "
+	sv_a = sv_a + " where (PENDING_PRIN>0 or PENDING_INT>0) "
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(sv_a)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        #{
+		EQSRV.GLBDATA.OdForacid = BANCS.OUTPARAM.OdForacid
+		EQSRV.GLBDATA.schmCode = BANCS.OUTPARAM.schmCode
+		EQSRV.GLBDATA.OdClrBal= BANCS.OUTPARAM.OdClrBal
+		EQSRV.GLBDATA.pendingPrin = BANCS.OUTPARAM.pendingPrin
+		EQSRV.GLBDATA.pendingInt = BANCS.OUTPARAM.pendingInt
+		EQSRV.GLBDATA.chrgOffDate = BANCS.OUTPARAM.chrgOffDate
+		EQSRV.GLBDATA.opAccount = BANCS.OUTPARAM.opAccount
+		print(EQSRV.GLBDATA.OdForacid)
+		print(EQSRV.GLBDATA.schmCode)
+		print(EQSRV.GLBDATA.OdClrBal)
+		print(EQSRV.GLBDATA.pendingPrin)
+		print(EQSRV.GLBDATA.pendingInt)
+		print(EQSRV.GLBDATA.chrgOffDate)
+		print(EQSRV.GLBDATA.opAccount)
+
+                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.opAccount)
+                if(sv_u == 0)then
+                #{
+                        EQSRV.GLBDATA.icrEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        EQSRV.GLBDATA.icrclearBalance = BANCS.OUTPARAM.clearBalance
+                        EQSRV.GLBDATA.icrsanLim = BANCS.OUTPARAM.sanctionLimit
+                        EQSRV.GLBDATA.icrdrawingPower = BANCS.OUTPARAM.drawingPower
+                        EQSRV.GLBDATA.icravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        EQSRV.GLBDATA.icrlienamt = BANCS.OUTPARAM.lienAmt
+			EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+			print(EQSRV.GLBDATA.icrEffBal)
+			print(EQSRV.GLBDATA.icrclearBalance)
+			print(EQSRV.GLBDATA.icrsanLim)
+			print(EQSRV.GLBDATA.icravalAmt)
+			print(EQSRV.GLBDATA.icrlienamt)
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                #}
+                else
+                #{
+                        EQSRV.GLBDATA.icrdrawingPower = 0
+                        EQSRV.GLBDATA.icrEffBal = 0
+                        EQSRV.GLBDATA.icrclearBalance = 0
+                        EQSRV.GLBDATA.icrsanLim = 0
+                        EQSRV.GLBDATA.icravalAmt = 0
+                        EQSRV.GLBDATA.icrlienamt = 0
+			EQSRV.GLBDATA.acid = ""
+                #}
+                endif
+
+		if((cdouble(EQSRV.GLBDATA.pendingPrin)<=0) and (cdouble(EQSRV.GLBDATA.pendingInt)<=0)) then
+                #{
+				print("loan in credit")
+				goto NXTREC
+		#}
+		endif
+
+                BANCS.INPARAM.acid = EQSRV.GLBDATA.acid
+                sv_u = urhk_getAcctStatus("")
+                print(sv_u)
+
+                IF(sv_u == 0)THEN
+                #{
+                        print(BANCS.OUTPARAM.acctStatus)
+                        IF(BANCS.OUTPARAM.acctStatus == "")THEN
+                        #{
+				EQSRV.GLBDATA.successOrFailure = "Dormant Operative Account"
+				EQSRV.GLBDATA.errorCode = "ERR110"
+				GOTO ERROREXIT
+                        #}
+                        ENDIF
+		#}
+		ENDIF
+
+	EQSRV.GLBDATA.successOrFailure = ""
+	EQSRV.GLBDATA.RecovAmt=0
+	print(EQSRV.GLBDATA.OdForacid)
+	print(EQSRV.GLBDATA.opAccount)
+	print(EQSRV.GLBDATA.RecovAmt)
+	EBSRV.GLBDATA.LIENLIFTED = ""
+	EQSRV.GLBDATA.sErrorMsg=""
+
+	IF(EQSRV.GLBDATA.OdForacid != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.OdForacid)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			EQSRV.GLBDATA.successOrFailure = "F"
+			EQSRV.GLBDATA.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			EQSRV.GLBDATA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(EQSRV.GLBDATA.acctCrncyCode)
+			EBSRV.GLBDATA.crAcid = BANCS.OUTPARAM.acid
+			print(EBSRV.GLBDATA.crAcid)
+			EBSRV.GLBDATA.odschmCode = BANCS.OUTPARAM.schmCode
+			print(EBSRV.GLBDATA.odschmCode)
+			EBSRV.GLBDATA.odclearBalance = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.odclearBalance)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		EQSRV.GLBDATA.successOrFailure = "F"
+		EQSRV.GLBDATA.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	IF(EQSRV.GLBDATA.opAccount != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.opAccount)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			EQSRV.GLBDATA.successOrFailure = "F"
+			EQSRV.GLBDATA.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			EQSRV.GLBDATA.OpacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(EQSRV.GLBDATA.OpacctCrncyCode)
+			EBSRV.GLBDATA.lienamtB = BANCS.OUTPARAM.lienAmt
+			print(EBSRV.GLBDATA.lienamtB)
+			EBSRV.GLBDATA.opclearBalance = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.opclearBalance)
+			EBSRV.GLBDATA.drAcid = BANCS.OUTPARAM.acid
+			print(EBSRV.GLBDATA.drAcid)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		EQSRV.GLBDATA.successOrFailure = "F"
+		EQSRV.GLBDATA.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------
+	# STEP1.0: initial variable values
+	#----------------------------------------------------------------------
+	#EQSRV.GLBDATA.laAcctforacid = ""
+	#EQSRV.GLBDATA.tranSubType = ""
+	#EQSRV.GLBDATA.tranType = ""
+	#EQSRV.GLBDATA.opAccount = ""
+	EQSRV.GLBDATA.ChrgValueDate = BANCS.STDIN.BODDate
+	EQSRV.GLBDATA.laAcctforacid = EQSRV.GLBDATA.OdForacid
+	EQSRV.GLBDATA.tranSubType = "BI"
+	EQSRV.GLBDATA.tranType = "T"
+	EQSRV.GLBDATA.opAccount = EQSRV.GLBDATA.opAccount
+	EQSRV.GLBDATA.payoffSol = ""
+	EQSRV.GLBDATA.payoffAcct = ""
+	EQSRV.GLBDATA.chrgCrncy = " "
+	EQSRV.GLBDATA.acctBal = ""
+	###########Lift Lien
+	if((cdouble(EBSRV.GLBDATA.lienamtB)>0) and (cdouble(EBSRV.GLBDATA.opclearBalance)>0))then
+		callscriptifexist("ebodlaRrecLienHeaderBatch.scr")
+	endif
+	###########Lift Lien end
+	if(cdouble(EBSRV.GLBDATA.odclearBalance) < 0) then
+		EBSRV.GLBDATA.odclearBalance1 = cdouble(EBSRV.GLBDATA.odclearBalance) * -1
+		print(EBSRV.GLBDATA.odclearBalance1)
+	else
+		EBSRV.GLBDATA.odclearBalance1 = cdouble(EBSRV.GLBDATA.odclearBalance)
+	endif
+	if(cdouble(EQSRV.GLBDATA.pendingPrin) > cdouble(EBSRV.GLBDATA.odclearBalance1)) then
+		EQSRV.GLBDATA.pendingPrin = cdouble(EBSRV.GLBDATA.odclearBalance1)
+		print(EQSRV.GLBDATA.pendingPrin)
+	endif
+	EQSRV.GLBDATA.totalDue = cdouble(EQSRV.GLBDATA.pendingPrin) + cdouble(EQSRV.GLBDATA.pendingInt)
+	print(EQSRV.GLBDATA.totalDue)
+	EQSRV.GLBDATA.RecovAmt=EQSRV.GLBDATA.totalDue
+
+	sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.opAccount)
+	print(sv_u)
+	EBSRV.GLBDATA.EffBalAftLien = BANCS.OUTPARAM.EffAvailableAmt
+	print(EBSRV.GLBDATA.EffBalAftLien)
+
+	if(cdouble(EBSRV.GLBDATA.EffBalAftLien)<=0) then
+		GOTO LIENCHECK
+	endif
+
+	if(cdouble(EQSRV.GLBDATA.RecovAmt) > cdouble(EBSRV.GLBDATA.EffBalAftLien)) then
+		EQSRV.GLBDATA.RecovAmt=EBSRV.GLBDATA.EffBalAftLien
+	endif
+	print(EQSRV.GLBDATA.RecovAmt)
+
+	#----------------------------------------------------------------------
+	# STEP2: invoke SRV_FetchTranAcctDtlForRecov service
+	#----------------------------------------------------------------------
+	IF(cdouble(EQSRV.GLBDATA.RecovAmt)>0) then
+	#{
+	sv_b = urhk_SetUrhkInp("recovCrit.tranAcct.foracid|"  + EQSRV.GLBDATA.OdForacid)
+	sv_b = urhk_SetUrhkInp("recovCrit.modeOfOper|C")
+	sv_b = urhk_SetUrhkInp("recovCrit.tranType.code|T")
+	sv_b = urhk_SetUrhkInp("recovCrit.valueDate|" + EQSRV.GLBDATA.ChrgValueDate)
+	sv_b = urhk_SetUrhkInp("recovCrit.netRecovAmt|" + EQSRV.GLBDATA.RecovAmt +"|"+ EQSRV.GLBDATA.acctCrncyCode)
+	sv_b = urhk_SetUrhkInp("recovCrit.srcAcct.foracid|" + EQSRV.GLBDATA.opAccount)
+	sv_b = urhk_SetUrhkInp("recovCrit.oapRef.tranDate|" + BANCS.STDIN.BODDate) 
+	sv_b = urhk_SetUrhkInp("recovCrit.funcCode|C")
+
+	sv_b = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.principal|pendingPrincipal")
+	sv_b = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.interest|pendingInterest")
+	sv_b = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.chrgOffBkInt|chrgOffBkInt")
+	sv_b = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.suspAppliedInt|pendingsuspAppliedInt")
+	sv_b = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.suspAppliedPenalInt|pendingsuspAppliedPenalInt")
+
+	#----------------------------------------------------------------------
+	#invoke SRV
+	#----------------------------------------------------------------------
+	sv_u = urhk_ExecSrv("SRV_FetchTranAcctDtlForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		EQSRV.GLBDATA.srvErrFlg ="Y"
+		EQSRV.GLBDATA.successOrFailure = "F"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_FetchTransForRecov service
+	#---------------------------------------------------------
+	print(BANCS.OUTPARAM.pendingPrincipal)
+	EQSRV.GLBDATA.pendingPrincipal=cdouble(BANCS.OUTPARAM.pendingPrincipal)
+	print(EQSRV.GLBDATA.pendingPrincipal)
+	EQSRV.GLBDATA.pendingInterest=cdouble(BANCS.OUTPARAM.pendingInterest)
+	print(EQSRV.GLBDATA.pendingInterest)
+	EQSRV.GLBDATA.pendingsuspAppliedInt=cdouble(BANCS.OUTPARAM.pendingsuspAppliedInt)
+	print(EQSRV.GLBDATA.pendingsuspAppliedInt)
+	EQSRV.GLBDATA.pendingsuspAppliedPenalInt=cdouble(BANCS.OUTPARAM.pendingsuspAppliedPenalInt)
+	print(EQSRV.GLBDATA.pendingsuspAppliedPenalInt)
+	EQSRV.GLBDATA.chrgOffBkInt=cdouble(BANCS.OUTPARAM.chrgOffBkInt)
+	print(EQSRV.GLBDATA.chrgOffBkInt)
+
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+
+	#sv_u = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.principal|pendingPrincipal")
+	#sv_u = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.interest|pendingInterest")
+	#sv_u = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.suspAppliedInt|pendingsuspAppliedInt")
+	#sv_u = urhk_SetUrhkOut("tranAcctRecovDtl.outstanding.suspAppliedPenalInt|pendingsuspAppliedPenalInt")
+	print(EBSRV.GLBDATA.EffBalAftLien)
+	print(EQSRV.GLBDATA.RecovAmt)
+	print(EQSRV.GLBDATA.pendingPrin)
+	print(EQSRV.GLBDATA.pendingInt)
+
+	if(cdouble(EBSRV.GLBDATA.EffBalAftLien) >= cdouble(EQSRV.GLBDATA.RecovAmt)) then
+	if(cdouble(EQSRV.GLBDATA.pendingInt)>0) then
+	if(cdouble(EBSRV.GLBDATA.EffBalAftLien) > cdouble(EQSRV.GLBDATA.pendingInt)) then
+		if(cdouble(EQSRV.GLBDATA.pendingsuspAppliedInt) > 0) then
+			sv_u = urhk_SetUrhkInp("recoveryAmt.suspAppliedInt|" + EQSRV.GLBDATA.pendingInt +"|" + EQSRV.GLBDATA.acctCrncyCode)
+		endif
+		if(cdouble(EQSRV.GLBDATA.chrgOffBkInt)>0) then
+			sv_u = urhk_SetUrhkInp("recoveryAmt.chrgOffBkInt|" + EQSRV.GLBDATA.pendingInt +"|" + EQSRV.GLBDATA.acctCrncyCode)
+		endif
+	else
+		if(cdouble(EQSRV.GLBDATA.pendingsuspAppliedInt) > 0) then
+			sv_u = urhk_SetUrhkInp("recoveryAmt.suspAppliedInt|" + EBSRV.GLBDATA.EffBalAftLien +"|" + EQSRV.GLBDATA.acctCrncyCode)
+		endif
+		if(cdouble(EQSRV.GLBDATA.chrgOffBkInt)>0) then
+			sv_u = urhk_SetUrhkInp("recoveryAmt.chrgOffBkInt|" + EBSRV.GLBDATA.EffBalAftLien +"|" + EQSRV.GLBDATA.acctCrncyCode)
+		endif				
+	endif
+	endif
+
+	EQSRV.GLBDATA.pendingPrin = cdouble(EQSRV.GLBDATA.RecovAmt) - cdouble(EQSRV.GLBDATA.pendingInt)
+	print(EQSRV.GLBDATA.pendingPrin)
+
+	if(cdouble(EQSRV.GLBDATA.pendingPrin) >0) then
+	#{
+		sv_u = urhk_SetUrhkInp("recoveryAmt.principal|" + EQSRV.GLBDATA.pendingPrin +"|" + EQSRV.GLBDATA.acctCrncyCode)
+	#}
+	else
+	#{
+		EQSRV.GLBDATA.pendingPrin = "0.00"
+		sv_u = urhk_SetUrhkInp("recoveryAmt.principal|" + EQSRV.GLBDATA.pendingPrin +"|" + EQSRV.GLBDATA.acctCrncyCode)
+	#}
+	endif
+	endif
+
+	sv_u = urhk_ExecSrv("SRV_FetchTransForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		EQSRV.GLBDATA.srvErrFlg ="Y"
+		EQSRV.GLBDATA.successOrFailure = "F"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_RecovForTranAcctAndVerify service
+	#---------------------------------------------------------
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranId|tranId")
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranDate|tranDate")
+	sv_u = urhk_SetUrhkInp("tranObject.pstFlg|Y")
+	sv_u = urhk_SetUrhkInp("tranObject.ignoreXcpnFlg|I")
+
+	sv_u = urhk_ExecSrv("SRV_RecovForTranAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		EQSRV.GLBDATA.srvErrFlg ="Y"
+		EQSRV.GLBDATA.successOrFailure = "F"
+		EQSRV.GLBDATA.errorCode = "ERR110"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+	print(BANCS.OUTPARAM.tranId)
+	print(BANCS.OUTPARAM.tranDate)
+
+	EQSRV.GLBDATA.tranId=BANCS.OUTPARAM.tranId
+	print(BANCS.OUTPARAM.tranId)
+	#}
+	ENDIF
+
+	###Lien Balance
+	LIENCHECK:
+	if(EBSRV.GLBDATA.LIENLIFTED == "Y") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.OdForacid)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			EQSRV.GLBDATA.successOrFailure = "F"
+			EQSRV.GLBDATA.errorCode = "ERR110"
+			EQSRV.GLBDATA.sErrorMsg = "Account Does Not Exist"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			EBSRV.GLBDATA.tplienAmt = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.tplienAmt)
+		#}
+		ENDIF
+
+		if(cdouble(EBSRV.GLBDATA.tplienAmt)<0) then
+		#{
+                                EBSRV.GLBDATA.LienAmt = cdouble(EBSRV.GLBDATA.tplienAmt)  * -1
+                                print(EBSRV.GLBDATA.LienAmt)
+                                BANCS.INPARAM.acctNum = EBSRV.GLBDATA.drAcctId
+                                BANCS.INPARAM.blockMode = "A"
+                                BANCS.INPARAM.lienAmt = cdouble(EBSRV.GLBDATA.LienAmt)
+                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                BANCS.INPARAM.remarks = "Lien for loans on od"
+                      		if(EBSRV.GLBDATA.odschmCode=="DL002")then
+                        		BANCS.INPARAM.reasonCode = "DLLA"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="OD552")then
+                        		BANCS.INPARAM.reasonCode = "OD552"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="OD549")then
+                        		BANCS.INPARAM.reasonCode = "ECLA"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="ML001")then
+                        		BANCS.INPARAM.reasonCode = "DL1LI"
+                        	endif
+                        	if((EBSRV.GLBDATA.odschmCode=="OD542")or(EBSRV.GLBDATA.odschmCode=="OD543")or(EBSRV.GLBDATA.odschmCode=="OD544")or(EBSRV.GLBDATA.odschmCode=="OD545")or(EBSRV.GLBDATA.odschmCode=="OD546")or(EBSRV.GLBDATA.odschmCode=="OD112"))then
+                                	BANCS.INPARAM.reasonCode = "ODLA"
+                        	endif
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                                if(sv_u != 0)then
+                                #{
+                                        EQSRV.GLBDATA.sErrorMsg =  "Failed to Lien on operative account for loan recovery"
+                                        EBSRV.GLBDATA.srvErrCode = "Lien"
+                                        EBSRV.GLBDATA.srvSucFail = "S"
+                                        goto ERROREXIT
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.sErrorMsg =  "Lien on operative account for loan recovery"
+                                        EBSRV.GLBDATA.srvErrCode = "Lien"
+                                        EBSRV.GLBDATA.srvSucFail = "S"
+                                        lv_i = urhk_dbSqlWithBind("commit")
+                                        goto ERROREXIT
+                                #}
+                                endif
+		#}
+		endif
+	#}
+	ENDIF
+	###Lien balance end
+	##Error correction
+	ERROREXIT:
+		IF(EQSRV.GLBDATA.successOrFailure == "F")THEN
+		#{
+                               EBSRV.GLBDATA.srvErrorCode = "E0012"
+                               EBSRV.GLBDATA.srvSF     = "F"
+                               sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                               sv_u = urhk_SetOrbOut("Message|" + EQSRV.GLBDATA.sErrorMsg)
+                               BANCS.OUTPUT.successOrFailure="F"
+                               lv_j = urhk_dbSqlWithBind("rollback")
+		#}
+		ENDIF
+
+                NXTREC:
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+			
+trace off
+END-->

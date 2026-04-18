@@ -1,0 +1,107 @@
+trigger:
+  branches:
+    include:
+      - main
+
+  paths:
+    include:
+      - UNISER/*  # Triggers The Pipeline Only When Files In UNISER Are Changed
+
+variables:
+  tag: '$(Build.BuildId)'
+
+  # Agent VM image name - linux
+  vmImageName: 'devops-ubuntu'
+  azureSubscription: 'Enterprise Dev/Test'
+  azureSubscriptionProd: 'Enterprise Production'
+
+stages:
+  - stage: BuildHPPROD
+    condition: and(always(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    displayName: HP-PROD-UNISER
+    jobs:
+      - job: Build
+        displayName: 'HP Prod Build Stage'
+        pool:
+          name: $(vmImageName)
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          - task: CmdLine@2
+            displayName: 'Run Script Create Tag UNISER-Tag'
+            inputs:
+              script: |
+                if [ "$(Build.SourceBranch)" == "refs/heads/main" ] && [ "$(Build.Reason)" == "IndividualCI" ] && [ "$(Build.SourceBranch)" == "$(Build.SourceBranch)" ]; then
+                    export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags UNISER-Tag
+                fi
+
+          - task: Bash@3
+            displayName: Checking For New/Modified Files
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files.sh
+
+          - task: CopyFiles@2
+            displayName: 'Copying Files To Stagging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/finacleFileType/*
+                **/modifiedFiles/*
+                **/deletedFiles/*
+                **/newFiles/*
+                !**/*.gitkeep
+                !**/*.git/**
+                !**/*.git
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: CmdLine@2
+            displayName: Archiving Finacle Files
+            inputs:
+              script: |
+                #This archiving includes empty directories, unlike azure ArchiveFiles@2
+                echo "Archiving UNISER Files In The Staging Directory"
+                cd $(build.artifactstagingdirectory)
+
+                # Create the archive with compression and without paths
+                tar -vzcf $(Build.SourcesDirectory)/finacle-UNISER-scripts.tar.gz .
+
+                # Copy the archive into staging directory
+                cp -r $(Build.SourcesDirectory)/finacle-UNISER-scripts.tar.gz $(build.artifactstagingdirectory)/
+
+          - task: CmdLine@2
+            displayName: List Items Of The Archive
+            inputs:
+              script: |
+                cd $(build.artifactstagingdirectory)
+                echo "Listing Items In The finacle-UNISER-scripts.tar.gz Archive"
+                tar -ztvf finacle-UNISER-scripts.tar.gz
+
+          - task: CmdLine@2
+            displayName: Creating Publishing Directory
+            inputs:
+              script: |
+                echo "Creating Publishing Directory"
+                cd $(build.artifactstagingdirectory)
+                mkdir -v publishUNISERScriptsDir
+
+                echo "Copying The Archives Into The Publishing Directory"
+                cp -vr finacle-UNISER-scripts.tar.gz $(build.artifactstagingdirectory)/publishUNISERScriptsDir
+
+                echo "Copying deploy scripts.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/New-Environment-Scripts/deploy-uniser-scripts-new.sh $(build.artifactstagingdirectory)/publishUNISERScriptsDir
+
+                echo "Copying deploy suScript.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/New-Environment-Scripts/suScript-new.sh $(build.artifactstagingdirectory)/publishUNISERScriptsDir
+
+          - task: PublishBuildArtifacts@1
+            displayName: Publish Build Artifacts On uniser_drop
+            inputs:
+              PathtoPublish: $(build.artifactstagingdirectory)/publishUNISERScriptsDir
+              ArtifactName: uniser_drop
+              publishLocation: Container

@@ -1,0 +1,193 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodadp007.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to do Verify functionality of the CTODA menu on submit click.
+# Input                 :       Criteria page values.
+# Output                :       Details page values.
+# Called Script         :       ctodadp010.scr, ctodadp011.scr, ctodadp012.scr, ctodadp013.scr
+# Calling Script        :       ctodamn006.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           17-04-2013         Nitin Prabhakar   original Version          1.0
+#  2           06-08-2013         Bharath			Fetching scheme code
+#   3		21-08-2013	Priya K		  Modified for TO:367198	2.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="78cd33962665a1a7392e7b79914764164a04e8ff9fb0929df8f895a2d0b91479"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	#  Fetching data from table C_TODA required exe SRV charge collection.
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.bankId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId + "|N"
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "grantDate,permiterUser,expiryDate,solId|"
+	sv_s = sv_s + " SELECT TO_CHAR(GRANT_DATE,'DD-MM-YYYY'),PERMITTED_USER,TO_CHAR(EXPIRY_DATE,'DD-MM-YYYY'),SOL_ID"
+	sv_s = sv_s + " FROM CUSTOM.C_TODA "
+	sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+	sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+	sv_s = sv_s + " AND IS_DELETED = ?SVAR"
+	
+	sv_s = sv_s + " AND VERIFY_BY IS NULL"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_009"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.grantDate = BANCS.OUTPARAM.grantDate
+		print(CUST.CTODA.grantDate)
+		CUST.CTODA.permiterUser = BANCS.OUTPARAM.permiterUser
+		print(CUST.CTODA.permiterUser)
+		CUST.CTODA.expiryDate = BANCS.OUTPARAM.expiryDate
+		print(CUST.CTODA.expiryDate)
+		CUST.CTODA.solId = BANCS.OUTPARAM.solId
+		print(CUST.CTODA.solId)
+	#}
+	ENDIF
+	
+	###Modification done for TO:367198
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CTODA.accNum)
+	print(sv_u)
+	print(BANCS.OUTPARAM.ClearBalance)
+	CUST.CTODA.availableAmt = BANCS.OUTPARAM.ClearBalance
+	
+	IF(CDOUBLE(CUST.CTODA.availableAmt) < 0 ) THEN
+	#{
+		CUST.CTODA.availableAmt = "0"
+	#}
+	ENDIF
+	print(CUST.CTODA.availableAmt)
+	
+	
+	#----------------------------------------------------------------------------------
+	# calling script to Execute SRV for TOD Availment creation and verification.
+	#----------------------------------------------------------------------------------
+	call("ctodadp011.scr")
+	IF (CUST.CTODA.successFlg == "F") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Fetching Account details for add modes from table C_TODA
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "schmType,schmCode|"
+	sv_s = sv_s + " SELECT SCHM_TYPE,SCHM_CODE"
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE FORACID = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CTODA.schmType = ""
+		CUST.CTODA.schmCode = ""
+		#}
+	ELSE
+		#{
+		CUST.CTODA.schmType = BANCS.OUTPARAM.schmType
+		print(CUST.CTODA.schmType)
+		CUST.CTODA.schmCode = BANCS.OUTPARAM.schmCode
+		print(CUST.CTODA.schmCode)
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	# Getting Charge Event ID for account scheme Type.
+	#------------------------------------------------------------------------------
+	CUST.INTERFACE.errorCode = TRIM(CUST.CTODA.schmType) + "_EVNT_ID"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		CUST.CTODA.errorMsg = "Could not fetch parameter value for " +  CUST.INTERFACE.errorCode
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.INTERFACE.ChargeEventID = TRIM(CUST.INTERFACE.errorDesc)
+	print(CUST.INTERFACE.ChargeEventID)
+	CUST.INTERFACE.drAccount = CUST.CTODA.accNum
+	print(CUST.INTERFACE.drAccount)
+	CUST.INTERFACE.ChargingAcctCrncy = CUST.CTODA.accCCY
+	print(CUST.INTERFACE.ChargingAcctCrncy)
+	CUST.INTERFACE.ChargingAcctSol = CUST.CTODA.solId
+	print(CUST.INTERFACE.ChargingAcctSol)
+	#----------------------------------------------------------------------------------
+	# calling script to collect chagre.
+	#----------------------------------------------------------------------------------
+	call("ctodadp013.scr")
+	IF (CUST.CTODA.successFlg == "F") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	print(CUST.INTERFACE.ChargeTranId)
+	#------------------------------------------------------------------------------
+	#  Updating data from table C_TODA for verify Mode.
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = "A"
+	
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.userId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.userId
+	###Modification done for TO:367198
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.todAmt
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.bankId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = " UPDATE CUSTOM.C_TODA SET"
+	sv_s = sv_s + " STATUS_FLG = ?SVAR,"
+	
+	sv_s = sv_s + " VERIFY_BY = ?SVAR,"
+	sv_s = sv_s + " VERIFY_DATE = SYSDATE,"
+	sv_s = sv_s + " LCHG_USER = ?SVAR,"
+	sv_s = sv_s + " LCHG_DATE = SYSDATE,"
+	sv_s = sv_s + " TOD_AMT = ?SVAR"
+	sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+	sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+	#sv_s = sv_s + " AND VERIFY_BY IS NULL"
+	print(sv_s)
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_010"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#----------------------------------------------------------------------------------
+	# calling script to make entry in history table  collect chagre.
+	#----------------------------------------------------------------------------------
+	call("ctodadp012.scr")
+	IF (CUST.CTODA.successFlg == "F") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.CTODA.resultPageMsg = "TOD Availment verified successfully."
+	CUST.CTODA.resultPageMsg = CUST.CTODA.resultPageMsg + "<br>Charge collected sucessfully with Tran Id " + CUST.INTERFACE.ChargeTranId
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

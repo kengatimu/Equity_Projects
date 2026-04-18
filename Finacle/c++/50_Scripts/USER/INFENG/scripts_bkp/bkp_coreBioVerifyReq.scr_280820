@@ -1,0 +1,324 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY
+# Product: Finacle Core
+# Category: User Defined
+# Script: BIOOutbound_setPay.scr
+# Type: NA|default
+# Description: This script will initiate an outbound call from Finacle Core to BIO tax payment system
+# Author: Sreeju_R
+# Date: 23/10/18 4:07 PM
+# Modification Log: 
+#============================================================
+
+<--START
+	# Script body goes here
+	TRACE ON
+	#--------------------------------------
+	#Creating repository and classes
+	#--------------------------------------
+
+	if(REPEXISTS("CUST") == 0) then
+                CREATEREP("CUST")
+        endif
+
+        if(CLASSEXISTS("CUST", "DATA") == 0) then
+                CREATECLASS("CUST", "DATA", 5)
+        endif
+	
+	if(REPEXISTS("BIO") == 0) then
+		CREATEREP("BIO")
+	endif
+	
+	if(CLASSEXISTS("BIO", "DATA") == 0) then
+		CREATECLASS("BIO", "DATA", 5)
+	endif
+	
+	if(REPEXISTS("COMMON") == 0) then
+	#{	
+		CREATEREP("COMMON")
+	else	
+		DELETEREP("COMMON")
+		CREATEREP("COMMON")
+	#}
+	endif
+	
+	if(CLASSEXISTS("COMMON", "INPUT") == 0) then
+		CREATECLASS("COMMON", "INPUT", 5)
+	endif
+	
+	if(CLASSEXISTS("COMMON", "OUTPUT") == 0) then
+		CREATECLASS("COMMON", "OUTPUT", 5)
+	endif
+
+	if(CLASSEXISTS("BANCS", "INPARAM") == 0) then
+                CREATECLASS("BANCS", "INPARAM", 5)
+        endif
+
+	IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUST","INTERFACE") == 0) THEN
+        #{
+                CREATECLASS ("CUST","INTERFACE",5)
+        #}
+        ENDIF
+
+	#-----------------------------------------------
+	#	Initializing the input variables
+	#-----------------------------------------------
+	BIO.DATA.cif            = BANCS.INPUT.cifId
+        BIO.DATA.criteria       = "cif"
+        BIO.DATA.position       = "UNKNOWN_FINGER"
+        BIO.DATA.resolution     = "508"
+        BIO.DATA.format         = "BMP"
+	BIO.DATA.intent		= "verify"
+	
+	COMMON.INPUT.srvReqId = "Bio_Verify"
+	CUST.DATA.foracid=BANCS.INPUT.foracid
+	
+	
+	CALL("common_business_XMLHeader.scr")
+	print(COMMON.OUTPUT.XMLHeader)
+	
+	BIO.DATA.XMLHeader = COMMON.OUTPUT.XMLHeader
+	
+	#------------------------------
+	#Forming the body xml tags
+	#------------------------------
+	sv_v = ""
+	sv_v = sv_v + "<Body>"
+	sv_v = sv_v + "<MSG>"
+	sv_v = sv_v + BIO.DATA.cif + "|" + BIO.DATA.criteria + "|" + BIO.DATA.position + "|"
+        sv_v = sv_v + BIO.DATA.format + "|" + BIO.DATA.resolution + "|" + CUST.DATA.foracid + "|" +  BIO.DATA.intent + "|" + BANCS.STDIN.userId+ "|" + BANCS.STDIN.contextBankId
+	sv_v = sv_v + "</MSG>"
+	sv_v = sv_v + "</Body>"
+	sv_v = sv_v + "</FIXML>"
+	
+	print(sv_v)
+	#------------------------------------------------
+	#Appending the Header and Body tag xml
+	#------------------------------------------------
+	BIO.DATA.XMLBody = sv_v
+	sv_s = BIO.DATA.XMLHeader + BIO.DATA.XMLBody
+	#print(sv_s)
+	
+	#==============================================================================================================
+	#- BANCS.INPARAM.SERVICE_NAME is used as a identifier for fitcpip adapter. So always set this value to FIJCA
+	#==============================================================================================================
+	BANCS.INPARAM.SERVICE_NAME= "FIJCA"
+	#==============================================================================================================
+	#- Send_RECV_FLG flag is used to determine the mode of operation. The Possible values can be S or R
+	#- S for async communication and R for sync communication
+	#==============================================================================================================
+	BANCS.INPARAM.SEND_RECV_FLG 	= "R"
+	BANCS.INPARAM.IsRespReqd 	= "Y"
+
+	#-----------------------------------------------------
+	#Sending the request xml to FI service provider class
+	#-----------------------------------------------------
+	sv_l = urhk_ConnectToFIAndSendMsg(sv_s)
+	print(sv_l)
+	
+	print(BANCS.OUTPARAM.RespMesg)
+	print(BANCS.OUTPARAM.ErrMsg)
+
+	IF (sv_l != 0) THEN
+        #{
+                PRINT(BANCS.OUTPARAM.ErrMsg)
+                CUST.INTERFACE.errorMsgFlg = "Y"
+                CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+                CUST.INTERFACE.errorMsgCode = "FIERR"
+				#sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("0|" + "Unable to Connect to Bio Server")
+			
+				print(sv_u)
+
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+        IF (BANCS.OUTPARAM.ErrMsg != "") THEN
+        #{
+                CUST.INTERFACE.errorMsgFlg = "Y"
+                CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+                CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+                CUST.INTERFACE.errorMsgCode = "FIERR"
+				#sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("0|" + "Unable to Connect to Bio Server")
+			
+				print(sv_u)
+                GOTO ENDOFSCRIPT
+        #}
+        ELSE
+        #{
+                CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+                PRINT(CUST.INTERFACE.respXMLMsg)
+                CUST.INTERFACE.errorMsgFlg = ""
+                CUST.INTERFACE.errorMsgDesc = ""
+        #}
+        ENDIF
+
+	 sv_x = CUST.INTERFACE.respXMLMsg
+        sv_y = "<Status>"
+        sv_z = "</Status>"
+        sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+        sv_e = GETPOSITION(sv_x, sv_z) - 1
+        IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+        #{
+                CUST.INTERFACE.tranStatus = MID$(sv_x, sv_b, (sv_e - sv_b))
+        #}
+        ELSE
+        #{
+                CUST.INTERFACE.tranStatus = ""
+        #}
+        ENDIF
+        PRINT(CUST.INTERFACE.tranStatus)
+
+	if (CUST.INTERFACE.tranStatus == "FAILED") then
+	#{
+		#displaying the err code and msg in the frontend
+		
+		#sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		#print(sv_u)
+		#goto ENDOFSCRIPT
+		
+		
+		sv_u = GETPOSITION(sv_x,"<ErrorDetail>") + STRLEN("<ErrorDetail>") - 1
+        if(sv_u != 0) then
+        #{
+                sv_v  = GETPOSITION(sv_x,"</ErrorDetail>") - 1
+                CUST.INTERFACE.responseString = Mid$(sv_x,sv_u,(sv_v-sv_u))
+				
+				#fetching errcode
+				sv_c = GETPOSITION(sv_x,"<ErrorCode>") + STRLEN("<ErrorCode>") - 1
+				if(sv_c != 0)then
+				#{
+					sv_d  = GETPOSITION(sv_x,"</ErrorCode>") - 1
+					CUST.INTERFACE.ErrorCode = Mid$(sv_x,sv_c,(sv_d-sv_c))
+				#}
+				else
+				#{
+					CUST.INTERFACE.ErrorCode = ""
+				#}
+				endif
+				#fetching ErrorDesc
+				sv_c = GETPOSITION(sv_x,"<ErrorDesc>") + STRLEN("<ErrorDesc>") - 1
+				if(sv_c != 0)then
+				#{
+					sv_d  = GETPOSITION(sv_x,"</ErrorDesc>") - 1
+					CUST.INTERFACE.ErrorDesc = Mid$(sv_x,sv_c,(sv_d-sv_c))
+				#}
+				else
+				#{
+					CUST.INTERFACE.ErrorDesc = ""
+				#}
+				endif
+        #}
+        endif
+		
+		#if(CUST.INTERFACE.ErrorCode == "9999")then
+		#{
+			sv_u = urhk_SetOrbOut("0|" + "Unable to Connect to Bio Server")
+			goto ENDOFSCRIPT
+		#}
+		#endif
+		
+		
+	#}
+	endif
+
+        #--------------------------------------------------------------------------------------------------------
+        # If Success fetching tran id else fetching error code and description
+        #--------------------------------------------------------------------------------------------------------
+
+        sv_u = GETPOSITION(sv_x,"<Body>") + STRLEN("<Body>") - 1
+        if(sv_u != 0) then
+        #{
+                sv_v  = GETPOSITION(sv_x,"</Body>") - 1
+                CUST.INTERFACE.responseString = Mid$(sv_x,sv_u,(sv_v-sv_u))
+        #}
+        endif
+	
+	sv_i = CUST.INTERFACE.responseString
+        sv_l = strlen(CUST.INTERFACE.responseString)
+        print(sv_i)
+        sv_i = Mid$(sv_i,1,sv_l-3)
+        print(sv_i)
+        sv_i = sv_i + ","
+        print(sv_i)
+
+        sv_x = 0
+	
+	 while(1)
+        #(
+                sv_x = sv_x + 1
+                sv_j = getPosition(sv_i,',')
+
+                if(sv_j==0) then
+                #(
+                        sv_m = sv_i
+						 print(sv_m)
+                        BANCS.INPUT.tempStr=sv_x
+                        goto LASTFIELD
+                else
+                        sv_m = Mid$(sv_i,0,sv_j-1)
+                        print(sv_m)
+                        sv_l = strlen(sv_i)
+                        sv_i = Mid$(sv_i,sv_j,sv_l-sv_j)
+                #}
+                endif
+
+                BANCS.INPUT.tempStr=sv_x
+                sv_s = GETPOSITION(sv_m,":")
+                sv_r = Mid$(sv_m,1,sv_s-3)
+                sv_t = strlen(sv_m)
+                print(sv_r)
+                ("CUST").("INTERFACE").(sv_r) = Mid$(sv_m,sv_s+1,sv_t-2)
+        #)
+        do
+
+	LASTFIELD:	
+
+	if (FIELDEXISTS(CUST.INTERFACE.status)) then
+        #{
+                sv_l = strlen(CUST.INTERFACE.status)
+                CUST.INTERFACE.status = Mid$(CUST.INTERFACE.status,0,sv_l-1)
+				PRINT( CUST.INTERFACE.status)
+        #}
+        endif
+
+        if (FIELDEXISTS(CUST.INTERFACE.message)) then
+        #{
+                sv_l = strlen(CUST.INTERFACE.message)
+                #CUST.INTERFACE.message = Mid$(CUST.INTERFACE.message,0,sv_l-1)
+				CUST.INTERFACE.message = Mid$(CUST.INTERFACE.message,0,sv_l)
+				PRINT( CUST.INTERFACE.message)
+        #}
+        endif
+
+        ("CUST").("INTERFACE").("Field"+BANCS.INPUT.tempStr)=sv_m
+
+        #sv_a=urhk_B2k_PrintRepos("CUST")
+	#	sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+	#	print(sv_u)
+	
+		if(CUST.INTERFACE.status == "000")then
+		#{
+			sv_u = urhk_SetOrbOut("1|Verified Sucessfully")
+			print(sv_u)
+		#}
+		else
+		#{
+			sv_u = urhk_SetOrbOut("0|"+CUST.INTERFACE.message)
+			print(sv_u)
+		#}
+		endif
+
+	
+ENDOFSCRIPT:
+EXITSCRIPT
+		
+TRACE OFF
+end-->

@@ -1,0 +1,433 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       InhouseChqBounce_PostChqDetails.scr
+# Description           :       Script calling SRV for doing transaction
+# Input                 :       none
+# Output                :       None
+# Called Script         :       None
+#				
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           02-08-2013      	   Anik Soni         Original Version         1.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+
+CUST.INTERFACE.showError = ""
+CUST.INTERFACE.callFlg = ""
+CUST.INTERFACE.parameterId = ""
+
+print(CUST.INTERFACE.DrAcct)
+print(CUST.INTERFACE.CrAcct)
+print(CUST.INTERFACE.AcctNum)
+
+####Adding section for changing the Context SOl Id for Debit Accounts
+
+IF (CUST.INTERFACE.DrAcct != "") THEN
+#{
+                sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.DrAcct)
+                IF (sv_u == 0) THEN
+                #{
+                        IF(BANCS.OUTPARAM.acctOwnerShip == "O") THEN
+                        #{
+                                BANCS.INPARAM.FlagType="A"
+                                BANCS.INPARAM.AcctId=CUST.INTERFACE.DrAcct
+                                sv_u = urhk_ContextSOLUpdate("")
+                                IF(sv_u != 0) THEN
+                                #{
+                                        sv_u = urhk_SRV_SetErr("Error: Unable to Change Context SOL for Acct:"+CUST.INTERFACE.DrAcct)
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+                #}
+                ENDIF
+#}
+ENDIF
+
+#-------------------------------------------------------------------------------
+#  Fetching the reason code
+#-------------------------------------------------------------------------------
+
+sv_q = "RejReason|select CLG_REJ_DESC from "
+sv_q = sv_q + " tbaadm.crc where clg_rej_code = ?SVAR "
+sv_q = sv_q + " and bank_id = ?SVAR "
+sv_q = sv_q + " and del_flg = ?SVAR "
+BANCS.INPARAM.BINDVARS = CUST.INTERFACE.RejResCode +  "|" + BANCS.STDIN.contextBankId + "|N"
+sv_c = urhk_dbSelectWithBind(sv_q)
+IF (sv_c == 0) THEN
+#{
+	CUST.INTERFACE.RejReason = BANCS.OUTPARAM.RejReason 
+#}
+ELSE
+#{
+	CUST.INTERFACE.RejReason = " "
+#}
+ENDIF
+
+#-------------------------------------------------------------------------------
+# Converting the TranDate into the rquired format
+#-------------------------------------------------------------------------------
+
+CUST.INTERFACE.TranDate = BANCS.STDIN.BODDate
+
+IF(CUST.INTERFACE.InstrType == "CHQ") THEN
+#{
+	#-------------------------------------------------------------------------------
+	# Setting inputs and outputs for SRV_AddTransferTran.
+	#-------------------------------------------------------------------------------
+	sv_a = urhk_SetUrhkInp("tranDtl.tranTypeSubType.tranType|" + CUST.INTERFACE.TransactionType)
+	sv_a = urhk_SetUrhkInp("tranDtl.tranTypeSubType.tranSubType|" + CUST.INTERFACE.TransactionSubType)
+	sv_a = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+	sv_a = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+	sv_a = urhk_SetUrhkInp("tranDtl.remarks|Cheque Bounce") 
+	sv_a = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranType|" + CUST.INTERFACE.TransactionType)
+	sv_a = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranSubType|" + CUST.INTERFACE.TransactionSubType)
+	sv_a = urhk_SetUrhkInp("tranDtl.deliveryChannelId|" + CUST.INTERFACE.ChannelId)
+	
+	sv_a = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+	sv_a = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+
+	#-------------------------------------------------------------------------------
+	# Debit Leg.
+	#-------------------------------------------------------------------------------
+	CUST.INTERFACE.DrTrCrncy = "KES"
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + CUST.INTERFACE.TranDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|" + CUST.INTERFACE.DrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|" + CUST.INTERFACE.DrTranAmt + "|" + CUST.INTERFACE.DrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranAmt|" + CUST.INTERFACE.DrTranAmt + "|" + CUST.INTERFACE.DrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|" + CUST.INTERFACE.DrAcct)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|" + BANCS.STDIN.BODDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|Debit Remarks")
+	#sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|" + CUST.INTERFACE.DrTranPart)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refNum|" + CUST.INTERFACE.TranRefNum)
+		
+	sv_a = urhk_SetUrhkInp("tranDtl.tranTypeSubType.tranType|" + CUST.INTERFACE.TransactionType)
+	sv_a = urhk_SetUrhkInp("tranDtl.tranTypeSubType.tranSubType|" + CUST.INTERFACE.TransactionSubType)
+	sv_a = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+	sv_a = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+	sv_a = urhk_SetUrhkInp("tranDtl.remarks|Cheque Bounce") 
+	sv_a = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranType|" + CUST.INTERFACE.TransactionType)
+	sv_a = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranSubType|" + CUST.INTERFACE.TransactionSubType)
+	
+	
+	#-------------------------------------------------------------------------------
+	# Credit Leg.
+	#-------------------------------------------------------------------------------
+	CUST.INTERFACE.CrTrCrncy = "KES"
+	CUST.INTERFACE.CrTranPart = "REJECT:"+TRIM(CUST.INTERFACE.ChqNum)+" " + CUST.INTERFACE.RejReason
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + CUST.INTERFACE.TranDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|" + CUST.INTERFACE.CrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|" + CUST.INTERFACE.CrTranAmt + "|" + CUST.INTERFACE.CrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranAmt|" + CUST.INTERFACE.CrTranAmt + "|" + CUST.INTERFACE.CrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|" + CUST.INTERFACE.CrAcct)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|" + BANCS.STDIN.BODDate)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|Credit remarks")
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|" + CUST.INTERFACE.CrTranPart)
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refNum|" + CUST.INTERFACE.TranRefNum)
+	
+	sv_a = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rateCode.refCode|TTS")
+
+	#-------------------------------------------------------------------------------
+	# Execution of Service.
+	#-------------------------------------------------------------------------------
+	sv_a = urhk_ExecSrvNoCommit("SRV_AddTransferTran|retain_all_output = Y")
+	print(sv_a)
+	IF(sv_a != "0") THEN
+	#{
+		CUST.INTERFACE.srvErrFlg = "Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO FINISH
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.tranId = BANCS.OUTPARAM.tranId
+		CUST.INTERFACE.tranDate = BANCS.OUTPARAM.tranDate
+	#}
+	ENDIF
+	
+	print(CUST.INTERFACE.tranId)
+	print(CUST.INTERFACE.tranDate)
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to copy all details.
+	#-------------------------------------------------------------------------------
+	  sv_a = urhk_CopyOutToIn("")
+	  print(sv_a)
+	  CUST.INTERFACE.tranDate = MID$(CUST.INTERFACE.tranDate,0,10)
+	  CUST.INTERFACE.tranId = lpad(CUST.INTERFACE.tranId, 9, ' ')
+
+	  sv_a = urhk_SetUrhkInp("tranDtl.tranIdentifier.tranDate|" +CUST.INTERFACE.tranDate)
+	  sv_a = urhk_SetUrhkInp("tranDtl.tranIdentifier.tranId|"+CUST.INTERFACE.tranId)
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to fetch the details.
+	#-------------------------------------------------------------------------------
+	  sv_a = urhk_ExecSrvNoCommit("SRV_FetchTransferTranForPost|retain_all_output = Y")
+	  print(sv_a)
+	  IF(sv_a != "0") THEN
+	  #{
+		CUST.INTERFACE.srvErrFlg = "Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO FINISH
+	  #}
+	  ENDIF
+
+	  sv_s = BANCS.OUTPARAM.successOrFailure
+	  sv_a = urhk_CopyOutToIn("")
+
+	  sv_a = urhk_SetUrhkInp("tranDtl.tranIdentifier.tranDate|" +CUST.INTERFACE.tranDate)
+	  sv_a = urhk_SetUrhkInp("tranDtl.tranIdentifier.tranId|" +CUST.INTERFACE.tranId)
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to Post the transaction.
+	#-------------------------------------------------------------------------------
+	  sv_d = urhk_ExecSrvNoCommit("SRV_PostTransferTran|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	  print(sv_d) 
+	  IF(sv_d != "0") THEN
+	  #{
+		CUST.INTERFACE.srvErrFlg = "Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO FINISH
+	  #}
+	  ENDIF
+#}
+ELSE
+#{
+	sv_a = urhk_SetUrhkInp("xferCrncy.crncyCode|" + CUST.INTERFACE.CrTrCrncy)
+	sv_a = urhk_SetUrhkInp("drAcct.foracid|" + CUST.INTERFACE.DrAcct)
+	sv_a = urhk_SetUrhkInp("crAcct.foracid|" + CUST.INTERFACE.CrAcct)
+	sv_a = urhk_SetUrhkInp("xferAmt|" + CUST.INTERFACE.CrTranAmt + "|" + CUST.INTERFACE.CrTrCrncy)
+	sv_a = urhk_SetUrhkInp("tranType.code|C")
+	sv_a = urhk_SetUrhkOut("pTran.tranId|tranId")
+
+	sv_a = urhk_ExecSrv("SRV_TransferDDAmt|retain_all_output = Y")
+	print(sv_a)
+
+	IF (sv_a != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg = "Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO FINISH
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.tranId = BANCS.OUTPARAM.tranId
+		CUST.INTERFACE.tranDate = MID$(BANCS.STDIN.BODDate,0,10)
+		print(CUST.INTERFACE.tranId)
+		print(CUST.INTERFACE.tranDate)
+	#}
+	ENDIF
+		
+
+	 sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|" + mid$(BANCS.STDIN.BODDate,0,10) + " 00:00:00")
+	 sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranId|" + CUST.INTERFACE.tranId)
+	 #sv_a = urhk_SetUrhkOut("tranDtl.pstFlg|PostedFlag")
+	 sv_a = urhk_SetUrhkOut("tranDtl.pstFlg|Y") 
+	 sv_a = urhk_ExecSrv("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+	 print(sv_a)
+
+	IF(sv_a != 0) THEN
+	#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+	#}
+	ENDIF
+
+	sv_s = BANCS.OUTPARAM.successOrFailure
+	print(sv_s)
+	sv_a = urhk_CopyOutToIn("")
+	print(sv_a)
+
+	sv_a = urhk_ExecSrv("SRV_PostTran|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	print(sv_a)
+	IF(sv_a != 0) THEN
+	#{
+		sv_a = urhk_CopyOutToIn("")
+                PRINT(sv_a)
+                sv_a = urhk_ExecSrv("SRV_PostTran|call_mode = N")
+                print(sv_a)
+				
+		IF(sv_a != 0) THEN
+		#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+       
+	
+IF(CUST.INTERFACE.InstrType == "CHQ") THEN
+#{
+	print(CUST.INTERFACE.ChqFound)
+	IF(CUST.INTERFACE.ChqFound != "N") THEN
+	#{
+		#-------------------------------------------------------------------------------
+		# Calling the service to Fetch Cheque Details for Update
+		#-------------------------------------------------------------------------------
+
+		 print(CUST.INTERFACE.CrAcct)
+		 print(CUST.INTERFACE.InstrType)
+		 print(CUST.INTERFACE.ChqNum)
+
+	 	 sv_a = urhk_SetUrhkInp("acct.foracid|" + CUST.INTERFACE.CrAcct)
+	 	 sv_a = urhk_SetUrhkInp("instrmnt.instrmntType|" + CUST.INTERFACE.InstrType)
+	  	 sv_a = urhk_SetUrhkInp("instrmnt.instrmntNum|" + CUST.INTERFACE.ChqNum)
+		 sv_a = urhk_SetUrhkInp("instrmnt.instrmntAlpha|") 
+		 
+	  	sv_d = urhk_ExecSrvNoCommit("SRV_FetchChqStatForModify|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	  	IF(sv_d != "0") THEN
+	  	#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+	  	#}
+	  	ENDIF
+		
+		#-------------------------------------------------------------------------------
+		# Calling the service to copy all details.
+		#-------------------------------------------------------------------------------
+		sv_a = urhk_CopyOutToIn("")
+		sv_a = urhk_SetUrhkInp("newStat.code|J")
+
+		#-------------------------------------------------------------------------------
+		# Calling the service to Update Cheque Status in Finacle
+		#-------------------------------------------------------------------------------
+		sv_d = urhk_ExecSrvNoCommit("SRV_UpdateChqStat|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+		IF(sv_d != "0") THEN
+		#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+
+		#-------------------------------------------------------------------------------
+		# Calling the service to copy all details.
+		#-------------------------------------------------------------------------------
+		sv_a = urhk_CopyOutToIn("")
+
+		#-------------------------------------------------------------------------------
+		# Calling the service to Fetch Cheque Details for verify
+		#-------------------------------------------------------------------------------
+		sv_d = urhk_ExecSrvNoCommit("SRV_FetchChqStatForVerify|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+		IF(sv_d != "0") THEN
+		#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+
+		#-------------------------------------------------------------------------------
+		# Calling the service to copy all details.
+		#-------------------------------------------------------------------------------
+		sv_a = urhk_CopyOutToIn("")
+		print(sv_a)
+		#-------------------------------------------------------------------------------
+		# Calling the service to Verify Cheque Status in Finacle
+		#-------------------------------------------------------------------------------
+		sv_d = urhk_ExecSrvNoCommit("SRV_VerifyChqStat|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+		print(sv_d)
+		IF(sv_d != "0") THEN
+		#{
+			CUST.INTERFACE.srvErrFlg = "Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.srvErrFlg = "N"
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	#-------------------------------------------------------------------------------
+	# code for updating dd status to unpaid
+	#-------------------------------------------------------------------------------
+	lv_q = "issBrCode,issBankCode,issDate,crncy,schm_code,ot_type|"
+	lv_q = lv_q + " SELECT ISSU_BR_CODE,ISSU_BANK_CODE,to_char(ISSUE_DATE,'dd-mm-yyyy'),DD_CRNCY_CODE,SCHM_CODE,OT_TYPE"
+	lv_q = lv_q + " FROM TBAADM.DST"
+	lv_q = lv_q + " WHERE DD_NUM = LPAD('" + TRIM(CUST.INTERFACE.InstNum) + "',16)"
+	lv_q = lv_q + " AND ISSU_BR_CODE = '" + CUST.INTERFACE.solId+ "'"
+	lv_q = lv_q + " AND BANK_ID = '" + BANCS.STDIN.contextBankId + "'"
+	lv_q = lv_q + " AND DD_STATUS = 'P' "
+    	lv_q = lv_q + " AND SCHM_CODE = '" +CUST.INTERFACE.CrSchmCode + "'"
+	lv_q = lv_q + " AND DEL_FLG != 'Y'"
+	print(lv_q)
+	lv_e = urhk_dbSelectWithBind(lv_q)
+	print(lv_e)
+	IF(lv_e == 0) THEN
+	#{
+		print(BANCS.OUTPARAM.issBrCode)
+		print(BANCS.OUTPARAM.issBankCode)
+		print(CUST.INTERFACE.InstNum)
+		print(BANCS.OUTPARAM.issDate)
+		print(BANCS.STDIN.mySolId)
+		print(BANCS.OUTPARAM.ot_type)
+		CALL("InwDDReject_changeDDStatus.scr")
+#		BANCS.INPARAM.issBrCode = BANCS.OUTPARAM.issBrCode
+#		BANCS.INPARAM.issBankCode = BANCS.OUTPARAM.issBankCode
+#		BANCS.INPARAM.ddNum = CUST.INTERFACE.InstNum
+#		BANCS.INPARAM.issDate = BANCS.OUTPARAM.issDate
+#		BANCS.INPARAM.crncy = BANCS.OUTPARAM.crncy
+#		BANCS.INPARAM.schm_code = BANCS.OUTPARAM.schm_code
+#		BANCS.INPARAM.ot_type = BANCS.OUTPARAM.ot_type
+#		BANCS.INPARAM.final_status = "I"
+#		BANCS.INPARAM.ref_num = ""
+#		BANCS.INPARAM.solId = BANCS.STDIN.mySolId
+#		lv_u = urhk_changeDDStatus("")
+#		print(lv_u)
+#		IF (lv_u != 0) THEN
+#		#{
+#			# special case of error if not from SRV and and CPARAM error
+#			CUST.INTERFACE.errorCode = "ChangeDDStatus"
+#			CUST.INTERFACE.errorDesc = BANCS.OUTPARAM.errorMesg
+#			print(CUST.INTERFACE.errorDesc)
+#			CUST.INTERFACE.successOrFailure = "E"
+#			GOTO SKIPFINISH
+#		#}
+#		ELSE
+#		#{
+#			sv_s = BANCS.OUTPARAM.dstStatus
+#			print(sv_s)
+#			
+#			sv_s = BANCS.OUTPARAM.dstCautStatus
+#			print(sv_s)
+#			
+#			sv_s = BANCS.OUTPARAM.ddcStatus
+#			print(sv_s)
+#			
+#			sv_r = BANCS.OUTPARAM.adtRefNum
+#			print(sv_r)
+#			
+#
+#		#}
+#		ENDIF
+	 #}
+	 ENDIF
+#}
+ENDIF
+
+
+
+EXITSCRIPT
+END-->
+
+
+

@@ -1,0 +1,355 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: cliaValidate.scr
+# Type: NA|default
+# Description: Custom Menu CLIA Validate Script
+# Author: Balaji_P05
+# Date: 7/18/19 10:47 AM
+# Modification Log:
+#============================================================
+<--START
+	# Script body goes here
+	TRACE ON
+	
+	sv_r = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_r)
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	PRINT(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether EQB Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","EQB")
+	PRINT(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","EQB",5)
+	#}
+	ENDIF
+	
+	##################################
+	# Variable Initialization
+	##################################
+	
+	CUST.EQB.lAcctId=TRIM(BANCS.INPUT.lAcctId)
+	PRINT(CUST.EQB.lAcctId)
+	
+	sv_a = urhk_B2k_ForacidToAcid(CUST.EQB.lAcctId)
+	PRINT(sv_a)
+	
+	IF(sv_a == 0)THEN
+	#{
+		CUST.EQB.lAcid=TRIM(BANCS.OUTPARAM.Acid)
+		PRINT(CUST.EQB.lAcid)
+		#}
+	ELSE
+		#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Unable to retrieve Loan Account Details"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	##################################
+	# Fetch Migration Date#
+	##################################
+	
+	BANCS.INPUT.moduleName = "OT"
+	BANCS.INPUT.parameterId = "MIG_DATE"
+	
+	CALL("getCustomParamValue.scr")
+	
+	IF(sv_h =="Y")THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Unable to retrieve Migration Date"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.EQB.migDate=BANCS.OUTPARAM.parameterVal
+	PRINT(CUST.EQB.migDate)
+	
+	##################################
+	# Account Validation
+	##################################
+	
+	sv_s = "clsFlg,acctCrncyCode|"
+	sv_s = sv_s + "select acct_cls_flg,acct_crncy_code from tbaadm.gam where foracid=?SVAR AND schm_type='LAA' AND bank_id=?SVAR AND acct_opn_date < to_date(?SVAR,'dd-mm-yyyy') AND entity_cre_flg='Y' AND del_flg='N'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcctId+"|"+BANCS.STDIN.contextBankId+"|"+CUST.EQB.migDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.acctCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+		PRINT(CUST.EQB.acctCrncyCode)
+		
+		CUST.EQB.clsFlg=BANCS.OUTPARAM.clsFlg
+		PRINT(CUST.EQB.clsFlg)
+		IF(CUST.EQB.clsFlg == "Y")THEN
+		#{
+			CUST.EQB.errorFlg="Y"
+			CUST.EQB.errorMsg="Account is Closed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Account is not a valid Migrated Loan Account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################
+	# Account Reschedule check
+	##################################
+	
+	sv_s = "count|"
+	sv_s = sv_s + "select count(1) from tbaadm.lrs where acid=?SVAR AND bank_id=?SVAR AND flow_id='EIDEM' AND shdl_num='01'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (BANCS.OUTPARAM.count  == "0") THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Account is already Rescheduled "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	##################################
+	# Interest Rate Change Check
+	##################################
+	
+	sv_s = "count|"
+	sv_s = sv_s + "select count(distinct int_tbl_code_srl_num) from tbaadm.itc where entity_id=?SVAR AND bank_id=?SVAR AND entity_type='ACCNT'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (BANCS.OUTPARAM.count > 1) THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Rate of Interest is changed for the Account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################
+	# Charge off Check
+	##################################
+	
+	sv_s = "count|"
+	sv_s = sv_s + "select count(1) from tbaadm.lam where acid=?SVAR AND bank_id=?SVAR AND CHRGE_OFF_FLG='Y'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (BANCS.OUTPARAM.count == "1") THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Account is already Charged OFF "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################
+	# Calculate Maximum date for which finacle interest is available#
+	##################################
+	
+	sv_s = "finIntMaxDate|"
+	sv_s = sv_s + "select to_char(max(end_date),'dd-mm-yyyy') from tbaadm.int_adm where acid=?SVAR AND bank_id=?SVAR AND entity_cre_flg='Y' AND del_flg='N'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.finIntMaxDate=TRIM(BANCS.OUTPARAM.finIntMaxDate)
+		PRINT(CUST.EQB.finIntMaxDate)
+
+		IF(CUST.EQB.finIntMaxDate == "")THEN
+		#{
+			CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Interest is not yet Collected in Finacle System"
+		GOTO ENDOFSCRIPT
+
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Interest is not yet Collected in Finacle System"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+		##################################
+	#Interest Calculated till date will be minimum of finIntMaxDate,legIntMaxDate
+	##################################
+	
+	sv_s = "dummy|"
+	sv_s = sv_s + "select dummy from dual where to_date(?SVAR,'dd-mm-yyyy')>=to_date(?SVAR,'dd-mm-yyyy')"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.migDate+"|"+CUST.EQB.finIntMaxDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Finacle Interest application is not done post migration.Interest Adjustment cannot be done for this account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	##################################
+	# Fetch currency code in which finacle interest is available
+	##################################
+	
+	sv_s = "finIntCcy|"
+	sv_s = sv_s + "select tax_crncy_code from tbaadm.int_adm where acid=?SVAR AND bank_id=?SVAR AND end_date=to_date(?SVAR,'dd-mm-yyyy') AND entity_cre_flg='Y' AND del_flg='N'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId+"|"+CUST.EQB.finIntMaxDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.finIntCcy=BANCS.OUTPARAM.finIntCcy
+		PRINT(CUST.EQB.finIntCcy)
+		#}
+	ELSE
+		#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Unable to retrieve Finacle Interest"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################
+	# Fetch Maximum date for which legacy Interest is available
+	##################################
+	
+	sv_s = "legIntMaxDate|"
+	sv_s = sv_s + "select to_char(max(end_date),'dd-mm-yyyy') from custom.c_lsbt where acid=?SVAR AND bank_id=?SVAR"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.lAcid+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.legIntMaxDate=BANCS.OUTPARAM.legIntMaxDate
+		PRINT(CUST.EQB.legIntMaxDate)
+		#}
+	ELSE
+		#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="Account is not a valid Migrated Loan Account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	##################################
+	#Interest Calculated till date will be minimum of finIntMaxDate,legIntMaxDate
+	##################################
+	
+	sv_s = "dummy|"
+	sv_s = sv_s + "select dummy from dual where to_date(?SVAR,'dd-mm-yyyy')>to_date(?SVAR,'dd-mm-yyyy')"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.finIntMaxDate+"|"+CUST.EQB.legIntMaxDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r == "0") THEN
+	#{
+		CUST.EQB.finIntDate=CUST.EQB.legIntMaxDate
+		#}
+	ELSE
+		#{
+		CUST.EQB.finIntDate=CUST.EQB.finIntMaxDate
+	#}
+	ENDIF
+	
+	PRINT(CUST.EQB.finIntDate)
+	
+	
+	##################################
+	#Interest Calculated till date will be minimum of finIntMaxDate,legIntMaxDate
+	##################################
+	
+	sv_s = "dummy|"
+	sv_s = sv_s + "select dummy from dual where to_date(?SVAR,'dd-mm-yyyy')>=to_date(?SVAR,'dd-mm-yyyy')"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQB.finIntDate+"|"+CUST.EQB.migDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF (sv_r != "0") THEN
+	#{
+		CUST.EQB.errorFlg="Y"
+		CUST.EQB.errorMsg="legacy schedule end date is before migration date. Interest Adjustment cannot be done for this account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

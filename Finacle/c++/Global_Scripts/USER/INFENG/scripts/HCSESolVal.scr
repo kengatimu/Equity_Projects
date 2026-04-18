@@ -1,0 +1,114 @@
+#  Script Name     : SRV_ModifyContextSol_validate_data.scr 
+#  Description     : This script will be called to validate target sol id 
+#  Date            : 01-02-2021
+#  Author          : Irungu James
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : urhk_SRV_GetVal
+#  Menu Option     : HCSE
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             01-02-2021      Irungu James           Original Version
+#----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="4f9b1b4970ff9c8e712a12fd23de1224185e4d4462d2bb24f38793465378ff79"
+TRACE ON
+
+sv_l = urhk_B2k_printrepos("BANCS")
+  print(sv_l)
+
+#------------------------------------------------------------------------------
+# Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+        CREATEREP("CUST")
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+        CREATECLASS("CUST","DATA",5)
+ENDIF
+if (BANCS.STDIN.menuId =="HCSE") then
+        sv_a = urhk_SRV_GetVal("fromSolId.solId")
+        CUST.DATA.homeSolId = BANCS.OUTPARAM.srvValue
+        print(CUST.DATA.homeSolId)
+        sv_a = urhk_SRV_GetVal("toSolId.solId")
+        CUST.DATA.toSolId = BANCS.OUTPARAM.srvValue
+        print(CUST.DATA.toSolId)
+endif
+	
+
+if ((BANCS.STDIN.contextBankId =="43") or (BANCS.STDIN.contextBankId =="54")) then
+#{
+        #--------------------------------------
+        #-CRM check validation
+        #--------------------------------------
+        sv_a = urhk_SRV_GetVal("empId.empId")
+        CUST.DATA.usrId=BANCS.OUTPARAM.srvValue
+        print(CUST.DATA.usrId)
+
+        sv_s = "UserId,CrmSol,CoreSol,Wkclass,empName|select user_id , BCCODE CRM_sol_id,d.sol_id Core_Sol_id, user_work_class, emp_name   from CRMUSER.AGENTS a ,  CRMUSER.BIZCENTER b ,"
+        sv_s = sv_s + "CRMUSER.USERS  c ,tbaadm.upr d  , tbaadm.get e where d.user_id =c.loginid and a.personid =c.personid and  b.BCID =a.BCID "
+        sv_s = sv_s + "and   d.home_bank_id =?SVAR and d.del_flg  ='N' and e.emp_id =d.user_emp_id and user_emp_id =?SVAR "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.usrId
+	print(sv_s)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0)THEN
+                CUST.DATA.CrmSol = BANCS.OUTPARAM.CrmSol
+                CUST.DATA.CoreSol = BANCS.OUTPARAM.CoreSol
+				CUST.DATA.Wkclass = BANCS.OUTPARAM.Wkclass
+				CUST.DATA.empName = BANCS.OUTPARAM.empName
+        ELSE
+                CUST.DATA.CrmSol = ""
+                CUST.DATA.CoreSol = ""
+		CUST.DATA.Wkclass =  ""
+		CUST.DATA.empName = "" 
+
+        ENDIF
+        print(CUST.DATA.toSolId)
+        print(CUST.DATA.CrmSol)
+	print (CUST.DATA.Wkclass)
+	print (CUST.DATA.empName)
+
+        if ((CUST.DATA.CrmSol !="") and (CUST.DATA.Wkclass < 510 ))  then
+                if (CUST.DATA.toSolId != CUST.DATA.CrmSol) then
+			if (BANCS.STDIN.contextBankId =="54") then
+				sv_s = " COUNT|SELECT COUNT(1) FROM  "
+				sv_s = sv_s + " (select distinct loginid,upr_sol_id,emp_name from "
+				sv_s = sv_s + " (select bccode CRM_SOL_ID,s.loginid,t.sol_id UPR_SOL_ID,emp_name from CRMUSER.USERBCACCESS a, "
+				sv_s = sv_s + " tbaadm.upr t,crmuser.bizcenter c,crmuser.users s,tbaadm.get g where "
+				sv_s = sv_s + " a.bcid=c.bcid "
+				sv_s = sv_s + " and s.personid=a.personid "
+				sv_s = sv_s + " and s.loginid=t.user_id  and g.emp_id=USER_EMP_ID  and substr(s.loginid,3,7)=g.emp_id "
+				sv_s = sv_s + " and t.del_flg<>'Y' and t.user_work_class< 510 "
+				sv_s = sv_s + " and (select count(1) from CRMUSER.USERBCACCESS where personid=s.personid)>1 "
+				sv_s = sv_s + " and home_bank_id=?SVAR and g.sol_id=?SVAR and g.emp_id=?SVAR)) "
+				print (sv_s)
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.homeSolId + "|" + CUST.DATA.usrId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_u =  urhk_dbSelectWithBind(sv_s)
+				  IF(sv_u == 0) THEN
+				  #{ 
+					PRINT(BANCS.OUTPARAM.COUNT)
+					 IF (CINT(BANCS.OUTPARAM.COUNT) > 0) THEN
+					 #{
+					     sv_u = urhk_SRV_SetErr(" To proceed, Visit CRM-Administration >> Access Control >> Business access centre and remove Multiple sol's assigned to the User.")
+					     sv_u = urhk_SRV_SetErr("Transfer CRM Profile for the User as well to the Target Sol.")
+					     exitscript
+					 #}
+				         ENDIF
+				   #}
+		 		   ENDIF
+			endif
+			sv_u = urhk_SRV_SetErr("Transfer CRM Profile for the User to the Target Sol to proceed.")
+			exitscript
+                endif
+        endif
+        #--------------------------------------
+        #-CRM check validation
+        #--------------------------------------
+#}
+endif
+TRACE OFF
+exitscript
+END-->

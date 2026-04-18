@@ -1,0 +1,209 @@
+<--start
+	TRACE ON
+
+	#------------------------------------#
+	#-- Repository And Class Creation  --#
+	#------------------------------------#
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	PRINT(sv_u)
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	   CREATEREP("CUST")
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	   CREATECLASS("CUST","DATA",5)
+	ENDIF
+
+	#-----------------------------#
+	#-- Fetch GLs from amortization schema
+	#-----------------------------#
+
+	sv_l = "compte | "
+	sv_l = sv_l + "select compte from CUSTOM.C_SysOnlyacct where is_sys_only_flg_updated = 'N' "
+
+	sv_c = urhk_dbCursorOpenWithBind(sv_l)
+	PRINT(sv_c)
+
+	IF (sv_c != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+
+	CUST.DATA.DB_CURSOR_NUMBER = sv_c
+	PRINT(CUST.DATA.DB_CURSOR_NUMBER)
+
+	#-----------------------------#
+	#-- Cursor Fetch Loop
+	#-----------------------------#
+
+	sv_f = urhk_dbCursorFetch(CUST.DATA.DB_CURSOR_NUMBER)
+	print(sv_f)
+
+	IF (sv_f != 0) THEN
+	#{
+		GOTO ERRORCHECK
+	#}
+	ENDIF
+
+	WHILE (sv_f == 0)
+	#{
+		CUST.DATA.COMPTE = BANCS.OUTPARAM.compte
+		PRINT("Processing GL: " + CUST.DATA.COMPTE)
+		
+		#----------------------------------------------------------------------------------------------------
+		# SRV_ModifyContextSol
+		#----------------------------------------------------------------------------------------------------
+		sv_l = "SOL_ID | select sol_id from tbaadm.gam where foracid = '"+CUST.DATA.COMPTE+"' and bank_id = '"+BANCS.STDIN.contextBankId+"' "
+		print(sv_l)
+		sv_c = urhk_dbSelectWithBind(sv_l)
+		PRINT(sv_c)
+
+		CUST.DATA.sol_id = BANCS.STDIN.mySolId
+		IF (sv_c == 0) THEN
+		#{
+			CUST.DATA.sol_id  = BANCS.OUTPARAM.SOL_ID
+		#}
+		ENDIF
+	
+		PRINT(BANCS.STDIN.mySolId)
+		PRINT(CUST.DATA.sol_id)
+		IF (CUST.DATA.sol_id != BANCS.STDIN.mySolId) THEN
+		#{
+			sv_i = urhk_SetUrhkInp("sol.solId|" + CUST.DATA.sol_id)
+			sv_o = urhk_SetUrhkOut("sol.solDesc|solDesc")
+
+			sv_q = urhk_ExecSrv("SRV_ModifyContextSol|retain_all_output = Y|same_user_verify = Y")
+			IF(sv_q == "0") THEN
+			#{
+				print(BANCS.OUTPARAM.solDesc)
+			#}
+			ELSE
+				GOTO ERRORCHECK
+			ENDIF
+		#}
+		ENDIF
+
+		#------------------------------------------------------#
+		#-- Fetch Office Account Details for this GL
+		#------------------------------------------------------#
+		sv_i = urhk_SetUrhkInp("officeAcctDtls.acctBasic.foracid|" + CUST.DATA.COMPTE)
+		PRINT(sv_i)
+
+		sv_q = urhk_ExecSrv("SRV_FetchOfficeAcctForModify|retain_all_output = Y|same_user_verify = Y")
+		PRINT(sv_q)
+
+		IF (sv_q == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			PRINT(sv_u)
+
+			#--------------------------------------#
+			#-- Flag GL as System Only
+			#--------------------------------------#
+			sv_i = urhk_SetUrhkInp("officeAcctDtls.sysOnlyAcctFlg|Y")
+			PRINT(sv_i)
+
+			sv_q = urhk_ExecSrv("SRV_ModifyOfficeAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_q)
+
+			IF (sv_q == 0) THEN
+			#{
+				PRINT("Modification successful for GL: " + CUST.DATA.COMPTE)
+				
+				sv_a = "update CUSTOM.C_SysOnlyacct set is_sys_only_flg_updated = 'Y' "
+				sv_a = sv_a + "WHERE is_sys_only_flg_updated = 'N' and compte = '"+CUST.DATA.COMPTE+"' "
+				print(sv_a)
+				
+				sv_c = urhk_dbSqlWithBind(sv_a)
+				PRINT(sv_c)
+				
+				IF(sv_c == 0)THEN
+				#{
+					sv_c = urhk_dbSqlWithBind("COMMIT")
+					PRINT(sv_c)
+				#}
+				ELSE
+				#{
+					sv_c = urhk_dbSqlWithBind("ROLLBACK")
+					PRINT(sv_c)
+				#}
+				ENDIF
+				
+				sv_e = CUST.DATA.COMPTE
+				sv_u = system("echo '"+sv_e+"' >>System_only_accts_success.suc")
+				print(sv_u)
+			#}
+			ELSE
+			#{
+				PRINT("Modification FAILED for GL: " + CUST.DATA.COMPTE)
+				GOTO ERRORCHECK
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			PRINT("Fetch FAILED for GL: " + CUST.DATA.COMPTE)
+			GOTO ERRORCHECK
+		#}
+		ENDIF
+		
+		ERRORCHECK:
+		# SRV Error check
+		#----------------------------------------------------------------------------------------------------
+		IF (sv_q != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+				print(sv_v)
+				sv_v = 1
+				print(sv_v)
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+			ENDIF
+			IF(sv_v > 0)THEN
+			#{
+				sv_u = system("echo 'Error'")
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+
+					#sv_t = "executeFinacleScript_CustomData.ERROR | " + sv_e
+					#sv_u = urhk_SetOrbOut(sv_t)	
+					#print(sv_u)
+
+					sv_i = sv_i + 1
+					sv_e = CUST.DATA.COMPTE + " => "+ sv_e
+					sv_u = system("echo '"+sv_e+"' >>System_only_accts_fail.fai")
+					print(sv_u)
+					
+					#Error response
+					sv_t = "ERROR | " +sv_e
+					sv_u = urhk_SetOrbOut(sv_t)
+
+					#EXITSCRIPT
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		sv_f = urhk_dbCursorFetch(CUST.DATA.DB_CURSOR_NUMBER)
+	#}
+	do
+
+	TRACE OFF
+	EXITSCRIPT
+END-->

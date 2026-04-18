@@ -1,0 +1,358 @@
+<--START
+CHECKSUM="5504b9584fca207f33eb7f8fb341e2f8162efa6ef7fe62943a42084ac16ac3ea"
+	###############################################################################
+	# Script name			: CIF.scr
+	# Date					: 09-03-2013
+	# Description			: Fetches the account details for a given CIF ID
+	# Author				: Dhana Prabhakar
+	# Calling Script		: none
+	# Called Scripts		: none
+	###############################################################################
+	TRACE ON
+	
+	################################################################
+	#       Creating New Repository and Class
+	################################################################
+	
+	IF(REPEXISTS("EQUITY") == 0) THEN
+	#{
+		CREATEREP("EQUITY")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("EQUITY","CIF") == 0) THEN
+	#{
+		CREATECLASS("EQUITY","CIF", 5)
+	#}
+	ENDIF
+	
+	###########################################################
+	# Check whether the mandatory  (CustId) field Exists
+	###########################################################
+	IF ( FIELDEXISTS(BANCS.INPUT.CustId) == 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.Name = "CUSTOMER ID Field is Mandatory"
+		sv_a=BANCS.OUTPUT.Name
+		sv_b=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	###############################
+	# Receive the values from  FI
+	###############################
+	EQUITY.CIF.CustId = trim(BANCS.INPUT.CustId)
+	print(EQUITY.CIF.CustId)
+	
+	############################################
+	# Assigning EQUITY.CIF.ErrMessage to NULL
+	############################################
+	EQUITY.CIF.ErrMessage=""
+	
+	########################################################
+	# Checking the length of the CUST ID
+	########################################################
+	
+	sv_u = STRLEN(TRIM(EQUITY.CIF.CustId))
+	print(sv_u)
+	
+	IF(STRLEN(TRIM(EQUITY.CIF.CustId)) == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		EQUITY.CIF.ErrMessage = "CUSTOMER ID field Cannot be NULL"
+		sv_a=EQUITY.CIF.ErrMessage
+		sv_b=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+		#}
+	ELSE
+		#{
+		
+		sv_b = urhk_UpCase (EQUITY.CIF.CustId)
+		print(BANCS.OUTPARAM.UpString)
+		
+		EQUITY.CIF.CustId = BANCS.OUTPARAM.UpString
+		
+		########################################################
+		# Validating the CUST ID
+		########################################################
+		sv_s = "custid|SELECT DISTINCT(cif_id)"
+		sv_s = sv_s + " FROM TBAADM.CMG "
+		sv_s = sv_s + " WHERE CMG.cif_id = ?SVAR"
+		sv_s = sv_s + " AND CMG.bank_id = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  EQUITY.CIF.CustId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d != 0) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			EQUITY.CIF.ErrMessage = "Invalid Customer ID"
+			sv_a=EQUITY.CIF.ErrMessage
+			sv_b=urhk_setOrbOut("Error|" +sv_a)
+			GOTO EndOfScript
+		#}
+		ENDIF
+	#}
+	ENDIF
+	###############################################################################
+	#  Number of records selected under the CustID
+	###############################################################################
+	
+	sv_s = "count|SELECT COUNT(*) "
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE GAM.cif_id = ?SVAR"
+	sv_s = sv_s + " AND GAM.entity_cre_flg='Y' "
+	sv_s = sv_s + " AND GAM.del_flg='N' "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N'"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS =  EQUITY.CIF.CustId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		EQUITY.CIF.ErrMessage = "Failed to retrieve the no: accounts for the entered CIF Id"
+		sv_a=EQUITY.CIF.ErrMessage
+		sv_b=urhk_setOrbOut("Result|" +sv_a)
+		GOTO EndOfScript
+		
+	#}
+	ENDIF
+	
+	EQUITY.CIF.count = BANCS.OUTPARAM.count
+	print("No: of records :" + EQUITY.CIF.count)
+	sv_a=EQUITY.CIF.count
+	sv_b=urhk_setOrbOut("ACCTCOUNT|" +sv_a)
+	print(sv_b)
+	
+	IF(EQUITY.CIF.count == 0)THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		EQUITY.CIF.ErrMessage = "No Accounts Found for this CUST ID"
+		sv_a=EQUITY.CIF.ErrMessage
+		sv_b=urhk_setOrbOut("Result|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	###############################################################################
+	#  Getting the details from GAM,AAS,SMT,CAM
+	###############################################################################
+	sv_s = "foracid, acct_name, clrbal,unclrbal,sanlim,lienamt,drwpow,eab,accstat|"
+	sv_s = sv_s + " SELECT a.foracid,a.acct_name,"
+	sv_s = sv_s + " a.clr_bal_amt, (a.un_clr_bal_amt + a.future_un_clr_bal_amt), a.sanct_lim, a.lien_amt, a.drwng_power,"
+	sv_s = sv_s + " (LEAST(a.sanct_lim,a.drwng_power)  + a.clr_bal_amt)"
+	sv_s = sv_s + " ,NVL((SELECT decode (acct_status,'D','Y','N') FROM TBAADM.smt WHERE smt.acid=a.acid AND SMT.bank_id=a.bank_id)"
+	sv_s = sv_s + " ,(SELECT decode (acct_status,'D','Y','N') FROM TBAADM.CAM WHERE CAM.acid=a.acid AND CAM.bank_id=a.bank_id))"
+	#sv_s = sv_s + " ,NVL((SELECT aas.nma_key_type FROM TBAADM.aas WHERE aas.acid=a.acid AND ACCT_POA_AS_REC_TYPE='M' and AAS.bank_id=a.bank_id),' ')"
+	#sv_s = sv_s + " ,NVL((SELECT aas.acct_poa_as_name FROM TBAADM.aas WHERE aas.acid=a.acid AND ACCT_POA_AS_REC_TYPE='M' and AAS.bank_id=a.bank_id),' ')"
+	sv_s = sv_s + " FROM TBAADM.gam a WHERE a.cif_id = ?SVAR"
+	sv_s = sv_s + " AND a.entity_cre_flg='Y' "
+	sv_s = sv_s + " AND a.del_flg='N' "
+	sv_s = sv_s + " AND a.acct_cls_flg='N'"
+	sv_s = sv_s + " AND a.bank_id = ?SVAR "
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = EQUITY.CIF.CustId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	#==========================================================================
+	# Getting values using cursor
+	#==========================================================================
+	sv_b = urhk_dbCursorOpenWithBind(sv_s)
+	IF (sv_b > 1) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		EQUITY.CIF.ErrMessage = "Failed to retrieve the accounts for the entered CIF Id"
+		sv_a=EQUITY.CIF.ErrMessage
+		sv_b=urhk_setOrbOut("Result|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	EQUITY.CIF.main_cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	
+	sv_r = urhk_dbCursorFetch(EQUITY.CIF.main_cursor_number)
+	
+	#==========================================================================
+	# Error in cursor will end the script
+	#==========================================================================
+	
+	IF (sv_r != 0) THEN
+	#{
+		sv_r = urhk_dbCursorClose(EQUITY.CIF.main_cursor_number)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	EQUITY.CIF.count1 = 1
+	
+	WHILE (sv_r == 0)
+	#{
+		#==========================================================================
+		# Getting the account details of the records fetched from GAM,AAS,SMT,CAM
+		#==========================================================================
+		
+		("EQUITY").("CIF").("ClearBal_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.clrbal
+		print(("EQUITY").("CIF").("ClearBal_"+(EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("UnClearBal_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.unclrbal
+		print(("EQUITY").("CIF").("UnClearBal_"+ (EQUITY.CIF.count1)))
+		
+		#("EQUITY").("CIF").("NmaKey_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.nmakey
+		#	print(("EQUITY").("CIF").("NmaKey_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("acct_name_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.acct_name
+		print(("EQUITY").("CIF").("acct_name_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("SanLim_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.sanlim
+		print(("EQUITY").("CIF").("SanLim_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("LienAmt_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.lienamt
+		print(("EQUITY").("CIF").("LienAmt_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("DrawPow_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.drwpow
+		print(("EQUITY").("CIF").("DrawPow_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("EAB_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.eab
+		print(("EQUITY").("CIF").("EAB_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.accstat
+		print(("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count1)))
+		
+		("EQUITY").("CIF").("Foracid_"+ (EQUITY.CIF.count1)) = BANCS.OUTPARAM.foracid
+		print(("EQUITY").("CIF").("Foracid_"+ (EQUITY.CIF.count1)))
+		
+		
+		sv_b = urhk_getAcctDetailsInRepository( ("EQUITY").("CIF").("Foracid_"+ (EQUITY.CIF.count1)) )
+		print(sv_b)
+		
+		IF(sv_b==0) THEN
+		#{
+			("EQUITY").("CIF").("effAvblAmt_"+ (EQUITY.CIF.count1)) = CINT(BANCS.OUTPARAM.EffAvailableAmt)
+			print(("EQUITY").("CIF").("effAvblAmt_"+ (EQUITY.CIF.count1)))
+		#}
+		ENDIF
+		
+		
+		
+		#==========================================================================
+		# To fetch the next record
+		#==========================================================================
+		sv_r = urhk_dbCursorFetch(EQUITY.CIF.main_cursor_number)
+		
+		IF(sv_r==0) THEN
+		#{
+			print("CURSOR FETCHED")
+			#}
+		ELSE
+			#{
+			
+			EQUITY.CIF.reason = "Failed to fetch the details"
+			print(EQUITY.CIF.reason)
+		#}
+		ENDIF
+		
+		EQUITY.CIF.count1 = CINT(EQUITY.CIF.count1)+CINT("1")
+		PRINT(EQUITY.CIF.count1)
+	#}
+	DO
+	
+	EQUITY.CIF.count2=1
+	
+	WHILE(EQUITY.CIF.count2 <= EQUITY.CIF.count)
+	#{
+		
+		print(EQUITY.CIF.count2)
+		
+		sv_b= "Record No:|" + EQUITY.CIF.count2
+		print(sv_b)
+		sv_w= urhk_setOrbOut(sv_b)
+		print (sv_w)
+		
+		#sv_b=urhk_setOrbOut(" Record No_" + EQUITY.CIF.count2+"|" + EQUITY.CIF.count2)
+		#print(sv_b)
+		
+		print(("EQUITY").("CIF").("ClearBal_"+(EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" Clearbalance_" + EQUITY.CIF.count2+"| " + ("EQUITY").("CIF").("ClearBal_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("UnClearBal_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" UnClearBalance_" + EQUITY.CIF.count2+"| " + ("EQUITY").("CIF").("UnClearBal_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		#print(("EQUITY").("CIF").("NmaKey_"+ (EQUITY.CIF.count2)))
+		#sv_b=urhk_setOrbOut(" NmaKey_" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("NmaKey_"+(EQUITY.CIF.count2)))
+		#print(sv_b)
+		
+		print(("EQUITY").("CIF").("acct_name_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" AccPoa _" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("acct_name_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("SanLim_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" SanLim_" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("SanLim_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("LienAmt_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" LienAmt_" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("LienAmt_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("DrawPow_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" DrawPow _" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("DrawPow_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("EAB_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" EAB_" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("EAB_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count2)))
+		
+		IF ((("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count2))) =="") THEN
+		#{
+			
+			("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count2)) = " "
+			print(("EQUITY").("CIF").("AccStat_"+ (EQUITY.CIF.count2)))
+		#}
+		ENDIF
+		
+		sv_b=urhk_setOrbOut(" AccStat _" + EQUITY.CIF.count2+"|" + ("EQUITY").("CIF").("AccStat_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("Foracid_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" Foracid _" + EQUITY.CIF.count2+"| " + ("EQUITY").("CIF").("Foracid_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		print(("EQUITY").("CIF").("effAvblAmt_"+ (EQUITY.CIF.count2)))
+		sv_b=urhk_setOrbOut(" effAvblAmt_" + EQUITY.CIF.count2+"| " + ("EQUITY").("CIF").("effAvblAmt_"+(EQUITY.CIF.count2)))
+		print(sv_b)
+		
+		EQUITY.CIF.count2 = CINT(EQUITY.CIF.count2)+CINT("1")
+		PRINT(EQUITY.CIF.count2)
+		
+	#}
+	DO
+	#==========================================================================
+	# To close the cursor
+	#==========================================================================
+	sv_m = urhk_dbCursorClose(EQUITY.CIF.main_cursor_number)
+	PRINT(sv_m)
+	
+	EndOfScript:
+		EXITSCRIPT
+END-->
+
+##############################################################
+# End of script
+##############################################################

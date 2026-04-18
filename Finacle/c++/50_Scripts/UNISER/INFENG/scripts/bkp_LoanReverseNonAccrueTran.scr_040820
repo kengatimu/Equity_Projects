@@ -1,0 +1,338 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : LoanReverseNonAccrueTran.scr
+#   Description     : The LoanReverseNonAccrueTran.scr script is used to create transaction for loanReverseNonAccrueTran of a loan amount.
+#   Date            : 28-01-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : NA
+#   Calling Script  : getMTTTranPart.scr
+#   Menu Option     : HMAPD
+#   Srl. No         Date            Author              Description.
+#   -------         ------          ------              ------------
+#   1.0                                                 Original Version
+#   1.0             28-01-2013      Sateesh             rate code is selected from LAM for the corrresponding account and set as currency code is different
+#-----------------------------------------------------------------------------------------------
+#===============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: LoanReverseNonAccrueTran.scr
+# event: NA
+# description: LoanReverseNonAccrueTran
+#===============================================================
+<--START
+CHECKSUM="e538e1c741111095f1728185036f894f9660915a0087fab4a0d6a2f6384a3ca1"
+# Since this is a reversal MTT the account passed as debit will be credited
+# and the credit account will be debited for putting the reversal transaction.
+	TRACE ON
+
+sv_a = urhk_MTTS_PopulateInputDetails("")
+
+###############################################################################
+# Define the Transaction
+###############################################################################
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="BI"
+MTT.TranDetails.Remarks="Past Due Transaction"
+MTT.TranDetails.IgnoreExcp="I"
+MTT.TranDetails.Consolidate="Y"
+MTT.TranDetails.PrintAdviceInd="B"
+MTT.TranDetails.sysTranCode="LOANAA033"
+
+sv_z = urhk_MTTS_DefineTransaction("chargeoffreverse")
+###############################################################################
+# Get all the amounts into local variables . Please do not set these variables
+# anywhere else in this script. The variables are : -
+# sv_l = pending normal interest
+# sv_m = pending penal interest
+###############################################################################	
+sv_l = CDOUBLE(MTT.InputDetails.norTranAmt)
+sv_m = CDOUBLE(MTT.InputDetails.penTranAmt)
+sv_e = CDOUBLE(MTT.InputDetails.intBookedAmt)
+sv_f = CDOUBLE(MTT.InputDetails.penalIntBookedAmt)
+###############################################################################
+# Debit Interest Suspense Acccount
+###############################################################################
+MTT.PartTranDetails.Account=MTT.InputDetails.creditAcct
+MTT.PartTranDetails.RefAmount=-sv_l
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode =  MTT.InputDetails.pastDueRateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+	call("getMTTTranPart.scr")
+endif
+	#new code start
+	IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		sv_s = "intRateCode|SELECT ds_rate_code "
+		sv_s = sv_s + "FROM tbaadm.LAM "
+		sv_s = sv_s + "WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR) "
+		sv_s = sv_s + "AND LAM.bank_id = ?SVAR "
+		BANCS.INPARAM.BINDVARS = MTT.InputDetails.foracid+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+	#}
+	ENDIF
+	#new code end
+	MTT.PartTranDetails.Remarks="Debit to Interest Suspense Account"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02509"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("interest suspense")
+
+###############################################################################
+# Debit Penal Suspense Acccount
+###############################################################################
+if(sv_m != 0 ) then
+MTT.PartTranDetails.Account=MTT.InputDetails.penCreditAcct
+MTT.PartTranDetails.RefAmount=-sv_m
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+	call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Debit to Penal Interest Suspense Account"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02516"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("penal interest suspense")
+endif
+
+###############################################################################
+# Credit P/L account
+###############################################################################
+if(sv_l != 0 ) then
+MTT.PartTranDetails.Account=MTT.InputDetails.debitAcct
+MTT.PartTranDetails.RefAmount=sv_l
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.pastDueRateCode
+		#new code start
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + "FROM tbaadm.LAM "
+			sv_s = sv_s + "WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR) "
+			sv_s = sv_s + "AND LAM.bank_id = ?SVAR "
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.foracid+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+		#}
+		ENDIF
+		#new code end
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+	call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Credit to P&L Interest Account"
+MTT.PartTranDetails.Consolidate="Y"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02510"
+sv_z = urhk_MTTS_DefineLoanPartTran("interest")
+endif
+
+###############################################################################
+# Credit Penal P/L account
+###############################################################################
+if(sv_m != 0 ) then
+MTT.PartTranDetails.Account=MTT.InputDetails.penDebitAcct
+MTT.PartTranDetails.RefAmount=sv_m
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = ""
+		#new code start
+		IF (MTT.PartTranDetails.RefCurrency != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+			sv_s = "intRateCode|SELECT ds_rate_code "
+			sv_s = sv_s + "FROM tbaadm.LAM "
+			sv_s = sv_s + "WHERE acid =(SELECT acid FROM tbaadm.GAM where foracid = ?SVAR  AND GAM.bank_id = ?SVAR) "
+			sv_s = sv_s + "AND LAM.bank_id = ?SVAR "
+			BANCS.INPARAM.BINDVARS = MTT.InputDetails.foracid+ "|" +BANCS.STDIN.contextBankId+ "|" +BANCS.STDIN.contextBankId
+			print(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.intRateCode
+		#}
+		ENDIF
+		#new code end
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+	call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Credit to Penal P&L Interest Account"
+MTT.PartTranDetails.Consolidate="Y"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02511"
+sv_z = urhk_MTTS_DefineLoanPartTran("penalInt")
+endif
+
+###############################################################################
+# Credit Past due Interest Receivable Acccount
+###############################################################################
+if (sv_e !=0) then
+MTT.PartTranDetails.Account=MTT.InputDetails.nrmlPDRcvblAcct
+MTT.PartTranDetails.RefAmount= sv_e
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+    call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Credit to Past due Interest Recv Account"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02512"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("booked interest")
+endif
+###############################################################################
+# Debit Interest Receivable Acccount
+###############################################################################
+if (sv_e !=0) then
+MTT.PartTranDetails.Account=MTT.InputDetails.nrmlRcvblAcct
+MTT.PartTranDetails.RefAmount= -sv_e
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+    call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Debit to Interest Receivable Acccount"
+MTT.PartTranDetails.Consolidate="Y"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02513"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("bookedinterest")
+endif
+###############################################################################
+# Credit Past due Penal Interest Receivable Acccount
+###############################################################################
+if (sv_f !=0) then
+MTT.PartTranDetails.Account=MTT.InputDetails.penalPDRcvblAcct
+MTT.PartTranDetails.RefAmount= sv_f
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+    call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Credit to Past due Penal Interest Recv Account"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02514"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("booked penal interest")
+endif
+###############################################################################
+# Debit Penal Interest Receivable Acccount
+###############################################################################
+if (sv_f !=0) then
+MTT.PartTranDetails.Account=MTT.InputDetails.penalRcvblAcct
+MTT.PartTranDetails.RefAmount= -sv_f
+MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of non-accrue mode"
+
+# Call to common script to modify tran particulars if script is present
+MTT.PartTranDetails.ScriptEventType = "LANAT"
+sv_x = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+if (sv_x == 0) then
+    call("getMTTTranPart.scr")
+endif
+
+		
+		MTT.PartTranDetails.Remarks="Debit to Penal Interest Receivable Acccount"
+MTT.PartTranDetails.Consolidate="Y"
+MTT.PartTranDetails.TranIdentifier="chargeoffreverse"
+MTT.PartTranDetails.PTranBusinessType="LOANS"
+MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+MTT.PartTranDetails.sysPartTranCode ="PTRN02515"
+MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+MTT.LAAddnlDetails.OriginOfTran = "REVAC"
+
+MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+
+sv_z = urhk_MTTS_DefineLoanPartTran("booked penal interest")
+endif
+sv_z = urhk_MTTS_EndDefinition("")
+#trace off
+end-->
+

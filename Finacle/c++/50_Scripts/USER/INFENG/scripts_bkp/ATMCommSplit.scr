@@ -1,0 +1,301 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ATMCommSplit.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 05-05-2020
+#  Author          : Edwin Zico
+#  job             : ATMSP
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-05-2020     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2f2d9b88241d43c8b9e7a945546318e708c02810a81c95150a17656fe02280c1"
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+#{
+	CREATECLASS("CUST","ATM",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.ATM.errMsg = ""
+
+	sv_s = "solId,tranId,tranAmt|"
+	sv_s = sv_s + " select sol_id,trim(tran_id),(tran_amt/2) as tran_amt  from tbaadm.dtd where GL_SUB_HEAD_CODE ='65001' and PART_TRAN_TYPE ='C' and "
+	sv_s = sv_s + " acid in (select acid  from tbaadm.gam where BACID ='PNLSAATM') AND sol_id =?SVAR and TRAN_RMKS like '%XXX%' and dtd.tran_date = "
+	sv_s = sv_s + " (select to_char(db_stat_date ,'DD-MON-RRRR')  from tbaadm.gct where  Bank_id='50' )"
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId 
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+
+	IF(sv_e == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			CUST.ATM.errMsg ="No Data."
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.ATM.errMsg )
+			EXITSCRIPT
+		#}
+		ENDIF
+		print(sv_q)
+
+	WHILE (sv_q==0)
+	
+		CUST.ATM.solId=BANCS.OUTPARAM.solId
+		print(CUST.ATM.solId)
+		CUST.ATM.tranId=BANCS.OUTPARAM.tranId
+		print(CUST.ATM.tranId)
+		CUST.ATM.tranAmt=BANCS.OUTPARAM.tranAmt
+		print(CUST.ATM.tranAmt)
+#------------------------------------------DrAcct start
+		
+		CUST.ATM.crBAcid = "PNLSAATM"				
+		sv_i = CUST.ATM.crBAcid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ CUST.ATM.solId
+		print(sv_i)
+		sv_u = urhk_B2k_BacidToAcctId(sv_i)
+		
+		IF (sv_u == 0 )then
+				CUST.ATM.DrAcct=BANCS.OUTPARAM.AcctId
+				print(CUST.ATM.DrAcct)
+		ELSE
+				GOTO NEXTREC
+		ENDIF
+#-------------------------------------------DrAcct end		
+
+#-------------------------------------------CrAcct start	
+		IF ((CUST.ATM.tranId !="") AND (CUST.ATM.solId !="")) THEN
+		
+			sv_s ="CrSolid|"
+			sv_s = sv_s + " select d.sol_id from tbaadm.dtd d,tbaadm.gam g where trim(d.tran_id) =?SVAR and d.pstd_flg ='Y' and d.dth_init_sol_id =?SVAR "
+			sv_s = sv_s + " and d.part_tran_type ='C' and d.sol_id <>?SVAR and d.acid =g.acid and g.acct_short_name is not null and d.tran_date = "
+			sv_s = sv_s + " (select to_char(db_stat_date ,'DD-MON-RRRR')  from tbaadm.gct where  Bank_id='50' )"	
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS =CUST.ATM.tranId +"|"+ CUST.ATM.solId +"|"+ CUST.ATM.solId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_u= urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_u)
+				
+			IF(sv_u == 0) THEN
+			#{
+
+				CUST.ATM.CrSolid=BANCS.OUTPARAM.CrSolid
+				print(CUST.ATM.CrSolid)
+				sv_i = CUST.ATM.crBAcid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ CUST.ATM.CrSolid
+				print(sv_i)
+				sv_u = urhk_B2k_BacidToAcctId(sv_i)
+
+				IF (sv_u == 0 )then
+					CUST.ATM.CrAcct=BANCS.OUTPARAM.AcctId
+					print(CUST.ATM.CrAcct)
+				ELSE
+					GOTO NEXTREC
+				ENDIF
+			#}
+			ELSE
+			#{
+
+				CUST.ATM.errMsg ="No Data."
+				sv_e=urhk_SetOrbOut("StattusCode|Error")
+				sv_e=urhk_SetOrbOut("Error|"+CUST.ATM.errMsg )
+				GOTO NEXTREC
+			#}
+			ENDIF
+		#}
+		ENDIF
+#--------------------------------------------CrAcct end
+
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+
+		BANCS.INPARAM.PostTranFlg 		= "Y"
+		BANCS.INPARAM.CommitFlg 		= "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+		BANCS.INPARAM.ValidationFlag 		= "Y"
+		BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+		BANCS.INPARAM.CheckExceptions 		= "N"
+
+		
+#		sv_r = urhk_MTTS_Initialize("")
+#		print(sv_r)
+
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+		print(sv_a)
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = "ATM COMM SPLIT"
+
+		print(CUST.ATM.CrAcct)
+		print(CUST.ATM.DrAcct)
+		print(CUST.ATM.tranAmt)
+		
+		sv_v = "ATMTran"
+		print(sv_v)
+
+		sv_r = urhk_MTTS_DefineTransaction("ATMTran")
+
+		IF((CUST.ATM.tranAmt > 0)  and (CUST.ATM.CrAcct!=""))THEN
+		#{		
+			
+			#CustomerDebit
+					MTT.PartTranDetails.Account 	= CUST.ATM.DrAcct
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = "ATMCOMM SPLIT REF"+ CUST.ATM.tranId +"/"+ CUST.ATM.CrAcct 
+					MTT.PartTranDetails.RefAmount = -(cdouble(CUST.ATM.tranAmt))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Dr.ATM COMM SPLIT" 
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "CustDr"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.ATM.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+			#ATM Credit
+					MTT.PartTranDetails.Account 	= CUST.ATM.CrAcct
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = "ATMCOMM SPLIT REF"+CUST.ATM.tranId +"/" + CUST.ATM.DrAcct
+					MTT.PartTranDetails.RefAmount = (cdouble(CUST.ATM.tranAmt))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Cr from:" + CUST.ATM.DrAcct
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "ATMIncome"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.ATM.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+		
+		
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.ATM.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.ATM.tranid)
+				#}
+				ENDIF
+		#}
+		ELSE
+		#{
+			sv_r = urhk_MTTS_EndDefinition("")
+			print(sv_r)			
+			GOTO NEXTREC
+		#}
+		ENDIF		
+
+	NEXTREC:
+	
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	
+	
+	#}
+	DO
+#}
+ELSE
+#{
+
+	CUST.ATM.errMsg ="Data Error"
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.ATM.errMsg)
+#}
+ENDIF
+
+
+
+EXITSCRIPT
+
+trace off
+end-->
+	

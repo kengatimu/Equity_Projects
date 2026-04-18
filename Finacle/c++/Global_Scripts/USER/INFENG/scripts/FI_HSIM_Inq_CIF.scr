@@ -1,0 +1,491 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : FI_HSIM_Inq_CIF.scr
+#  Description     : fetch SI id 
+#  Date            : 14-04-2022
+#  Author          : James Maina
+#  Input           : CIF
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             14-04-2022      James Maina		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "CSEG")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "CSEG", 5)
+	#}
+	ENDIF
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("CIFID"))== 0) ) THEN
+	#{
+   		CUST.CSEG.errMsg="please enter CIFID"
+		sv_t = "ERROR | " +CUST.CSEG.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+
+	CUST.CSEG.CIFID= BANCS.INPUT.CIFID
+	print(CUST.CSEG.CIFID)		
+
+
+	sv_s="SOID, SIPRIORITY, CUSTID |"
+	sv_s=sv_s + "SELECT DISTINCT S.si_srl_num,S.si_priority,S.cust_id FROM TBAADM.SIH S, TBAADM.PYRD P, TBAADM.PYRH H WHERE  "
+	sv_s=sv_s + "S.CUST_ID =  (SELECT CUST_ID FROM TBAADM.CMG WHERE CIF_ID =?SVAR  AND CMG.bank_id =?SVAR) "
+	sv_s=sv_s + "AND (P.PR_SRL_NUM = H.PR_SRL_NUM) AND P.ENTITY_CRE_FLG = 'Y' AND P.DEL_FLG = 'N' AND H.ENTITY_CRE_FLG = 'Y' " 
+	sv_s=sv_s + "AND H.DEL_FLG = 'N' AND H.PR_B2K_TYPE = 'SI' AND (H.pr_b2k_id = S.SI_SRL_NUM) AND S.ENTITY_CRE_FLG = 'Y' " 
+	sv_s=sv_s + "AND S.bank_id = ?SVAR   AND P.bank_id = ?SVAR   AND H.bank_id = ?SVAR    AND S.DEL_FLG = 'N' " 
+	sv_s=sv_s + "ORDER BY  to_number (S.si_priority),S.SI_SRL_NUM " 
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = CUST.CSEG.CIFID + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_v = urhk_dbcursorOpenWithBind(sv_s)
+       	PRINT(sv_v)	
+
+	IF(sv_v == 0) THEN
+       	 #{
+        	CUST.CSEG.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+       		print(CUST.CSEG.CURSOR_NUMBER)
+       		sv_b = urhk_dbCursorFetch(CUST.CSEG.CURSOR_NUMBER)
+        	print(sv_b)
+		BANCS.INPUT.RECCOUNT = CINT("1")
+        	print(BANCS.INPUT.RECCOUNT)
+		###################### james 09012023 ###############################
+		IF(sv_b==1)THEN
+		#{
+   			CUST.CSEG.errMsg="No SI available for this customer"
+			sv_t = "ERROR | " +CUST.CSEG.errMsg
+			sv_u = urhk_SetOrbOut(sv_t)
+			sv_x = urhk_dbCursorClose(CUST.CSEG.CURSOR_NUMBER)
+        		print(sv_x)
+   			GOTO ENDSCRIPT
+		#}
+		ENDIF
+		###################### james 09012023 ###############################
+
+		sv_i=1
+		print(sv_i)
+
+		WHILE(sv_b == "0")
+        	#{
+			CUST.CSEG.SOID= BANCS.OUTPARAM.SOID
+			print(CUST.CSEG.SOID)
+
+			#---------------------------------------------------------------------------------------------------------------
+			#inquiry starts
+			#---------------------------------------------------------------------------------------------------------------
+			sv_s="enddate, notes|"
+			sv_s=sv_s + "SELECT  TO_CHAR(SI_END_DATE,'DD-MM-YYYY HH24:MI:SS'),rmks_free_text FROM  TBAADM.SIH WHERE "
+			sv_s=sv_s + "SI_SRL_NUM=?SVAR AND BANK_ID=?SVAR"
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.CSEG.SOID + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_v = urhk_dbSelectWithBind(sv_s)
+       			PRINT(sv_v)
+			IF(sv_v==0)THEN
+			#{
+				CUST.CSEG.enddate = BANCS.OUTPARAM.enddate 
+				print(CUST.CSEG.enddate)
+
+				CUST.CSEG.notes= BANCS.OUTPARAM.notes
+				print(CUST.CSEG.notes)
+
+
+
+			#}
+			ELSE
+			#{
+				PRINT("DB ERROR")	
+			#}
+			ENDIF
+
+
+
+			CUST.CSEG.SOIDStarts=" "
+
+			sv_s="SOIDStarts_"+Format$(sv_i, "%d")+ "|" + CUST.CSEG.SOIDStarts
+			sv_u = urhk_SetOrbOut(sv_s)
+
+			sv_s="SOID_"+Format$(sv_i, "%d")+ "|" + CUST.CSEG.SOID
+			sv_u = urhk_SetOrbOut(sv_s)
+
+
+			sv_s="prb2kid, prsrlnum |"
+			sv_s=sv_s + "SELECT  pr_b2k_id  ,pr_srl_num  FROM  TBAADM.PYRH  WHERE  "
+			sv_s=sv_s + "PYRH.bank_id = ?SVAR AND PR_B2K_TYPE = 'SI' AND PR_B2K_ID =?SVAR"
+			sv_s=sv_s + " ORDER BY  PR_SRL_NUM desc OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY " 
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CSEG.SOID
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_v = urhk_dbSelectWithBind(sv_s)
+       			PRINT(sv_v)
+			IF(sv_v==0)THEN
+			#{
+
+				CUST.CSEG.prb2kid= TRIM(BANCS.OUTPARAM.prb2kid)
+				print(CUST.CSEG.prb2kid)
+				CUST.CSEG.prsrlnum = BANCS.OUTPARAM.prsrlnum 
+				print(CUST.CSEG.prsrlnum)
+
+     
+
+				sv_s="acid |"
+				sv_s=sv_s + "SELECT acid FROM TBAADM.TBA_PYMNT_RCPT_DET_TABLE WHERE "
+				sv_s=sv_s + "pr_srl_num=?SVAR AND TRIM(serial_num) ='1' AND bank_id = ?SVAR"
+				#sv_s=sv_s + " ORDER BY  PR_SRL_NUM desc OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY " 
+				print(sv_s)
+
+				BANCS.INPARAM.BINDVARS = CUST.CSEG.prsrlnum + "|" + BANCS.STDIN.contextBankId 
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_v = urhk_dbSelectWithBind(sv_s)
+       				PRINT(sv_v)
+				IF(sv_v==0)THEN
+				#{
+
+					CUST.CSEG.acid = TRIM(BANCS.OUTPARAM.acid)
+					print(CUST.CSEG.acid)
+
+					sv_b = urhk_B2k_AcidToForacid(CUST.CSEG.acid)
+					IF(sv_b==0)THEN
+					#{
+
+
+						CUST.CSEG.CRFORACID= BANCS.OUTPARAM.Foracid
+						print(CUST.CSEG.CRFORACID)
+
+						sv_a = urhk_getAcctDetailsInRepository(CUST.CSEG.CRFORACID)
+						print(sv_a)
+
+						IF(sv_a==0)THEN
+						#{
+
+							CUST.CSEG.acctName= BANCS.OUTPARAM.acctName
+							print(CUST.CSEG.acctName)
+						#}
+						ENDIF
+
+
+
+					#}
+					ENDIF
+
+
+
+
+				#}
+				ENDIF
+
+
+
+			#}
+			ELSE
+			#{
+				print("db error")
+
+			#}
+			ENDIF
+
+
+
+
+
+
+			#---------------------------------------------------------------------------------------------------------------
+			#inquiry starts
+			#---------------------------------------------------------------------------------------------------------------
+
+			sv_u = urhk_SetUrhkInp("siHdr.siSrlNum|"+CUST.CSEG.SOID)
+			print(sv_u)
+
+			sv_a = urhk_SetUrhkOut("siHdr.cust.cifId|cifId")
+			sv_a = urhk_SetUrhkOut("siHdr.frequency.type|freqtype")
+			sv_a = urhk_SetUrhkOut("siHdr.execCode.code|EXECUTIONTIME")
+			sv_a = urhk_SetUrhkOut("siHdr.nextExecDate|NEXTEXECDATE")
+			sv_a = urhk_SetUrhkOut("siHdr.chrgDrAcct.foracid|foracid")
+			#sv_a = urhk_SetUrhkOut("siHdr.rmksFreeText|notes")
+			sv_a = urhk_SetUrhkOut("subInstrLL.<rec_0>.subInstr.refCrncy.crncyCode|AMTCRNCY")
+			sv_a = urhk_SetUrhkOut("subInstrLL.<rec_0>.subInstr.fixedAmt|FIXEDAMT")
+			sv_a = urhk_SetUrhkOut("subInstrLL.<rec_0>.prDtlLL.<rec_0>.particulars|particulars")
+        		sv_a = urhk_SetUrhkOut("subInstrLL.<rec_0>.prDtlLL.<rec_0>.acctCrncyCode.crncyCode|CrncyCode")
+        		sv_a = urhk_SetUrhkOut("subInstrLL.<rec_0>.prDtlLL.<rec_0>.particulars|particulars")
+
+        		#sv_a = urhk_SetUrhkOut("subInstrLL.<rec_1>.prDtlLL.<rec_1>.acct.foracid|CRFORACID")
+        		#sv_a = urhk_SetUrhkOut("subInstrLL.<rec_1>.prDtlLL.<rec_1>.particulars|crparticulars")
+        		#sv_a = urhk_SetUrhkOut("subInstrLL.<rec_1>.prDtlLL.<rec_1>.acct.acctName|acctName")
+
+
+
+			sv_u = urhk_ExecSrv("SRV_InquireSI|retain_all_output = Y|same_user_verify = Y")
+			print(sv_u)
+			IF(sv_u==0)THEN
+			#{
+				CUST.CSEG.particulars= BANCS.OUTPARAM.particulars
+				print(CUST.CSEG.particulars)
+
+				CUST.CSEG.CrncyCode= BANCS.OUTPARAM.CrncyCode
+				print(CUST.CSEG.CrncyCode)
+
+
+				CUST.CSEG.cifId= BANCS.OUTPARAM.cifId
+				print(CUST.CSEG.cifId)
+				CUST.CSEG.freqtype= BANCS.OUTPARAM.freqtype
+				print(CUST.CSEG.freqtype)
+
+				CUST.CSEG.EXECUTIONTIME= BANCS.OUTPARAM.EXECUTIONTIME
+				print(CUST.CSEG.EXECUTIONTIME)
+
+				CUST.CSEG.NEXTEXECDATE= BANCS.OUTPARAM.NEXTEXECDATE
+				print(CUST.CSEG.NEXTEXECDATE)
+
+
+				CUST.CSEG.foracid= BANCS.OUTPARAM.foracid
+				print(CUST.CSEG.foracid)
+
+				#CUST.CSEG.notes= BANCS.OUTPARAM.notes
+				#print(CUST.CSEG.notes)
+
+				CUST.CSEG.AMTCRNCY= BANCS.OUTPARAM.AMTCRNCY
+				print(CUST.CSEG.AMTCRNCY)
+
+				CUST.CSEG.FIXEDAMT= BANCS.OUTPARAM.FIXEDAMT
+				print(CUST.CSEG.FIXEDAMT)
+
+				CUST.CSEG.particulars= BANCS.OUTPARAM.particulars
+				print(CUST.CSEG.particulars)
+
+			#}
+			ELSE
+			#{
+				sv_x = urhk_dbCursorClose(CUST.CSEG.CURSOR_NUMBER)
+        			print(sv_x)
+				GOTO CHECKERROR
+			#}
+			ENDIF
+
+
+			#---------------------------------------------------------------------------------------------------------------
+			#Sending responses
+			#---------------------------------------------------------------------------------------------------------------
+     
+	
+			sv_t = "CIFID_" +Format$(sv_i, "%d")+ "|" +CUST.CSEG.cifId
+			sv_u = urhk_SetOrbOut(sv_t)
+			###################### james 05012023 ###############################
+			IF(CUST.CSEG.foracid !="")THEN
+			#{
+				sv_t = "FORACID_" +Format$(sv_i, "%d")+ "|"+CUST.CSEG.foracid
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ENDIF
+			###################### james 05012023 ###############################
+
+			sv_t = "FIXEDAMT_" +Format$(sv_i, "%d")+ "|"+CUST.CSEG.FIXEDAMT
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			sv_t = "AMTCRNCY_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.AMTCRNCY
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			sv_t = "NEXTEXECDATE_" +Format$(sv_i, "%d")+ "|"+CUST.CSEG.NEXTEXECDATE
+			sv_u = urhk_SetOrbOut(sv_t)
+		
+			IF(CUST.CSEG.enddate !="")THEN
+			#{
+				sv_t = "ENDDATE_" +Format$(sv_i, "%d")+ "|"+CUST.CSEG.enddate
+				sv_u = urhk_SetOrbOut(sv_t)
+
+			#}
+			ENDIF
+
+
+			sv_t = "FREQTYPE_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.freqtype
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			sv_t = "EXECUTIONTIME_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.EXECUTIONTIME
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			###################### james 05012023 ###############################
+			IF(CUST.CSEG.particulars!="")THEN
+			#{
+				sv_t = "PARTICULARS_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.particulars
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ENDIF
+			###################### james 05012023 ###############################
+
+
+			#sv_t = "NOTES_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.notes
+			#sv_u = urhk_SetOrbOut(sv_t)
+
+			IF(CUST.CSEG.notes !="")THEN
+			#{
+				sv_t = "NOTES_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.notes
+				sv_u = urhk_SetOrbOut(sv_t)
+
+			#}
+			ENDIF
+
+
+			sv_t = "OTHERPARTYACCT_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.CRFORACID
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			sv_t = "OTHERPARTYNAME_"+Format$(sv_i, "%d")+ "|" +CUST.CSEG.acctName
+			sv_u = urhk_SetOrbOut(sv_t)
+
+
+
+
+
+			IF((CUST.CSEG.freqtype=="M") OR (CUST.CSEG.freqtype=="H") OR (CUST.CSEG.freqtype=="Q") OR (CUST.CSEG.freqtype=="Y"))THEN
+			#{
+				sv_u = urhk_SetUrhkInp("siHdr.siSrlNum|"+CUST.CSEG.SOID)
+
+				sv_u = urhk_SetUrhkOut("siHdr.frequency.startDd|STARTDd")
+				sv_u = urhk_ExecSrv("SRV_InquireSI|retain_all_output = Y|same_user_verify = Y")
+				IF(sv_u==0)THEN
+				#{
+					CUST.CSEG.STARTDd= BANCS.OUTPARAM.STARTDd
+					print(CUST.CSEG.STARTDd)
+					sv_t = "STARTDd_" +Format$(sv_i, "%d")+ "|" +CUST.CSEG.STARTDd
+					sv_u = urhk_SetOrbOut(sv_t)
+
+				#}
+				ELSE
+				#{
+					sv_x = urhk_dbCursorClose(CUST.CSEG.CURSOR_NUMBER)
+        				print(sv_x)
+					GOTO CHECKERROR
+
+				#}
+				ENDIF
+
+			#}
+			ENDIF
+
+			IF(CUST.CSEG.AMTCRNCY !=CUST.CSEG.CrncyCode)THEN
+			#{
+				sv_u = urhk_SetUrhkInp("siHdr.siSrlNum|"+CUST.CSEG.SOID)
+
+        			sv_a = urhk_SetUrhkOut("subInstrLL.<rec_1>.prDtlLL.<rec_1>.rateCode.refCode|RATECODE")
+				sv_u = urhk_ExecSrv("SRV_InquireSI|retain_all_output = Y|same_user_verify = Y")
+				IF(sv_u==0)THEN
+				#{
+					CUST.SIMOD.RATECODE= BANCS.OUTPARAM.RATECODE
+					print(CUST.SIMOD.RATECODE)
+					sv_t = "RATECODE_" +Format$(sv_i, "%d")+ "|"  +CUST.SIMOD.SIFREQNDAYS
+					sv_u = urhk_SetOrbOut(sv_t)
+
+				#}
+				ELSE
+				#{
+					sv_x = urhk_dbCursorClose(CUST.CSEG.CURSOR_NUMBER)
+        				print(sv_x)
+					GOTO CHECKERROR
+
+				#}
+				ENDIF
+
+			#}
+			ENDIF
+
+
+
+			END:
+
+
+			CUST.CSEG.SOIDEnds=" "
+			sv_s="SOIDEnd_"+Format$(sv_i, "%d")+ "|" + CUST.CSEG.SOIDEnds
+			sv_u = urhk_SetOrbOut(sv_s)
+
+
+       			GOTO NEXTREC
+
+      			BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+        		PRINT(BANCS.INPUT.RECCOUNT)
+
+        		NEXTREC:
+			sv_i = sv_i + 1 
+       			sv_b = urhk_dbCursorFetch(CUST.CSEG.CURSOR_NUMBER)
+       			print(sv_b)
+		#}
+		DO
+		sv_x = urhk_dbCursorClose(CUST.CSEG.CURSOR_NUMBER)
+        	print(sv_x)
+
+	#}
+	ENDIF
+
+	CHECKERROR:
+
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) then
+		#{
+			sv_u = system("echo 'Error '")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "ERROR|"+Format$(sv_i, "%d")+ "|"  +sv_e
+				sv_u = urhk_SetOrbOut(sv_t)
+				GOTO ENDOFSCRIPT
+
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+
+
+
+ENDOFSCRIPT:
+END-->
+

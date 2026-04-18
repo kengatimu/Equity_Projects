@@ -1,0 +1,310 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : MTT_Retries.scr
+#  Description     : This script retries failed ISO transactions 
+#  Date            : 01-08-2024
+#  Author          : Osuka S
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             01-08-2024      Osuka S              Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<--START
+    CHECKSUM="5c640b1f855b6429af0247df2c5bdc4b3b17056bf9ac14e37981727af3dd2232"
+	TRACE ON
+	
+	sv_q = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_q)
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "ATM") == 0) THEN
+	#{
+		CREATECLASS("CUST", "ATM", 5)
+	#}
+	ENDIF
+	
+#            sv_r = urhk_MTTS_Close("")
+#	    print(sv_r)
+
+	#------- Fetching the records of unposted transactions from the custom table
+	sv_v = " rrn, refNum, drForacid, crForacid, tranAmt, tranCrncy, tranDate, reqType, tranParticular, tranRmks| "
+	sv_v = sv_v + " SELECT  rrn, ref_num, dr_acct, cr_acct, tran_amt, tran_crncy, tran_date, req_type, tran_particular, tran_rmks "
+	sv_v = sv_v + " FROM  custom.c_tran_retries "
+	sv_v = sv_v + " WHERE pstd_flg = ?SVAR AND req_type = ?SVAR and RCRE_TIME > sysdate - 7 order by RCRE_TIME asc "
+    BANCS.INPARAM.BINDVARS=  "N" + "|" + "ISO"
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_c = urhk_DBCursorOpenWithBind(sv_v)
+	IF(sv_c != 0) THEN
+	#{
+		PRINT("Retry failed")
+		CUST.ATM.errorFlg = "Y"
+		CUST.ATM.errorFlg = "Y"
+		CUST.ATM.errorMsg = "Transaction retry failed"
+		GOTO FINISH
+	#}
+	ENDIF
+	IF(sv_c == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_m)
+		sv_c = urhk_DBCursorFetch(sv_m)
+		CUST.ATM.rrn = ""
+		CUST.ATM.refNum = ""
+		CUST.ATM.drForacid = ""
+		CUST.ATM.crForacid = ""
+		CUST.ATM.tranAmt = ""
+		CUST.ATM.tranCrncy = ""
+		CUST.ATM.tranDate = ""
+		CUST.ATM.reqType = ""
+		CUST.ATM.tranParticular = ""
+		CUST.ATM.tranRmks = ""
+
+		WHILE(sv_c == 0)
+		#{
+            #-----------------------------
+            #----- Variable Initialization
+	        #-----------------------------
+            CUST.ATM.errMsg   = ""
+			CUST.ATM.rrn = BANCS.OUTPARAM.rrn
+            PRINT(CUST.ATM.rrn)
+            CUST.ATM.refNum = BANCS.OUTPARAM.refNum
+            PRINT(CUST.ATM.refNum)
+            CUST.ATM.drForacid = BANCS.OUTPARAM.drForacid
+            PRINT(CUST.ATM.drForacid)
+            CUST.ATM.crForacid = BANCS.OUTPARAM.crForacid
+            PRINT(CUST.ATM.crForacid)
+            CUST.ATM.tranAmt = BANCS.OUTPARAM.tranAmt
+            PRINT(CUST.ATM.tranAmt)
+            CUST.ATM.tranCrncy = BANCS.OUTPARAM.tranCrncy
+            PRINT(CUST.ATM.tranCrncy)
+            CUST.ATM.tranDate = BANCS.OUTPARAM.tranDate
+            PRINT(CUST.ATM.tranDate)
+            CUST.ATM.reqType = BANCS.OUTPARAM.reqType
+            PRINT(CUST.ATM.reqType)
+            CUST.ATM.tranParticular = BANCS.OUTPARAM.tranParticular
+            PRINT(CUST.ATM.tranParticular)
+            CUST.ATM.tranRmks = BANCS.OUTPARAM.tranRmks
+            PRINT(CUST.ATM.tranRmks)
+
+			#------- Check if the balance is sufficient before transacting
+			sv_t= urhk_getAcctDetailsInRepository(CUST.ATM.drForacid)
+			IF (sv_t == 0) THEN
+				#-------- Check if the balance is sufficient, otherwise go to the next record
+				CUST.ATM.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+				IF (CDOUBLE(CUST.ATM.EffAvailableAmt) < CDOUBLE(CUST.ATM.tranAmt)) THEN
+					PRINT("Balance is not sufficient")
+					GOTO NEXTREC
+				ENDIF
+			ENDIF
+
+            #---- Separate Debit and Credit 
+			IF(FIELDEXISTS(CUST.ATM.tranParticular)) THEN
+				sv_i = CUST.ATM.tranParticular
+				PRINT(sv_i)
+				sv_s = STRLEN (sv_i)
+				print(sv_s)
+				# Initialize variables to store individual parts
+				sv_m = ""
+				sv_q = ""
+				sv_r = ""
+
+				# Split the string where '|' exists (Accounting for 3 parts only)
+				sv_u = GETPOSITION(sv_i, '|')
+				PRINT(sv_u)
+
+				# First part before '|' 
+				IF(sv_u == 0) THEN
+					# If it does not exist
+					sv_i = MID$(sv_i, sv_u, sv_s)
+					PRINT(sv_i)
+				ELSE
+					sv_m = MID$(sv_i, 0, sv_u - 1)
+					PRINT(sv_m)
+					sv_i = MID$(sv_i, sv_u, sv_s - 1)
+					PRINT(sv_i)
+
+					sv_u = GETPOSITION(sv_i, '|')
+					PRINT(sv_u)
+
+					# Second part before second '|'
+					IF(sv_u == 0) THEN
+						CUST.ATM.tranParticular1 = MID$(sv_i, sv_u, sv_s)
+						PRINT(CUST.ATM.tranParticular1)
+					ELSE
+						CUST.ATM.tranParticular1 = MID$(sv_i, 0, sv_u - 1)
+						PRINT(CUST.ATM.tranParticular1)
+						sv_i = MID$(sv_i, sv_u, sv_s - 1)
+						PRINT(sv_i)
+
+						sv_u = GETPOSITION(sv_i, '|')
+						PRINT(sv_u)
+
+						# Third part after '|' exists
+						IF(sv_u == 0) THEN
+							CUST.ATM.tranParticular2 = MID$(sv_i, sv_u, sv_s)
+							PRINT(CUST.ATM.tranParticular2)
+						ELSE
+							CUST.ATM.tranParticular2 = MID$(sv_i, 0, sv_u - 1)
+							PRINT(CUST.ATM.tranParticular1)
+							sv_i = MID$(sv_i, sv_u, sv_s - 1)
+							PRINT(sv_i)
+						ENDIF
+
+					ENDIF
+				ENDIF
+			ENDIF
+			#------------------------------------------------------
+
+
+            #---------------------------------
+            # Populate MTT details
+            #---------------------------------
+
+
+            BANCS.INPARAM.PostTranFlg = "Y"
+            BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+            BANCS.INPARAM.CommitFlg="Y"
+            BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+            BANCS.INPARAM.ErrorCheckForLuw="Y"
+            BANCS.INPARAM.CheckExceptions="N"
+	    sv_r = urhk_MTTS_PopulateInputDetails("")
+
+
+#            sv_r = urhk_MTTS_Initialize("")
+ #           print(sv_r)
+            MTT.TranDetails.TranDate="0"
+            MTT.TranDetails.TranType = "T"
+            MTT.TranDetails.TranSubType = "CI"
+
+            MTT.TranDetails.IgnoreExcp = "I"
+            MTT.TranDetails.Consolidate = "N"
+            MTT.TranDetails.Remarks = CUST.ATM.tranRmks
+            MTT.TranDetails.ValidationFlag = "Y"
+            MTT.TranDetails.PostTranFlg = "Y"
+            MTT.TranDetails.CheckExceptions = "Y"
+            MTT.TranDetails.PostFlag        = "Y"
+            MTT.TranDetails.CommitFlg       = "Y"
+
+
+            sv_u = urhk_MTTS_DefineTransaction("EAZZYBIZ_TRSF")
+			
+            #---------------------------------
+            #  Account to Credit
+            #---------------------------------
+            MTT.PartTranDetails.Account 	= CUST.ATM.crForacid
+            MTT.PartTranDetails.RefCurrency = CUST.ATM.tranCrncy
+            MTT.PartTranDetails.RateCode 	="MEAN"
+            MTT.PartTranDetails.Rate 	= "0"
+            MTT.PartTranDetails.ValueDateDiff = "0"
+            MTT.PartTranDetails.Particulars = CUST.ATM.tranParticular
+            MTT.PartTranDetails.Particulars2 = CUST.ATM.rrn
+            MTT.PartTranDetails.RefAmount = (cdouble(CUST.ATM.tranAmt)) 
+            MTT.PartTranDetails.Amount   = (cdouble(CUST.ATM.tranAmt))
+            MTT.PartTranDetails.Remarks = CUST.ATM.tranRmks 
+            MTT.PartTranDetails.IgnoreExcp = "I"
+            MTT.PartTranDetails.Consolidate = "N"
+            MTT.PartTranDetails.TranIdentifier = "EAZZYBIZ_TRSF" 
+            MTT.PartTranDetails.PstFlg = "Y"
+            sv_r = urhk_MTTS_definePartTran("CustCr")
+            print(sv_r)
+            IF(fieldexists(MTT.Error.Description)) THEN
+            #{
+                print(MTT.Error.Description)
+                CUST.ATM.MTTErrDesc = MTT.Error.Description
+            #	sv_r = urhk_MTTS_Close("")
+	     #   print(sv_r)
+
+		GOTO NEXTREC
+            #}
+            ENDIF
+
+            #---------------------------------
+            #  Account to Debit
+            #---------------------------------
+            MTT.PartTranDetails.Account 	= CUST.ATM.drForacid
+            MTT.PartTranDetails.RefCurrency = CUST.ATM.tranCrncy
+            MTT.PartTranDetails.RateCode 	="MEAN"
+            MTT.PartTranDetails.Rate 	= "0"
+            MTT.PartTranDetails.ValueDateDiff = "0"
+            MTT.PartTranDetails.Particulars = CUST.ATM.tranParticular
+            MTT.PartTranDetails.Particulars2 = CUST.ATM.rrn
+            MTT.PartTranDetails.RefAmount = -(cdouble(CUST.ATM.tranAmt))
+            MTT.PartTranDetails.Amount   = (cdouble(CUST.ATM.tranAmt))
+            MTT.PartTranDetails.Remarks = CUST.ATM.tranRmks
+            MTT.PartTranDetails.IgnoreExcp = "I"
+            MTT.PartTranDetails.Consolidate = "N"
+            MTT.PartTranDetails.TranIdentifier = "EAZZYBIZ_TRSF"
+            MTT.PartTranDetails.PstFlg = "Y"
+            sv_r = urhk_MTTS_definePartTran("CustDr")
+            print(sv_r)
+
+            IF(fieldexists(MTT.Error.Description)) THEN
+            #{
+                print(MTT.Error.Description)
+                CUST.ATM.MTTErrDesc = MTT.Error.Description
+		
+            #}
+            ENDIF
+
+            sv_r = urhk_MTTS_EndDefinition("")
+            print(sv_r)
+            IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+            #{
+            
+                print(BANCS.OUTPARAM.MTTTranId)
+                CUST.ATM.tranid = TRIM(BANCS.OUTPARAM.MTTTranId)
+                print(CUST.ATM.tranid)
+
+                IF((STRLEN(CUST.ATM.tranid) > 0) AND (CUST.ATM.tranid != "")) THEN
+                    CUST.ATM.tranDate = BANCS.STDIN.sysDate                
+                    sv_s = " UPDATE custom.c_tran_retries SET "
+                    sv_s = sv_s + " tran_date = sysdate , tran_id = ?SVAR, pstd_flg = ?SVAR "
+                    sv_s = sv_s + " WHERE rrn = ?SVAR "
+                    print(sv_s)
+                    BANCS.INPARAM.BINDVARS =  CUST.ATM.tranid +"|"+ "Y" +"|"+ CUST.ATM.rrn
+                    print(BANCS.INPARAM.BINDVARS)
+                    sv_d = urhk_dbSQLWithBind(sv_s)
+                    PRINT(sv_d)
+                    IF(sv_d==0)THEN
+                    #{
+                        sv_d = urhk_dbSqlWithBind("COMMIT")
+                    #}
+                    ENDIF
+                ENDIF                
+            #}
+            ENDIF
+            sv_r = urhk_MTTS_EndDefinition("")
+            print(sv_r)
+
+            
+            #------- Fetch next record
+			NEXTREC:
+            #	sv_r = urhk_MTTS_Close("")
+	     #   print(sv_r)
+
+			sv_c = urhk_DBCursorFetch(sv_m)
+			print(sv_c)
+		#}
+		DO
+		sv_c = urhk_DBCursorClose(sv_m)
+
+		IF(sv_c!=0)THEN
+		#{
+			PRINT("Transaction retry failed")
+			CUST.ATM.errorFlg = "Y"
+			CUST.ATM.errorFlg = "Y"
+			CUST.ATM.errorMsg = "Transaction retry failed"
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF	
+	
+FINISH:
+TRACE ON
+EXITSCRIPT
+END-->

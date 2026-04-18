@@ -1,0 +1,84 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebcpluplGag.com 
+#  Description     :
+#  Date            : 23-06-2020
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-06-2020      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+. /etc/b2k/$FINACLE_INSTALL_ID/FINCORE/$FIN_BANK_ID/com/commonenv.com
+echo $0
+echo $#
+echo $$
+msgId=`date +%d%m%Y%H%S`
+#msgId=`date +%d%s`
+Amt=${3}
+SendName=${4}
+SendAcct=${2}
+SendAcct=${14}
+destPhone="897898"
+destAcct=${5}
+destBnkCode=${9}
+crncy=${6}
+benfName=${8}
+urrn=`date +%d%m%Y%H%S`
+#urrn=`date +%d%s`
+##urnn="$RANDOM"
+urnn=${13}
+ourid=${12}
+#Chrg=${16}
+#Chrgamt=${15}
+Chrg="Y"
+Chrgamt="0"
+bodDate=${17}
+##echo $Chrgamt >>gag.loog
+##echo $urrn >>gag.loog
+#####ulg="http://10.11.6.111:8081/kbapayhandler/"
+#####ulg="http://10.11.2.37:20000/kbapayhandler/"
+ulg="http://10.11.2.37:20000/kbaPayhandler/"
+jpt="com.cubpEquityDirect.ebPesaLinkP2PTransfer.ebPesaLinkP2PTransfer"
+export CLASSPATH=$CLASSPATH:$JAVA_HOME/custom:$JAVA_HOME/custom/commons-codec.jar:$JAVA_HOME/custom/apache-commons-lang.jar:$JAVA_HOME/custom/bctls-jdk14-1.65.jar:$JAVA_HOME/custom/bcprov-jdk14-1.65.jar:/finacle/EQPRODFI/BackEnd/Finacle/FC/app/cust/INFENG:/finacle/EQPRODFI/BackEnd/Finacle/FC/app/cust/INFENG/com/cubpEquityDirect/ebPesaLinkP2PTransfer/*.class
+loofil=${urrn}"-"`date +%d%m%y%H%M%S`"rep.xml"
+java -cp $CLASSPATH "${jpt}" "${msgId}" "${Amt}" "${SendName}" "${SendAcct}" "${destPhone}" "${destAcct}" "${destBnkCode}" "${crncy}" "${benfName}" "${urrn}" "${Chrg}" "${Chrgamt}" "${ulg}" >>${loofil}
+##sleep 1m
+sleep 25
+###respx="${msgId}""|""${Amt}""|""${SendName}""|""${SendAcct}""|""${destPhone}""|""${destAcct}""|""${destBnkCode}""|""${crncy}""|""${benfName}""|""${urrn}""|""${Chrg}""|""${Chrgamt}""|""${ulg}"
+respx="${msgId}""|""${Amt}""|""${SendName}""|""${SendAcct}""|""${destPhone}""|""${destAcct}""|""${destBnkCode}""|""${crncy}""|""${urrn}""|""${Chrg}""|""${Chrgamt}""|""${ulg}"
+ResponseRRN=`awk '/<rrn>/{print $NF}' ${loofil}`
+ResponseCode=`awk '/<responseCode>/{print $F}' ${loofil}`
+ResponseText=`awk '/<responseDescription>/{print $F}' ${loofil}`
+ResponseHt=`awk '/HTTP/{print $F}' ${loofil}`
+echo $ResponseCode $ResponseText $ResponseHt > ${urrn}_idlog.txt
+echo "insert into custom.tprs (bank_id,module_id,sum_module_id,channel_id,service_name,req_uuid,"  >> ${urrn}.sql
+echo "req_date,resp_http_code,resp_code,resp_mesg,core_tranid,core_trandate,rcre_user_id,rcre_time,"  >> ${urrn}.sql
+echo "lchg_user_id,lchg_time,retry_cnt,free_text1,free_text2,free_text3,free_text4,free_text5,"  >> ${urrn}.sql
+echo "request_xml,response_xml)values ('54','PESANOTIFY','PESALINK-NOTIFY','COR','TRTR','${urrn}',"  >> ${urrn}.sql
+echo "to_date(sysdate,'DD-MON-RR'),'${ResponseHt}','${ResponseCode}',"  >> ${urrn}.sql
+echo "null,'${1}',"  >> ${urrn}.sql
+echo "to_date('${bodDate}','DD-MM-RR'),'${12}',to_date(sysdate,'DD-MON-RR'),'${12}',"  >> ${urrn}.sql
+echo "to_date(sysdate,'DD-MON-RR'),0,'${msgId}','${7}',"  >> ${urrn}.sql
+###echo "'${destAcct}','${benfName}','${10}','${respx}',null); " >> ${urrn}.sql
+echo "'${destAcct}',null,'${10}','${respx}',null); " >> ${urrn}.sql
+echo "commit;" >> ${urrn}.sql
+bauu9151 ${urrn}.sql
+cp -p ${loofil} /finreports/FIN_REPORTS_DIR/${ourid}/ 
+rm -f ${loofil}
+rm -f ${urrn}.sql
+echo "update custom.plmt set process_staus='G' where core_tran_id='${1}' ">> ${urnn}_pl.sql 
+echo "and bank_id='54' and trim(core_tran_date)=to_date('${bodDate}','DD-MM-RR') ">> ${urnn}_pl.sql
+echo "and benef_bank_code='${destBnkCode}' and benef_branch_code='${10}' ">> ${urnn}_pl.sql
+echo "and benef_account_num='${destAcct}' ">> ${urnn}_pl.sql 
+echo "and upl_ref_num='${7}';" >> ${urnn}_pl.sql
+echo "commit;" >> ${urnn}_pl.sql 
+bauu9151 ${urnn}_pl.sql  
+rm -f ${urnn}_pl.sql
+sleep 3
+####sh /finacle/EQPPROD/Fin10218/APP/Finacle/FC/app/cust/INFENG/com/ebcpluplBgag.com ${7} ${12} ${urrn} 
+nopj="1"
+echo $ResponseCode $ResponseText $ResponseHt > ${urrn}_idlog.txt
+echo "${1}""|""${SendAcct}""|""${Amt}""|""${destAcct}""|""${crncy}""|""${7}""|""${destBnkCode}""|""${10}""|""${Chrgamt}""|""${urrn}" >> ${urrn}_REV.DAT
+exebatch -i ${urrn}_REV.DAT -n ${nopj} babx4061 $B2K_SESSION_ID ebcpluplTRev.scr @s &
+###rm -f ${urrn}_REV.DAT
+exit 0

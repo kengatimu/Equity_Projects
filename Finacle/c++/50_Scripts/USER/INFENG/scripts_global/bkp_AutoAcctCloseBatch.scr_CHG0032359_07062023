@@ -1,0 +1,210 @@
+-------------------------------------------------------------------------------------------------------------
+#    Name            : AutoAccountClosure.scr
+#    Description     : Automation menu
+#    Date            : 01-JAN-2023
+#    Author          : Irungu James
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : CAUTOMNU
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           01-JAN-2023         Irungu James              Original Version         1.0
+#------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+		if(repexists("CUST")==0)then
+			createrep("CUST")
+		endif
+	     
+		if(classexists("CUST","DATA")==0)then
+			createclass("CUST","DATA",5)
+		endif
+		
+		if(classexists("MTT","InputDetails")==0)then
+			createclass("MTT","InputDetails",5)
+		endif		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		print(sv_u)
+		if(sv_u == 0)then
+				print(MTT.InputDetails.Argument1)
+				print(MTT.InputDetails.Argument2)
+				CUST.DATA.Rec = MTT.InputDetails.Argument1
+				CUST.DATA.file_name = MTT.InputDetails.Argument2
+		ELSE
+			CUST.DATA.Rec = ""
+			CUST.DATA.file_name = ""
+		ENDIF
+		
+		##Closing the Accts
+
+		sv_s = "FORACID , ROW |  select  FORACID,FREE_TEXT2 from CUSTOM.CUST_AUTO_ACCT_CLS where   FILE_NAME= ?SVAR "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' and PROCESSED_FLG ='N' and bank_id =?SVAR and FREE_TEXT3 =?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.file_name +"|"+  BANCS.STDIN.contextBankId  +"|"+  CUST.DATA.Rec
+		sv_k = urhk_dbCursorOpenWithBind(sv_s)
+		PRINT(sv_k)
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_m)
+		sv_c = urhk_dbCursorFetch(sv_m)
+		PRINT(sv_c)
+		IF(sv_c != 0)THEN
+			CUST.DATA.messg="No records found "
+			sv_c=urhk_dbCursorClose(sv_m)
+			GOTO ENDOFSCRIPT
+		ELSE
+			sv_j = 0
+			PRINT(sv_j)
+
+			WHILE (sv_c == 0)
+
+				CUST.DATA.FORACID =  BANCS.OUTPARAM.FORACID
+				CUST.DATA.ROW = BANCS.OUTPARAM.ROW
+
+				sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.FORACID)
+				IF (sv_u == 0) THEN
+					CUST.DATA.acctSolId  = BANCS.OUTPARAM.acctSolId
+					PRINT(CUST.DATA.acctSolId)
+					CUST.DATA.schmType  = BANCS.OUTPARAM.schmType
+					PRINT(CUST.DATA.schmType)
+					CUST.DATA.schmcode  = BANCS.OUTPARAM.schmCode
+					PRINT(CUST.DATA.schmcode)
+					CUST.DATA.ClearBalance  = BANCS.OUTPARAM.ClearBalance
+					PRINT(CUST.DATA.ClearBalance)
+
+					IF (cdouble(CUST.DATA.ClearBalance) != cdouble("0")  ) THEN					
+						CUST.DATA.InfoRes = "Balance not Zero_" + CUST.DATA.FORACID 
+						CUST.DATA.Proc = "N"
+						GOTO NEXTREC
+					ENDIF
+
+					IF ((CUST.DATA.schmType =="SBA") OR  (CUST.DATA.schmType =="CAA") OR (CUST.DATA.schmType =="ODA")) THEN
+						
+						IF(CUST.DATA.acctSolId != BANCS.STDIN.mySolId)THEN
+							sv_u = urhk_SetUrhkInp("sol.solId|" + CUST.DATA.acctSolId)
+							print(sv_u)
+							sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+							print(sv_u)
+						ENDIF
+						
+						sv_z = urhk_B2k_ForacidToAcid(CUST.DATA.FORACID)
+						print(sv_z)
+						IF(sv_z == 0)THEN
+							CUST.DATA.acid = BANCS.OUTPARAM.Acid
+						ENDIF
+						sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.DATA.FORACID)
+						sv_a=urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+						sv_a=urhk_SetUrhkInp("clsrProcCrit.tranType.tranType|")
+						sv_u = urhk_ExecSrv("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y")
+						print(sv_u)
+						IF (sv_u == 0 ) THEN
+							sv_u = urhk_CopyOutToIn("")
+							PRINT(sv_u)
+							sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.DATA.FORACID)
+							PRINT(sv_u)
+							sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.DATA.acid)
+							PRINT(sv_u)
+							sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.DATA.schmcode)
+							PRINT(sv_u)
+							sv_u = urhk_ExecSrv("SRV_CloseOperAcct|retain_all_output = Y ")
+							##sv_u = urhk_ExecSrvNoCommit("SRV_CloseOperAcct|retain_all_output = Y|same_user_verify = Y|call_mode = N")
+							PRINT(sv_u)
+							IF(sv_u == 0) THEN		
+								sv_t=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.DATA.FORACID)
+								sv_t=urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+								sv_t=urhk_SetUrhkInp("clsrProcCrit.tranType.tranType| ")
+								sv_u = urhk_ExecSrv("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+								print(sv_u)
+								IF (sv_u == 0 ) THEN
+									sv_u = urhk_CopyOutToIn("")
+									PRINT(sv_u)
+									sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.DATA.FORACID)
+									PRINT(sv_u)
+									sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.DATA.acid)
+									PRINT(sv_u)
+									sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.DATA.schmcode)
+									PRINT(sv_u)
+									sv_u = urhk_ExecSrv("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y")
+									PRINT(sv_u)
+
+									IF(sv_u == 0) THEN
+										CUST.DATA.InfoRes = "Acct Closure Success_" + CUST.DATA.FORACID 
+										CUST.DATA.Proc = "Y"
+									ELSE
+										CUST.DATA.InfoRes = "Acct Verified Failed_" + CUST.DATA.FORACID 
+										CUST.DATA.Proc = "N"
+									ENDIF
+								ENDIF
+							ELSE
+
+								if(repexists("EQSRV")==0)then
+									createrep("EQSRV")
+								endif
+								if(classexists("EQSRV","GLBDATA")==0)then
+									createclass("EQSRV","GLBDATA",5)
+								endif
+								EQSRV.GLBDATA.srvAcctId = CUST.DATA.FORACID 
+								callscriptifexist("ebsrvHandler.scr")
+								CUST.DATA.InfoRes = EQSRV.GLBDATA.SrvError							
+								
+								CUST.DATA.InfoRes = CUST.DATA.InfoRes +"_"+ CUST.DATA.FORACID 
+								CUST.DATA.Proc = "N"									
+							ENDIF
+						ELSE
+							CUST.DATA.InfoRes = "Acct Query Failed_" + CUST.DATA.FORACID 
+							CUST.DATA.Proc = "N"
+						ENDIF		
+					ELSE
+						CUST.DATA.InfoRes = "Acct Not SBA/CAA/ODA_" + CUST.DATA.FORACID 
+						CUST.DATA.Proc = "N"
+					ENDIF
+				ELSE
+					CUST.DATA.InfoRes = "Invalid Acct_" + CUST.DATA.FORACID 
+					CUST.DATA.Proc = "N"
+				ENDIF
+		
+				NEXTREC:
+
+				Print (BANCS.STDIN.userId)
+				Print (CUST.DATA.InfoRes)
+				Print (CUST.DATA.Proc)
+				Print (CUST.DATA.file_name)
+				Print (CUST.DATA.ROW)
+
+				sv_s = "  update  CUSTOM.CUST_AUTO_ACCT_CLS set LCHG_USER_ID = ?SVAR , LCHG_TIME = sysdate , FREE_TEXT1 = ?SVAR  , ENTITY_CRE_FLG ='Y', PROCESSED_FLG =?SVAR where FILE_NAME = ?SVAR  and  FREE_TEXT2 =?SVAR and foracid =?SVAR and FREE_TEXT3 =?SVAR  "
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.userId + "|" + CUST.DATA.InfoRes +"|"+  CUST.DATA.Proc +"|"+  CUST.DATA.file_name + "|" + CUST.DATA.ROW  + "|" + CUST.DATA.FORACID  +"|"+ CUST.DATA.Rec
+				print(BANCS.INPARAM.BINDVARS)
+				print(sv_s)
+				sv_d=urhk_dbSqlWithBind(sv_s)
+				IF (sv_d == 0)  THEN
+					sv_d = urhk_dbSQLWithBind("COMMIT")
+				ENDIF
+
+				sv_c = urhk_dbCursorFetch(sv_m)
+				PRINT(sv_c)
+			DO
+			sv_c = urhk_dbCursorClose(sv_m)
+			PRINT(sv_c)
+		ENDIF
+		
+CHECKCLS:
+		sv_s =  " CNT |select  count (*) from CUSTOM.CUST_AUTO_ACCT_CLS where   FILE_NAME= ?SVAR "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' and PROCESSED_FLG ='N' and bank_id =?SVAR  "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.file_name +"|"+  BANCS.STDIN.contextBankId  
+		sv_k = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_k)		
+		IF(sv_k != 0)THEN
+			CUST.DATA.messg="No records found "
+			GOTO ENDOFSCRIPT
+		ELSE
+			Print (BANCS.OUTPARAM.CNT)
+			IF (BANCS.OUTPARAM.CNT != "0") THEN
+				sv_r = system("sleep 5")
+				GOTO CHECKCLS
+			ENDIF
+		ENDIF	
+
+ENDOFSCRIPT:
+EXITSCRIPT
+#TRACE OFF
+END-->

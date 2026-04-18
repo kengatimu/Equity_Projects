@@ -1,0 +1,75 @@
+ALTER TABLE CUSTOM.SHARE_PURCHASE_DETAILS
+ DROP PRIMARY KEY CASCADE;
+
+DROP TABLE CUSTOM.SHARE_PURCHASE_DETAILS CASCADE CONSTRAINTS;
+
+CREATE TABLE CUSTOM.SHARE_PURCHASE_DETAILS
+(
+  DETAILS_KEY            INTEGER                NOT NULL,
+  FOREIGN_KEY_TRAN_ID    VARCHAR2(20 CHAR),
+  LINE_NUMBER            VARCHAR2(100 BYTE),
+  SECURITY_CODE          VARCHAR2(100 BYTE),
+  SECURITY_NAME          VARCHAR2(100 BYTE),
+  ASKING_PRICE           VARCHAR2(100 BYTE),
+  DEPOSIT_AMOUNT         VARCHAR2(100 BYTE),
+  NO_OF_SHARES           VARCHAR2(100 BYTE),
+  ORDER_AMOUNT           VARCHAR2(100 BYTE),
+  COMMISSION_PERCENTAGE  VARCHAR2(100 BYTE),
+  COMMISSION_AMOUNT      VARCHAR2(100 BYTE),
+  STAMP_AMOUNT           VARCHAR2(100 BYTE),
+  TOTAL_AMOUNT           VARCHAR2(100 BYTE),
+  RESIDUAL_AMOUNT        VARCHAR2(100 BYTE),
+  ORDER_DATE             VARCHAR2(100 BYTE),
+  RECORD_DEL_FLG         VARCHAR2(100 BYTE)
+)
+TABLESPACE SYSTEM
+PCTUSED    40
+PCTFREE    10
+INITRANS   1
+MAXTRANS   255
+STORAGE    (
+            INITIAL          16K
+            NEXT             16K
+            MINEXTENTS       1
+            MAXEXTENTS       505
+            PCTINCREASE      50
+            FREELISTS        1
+            FREELIST GROUPS  1
+            BUFFER_POOL      DEFAULT
+           )
+LOGGING 
+NOCOMPRESS 
+NOCACHE
+NOPARALLEL
+MONITORING;
+
+
+CREATE OR REPLACE TRIGGER CUSTOM.share_purchase_details_trigger
+
+   before insert ON CUSTOM.SHARE_PURCHASE_DETAILS 
+   for each row
+begin
+
+    select share_purchase_details_key.nextval into :new.details_key from dual;
+
+   end;
+/
+
+
+ALTER TABLE CUSTOM.SHARE_PURCHASE_DETAILS ADD (
+  PRIMARY KEY
+ (DETAILS_KEY)
+    USING INDEX 
+    TABLESPACE SYSTEM
+    PCTFREE    10
+    INITRANS   2
+    MAXTRANS   255
+    STORAGE    (
+                INITIAL          16K
+                NEXT             16K
+                MINEXTENTS       1
+                MAXEXTENTS       505
+                PCTINCREASE      50
+                FREELISTS        1
+                FREELIST GROUPS  1
+               ));

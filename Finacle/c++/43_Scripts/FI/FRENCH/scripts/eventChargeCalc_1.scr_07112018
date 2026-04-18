@@ -1,0 +1,337 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: eventChargeCalc.scr 
+# Type: NA|default
+# Description: charge calculation script
+# Author: Vigneshwaran K02
+# Date: 9/4/18 2:21 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="3efcca5620071864ad8c6da298ad85fae977bd032a43c71e23459537b3363a6c"
+	# Script body goes here
+	TRACE ON
+	########## Creating the Repositories ################
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	sv_a = urhk_B2k_PrintRepos("BANCS")
+	########## Initializing the variables ################
+	CUST.DATA.eventId = BANCS.INPUT.eventId
+	PRINT(CUST.DATA.eventId)
+	CUST.DATA.eventType = BANCS.INPUT.eventType
+	PRINT(CUST.DATA.eventType)
+	CUST.DATA.inputAmt = BANCS.INPUT.inputAmount	
+	PRINT(CUST.DATA.inputAmt)
+	CUST.DATA.scriptname = BANCS.STDIN.ScriptName
+	PRINT(CUST.DATA.scriptname)
+	CUST.DATA.CallMode = " "
+
+	IF(FIELDEXISTS(BANCS.INPUT.CallMode))THEN
+	#{
+		CUST.DATA.CallMode = BANCS.INPUT.CallMode
+	#}
+	ENDIF
+	PRINT(CUST.DATA.CallMode)
+
+	CUST.DATA.srlNum = "0"
+	sv_t = GETPOSITION(CUST.DATA.scriptname,".")
+	PRINT(sv_t)
+        sv_l = GETPOSITION(CUST.DATA.scriptname,"_")
+        PRINT(sv_l)
+		
+	IF(sv_l > 0)THEN
+	#{
+		sv_h = MID$(CUST.DATA.scriptname,sv_l,sv_t - 1)
+		PRINT(sv_h)
+	        sv_k = GETPOSITION(sv_h,".")
+       		PRINT(sv_k)
+		CUST.DATA.srlNum = MID$(sv_h,0,sv_k - 1)
+		PRINT(CUST.DATA.srlNum)
+	#}
+	ENDIF
+	PRINT(CUST.DATA.srlNum)
+	CUST.DATA.debitAcct = ""
+	CUST.DATA.schmCode= ""
+	CUST.DATA.crncy =""
+	CUST.DATA.chrgAmt = 0
+	CUST.DATA.rateCode=""
+	CUST.DATA.debitAcid = ""
+
+	############Fetching of Debit Account number###############
+	
+	###############################################################
+	###### For Bankers Cheque Charge collection Debit Account######
+	###############################################################
+	IF((BANCS.STDIN.menuId == "HDDMI") OR (BANCS.STDIN.menuId == "HDDXMI") OR (BANCS.STDIN.menuId == "HTM"))THEN
+    	#{
+    		IF(FIELDEXISTS(BANCS.INPUT.purchase_acid))THEN
+    		#{
+			CUST.DATA.debitAcid = BANCS.INPUT.purchase_acid
+			PRINT(CUST.DATA.debitAcid)
+			GOTO FINALDEBIT 
+		#}
+		ENDIF
+    	#}
+    	ENDIF
+	#####################################################################
+	###### For Standing Instruction Charge collection Debit Account######
+	#####################################################################
+    	IF(FIELDEXISTS(BANCS.INPUT.chrgDrAcid))THEN
+    	#{
+        	CUST.DATA.debitAcid = BANCS.INPUT.chrgDrAcid 
+        	PRINT(CUST.DATA.debitAcid) 
+        	GOTO FINALDEBIT 
+    	#}
+   	ENDIF
+	##############################################################
+	###### Inward Remittance Charge collection Debit Account######
+	##############################################################
+	IF(BANCS.STDIN.menuId == "HIRM")THEN
+	#{
+		IF(BANCS.INPUT.BillCurrency != BANCS.STDIN.homeCrncyCode)THEN
+		#{
+			CUST.DATA.debitAcid = BANCS.INPUT.entityId
+			PRINT(CUST.DATA.debitAcid)
+			GOTO FINALDEBIT    
+		#}
+		ELSE
+		#{
+			# Inward Remittance is of home currency type. Charges not applicable.
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+   	ENDIF
+
+	###############################################################
+	#### Charges for outward remittance,cash withdrawal and transfers ####
+	###############################################################
+	IF((BANCS.STDIN.menuId == "HTM") OR (BANCS.STDIN.menuId == "HXFER") OR (BANCS.STDIN.menuId == "HCASHWD") OR (BANCS.STDIN.menuId == "HORM") OR (BANCS.STDIN.menuId == "HPORDM"))THEN
+        #{
+               	IF(FIELDEXISTS(BANCS.INPUT.entityId))THEN  
+		#{
+			CUST.DATA.debitAcid = BANCS.INPUT.entityId
+			PRINT(CUST.DATA.debitAcid)
+			GOTO FINALDEBIT 
+		#}
+		ENDIF
+        #}
+    	ENDIF
+
+	FINALDEBIT:
+		sv_z = urhk_B2k_AcidToForacid(CUST.DATA.debitAcid)
+		PRINT(sv_z)
+		CUST.DATA.debitAcct =  BANCS.OUTPARAM.Foracid
+		PRINT(CUST.DATA.debitAcct)
+	
+	IF(CUST.DATA.debitAcct == "")THEN
+	#{
+		## Charge Debit account is not set 
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+		##########Fetching of schemecode and crncycode from GAM table############
+		
+		sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.debitAcct)
+		IF (sv_n != 0)THEN
+		#{
+			sv_e="Invalid Account"
+			sv_u = urhk_SetOrbErr(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			print(BANCS.OUTPARAM.acctCrncyCode)
+			print(BANCS.OUTPARAM.schmCode)
+			
+			CUST.DATA.crncy = BANCS.OUTPARAM.acctCrncyCode
+			CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+			
+		#}
+		ENDIF
+		
+		#############Fetching of Charge Amount for respective EventId from the custom table#########
+	
+	sv_s="chrgType|SELECT CHARGE_TYPE FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+	sv_s = sv_s + " AND SCHM_CODE=?SVAR AND CRNCY_CODE=?SVAR AND BANK_ID=?SVAR AND SRL_NUM=?SVAR"
+	BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + CUST.DATA.crncy + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.srlNum
+	
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	IF(sv_d != "0")THEN
+	#{
+		sv_e="Charge details not maintained in CCPRM for scheme code "+CUST.DATA.schmCode+" AND Currency Code "+CUST.DATA.crncy
+		sv_u = urhk_SetOrbErr(sv_e)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		CUST.DATA.chrgType=BANCS.OUTPARAM.chrgType
+	#}
+	ENDIF
+
+	IF(CUST.DATA.chrgType == "F")THEN
+	#{
+		sv_s="chrgAmt|SELECT CHRG_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+		sv_s = sv_s + " AND SCHM_CODE=?SVAR AND CRNCY_CODE=?SVAR AND BANK_ID=?SVAR AND SRL_NUM=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + CUST.DATA.crncy + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.srlNum
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		IF(sv_d != "0")THEN
+		#{
+			sv_e="Charge Amount not maintained in CCPRM for scheme code "+CUST.DATA.schmCode+" AND Currency Code "+CUST.DATA.crncy
+			sv_u = urhk_SetOrbErr(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.DATA.chrgAmt=BANCS.OUTPARAM.chrgAmt	
+		#}
+		ENDIF
+	#}
+	ENDIF	
+
+	IF(CUST.DATA.chrgType == "P")THEN
+	#{
+		sv_s="chrgpcnt,minAmt,maxAmt|SELECT PRCNT,MIN_AMT,MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+		sv_s = sv_s + " AND SCHM_CODE=?SVAR AND CRNCY_CODE=?SVAR AND BANK_ID=?SVAR AND SRL_NUM=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + CUST.DATA.crncy + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.srlNum
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		IF(sv_d != "0")THEN
+		#{
+			sv_e="Charge percentage not maintained in CCPRM for scheme code "+CUST.DATA.schmCode+" AND Currency Code "+CUST.DATA.crncy
+			sv_u = urhk_SetOrbErr(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.DATA.chrgpcnt=BANCS.OUTPARAM.chrgpcnt	
+			CUST.DATA.minAmt=BANCS.OUTPARAM.minAmt	
+			CUST.DATA.maxAmt=BANCS.OUTPARAM.maxAmt
+			PRINT(CUST.DATA.chrgpcnt)
+			PRINT(CUST.DATA.minAmt)
+			PRINT(CUST.DATA.maxAmt)
+			CUST.DATA.chrgAmt = CDOUBLE(CUST.DATA.inputAmt) * CDOUBLE(CUST.DATA.chrgpcnt) * (0.01)
+			IF(CUST.DATA.chrgAmt < CUST.DATA.minAmt)THEN
+			#{
+				CUST.DATA.chrgAmt = CUST.DATA.minAmt
+			#}
+			ENDIF
+			IF(CUST.DATA.chrgAmt > CUST.DATA.maxAmt)THEN
+			#{
+				CUST.DATA.chrgAmt = CUST.DATA.maxAmt
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF	
+
+	IF(CUST.DATA.chrgType == "S")THEN
+	#{
+		sv_s="slabCode|SELECT SLAB_CODE FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+		sv_s = sv_s + " AND SCHM_CODE=?SVAR AND CRNCY_CODE=?SVAR AND BANK_ID=?SVAR AND SRL_NUM=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + CUST.DATA.crncy + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.srlNum
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		IF(sv_d != "0")THEN
+		#{
+			sv_e="Charge slab code not maintained in CCPRM for scheme code "+CUST.DATA.schmCode+" AND Currency Code "+CUST.DATA.crncy
+			sv_u = urhk_SetOrbErr(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.DATA.slabCode=BANCS.OUTPARAM.slabCode
+		#}
+		ENDIF
+		IF(CUST.DATA.slabCode == "")THEN
+		#{
+                        sv_e="Charge slab code not maintained in CCPRM for scheme code "+CUST.DATA.schmCode+" AND Currency Code "+CUST.DATA.crncy
+                        sv_u = urhk_SetOrbErr(sv_e)
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                        GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+				BANCS.INPARAM.CurrencyCode = CUST.DATA.crncy
+				BANCS.INPARAM.AmountTableCode = CUST.DATA.slabCode	
+				BANCS.INPARAM.InputAmount = CUST.DATA.inputAmt
+                                PRINT(BANCS.INPARAM.AmountTableCode)
+                                PRINT(BANCS.INPARAM.CurrencyCode)
+                                PRINT(BANCS.INPARAM.InputAmount)
+
+
+                                # -----------------------------------------------------------------------------
+                                # Amount slab Userhook to determine the COT amount
+                                # -----------------------------------------------------------------------------        
+                                sv_r = urhk_B2k_GetASTMAmount("")
+                                print(sv_r)
+
+                                IF (sv_r != 0) THEN
+                                #{
+                        		sv_e="Unable to determine the charge Amount for the table Code:"+CUST.DATA.slabCode
+                        		sv_u = urhk_SetOrbErr(sv_e)
+                        		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                        		GOTO ENDOFSCRIPT
+                                #}
+                                ENDIF
+
+                                # -----------------------------------------------------------------------------
+                                # COT amount for the account
+                                # -----------------------------------------------------------------------------
+                                CUST.DATA.chrgAmt = BANCS.OUTPARAM.OutputAmount
+                                print(CUST.DATA.chrgAmt)
+	#}
+	ENDIF	
+
+	PRINT(CUST.DATA.chrgAmt)
+	IF((CUST.DATA.crncy != BANCS.STDIN.homeCrncyCode) AND (CUST.DATA.CallMode != "SCRIPT"))THEN
+	#{
+	        BANCS.INPARAM.InputAmount  = CUST.DATA.chrgAmt
+                BANCS.INPARAM.FromCurrency = CUST.DATA.crncy
+                BANCS.INPARAM.ToCurrency   = BANCS.STDIN.homeCrncyCode
+                BANCS.INPARAM.RateCode     = BANCS.INPUT.rateCode
+                BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+
+                sv_u = urhk_B2k_ConvertAmount("")
+
+                CUST.DATA.chrgAmt = BANCS.OUTPARAM.OutputAmount
+	#}
+	ENDIF
+	PRINT(CUST.DATA.chrgAmt)
+	
+	ENDOFSCRIPT:
+		BANCS.OUTPUT.collAmount = CUST.DATA.chrgAmt
+		BANCS.OUTPUT.collCrncy = BANCS.STDIN.homeCrncyCode
+		BANCS.OUTPUT.AmountWithNoDiscount = CUST.DATA.chrgAmt
+		
+END-->

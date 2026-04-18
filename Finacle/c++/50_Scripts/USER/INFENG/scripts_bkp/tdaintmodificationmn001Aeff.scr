@@ -1,0 +1,291 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : loanintmodificationmn001.scr
+#  Description     : This script will call HINTTM modifiation services to modify data present in custom table
+#  Date            : 10-02-2013
+#  Author          : Dhana Prabhakaran
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-02-2013      Dhana Prabhakaran    Original Version
+#  2.0             16-09-2013      Bharath				Modified for new porting items
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="8f515b7e492cc89c49b567cac69d71bb492367b1998b50f3461a3449005289a5"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LNTMN") == 0) THEN
+	#{
+		CREATECLASS("CUST","LNTMN",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM", 5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Initialisig required repository variables
+	#------------------------------------------------------------------------------
+	CUST.LNTMN.errMsg = ""
+	
+	#------------------------------------------------------------------------------
+	#Getting LOANINT_PIDR values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName  = "LOANINT"
+	BANCS.INPUT.parameterId = "LOANINT_PIDR"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.custPrefIntDr= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.custPrefIntDr)
+		#}
+	ELSE
+		#{
+		CUST.LNTMN.errMsg = "CPARAM setup not done for CustPrefIntDr "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting LOANINT_STRDT values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName  = "LOANINT"
+	BANCS.INPUT.parameterId = "LOANINT_STRDT"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.startDate= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.startDate)
+		#}
+	ELSE
+		#{
+		CUST.LNTMN.errMsg = "CPARAM setup not done for StartDate "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting LOANINT_MINDR values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName  = "LOANINT"
+	BANCS.INPUT.parameterId = "LOANINT_MINDR"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.minIntCr= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.minIntCr)
+		#}
+	ELSE
+		#{
+		CUST.LNTMN.errMsg = "CPARAM setup not done for MinIntDr "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Finding count of records that need to be processed
+	#------------------------------------------------------------------------------
+	sv_s="custcount|"
+	sv_s = sv_s + " SELECT COUNT(1) "
+	sv_s = sv_s + " FROM CUSTOM.INT_CHANGE "
+	sv_s = sv_s + " WHERE INT_CHANGE.entity_cre_flg='A' "
+	sv_s = sv_s + " AND INT_CHANGE.sol_id= ?SVAR"
+	sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF (sv_d != 0) THEN
+	#{
+		CUST.LNTMN.errMsg = "DB ERROR!"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		print(BANCS.OUTPARAM.custcount)
+		IF (CINT(BANCS.OUTPARAM.custcount)== 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_s="foracid,custpref,acctpref,startDateeff|"
+	sv_s = sv_s + " SELECT INT_CHANGE.foracid,INT_CHANGE.cust_pref,INT_CHANGE.acct_Pref, to_char((to_date(OPEN_EFFECTIVE_DATE,'DD-MM-RRRR')),'DD-MM-RRRR') "
+	sv_s = sv_s + " FROM CUSTOM.INT_CHANGE ,tbaadm.gam ,tbaadm.tam  "
+	sv_s = sv_s + " WHERE INT_CHANGE.entity_cre_flg='A' AND gam.acid=tam.acid AND gam.bank_id=tam.bank_id "
+	sv_s = sv_s + " AND INT_CHANGE.sol_id= ?SVAR  AND gam.bank_id='54'  AND tam.bank_id='54' "
+	sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR  AND INT_CHANGE.foracid=gam.foracid "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_c)
+	
+	IF (sv_c==0) THEN
+	#{
+		CUST.LNTMN.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_k = urhk_dbCursorFetch(CUST.LNTMN.DbcursorNumber)
+		print(sv_k)
+		
+		WHILE (sv_k == 0)
+		#{
+			CUST.LNTMN.foracid	= BANCS.OUTPARAM.foracid
+			CUST.LNTMN.custpref	= BANCS.OUTPARAM.custpref
+			CUST.LNTMN.acctpref	= BANCS.OUTPARAM.acctpref
+			CUST.LNTMN.startDateeff	= BANCS.OUTPARAM.startDateeff
+			
+			print(CUST.LNTMN.foracid)
+			print(CUST.LNTMN.custpref)
+			print(CUST.LNTMN.acctpref)
+			print(CUST.LNTMN.startDateeff)
+			
+			#----------------------------------------------------------------------------------------------------
+			# Modify and verify using services
+			#----------------------------------------------------------------------------------------------------
+			sv_u = urhk_SetUrhkInp("IntTblCrit.entityType.type|ACCNT")
+			print(sv_u)
+			sv_u = urhk_SetUrhkInp("IntTblCrit.entityId.entityDispId|" + CUST.LNTMN.foracid)
+			print(sv_u)
+			
+			sv_u = urhk_ExecSrv("SRV_FetchIntTblDtlForModify|retain_all_output = Y")
+			print(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				print(sv_u)
+				#new porting changes
+				sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.acctPrefIntCr|" + CUST.LNTMN.acctpref)
+				print(sv_u)
+				
+				CUST.CPARAM.startDate="15-09-2016"
+				
+				CUST.CPARAM.startDate = CUST.LNTMN.startDateeff
+				print(CUST.CPARAM.startDate)
+				
+				sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.startDate|" + CUST.CPARAM.startDate)
+				print(sv_u)
+				###############
+				sv_h = urhk_getAcctDetailsInRepository(CUST.LNTMN.foracid)
+				print(sv_h)
+				IF (sv_h==0) THEN
+				#{
+					CUST.LNTMN.solidsh = BANCS.OUTPARAM.acctSolId
+					print(CUST.LNTMN.solidsh)
+					CUST.LNTMN.schmcodesh = BANCS.OUTPARAM.schmCode
+					print(CUST.LNTMN.schmcodesh)
+					CUST.LNTMN.schmType = BANCS.OUTPARAM.schmType
+					print(CUST.LNTMN.schmType)
+					
+					CUST.CPARAM.minIntCr ="7"
+					
+					CUST.CPARAM.maxIntCr = "7"
+					
+					sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.minIntCr|" + CUST.CPARAM.minIntCr)
+					print(sv_u)
+					sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.maxIntCr|" + CUST.CPARAM.maxIntCr)
+				#}
+				ENDIF
+				###############
+				
+				sv_u = urhk_ExecSrv("SRV_ModifyIntTblDtlAndVerify|retain_all_output = Y|same_user_verify = Y")
+				print(sv_u)
+				IF(sv_u == 0) THEN
+				#{
+					#----------------------------------------------------------------------------------------------------
+					# Update custom table status
+					#----------------------------------------------------------------------------------------------------
+					sv_s = "UPDATE CUSTOM.INT_CHANGE "
+					sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'P',"
+					sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE"
+					sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+					sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.LNTMN.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				IF (sv_v > 0) THEN
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUST.LNTMN.foracid+" ' >>tdaintmod.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>tdaintmod.log")
+						print(sv_u)
+					#}
+					DO
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_k = urhk_dbCursorFetch(CUST.LNTMN.DbcursorNumber)
+			print(sv_k)
+			
+		#}
+		DO
+		
+		sv_c = urhk_dbCursorClose(CUST.LNTMN.DbcursorNumber)
+		print(sv_c)
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF(CUST.LNTMN.errMsg != "") THEN
+		#{
+			sv_u = system("echo '"+CUST.LNTMN.errMsg+"' >>tdaintmod.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

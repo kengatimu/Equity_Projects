@@ -1,0 +1,377 @@
+#===============================================================================
+# Name			: pordmpod_bcdc_fetch_chrgevnt.scr
+# Date			: 19-05-2022
+# Description		: Event ID Defaulting for Swifts/Rtgs DRC & branch request 
+#===============================================================================
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           09-JUN-2023         Irungu James       Inclusion of H2H channel         1.0 CHG0032332
+# CHG0036759/24092025INFENGFI3 Compte LIBANGA CA284 FI3
+#------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN	
+		CREATEREP("CUST")	
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+		CREATECLASS("CUST","DATA",5)
+	ENDIF
+
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+
+	CUST.DATA.errFlg = "N"
+	CUST.DATA.errMsg = " "
+	CUST.DATA.paysysId = " "
+	CUST.DATA.eventid= " "
+	CUST.DATA.ConvAmount =0
+	CUST.DATA.Channel ="NA"
+	CUST.DATA.FIUSR ="N"
+	CUST.DATA.pymtRefNum=""
+
+
+	IF(FIELDEXISTS(BANCS.INPUT.drAccount))THEN
+		IF(BANCS.INPUT.drAccount !="")THEN
+				CUST.DATA.ChrgAcct = BANCS.INPUT.drAccount
+		ELSE
+				CUST.DATA.ChrgAcct = " "
+		ENDIF
+	ELSE
+		CUST.DATA.ChrgAcct = " "
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.Channel))THEN
+		IF(BANCS.INPUT.Channel !="")THEN
+			CUST.DATA.Channel  = BANCS.INPUT.Channel			
+		ENDIF	
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.FIUSR))THEN
+		IF(BANCS.INPUT.FIUSR !="")THEN
+			CUST.DATA.FIUSR   = BANCS.INPUT.FIUSR 
+		ENDIF
+	ELSE
+		IF(FIELDEXISTS(BANCS.STDIN.userId))THEN
+			IF((BANCS.STDIN.userId !="") AND (BANCS.STDIN.userId == "FIVUSR43"))THEN
+				CUST.DATA.FIUSR  = BANCS.STDIN.userId
+			ENDIF	
+		ENDIF
+	ENDIF
+	IF(FIELDEXISTS(BANCS.INPUT.pymtRefNum))THEN
+		IF(BANCS.INPUT.pymtRefNum !="")THEN
+			CUST.DATA.pymtRefNum   = BANCS.INPUT.pymtRefNum 
+		
+			Print (CUST.DATA.pymtRefNum)
+			IF (CUST.DATA.pymtRefNum !="") THEN
+				sv_d = " Channel | select FREE_TEXT1 from tbaadm.pord "
+				sv_d = sv_d + " where bank_id=?SVAR and pymt_ref_num=?SVAR "
+				sv_d = sv_d + " and rcre_user_id='FIVUSR43'  "
+				sv_d = sv_d + " and exists ( select 1 from tbaadm.sst "
+				sv_d = sv_d + " where bank_id=?SVAR and set_id='ALL' and sol_id=pord.sol_id and entity_cre_flg='Y') "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.pymtRefNum + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				print(sv_d)
+				sv_u = urhk_dbSelectWithBind(sv_d)
+				if(sv_u==0)then
+					CUST.DATA.Channel = BANCS.OUTPARAM.Channel
+				else
+					CUST.DATA.Channel = "NA"
+				endif
+				IF ((CUST.DATA.Channel =="POL") OR (CUST.DATA.Channel =="H2H") or (CUST.DATA.Channel =="OMN") or (CUST.DATA.Channel =="ERP")  or (CUST.DATA.Channel =="BRK"))   THEN
+					CUST.DATA.FIUSR = "Y"
+				ENDIF
+			ENDIF	
+		
+		ENDIF
+	ENDIF
+
+
+	IF(FIELDEXISTS(BANCS.INPUT.remitCrncy))THEN
+		IF(BANCS.INPUT.remitCrncy !="")THEN
+
+			CUST.DATA.remitCrncy = TOUPPER(TRIM(BANCS.INPUT.remitCrncy))
+			PRINT(CUST.DATA.remitCrncy)
+		ELSE
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.errMsg = "Remittance Currency Not Entered"
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ELSE
+		CUST.DATA.errFlg = "Y"
+		CUST.DATA.errMsg = "Remittance Currency Not Entered"
+		GOTO ENDOFSCRIPT
+
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.remitAmt))THEN
+		IF(BANCS.INPUT.remitAmt !="")THEN
+			CUST.DATA.remitAmt = TOUPPER(TRIM(BANCS.INPUT.remitAmt))
+			PRINT(CUST.DATA.remitAmt)
+		ELSE
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.errMsg = "Remittance Amount Not Entered"
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ELSE
+		CUST.DATA.errFlg = "Y"
+		CUST.DATA.errMsg = "Remittance Amount Not Entered"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.paysysId))THEN
+		IF(BANCS.INPUT.paysysId !="")THEN
+
+			CUST.DATA.paysysId = TOUPPER(TRIM(BANCS.INPUT.paysysId))
+			PRINT(CUST.DATA.paysysId)
+		ELSE
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.errMsg = "Remittance Amount Not Entered"
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ELSE
+		CUST.DATA.errFlg = "Y"
+		CUST.DATA.errMsg = "Remittance Amount Not Entered"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	IF(CUST.DATA.remitCrncy == "ZAR")THEN
+	#{
+		IF(TOUPPER(CUST.DATA.paysysId) != "SWIFT")THEN
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.errMsg = "For Remittance Currency "+CUST.DATA.remitCrncy+" Payment Method should be SWIFT"
+			GOTO ENDOFSCRIPT
+
+		ELSE
+			CUST.DATA.errFlg = "N"
+			CUST.DATA.errMsg = " "
+
+		ENDIF
+	ENDIF
+			
+		sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.drAccount)
+		PRINT(sv_u)
+
+		IF(sv_u == 0)THEN
+			CUST.DATA.avblAmt = BANCS.OUTPARAM.EffAvailableAmt
+			CUST.DATA.custId = BANCS.OUTPARAM.custId
+			CUST.DATA.acctSolId= BANCS.OUTPARAM.acctSolId
+			CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+			print(CUST.DATA.custId)
+			print(CUST.DATA.acctSolId)
+
+		ELSE
+			CUST.DATA.custId=""
+			CUST.DATA.acctSolId=""
+		ENDIF
+
+
+		sv_s =" CORP_ID | select corp_id from tbaadm.cmg where  bank_id='"+BANCS.STDIN.contextBankId+"' and cust_id='"+CUST.DATA.custId+"' and rownum=1"
+		print(sv_s)
+		sv_u = urhk_dbselectwithBind(sv_s)
+		print(sv_u)
+		IF (sv_u == 0) THEN		
+			BANCS.INPUT.CORP_ID=BANCS.OUTPARAM.CORP_ID
+
+			IF(BANCS.INPUT.CORP_ID != "") THEN
+				BANCS.INPUT.RETCORP="CORP"
+			ELSE
+				BANCS.INPUT.RETCORP="RET"
+			ENDIF
+		ELSE
+			BANCS.INPUT.RETCORP="NIL"
+		ENDIF
+
+		CUST.DATA.corpret=BANCS.INPUT.RETCORP
+		print(CUST.DATA.corpret)
+
+
+		IF(CUST.DATA.corpret =="NIL") THEN
+			CUST.DATA.eventid="BCDC_OFFICE_ACCT"
+		ENDIF
+
+		#convert amount to USD
+
+		IF(BANCS.INPUT.remitCrncy !="USD") THEN
+			BANCS.INPARAM.InputAmount = BANCS.INPUT.remitAmt
+			BANCS.INPARAM.FromCurrency = BANCS.INPUT.remitCrncy
+			BANCS.INPARAM.ToCurrency = "USD"
+			BANCS.INPARAM.RateCode = "TTS"
+			BANCS.INPARAM.Rate=0
+			sv_r = urhk_B2k_ConvertAmount("")
+			CUST.DATA.ConvAmount =CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+		ELSE
+			CUST.DATA.ConvAmount =BANCS.INPUT.remitAmt
+		ENDIF
+
+
+		IF(BANCS.INPUT.remitCrncy !="CDF") THEN
+			BANCS.INPARAM.InputAmount = BANCS.INPUT.remitAmt
+			BANCS.INPARAM.FromCurrency = BANCS.INPUT.remitCrncy
+			BANCS.INPARAM.ToCurrency = "USD"
+			BANCS.INPARAM.RateCode = "TTS"
+			BANCS.INPARAM.Rate=0
+			sv_r = urhk_B2k_ConvertAmount("")
+			CUST.DATA.ConCDFAmount =CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+		ELSE
+			CUST.DATA.ConCDFAmount =BANCS.INPUT.remitAmt
+		ENDIF
+
+		print(CUST.DATA.ConvAmount)
+		print(CUST.DATA.ConCDFAmount)
+
+		
+IF (CUST.DATA.FIUSR =="N") THEN
+	IF (BANCS.INPUT.paysysId=="SWIFT") THEN			
+		IF(BANCS.INPUT.bencntry=="CD") THEN
+			IF(CUST.DATA.corpret =="CORP") THEN
+				CUST.DATA.eventid="OUTWRDLOCALTRSF-CORPUSD"
+			ENDIF
+
+			IF(CUST.DATA.corpret =="RET") THEN
+				CUST.DATA.eventid="OUTWRDLOCALTRSF-RETUSD"
+			ENDIF
+		ELSE
+			IF(CUST.DATA.corpret =="CORP") THEN
+				CUST.DATA.eventid="BCDC-SWIFTOUTWD-CORPUSD"
+			ENDIF
+			IF(CUST.DATA.corpret =="RET") THEN
+				CUST.DATA.eventid="BCDC-SWIFTOUTWD-RETUSD"
+			ENDIF
+		ENDIF
+	ELSE
+		IF(BANCS.INPUT.remitCrncy =="CDF") THEN			
+						
+			IF(CUST.DATA.corpret =="CORP") THEN
+				CUST.DATA.eventid="BCDC-SWIFTBEN-COP>25000US"
+			ENDIF
+			IF(CUST.DATA.corpret =="RET") THEN
+				CUST.DATA.eventid="BCDC-SWIFTBEN-RET>25000US"
+			ENDIF	
+							
+		ELSE
+			IF(CUST.DATA.corpret =="CORP") THEN
+				CUST.DATA.eventid="OUTWRDLOCALTRSF-CORPUSD"
+			ENDIF
+			
+			IF(CUST.DATA.corpret =="RET") THEN
+				CUST.DATA.eventid="OUTWRDLOCALTRSF-RETUSD"
+			ENDIF
+		ENDIF
+	ENDIF
+ELSE
+	IF (BANCS.INPUT.paysysId=="SWIFT") THEN
+	
+		IF(BANCS.INPUT.bencntry=="CD") THEN
+			IF (CUST.DATA.Channel =="ERP") THEN	
+				CUST.DATA.eventid="BCDC_OFFICE_ACCT"
+			ELSE
+				CUST.DATA.eventid="POLSWIFTBC"
+			ENDIF			
+		ELSE
+			IF (CUST.DATA.Channel =="ERP") THEN
+				CUST.DATA.eventid="SWIFT_OFFICE_ACCT"
+			ELSE
+				CUST.DATA.eventid="POLSWIFT"
+			ENDIF
+		ENDIF		
+	ELSE		
+		IF ((CUST.DATA.Channel =="POL")OR (CUST.DATA.Channel =="H2H")) THEN	
+			CUST.DATA.eventid="POLRTGS"	
+		ELSE
+			CUST.DATA.eventid="ERTGS"
+		ENDIF
+
+		IF (CUST.DATA.Channel =="ERP") THEN			
+			CUST.DATA.eventid="RTGS_OFFICE_ACCT"
+		ENDIF	
+	ENDIF
+ENDIF
+
+
+
+
+# Start check for charge account INC0033115
+
+
+BANCS.INPUT.Custchargeacct = ""
+BANCS.INPUT.BODDATE=mid$(BANCS.STDIN.BODDate,0,10)
+BANCS.INPUT.foracid = BANCS.INPUT.drAccount
+
+IF(BANCS.INPUT.Custchargeacct =="") then
+                sv_s =" Custchargeacct|select chrg_acct_no from custom.C_HCUSTCRG_MAIN where foracid ='"+ BANCS.INPUT.foracid +"'  "
+                sv_s = sv_s + " and EVENT_TYPE ='FBCH' and  EVENT_ID = '"+ CUST.DATA.eventid +"'    "
+		sv_s = sv_s + " and start_date  < = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY') "
+                sv_s = sv_s + " and end_date  > = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY') "
+                sv_s = sv_s + " and entity_cre_flg='Y' and del_flg='N' and rownum=1"
+                print(sv_s)
+                sv_u = urhk_dbselectwithBind(sv_s)
+                print(sv_u)
+                        IF (sv_u == 0) THEN
+                                BANCS.INPUT.Custchargeacct=BANCS.OUTPARAM.Custchargeacct
+                        ELSE
+                                BANCS.INPUT.Custchargeacct=""
+                        ENDIF
+                print(BANCS.INPUT.Custchargeacct)
+ENDIF
+IF(BANCS.INPUT.Custchargeacct=="") then
+                sv_s ="Custchargeacct| select chrg_acct_no from custom.C_HCUSTCRG_MAIN where cust_id = (select cif_id from tbaadm.gam where foracid ='"+ BANCS.INPUT.foracid +"') "
+                sv_s = sv_s + " and  EVENT_TYPE ='FBCH' and  EVENT_ID = '"+ CUST.DATA.eventid +"'    "
+		sv_s = sv_s + " and  start_date  < = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY')"
+                sv_s = sv_s + " and  end_date  > = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY')"
+                sv_s = sv_s + " and entity_cre_flg='Y' and del_flg='N' and rownum=1"
+                print(sv_s)
+                sv_u = urhk_dbselectwithBind(sv_s)
+                print(sv_u)
+                        IF (sv_u == 0) THEN
+                                BANCS.INPUT.Custchargeacct=BANCS.OUTPARAM.Custchargeacct
+                        ELSE
+                                BANCS.INPUT.Custchargeacct=""
+                        ENDIF
+
+                print(BANCS.INPUT.Custchargeacct)
+ENDIF
+IF(BANCS.INPUT.Custchargeacct=="") then
+                sv_s ="Custchargeacct| select chrg_acct_no from custom.C_HCUSTCRG_MAIN where AGREEMENT =(select EMPLOYERID from CRMUSER.DEMOGRAPHIC where "
+		sv_s = sv_s + " orgkey =(select cif_id from tbaadm.gam where foracid ='"+ BANCS.INPUT.foracid +"')) "
+                sv_s = sv_s + " and  EVENT_TYPE ='FBCH' and  EVENT_ID = '"+ CUST.DATA.eventid +"'    "
+		sv_s = sv_s + " and  start_date  < = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY')"
+                sv_s = sv_s + " and  end_date  > = to_date('"+BANCS.INPUT.BODDATE+"','DD-MM-YYYY')"
+                sv_s = sv_s + " and entity_cre_flg='Y' and del_flg='N' and rownum=1"
+                print(sv_s)
+                sv_u = urhk_dbselectwithBind(sv_s)
+                print(sv_u)
+                        IF (sv_u == 0) THEN
+                                BANCS.INPUT.Custchargeacct=BANCS.OUTPARAM.Custchargeacct
+                        ELSE
+                                BANCS.INPUT.Custchargeacct=""
+                        ENDIF
+
+                print(BANCS.INPUT.Custchargeacct)
+ENDIF
+IF (BANCS.INPUT.Custchargeacct != "") Then
+	CUST.DATA.ChrgAcct = BANCS.INPUT.Custchargeacct
+ELSE
+	CUST.DATA.ChrgAcct = BANCS.INPUT.drAccount
+ENDIF
+
+# End check for charge account INC0033115
+
+
+print(CUST.DATA.eventid)
+
+ENDOFSCRIPT:
+
+	IF(BANCS.STDIN.userId !="FIVUSR43") THEN
+		sv_u = urhk_SetOrbOut("errFlg|"+CUST.DATA.errFlg)
+		sv_u = urhk_SetOrbOut("errMsg|"+CUST.DATA.errMsg)
+		sv_u = urhk_SetOrbOut("eventid|"+CUST.DATA.eventid)
+		sv_u = urhk_SetOrbOut("ChrgAcct|"+CUST.DATA.ChrgAcct)
+	ELSE
+		print(CUST.DATA.eventid)
+	ENDIF
+
+#TRACE OFF
+END-->

@@ -1,0 +1,524 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpOwclgUnpay.scr 
+#  Description     : batch
+#  Date            : 16-02-2026
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-02-2026      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("OCTMM")==0)then
+        #{
+                createrep("OCTMM")
+        #}
+        endif
+        if(classexists("OCTMM","GLBDATA")==0)then
+        #{
+                createclass("OCTMM","GLBDATA",5)
+        #}
+        endif
+        sv_a = "rm -f vpblkUnpayStatus.lst"
+        sv_a = system(sv_a)
+        sv_a = "touch vpblkUnpayStatus.lst" 
+        sv_a = system(sv_a)
+	OCTMM.GLBDATA.srvErrMsg = ""
+	OCTMM.GLBDATA.srvErrCode = ""
+	OCTMM.GLBDATA.srvSucFail = ""
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+        #{
+                OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                OCTMM.GLBDATA.srvErrCode = "MTT"
+                OCTMM.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        OCTMM.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+        OCTMM.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate	= "0"
+        MTT.TranDetails.TranType 	= "T"
+        MTT.TranDetails.TranSubType 	= "BI"
+        MTT.TranDetails.IgnoreExcp 	= "I"
+        MTT.TranDetails.Consolidate 	= "Y"
+        MTT.TranDetails.Remarks 	= "InhouseUnpay"
+        MTT.TranDetails.ValidationFlag 	= "Y"
+        MTT.TranDetails.PostTranFlg 	= "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.ModuleId        = "HTM"
+        sv_u = urhk_MTTS_DefineTransaction("OCIClgRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                OCTMM.GLBDATA.srvErrCode = "MTT"
+                OCTMM.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+	lv_q = " ociSolid,iciAcctSolid,iciAcid,icpTranId,icpTranDate,icpPartTrnSrlNum,DrAcctId,commCrAcctId,PayingAcctId,ociClgZoneDate,ociClgZoneCode,ociSetNum,ociInstmntId,ociInstmntDate,ociInstmntAmt,ociInwRejZoneCode,ociInwRejZoneDate,ociInwRejZoneSrlNum,ociPayeeName,ociRejCode | "
+	lv_q = lv_q + " select oci.sol_id,ici.acct_sol_id,ici.acid,icp.tran_id,icp.tran_date,icp.part_tran_srl_num,(select acid from tbaadm.dctd_acli where bank_id=?SVAR and tran_date=icp.tran_date and tran_id=icp.tran_id and part_tran_type='C' and tran_type='L' and tran_sub_type='I' and pstd_flg='Y' and del_flg='N') as DrAcctId, (select foracid from tbaadm.gam where bank_id=?SVAR and bacid='PNLCHQUN' and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and sol_id=(select sol_id from tbaadm.gam where bank_id='54' and foracid=oci.paying_acct_id)) as commCrAcctId,oci.paying_acct_id,oci.clg_zone_date,oci.clg_zone_code,oci.set_num,oci.instrmnt_id,oci.instrmnt_date,oci.instrmnt_amt,oci.inw_rej_zone_code,oci.inw_rej_zone_date,oci.inw_rej_zone_srl_num,oci.freetext3,oci.rej_code_1  "
+	lv_q = lv_q + " from tbaadm.oci,tbaadm.icp,tbaadm.ici "
+	lv_q = lv_q + " where oci.bank_id=?SVAR and icp.bank_id=?SVAR and ici.bank_id=?SVAR " 
+	lv_q = lv_q + " and oci.clg_zone_code in ('CTSINHSE','EQBOWZUSIN','EQBOWGBPIN','EQBOWEURIN') " 
+	lv_q = lv_q + " and oci.clg_zone_date= to_date(?SVAR,'DD-MM-RRRR') " 
+	lv_q = lv_q + " and oci.sol_id= ?SVAR " 
+	lv_q = lv_q + " and oci.rej_type='O' " 
+        lv_q = lv_q + " and oci.STATUS_FLG='J' "
+        lv_q = lv_q + " and oci.del_flg='N' "
+        lv_q = lv_q + " and icp.zone_code = oci.inw_rej_zone_code "
+        lv_q = lv_q + " and icp.zone_date = oci.inw_rej_zone_date "
+        lv_q = lv_q + " and icp.zone_srl_num = oci.inw_rej_zone_srl_num "
+        lv_q = lv_q + " and icp.tran_amt = oci.instrmnt_amt "
+        lv_q = lv_q + " and icp.status_ind='P' "
+        lv_q = lv_q + " and ici.rej_type='O' "
+        lv_q = lv_q + " and ici.out_rej_set_num = oci.set_num "
+        lv_q = lv_q + " and ici.out_rej_zone_code = oci.clg_zone_code "
+        lv_q = lv_q + " and ici.out_rej_zone_date = oci.clg_zone_date "
+        lv_q = lv_q + " and ici.status_ind='P' "
+        lv_q = lv_q + " and ici.ZONE_SRL_NUM = oci.inw_rej_zone_srl_num "
+        lv_q = lv_q + " and ici.inst_num=oci.instrmnt_id "
+        lv_q = lv_q + " and ici.inst_amt = oci.instrmnt_amt "
+        lv_q = lv_q + " and ici.free_text1 is null" 
+	##BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + lef$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.mySolId
+	###BANCS.STDIN.BODDate = "06-03-2026"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.mySolId
+        print(lv_q)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                OCTMM.GLBDATA.ocicurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                OCTMM.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                OCTMM.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                OCTMM.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        OCTMM.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(OCTMM.GLBDATA.ocicurNum)
+        if(sv_z!=0)then
+        #{
+                OCTMM.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                OCTMM.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                OCTMM.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+       		OCTMM.GLBDATA.ociSolid = BANCS.OUTPARAM.ociSolid
+		OCTMM.GLBDATA.iciAcctSolid = BANCS.OUTPARAM.iciAcctSolid
+		OCTMM.GLBDATA.iciAcid = BANCS.OUTPARAM.iciAcid
+		OCTMM.GLBDATA.icpTranId = BANCS.OUTPARAM.icpTranId
+		OCTMM.GLBDATA.icpTranDate = BANCS.OUTPARAM.icpTranDate
+		OCTMM.GLBDATA.icpPartTrnSrlNum = BANCS.OUTPARAM.icpPartTrnSrlNum
+		OCTMM.GLBDATA.DrAcctId = BANCS.OUTPARAM.DrAcctId
+		OCTMM.GLBDATA.commCrAcctId = BANCS.OUTPARAM.commCrAcctId
+		OCTMM.GLBDATA.PayingAcctId = BANCS.OUTPARAM.PayingAcctId
+		OCTMM.GLBDATA.ociClgZoneDate = BANCS.OUTPARAM.ociClgZoneDate
+		OCTMM.GLBDATA.ociClgZoneCode = BANCS.OUTPARAM.ociClgZoneCode
+		OCTMM.GLBDATA.ociSetNum = BANCS.OUTPARAM.ociSetNum
+		OCTMM.GLBDATA.ociInstmntId = BANCS.OUTPARAM.ociInstmntId
+		OCTMM.GLBDATA.ociInstmntDate = BANCS.OUTPARAM.ociInstmntDate
+		OCTMM.GLBDATA.ociInstmntAmt = BANCS.OUTPARAM.ociInstmntAmt
+		OCTMM.GLBDATA.ociInwRejZoneCode = BANCS.OUTPARAM.ociInwRejZoneCode
+		OCTMM.GLBDATA.ociInwRejZoneDate = BANCS.OUTPARAM.ociInwRejZoneDate
+		OCTMM.GLBDATA.ociInwRejZoneSrlNum = BANCS.OUTPARAM.ociInwRejZoneSrlNum 
+		OCTMM.GLBDATA.ociPayeeName = BANCS.OUTPARAM.ociPayeeName 
+		OCTMM.GLBDATA.ociRejCode = BANCS.OUTPARAM.ociRejCode 
+
+		lv_t = "CommTranAmt,ClgRejDesc| select regexp_substr(nvl(alt1_clg_rej_desc,0),'[^,]+$',1,1),clg_rej_desc from tbaadm.crc where bank_id=?SVAR and clg_rej_code=?SVAR and del_flg='N' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + OCTMM.GLBDATA.ociRejCode
+		print(lv_t)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_t = urhk_dbSelectWithBind(lv_t)
+		if(lv_t==0)then
+		#{
+			OCTMM.GLBDATA.CommTranAmt = BANCS.OUTPARAM.CommTranAmt	
+			OCTMM.GLBDATA.ClgRejDesc = BANCS.OUTPARAM.ClgRejDesc	
+		else
+			OCTMM.GLBDATA.CommTranAmt = "0"
+			OCTMM.GLBDATA.ClgRejDesc = "0"
+		#}
+		endif
+		print(OCTMM.GLBDATA.ociSolid)
+		print(OCTMM.GLBDATA.iciAcctSolid)
+		print(OCTMM.GLBDATA.icpTranId)
+		print(OCTMM.GLBDATA.icpTranDate)
+		print(OCTMM.GLBDATA.icpPartTrnSrlNum)
+		print(OCTMM.GLBDATA.DrAcctId)
+		print(OCTMM.GLBDATA.commCrAcctId)
+		print(OCTMM.GLBDATA.PayingAcctId)
+		print(OCTMM.GLBDATA.ociClgZoneDate)
+		print(OCTMM.GLBDATA.ociClgZoneCode)
+		print(OCTMM.GLBDATA.ociSetNum)
+		print(OCTMM.GLBDATA.ociInstmntId)
+		print(OCTMM.GLBDATA.ociInstmntDate)
+		print(OCTMM.GLBDATA.ociInstmntAmt)
+		print(OCTMM.GLBDATA.ociInwRejZoneCode)
+		print(OCTMM.GLBDATA.ociInwRejZoneDate)
+		print(OCTMM.GLBDATA.ociInwRejZoneSrlNum)
+		print(OCTMM.GLBDATA.ociPayeeName)
+
+		sv_a= urhk_B2k_AcidToForacid(OCTMM.GLBDATA.DrAcctId)
+		if(sv_a==0)then
+		#{
+			OCTMM.GLBDATA.DrAcctId = BANCS.OUTPARAM.Foracid
+		else
+			OCTMM.GLBDATA.DrAcctId = ""
+		#}
+		endif
+		print(OCTMM.GLBDATA.DrAcctId)
+		sv_u = urhk_getAcctDetailsInRepository(OCTMM.GLBDATA.DrAcctId)
+		if(sv_u == 0)then
+		#{
+			OCTMM.GLBDATA.drAcctCnrcyCode = BANCS.OUTPARAM.acctCrncyCode		
+		else
+			OCTMM.GLBDATA.drAcctCnrcyCode = BANCS.STDIN.homeCrncyCode
+		#}
+		endif
+		sv_u = urhk_getAcctDetailsInRepository(OCTMM.GLBDATA.PayingAcctId)
+		if(sv_u == 0)then
+		#{
+		        OCTMM.GLBDATA.pEffBal = BANCS.OUTPARAM.EffAvailableAmt
+		        OCTMM.GLBDATA.pclearBalance = BANCS.OUTPARAM.clearBalance
+		        OCTMM.GLBDATA.pavalAmt = BANCS.OUTPARAM.AvailableAmt
+		        OCTMM.GLBDATA.pSchmType = BANCS.OUTPARAM.schmType
+			OCTMM.GLBDATA.PdrAcctCnrcyCode = BANCS.OUTPARAM.acctCrncyCode 
+			OCTMM.GLBDATA.pschmCode = BANCS.OUTPARAM.schmCode
+		else
+		       OCTMM.GLBDATA.pEffBal = "0" 
+		       OCTMM.GLBDATA.pclearBalance = "0" 
+		       OCTMM.GLBDATA.pavalAmt = "0" 
+		       OCTMM.GLBDATA.pSchmType = ""
+			OCTMM.GLBDATA.PdrAcctCnrcyCode = BANCS.STDIN.homeCrncyCode
+			OCTMM.GLBDATA.pschmCode = ""
+		#}
+		endif
+		if((OCTMM.GLBDATA.pschmCode=="CA217") or (OCTMM.GLBDATA.pschmCode=="CA218") or (OCTMM.GLBDATA.pschmCode=="CA219") or (OCTMM.GLBDATA.pschmCode=="SB190") or (OCTMM.GLBDATA.pschmCode=="SB107"))then
+		#{
+			OCTMM.GLBDATA.pcommSkip = "Y"
+		else
+			OCTMM.GLBDATA.pcommSkip = "N"
+		#}
+		endif
+		print(OCTMM.GLBDATA.pSchmType)
+               
+#Tran Entry Starts
+                                MTT.PartTranDetails.Account = OCTMM.GLBDATA.DrAcctId 
+                                MTT.PartTranDetails.RefCurrency = OCTMM.GLBDATA.drAcctCnrcyCode 
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate   =  "0"
+				OCTMM.GLBDATA.drparticls = "Unpaid Chequeno. " + trim(OCTMM.GLBDATA.ociInstmntId) + " " + OCTMM.GLBDATA.ClgRejDesc
+				MTT.PartTranDetails.Particulars = mid$(OCTMM.GLBDATA.drparticls,0,50) 
+                                MTT.PartTranDetails.RefAmount = -1*cdouble(OCTMM.GLBDATA.ociInstmntAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+				OCTMM.GLBDATA.remarks = trim(OCTMM.GLBDATA.ociInwRejZoneCode) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneDate) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneSrlNum) 
+				print(OCTMM.GLBDATA.remarks)
+				MTT.PartTranDetails.Remarks = left$(OCTMM.GLBDATA.remarks,30) 
+				MTT.PartTranDetails.RefNum = OCTMM.GLBDATA.ociSetNum 
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.CarveAmtFlg = "Y"
+                                MTT.PartTranDetails.ProxyPstgInd= "P"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "OCIClgRec"
+                                print(MTT.PartTranDetails.TranIdentifier)
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                sv_r = urhk_MTTS_definePartTran("OCIClgTran")
+                                print(sv_r)
+                                if (sv_r != 0) then
+				#{
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Debit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        OCTMM.GLBDATA.srvErrCode = "MTT"
+                                        OCTMM.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+				#}
+                                endif
+				print(OCTMM.GLBDATA.drAcctCnrcyCode)
+				print(OCTMM.GLBDATA.PdrAcctCnrcyCode)
+                                MTT.PartTranDetails.Account = OCTMM.GLBDATA.PayingAcctId 
+                                MTT.PartTranDetails.RefCurrency = OCTMM.GLBDATA.PdrAcctCnrcyCode 
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate           =  "0"
+				OCTMM.GLBDATA.mcrParti = "Unpaid Chequeno. " + trim(OCTMM.GLBDATA.ociInstmntId) + " Insufficient Funds - " + OCTMM.GLBDATA.ociPayeeName 
+				print(OCTMM.GLBDATA.mcrParti)
+				MTT.PartTranDetails.Particulars = mid$(OCTMM.GLBDATA.mcrParti,0,50) 
+                                MTT.PartTranDetails.RefAmount = 1 * cdouble(OCTMM.GLBDATA.ociInstmntAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+				OCTMM.GLBDATA.remarks = trim(OCTMM.GLBDATA.ociInwRejZoneCode) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneDate) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneSrlNum) 
+				print(OCTMM.GLBDATA.remarks)
+				MTT.PartTranDetails.Remarks = left$(OCTMM.GLBDATA.remarks,30) 
+				MTT.PartTranDetails.RefNum = OCTMM.GLBDATA.ociSetNum 
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "OCIClgRec"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("OCIClgTran")
+                                if (sv_r != 0) then
+				#{
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Credit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        OCTMM.GLBDATA.srvErrCode = "MTT"
+                                        OCTMM.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+				#}
+                                endif
+			##if(OCTMM.GLBDATA.pSchmType=="SBA")then
+			#{
+			##	print(OCTMM.GLBDATA.CommTranAmt)
+			##	print(OCTMM.GLBDATA.pavalAmt)
+			##	print(OCTMM.GLBDATA.CommTranAmt)
+			##if((cdouble(OCTMM.GLBDATA.CommTranAmt)>0) and (cdouble(OCTMM.GLBDATA.pavalAmt)<cdouble(OCTMM.GLBDATA.CommTranAmt)))then
+			##	OCTMM.GLBDATA.skipComm="Y"
+			##else
+			##	OCTMM.GLBDATA.skipComm = "N"
+			##endif
+			##else
+			##	OCTMM.GLBDATA.skipComm = "N"
+			#}
+			##endif
+			print(OCTMM.GLBDATA.CommTranAmt)
+			##print(OCTMM.GLBDATA.skipComm)
+			##if((cdouble(OCTMM.GLBDATA.CommTranAmt)>0) and (OCTMM.GLBDATA.skipComm=="N"))then 
+			if((cdouble(OCTMM.GLBDATA.CommTranAmt)>0) and (OCTMM.GLBDATA.pcommSkip=="N"))then
+			#{
+				if(OCTMM.GLBDATA.PdrAcctCnrcyCode != BANCS.STDIN.homeCrncyCode)then 
+					MTT.PartTranDetails.RateCode = "TTB" 
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode 
+					MTT.PartTranDetails.RefAmount = -1*cdouble(OCTMM.GLBDATA.CommTranAmt)
+					print(MTT.PartTranDetails.RefAmount)
+				else
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode 
+					MTT.PartTranDetails.RefAmount = -1*cdouble(OCTMM.GLBDATA.CommTranAmt)
+					print(MTT.PartTranDetails.RefAmount)
+				endif
+                                MTT.PartTranDetails.Account = OCTMM.GLBDATA.PayingAcctId 
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate   =  "0"
+				MTT.PartTranDetails.Particulars = "Unpaid Cheque Commission " + trim(OCTMM.GLBDATA.ociInstmntId)
+				OCTMM.GLBDATA.remarks = trim(OCTMM.GLBDATA.ociInwRejZoneCode) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneDate) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneSrlNum) 
+				print(OCTMM.GLBDATA.remarks)
+				MTT.PartTranDetails.Remarks = left$(OCTMM.GLBDATA.remarks,30) 
+				MTT.PartTranDetails.RefNum = OCTMM.GLBDATA.ociSetNum 
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.CarveAmtFlg = "Y"
+                                MTT.PartTranDetails.ProxyPstgInd= "P"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "OCIClgRec"
+                                print(MTT.PartTranDetails.TranIdentifier)
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+				if(cdouble(OCTMM.GLBDATA.CommTranAmt)>cdouble(OCTMM.GLBDATA.pavalAmt))then
+				#{
+				MTT.PartTranDetails.TODRefType          = "BH"
+				MTT.PartTranDetails.TodEntityType   = "TODBH"
+				MTT.PartTranDetails.TodEntityId     = OCTMM.GLBDATA.PayingAcctId 
+				MTT.PartTranDetails.TodLevIntFlg    = "N"
+				MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+				MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+				MTT.PartTranDetails.TodPermittedBy  = BANCS.STDIN.userId
+				MTT.PartTranDetails.TodRemarks      = OCTMM.GLBDATA.remarks 
+				MTT.PartTranDetails.Consolidate     = "N"
+				#}
+				endif
+
+                                sv_r = urhk_MTTS_definePartTran("OCIClgTran")
+                                print(sv_r)
+                                if (sv_r != 0) then
+				#{
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Debit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        OCTMM.GLBDATA.srvErrCode = "MTT"
+                                        OCTMM.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+				#}
+                                endif
+                                MTT.PartTranDetails.Account = OCTMM.GLBDATA.commCrAcctId
+                                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate           =  "0"
+				MTT.PartTranDetails.Particulars = "Unpaid Cheque Commission " + trim(OCTMM.GLBDATA.ociInstmntId)
+                                MTT.PartTranDetails.RefAmount = 1*cdouble(OCTMM.GLBDATA.CommTranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+				OCTMM.GLBDATA.remarks = trim(OCTMM.GLBDATA.ociInwRejZoneCode) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneDate) + "/" + trim(OCTMM.GLBDATA.ociInwRejZoneSrlNum) 
+				print(OCTMM.GLBDATA.remarks)
+				MTT.PartTranDetails.Remarks = left$(OCTMM.GLBDATA.remarks,30) 
+				MTT.PartTranDetails.RefNum = OCTMM.GLBDATA.ociSetNum 
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "OCIClgRec"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("OCIClgTran")
+                                if (sv_r != 0) then
+				#{
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Credit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        OCTMM.GLBDATA.srvErrCode = "MTT"
+                                        OCTMM.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+				#}
+                                endif
+			#}
+			endif
+                                sv_u = urhk_MTTS_EndDefinition("")
+                                print(sv_u)
+                                if (sv_u != 0) then
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        print (MTT.Error.Description)
+                                        OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        OCTMM.GLBDATA.srvErrCode = "MTT"
+                                        OCTMM.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                        OCTMM.GLBDATA.TranId = ""
+                                else
+                                        OCTMM.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                                        print(OCTMM.GLBDATA.TranId)
+                                endif
+				print(MTT.XCPN.NumErrors)
+                                print(MTT.XCPN.NumExceptions)
+                                print(MTT.XCPN.NumWarnings)
+                                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                                #{
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+					#{
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                OCTMM.GLBDATA.srvErrCode = "MTT"
+                                                OCTMM.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+					else
+						lv_i = " update tbaadm.ici set FREE_TEXT1=?SVAR where bank_id=?SVAR and zone_code=?SVAR and zone_date=to_date(?SVAR,'DD-MM-RRRR') and inst_num=?SVAR and inst_type='CHQ' and inst_amt=?SVAR and acid=?SVAR and sol_id=?SVAR and rej_type='O' and out_rej_zone_code=?SVAR and out_rej_zone_date=to_date(?SVAR,'DD-MM-RRRR') "
+						BANCS.INPARAM.BINDVARS = OCTMM.GLBDATA.TranId + "|" + BANCS.STDIN.contextBankId + "|" + OCTMM.GLBDATA.ociInwRejZoneCode + "|" + OCTMM.GLBDATA.ociInwRejZoneDate + "|" + OCTMM.GLBDATA.ociInstmntId + "|" + OCTMM.GLBDATA.ociInstmntAmt + "|" + OCTMM.GLBDATA.iciAcid + "|" + OCTMM.GLBDATA.ociSolid + "|" + OCTMM.GLBDATA.ociClgZoneCode + "|" + OCTMM.GLBDATA.ociClgZoneDate
+						print(lv_i)
+						print(BANCS.INPARAM.BINDVARS)
+						lv_i = urhk_dbSqlWithBind(lv_i)
+						print(lv_i)
+
+						sv_a = OCTMM.GLBDATA.PayingAcctId + "|" + OCTMM.GLBDATA.ociInstmntId 
+						sv_d = "echo '" + sv_a + "' >> vpblkUnpayStatus.lst"
+						print(sv_d)
+						sv_s = system(sv_d)
+						print(sv_s)
+					#}
+                                        endif
+				#}
+                                else
+				#{
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+					#{
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                OCTMM.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                OCTMM.GLBDATA.srvErrCode = "MTT"
+                                                OCTMM.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+					else
+						lv_i = " update tbaadm.ici set FREE_TEXT1=?SVAR where bank_id=?SVAR and zone_code=?SVAR and zone_date=to_date(?SVAR,'DD-MM-RRRR') and inst_num=?SVAR and inst_type='CHQ' and inst_amt=?SVAR and acid=?SVAR and sol_id=?SVAR and rej_type='O' and out_rej_zone_code=?SVAR and out_rej_zone_date=to_date(?SVAR,'DD-MM-RRRR') "
+						BANCS.INPARAM.BINDVARS = OCTMM.GLBDATA.TranId + "|" + BANCS.STDIN.contextBankId + "|" + OCTMM.GLBDATA.ociInwRejZoneCode + "|" + OCTMM.GLBDATA.ociInwRejZoneDate + "|" + OCTMM.GLBDATA.ociInstmntId + "|" + OCTMM.GLBDATA.ociInstmntAmt + "|" + OCTMM.GLBDATA.iciAcid + "|" + OCTMM.GLBDATA.ociSolid + "|" + OCTMM.GLBDATA.ociClgZoneCode + "|" + OCTMM.GLBDATA.ociClgZoneDate
+						print(lv_i)
+						print(BANCS.INPARAM.BINDVARS)
+						lv_i = urhk_dbSqlWithBind(lv_i)
+						print(lv_i)
+
+						sv_a = OCTMM.GLBDATA.PayingAcctId + "|" + OCTMM.GLBDATA.ociInstmntId 
+						sv_d = "echo '" + sv_a + "' >> vpblkUnpayStatus.lst"
+						print(sv_d)
+						sv_s = system(sv_d)
+						print(sv_s)
+
+					#}
+                                        endif
+                                #}
+                                endif
+##Frequency&Partial Demand Update
+
+                NXTREC:
+                        print(OCTMM.GLBDATA.srvErrMsg)
+                        print(OCTMM.GLBDATA.srvErrCode)
+                        print(OCTMM.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(OCTMM.GLBDATA.ocicurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(OCTMM.GLBDATA.ocicurNum)
+                                print(sv_u)
+                                OCTMM.GLBDATA.srvErrMsg =  "OCI Cursor Fetch Failed"
+                                OCTMM.GLBDATA.srvErrCode = "DBCursor"
+                                OCTMM.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        #}
+                        endif
+                        OCTMM.GLBDATA.ddaRec = cint(OCTMM.GLBDATA.ddaRec) + 1
+                        OCTMM.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + OCTMM.GLBDATA.ddaRec
+                        print(OCTMM.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(OCTMM.GLBDATA.ocicurNum)
+        print(sv_u)
+Endofscript:
+        print(OCTMM.GLBDATA.srvErrCode)
+        print(OCTMM.GLBDATA.srvErrMsg)
+        print(OCTMM.GLBDATA.srvSucFail)
+        sv_s = "echo $B2K_SESSION_ID"
+        print(system(sv_s))
+        sv_n = "5"
+        sv_a = "nohup exebatch -n "+sv_n+" -i vpblkUnpayStatus.lst babx4061 $B2K_SESSION_ID vphucsVfy.scr @s"
+        sv_r = system(sv_a)
+        exitscript
+trace off
+end-->

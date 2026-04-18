@@ -1,0 +1,739 @@
+#########################################################################################################################
+# Script name		: Equity_LM_Main.scr
+# Date				: 20-Sep-2013
+# Description		: Logic for retrieving values from request file, performing validations and writing the response file
+# Author			: Bharath
+# Calling Scripts	: none
+# Called scripts	: Equity_LM_MTT.scr
+#########################################################################################################################
+<--START
+TRACE ON
+
+####-----------------------------------------####
+# Inclusion of library
+####-----------------------------------------####
+LIBNAME CUSTOMSO
+
+####-----------------------------------------####
+# Creation of  Repositories and Classes
+####-----------------------------------------####
+IF (REPEXISTS("EQUITY")==0) THEN
+	CREATEREP("EQUITY")
+ENDIF
+
+sv_d = CLASSEXISTS("EQUITY", "LM")
+IF (sv_d == 0) THEN
+	CREATECLASS("EQUITY", "LM", 5)
+ENDIF
+
+####----------------------------------------------####
+# Retrieving  the BOD DATE FROM BANCS REPOS
+####----------------------------------------------####
+EQUITY.LM.BodTimestamp 	= BANCS.STDIN.BODDate
+EQUITY.LM.BodDate		= LEFT$(EQUITY.LM.BodTimestamp,10)
+PRINT(EQUITY.LM.BodDate)
+EQUITY.LM.Error 		= ""	
+EQUITY.LM.InputFile		= ""
+EQUITY.LM.tran_status 	= ""
+EQUITY.LM.TranId		= ""
+EQUITY.LM.ErrFlag		= "N"
+EQUITY.LM.Cr_part_tranFlag = "N"
+EQUITY.LM.Dr_part_tranFlag = "N"
+
+#-----------------------------------------------------------------------------------
+# Fetch the input file name from the com file and populate - Added by Krishna - START
+#-----------------------------------------------------------------------------------
+sv_k = urhk_MTTS_PopulateInputDetails("")
+IF (FIELDEXISTS(MTT.InputDetails.Argument1) != 0) THEN
+#{
+	EQUITY.LM.InputFile = MTT.InputDetails.Argument1
+#}
+ENDIF
+
+print(EQUITY.LM.InputFile)
+IF(EQUITY.LM.InputFile=="") THEN
+#{
+	EQUITY.LM.emessage="NO INPUT FILE EXISTS"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+####------------------------------------------------------------------------------------####
+# Getting Path from custom environment setup
+####------------------------------------------------------------------------------------####
+sv_u = urhk_getEnv("INP_TEMP_DIR_PATH")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+    EQUITY.LM.path = BANCS.OUTPARAM.envValue
+    PRINT(EQUITY.LM.path)
+#}
+ELSE
+#{
+	EQUITY.LM.Error = "Custom environment variable setup not done"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_u = urhk_getEnv("LM_REQ_BKUP_PATH")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+	EQUITY.LM.ReqBkp = BANCS.OUTPARAM.envValue
+	PRINT(EQUITY.LM.ReqBkp)
+#}
+ELSE
+#{
+	EQUITY.LM.Error = "Custom environment variable setup not done"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_u = urhk_getEnv("LM_RES_PATH")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+	EQUITY.LM.respath = BANCS.OUTPARAM.envValue
+	PRINT(EQUITY.LM.respath)
+#}
+ELSE
+#{
+	EQUITY.LM.Error = "Custom environment variable setup not done"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_u = urhk_getEnv("LM_RES_BKUP_PATH")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+	EQUITY.LM.resBkp = BANCS.OUTPARAM.envValue
+	PRINT(EQUITY.LM.resBkp)
+#}
+ELSE
+#{
+	EQUITY.LM.Error = "Custom environment variable setup not done"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_u = urhk_getEnv("LM_EBANK_PATH")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+	EQUITY.LM.eBnkPath = BANCS.OUTPARAM.envValue
+	PRINT(EQUITY.LM.eBnkPath)
+#}
+ELSE
+#{
+	EQUITY.LM.Error = "Custom environment variable setup not done"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+####------------------------------------------------------------------------------------####
+# Get the input file path
+####------------------------------------------------------------------------------------####
+print(EQUITY.LM.InputFile)
+EQUITY.LM.InputFileWithPath = EQUITY.LM.path + "/" + EQUITY.LM.InputFile
+print(EQUITY.LM.InputFileWithPath)
+####------------------------------------------------------------------------------------####
+# Check whether the input file exists or not
+####------------------------------------------------------------------------------------####
+sv_t = "test -f " + EQUITY.LM.InputFileWithPath 
+print(sv_t)
+sv_r = system(sv_t)
+print(sv_r)
+if (sv_r != 0) then
+#{
+		EQUITY.LM.SuccessOrFailure="N"
+		EQUITY.LM.ErrorDesc="File is not accessible/Available : " + EQUITY.LM.InputFile
+		print("File is not accessible/Available" + EQUITY.LM.InputFile)
+		print(sv_r)
+		GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_l = STRLEN(EQUITY.LM.InputFile)
+PRINT(sv_l)
+
+EQUITY.LM.path = EQUITY.LM.path + "/" + EQUITY.LM.InputFile
+print(EQUITY.LM.path)
+#----------------------------------------------------------------------------------
+# Fetch the input file name from the com file and populate - Added by Krishna - END
+#----------------------------------------------------------------------------------
+####----------------------------------------------####
+# Opening of the ttum upload file
+####----------------------------------------------####
+
+sv_w = urtn_fileOpen(EQUITY.LM.path + "|r")
+PRINT(sv_w)
+EQUITY.LM.FileIndex = sv_w 
+
+IF(sv_w != 0) THEN
+#{
+	EQUITY.LM.emessage="Error while opening upload file"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+####------------------------------------####
+## Creating  Response File ##
+####--------------------------------------####
+#{
+	EQUITY.LM.outFile = EQUITY.LM.respath + "//" + "TTUM_RESPONSE_"+ MID$(EQUITY.LM.InputFile, 20, sv_l)	
+	#EQUITY.LM.outFile = EQUITY.LM.respath + "TTUM_RESPONSE_"+ MID$(EQUITY.LM.InputFile, 20, sv_l)	
+	print(EQUITY.LM.outFile)
+#}
+
+####----------------------------------------------------------####
+## Opening the output file  ##
+####----------------------------------------------------------####
+sv_g = urtn_fileOpen(EQUITY.LM.outFile + "|w")
+PRINT(sv_g)
+EQUITY.LM.FileIndex2=sv_g
+			
+####----------------------------------------------------------####
+# To read the  Request file 
+####----------------------------------------------------------####
+sv_x = urtn_fileRead (sv_w + "|" + "BANCS.OUTPARAM.buffer")
+PRINT(sv_x)
+IF(sv_x != 0) THEN
+#{
+   EQUITY.LM.emessage="Error while reading file"
+   PRINT(EQUITY.LM.emessage)
+   sv_v = urtn_fileClose(EQUITY.LM.FileIndex)
+   GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+PRINT(BANCS.OUTPARAM.buffer)
+sv_z = BANCS.OUTPARAM.buffer
+sv_k = 1
+
+####----------------------------------------------------------####
+# To check the end of Request file 
+####----------------------------------------------------------####
+WHILE(sv_x == 0)
+#{
+	PRINT(sv_z)	
+	sv_m= sv_z
+	PRINT(sv_m)
+
+	Print(EQUITY.LM.Dr_part_tranFlag)
+	Print(EQUITY.LM.Cr_part_tranFlag)
+	Print(EQUITY.LM.ErrFlag)
+
+	EQUITY.LM.parttran = LTRIM(RTRIM(MID$(sv_m,27, 1)))
+	PRINT(EQUITY.LM.parttran)
+	
+	####---------------------------------------------------------------------------####
+	# Parsing the records based on the part tran and assigning the Credit records
+	####---------------------------------------------------------------------------####
+	IF ((EQUITY.LM.parttran == "C") AND (EQUITY.LM.Cr_part_tranFlag == "N")) THEN
+	#{
+	   EQUITY.LM.Cr_part_tranFlag="Y"
+
+	   EQUITY.LM.cr_parttran="C"
+	   PRINT(EQUITY.LM.cr_parttran)
+
+	   EQUITY.LM.cr_acctno = RTRIM(MID$(sv_m, 0, 16))
+	   PRINT(EQUITY.LM.cr_acctno)
+
+	   EQUITY.LM.cr_crncy_code = LTRIM(RTRIM(MID$(sv_m,16, 3)))
+	   PRINT(EQUITY.LM.cr_crncy_code)
+
+	   EQUITY.LM.cr_sol_id = LTRIM(RTRIM(MID$(sv_m,19, 8)))
+	   PRINT(EQUITY.LM.cr_sol_id)
+
+	   EQUITY.LM.cr_tran_amt = LTRIM(RTRIM(MID$(sv_m,28, 17)))
+	   PRINT(EQUITY.LM.cr_tran_amt)
+
+	   EQUITY.LM.cr_particulars = LTRIM(RTRIM(MID$(sv_m,45, 30)))
+	   PRINT(EQUITY.LM.cr_particulars)
+
+	   EQUITY.LM.cr_rpt_code = LTRIM(RTRIM(MID$(sv_m,75, 5)))
+	   PRINT(EQUITY.LM.cr_rpt_code)
+
+	   EQUITY.LM.cr_refnum = LTRIM(RTRIM(MID$(sv_m,80, 20)))
+	   PRINT(EQUITY.LM.cr_refnum)
+	#}
+	ENDIF
+
+	####--------------------------------------------------------------------------####
+	# Parsing the records based on the part tran and assighing the Dredit records
+	####--------------------------------------------------------------------------####
+
+	IF ((EQUITY.LM.parttran == "D") AND (EQUITY.LM.Dr_part_tranFlag == "N")) THEN
+	#{
+
+		EQUITY.LM.Dr_part_tranFlag="Y"
+
+		 EQUITY.LM.dr_parttran="D"
+		 PRINT(EQUITY.LM.dr_parttran)
+
+		EQUITY.LM.dr_acctno = RTRIM(MID$(sv_m, 0, 16))
+		PRINT(EQUITY.LM.dr_acctno)
+
+		EQUITY.LM.dr_crncy_code = LTRIM(RTRIM(MID$(sv_m,16, 3)))
+		PRINT(EQUITY.LM.dr_crncy_code)
+
+		EQUITY.LM.dr_sol_id = LTRIM(RTRIM(MID$(sv_m,19, 8)))
+		PRINT(EQUITY.LM.dr_sol_id)
+
+		EQUITY.LM.dr_tran_amt = LTRIM(RTRIM(MID$(sv_m,28, 17)))
+		PRINT(EQUITY.LM.dr_tran_amt)
+
+		EQUITY.LM.dr_particulars = LTRIM(RTRIM(MID$(sv_m,45, 30)))
+		PRINT(EQUITY.LM.dr_particulars)
+
+		EQUITY.LM.dr_rpt_code = LTRIM(RTRIM(MID$(sv_m,75, 5)))
+		PRINT(EQUITY.LM.dr_rpt_code)
+
+		EQUITY.LM.dr_refnum = LTRIM(RTRIM(MID$(sv_m,80, 20)))
+		PRINT(EQUITY.LM.dr_refnum)
+	#}
+	ENDIF
+		
+	IF ((EQUITY.LM.Dr_part_tranFlag == "Y") AND (EQUITY.LM.Cr_part_tranFlag == "Y")) THEN
+	#{
+
+		  Print(EQUITY.LM.Dr_part_tranFlag)
+		  Print(EQUITY.LM.Cr_part_tranFlag)
+
+		  ####----------------------------------------------------------####
+		  # Re-Initialise the Flag value as "N" for the next set of Records
+		  ####----------------------------------------------------------####
+
+
+		EQUITY.LM.Cr_part_tranFlag="N"
+		EQUITY.LM.Dr_part_tranFlag="N"
+
+		
+		####----------------------------------------------------------####
+		# validations 
+		####----------------------------------------------------------####
+
+		IF ((EQUITY.LM.dr_crncy_code != "KES") AND (EQUITY.LM.dr_crncy_code != "KES")) then
+		#{
+
+			EQUITY.LM.emessage="home currency is not KES"
+			PRINT(EQUITY.LM.emessage)
+			EQUITY.LM.ErrFlag="Y"
+			GOTO NEXTRECORD
+		#}
+		ENDIF
+		
+		IF (EQUITY.LM.dr_tran_amt != EQUITY.LM.cr_tran_amt ) then
+		#{
+
+			EQUITY.LM.emessage="credit amt is not equal to debit amt"
+			PRINT(EQUITY.LM.emessage)
+			EQUITY.LM.ErrFlag="Y"
+			GOTO NEXTRECORD
+		#}
+		ENDIF
+
+		PRINT(EQUITY.LM.cr_acctno)
+		sv_b = urhk_getAcctDetailsInRepository(EQUITY.LM.cr_acctno)
+		PRINT(sv_b)
+
+		IF ( sv_b == 0 ) THEN
+		#{
+
+				PRINT(BANCS.OUTPARAM.acctCloseflg)
+				PRINT(BANCS.OUTPARAM.freezeCode)
+				PRINT(BANCS.OUTPARAM.schmType)
+				EQUITY.LM.AcctFlg1 = BANCS.OUTPARAM.acctCloseflg
+				EQUITY.LM.FrezCode1 = BANCS.OUTPARAM.freezeCode
+				EQUITY.LM.schmType1 = BANCS.OUTPARAM.schmType
+
+				IF(EQUITY.LM.AcctFlg1 == "Y") THEN
+				#{
+
+					EQUITY.LM.emessage="cr a/c is closed"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+
+				IF((EQUITY.LM.FrezCode1 == "D") OR (EQUITY.LM.FrezCode1 == "T")) THEN
+				#{
+					EQUITY.LM.emessage="cr a/c is freezed"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+				IF(EQUITY.LM.schmType1 == "LAA") THEN
+				#{
+
+					EQUITY.LM.emessage="cr a/c is loan type..not applicable"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+		#}
+		ELSE
+		#{
+				EQUITY.LM.emessage="invalid cr account no."
+				PRINT(EQUITY.LM.emessage)
+				EQUITY.LM.ErrFlag="Y"
+				GOTO NEXTRECORD
+		#}
+		ENDIF
+
+		PRINT(EQUITY.LM.dr_acctno)
+		sv_b = urhk_getAcctDetailsInRepository(EQUITY.LM.dr_acctno)
+		PRINT(sv_b)
+
+		IF ( sv_b == 0 ) THEN
+		#{
+
+				PRINT(BANCS.OUTPARAM.acctCloseflg)
+				PRINT(BANCS.OUTPARAM.freezeCode)
+				PRINT(BANCS.OUTPARAM.schmType)
+				PRINT(BANCS.OUTPARAM.clearBalance)
+				EQUITY.LM.AcctFlg1 = BANCS.OUTPARAM.acctCloseflg
+				EQUITY.LM.FrezCode1 = BANCS.OUTPARAM.freezeCode
+				EQUITY.LM.schmType1 = BANCS.OUTPARAM.schmType
+				EQUITY.LM.clrBal = BANCS.OUTPARAM.clearBalance
+
+				IF(EQUITY.LM.AcctFlg1 == "Y") THEN
+				#{
+
+					EQUITY.LM.emessage="dr a/c is closed"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+
+				IF((EQUITY.LM.FrezCode1 == "D") OR (EQUITY.LM.FrezCode1 == "T")) THEN
+				#{
+					EQUITY.LM.emessage="dr a/c is freezed"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+				IF(EQUITY.LM.schmType1 == "LAA") THEN
+				#{
+
+					EQUITY.LM.emessage="dr a/c is loan type..not applicable"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+
+				IF(CDOUBLE(EQUITY.LM.clrBal) < CDOUBLE(EQUITY.LM.dr_tran_amt)) THEN
+				#{
+
+					EQUITY.LM.emessage="dr a/c has insufficient balance"
+					PRINT(EQUITY.LM.emessage)
+					EQUITY.LM.ErrFlag="Y"
+					GOTO NEXTRECORD
+				#}
+				ENDIF
+		#}
+		ELSE
+		#{
+				EQUITY.LM.emessage="invalid dr account no."
+				PRINT(EQUITY.LM.emessage)
+				EQUITY.LM.ErrFlag="Y"
+				GOTO NEXTRECORD
+		#}
+		ENDIF
+
+
+		####------------------------------------------------------------------------------------------------------####
+		# Printing the records before the insetion into C_EQLM table with processed flg as N ( cr acct values)
+		####------------------------------------------------------------------------------------------------------####
+
+		PRINT(EQUITY.LM.cr_acctno)
+		PRINT(EQUITY.LM.cr_crncy_code)
+		PRINT(EQUITY.LM.cr_sol_id)
+		PRINT(EQUITY.LM.cr_parttran)
+		PRINT(EQUITY.LM.cr_tran_amt)
+		PRINT(EQUITY.LM.cr_particulars)
+		PRINT(EQUITY.LM.cr_rpt_code)
+		PRINT(EQUITY.LM.cr_refnum)
+
+
+		####----------------------------------------------------------------------------------####
+		# Inserting into C_EQLM table with processed flg as N ( cr acct values)
+		####----------------------------------------------------------------------------------####
+
+		sv_s ="insert into CUSTOM.C_EQLM"
+		sv_s = sv_s + "(ACCT_NO,CRNCY_CODE,SOL_ID,PART_TRAN_TYPE,TRAN_AMT,TRAN_PARTICULARS,ACCT_RPT_CODE,REF_NUM,TRAN_STATUS,TRAN_ID,TRAN_DATE,BOD_DATE,PROCESSED_FLG,BANK_ID)"
+		sv_s = sv_s + " values (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, '', '', '',to_date( ?SVAR,'DD-MM-YYYY'), 'N',?SVAR )"
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = EQUITY.LM.cr_acctno 	+ "|" + EQUITY.LM.cr_crncy_code
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_sol_id
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_parttran
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_tran_amt
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_particulars
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_rpt_code
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_refnum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.BodDate
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_m = urhk_dbSqlWithBind(sv_s)
+		print(sv_m)
+
+		####-------------------------------------------------------------------------------------------------------####
+		# Printing the records before the insetion into C_EQLM table with processed flg as N ( dr acct values)
+		####-------------------------------------------------------------------------------------------------------####
+		PRINT(EQUITY.LM.dr_acctno)
+		PRINT(EQUITY.LM.dr_crncy_code)
+		PRINT(EQUITY.LM.dr_sol_id)
+		PRINT(EQUITY.LM.dr_parttran)
+		PRINT(EQUITY.LM.dr_tran_amt)
+		PRINT(EQUITY.LM.dr_particulars)
+		PRINT(EQUITY.LM.dr_rpt_code)
+		PRINT(EQUITY.LM.dr_refnum)
+
+
+		####----------------------------------------------------------------------------------####
+		# Inserting into C_EQLM table with processed flg as N ( dr acct values)
+		####----------------------------------------------------------------------------------####
+		sv_s ="insert into CUSTOM.C_EQLM"
+		sv_s = sv_s + "(ACCT_NO,CRNCY_CODE,SOL_ID,PART_TRAN_TYPE,TRAN_AMT,TRAN_PARTICULARS,ACCT_RPT_CODE,REF_NUM,TRAN_STATUS,TRAN_ID,TRAN_DATE,BOD_DATE,PROCESSED_FLG,BANK_ID)"
+		sv_s = sv_s + " values (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, '', '', '',to_date(?SVAR,'DD-MM-YYYY'), 'N',?SVAR)"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = EQUITY.LM.dr_acctno 	+ "|" + EQUITY.LM.dr_crncy_code
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_sol_id
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_parttran
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_tran_amt
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_particulars
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_rpt_code
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_refnum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.BodDate
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		print(BANCS.INPARAM.BINDVARS)
+		sv_m = urhk_dbSqlWithBind(sv_s)
+		print(sv_m)
+
+		####------------------------------------------------------------####
+		# Calling the MTT script to perform the transactions
+		####------------------------------------------------------------####
+		CALL("Equity_LM_MTT.scr")
+
+		####----------------------------------------------------------------------####
+		# To pad space for the variables as per the pre defined response format
+		####----------------------------------------------------------------------####
+		EQUITY.LM.cr_acctno=RPAD(EQUITY.LM.cr_acctno,16,' ')
+		PRINT(EQUITY.LM.cr_acctno)
+
+		PRINT(EQUITY.LM.cr_crncy_code)
+
+		EQUITY.LM.cr_sol_id=RPAD(EQUITY.LM.cr_sol_id,8,' ')
+		PRINT(EQUITY.LM.cr_sol_id)
+
+		PRINT(EQUITY.LM.cr_parttran)
+
+		EQUITY.LM.cr_tran_amt=LPAD(EQUITY.LM.cr_tran_amt,17,' ')
+		PRINT(EQUITY.LM.cr_tran_amt)
+
+		EQUITY.LM.cr_particulars=RPAD(EQUITY.LM.cr_particulars,30,' ')
+		PRINT(EQUITY.LM.cr_particulars)
+
+		EQUITY.LM.cr_rpt_code=RPAD(EQUITY.LM.cr_rpt_code,5,' ')
+		PRINT(EQUITY.LM.cr_rpt_code)
+
+		EQUITY.LM.cr_refnum=RPAD(EQUITY.LM.cr_refnum,20,' ')
+		PRINT(EQUITY.LM.cr_refnum)
+
+		EQUITY.LM.tran_status=RPAD(EQUITY.LM.tran_status,3,' ')
+		PRINT(EQUITY.LM.tran_status)
+
+		EQUITY.LM.TranId=RPAD(EQUITY.LM.TranId,10,' ')
+		PRINT(EQUITY.LM.TranId)
+
+		EQUITY.LM.dr_acctno=RPAD(EQUITY.LM.dr_acctno,16,' ')
+		PRINT(EQUITY.LM.dr_acctno)
+
+		PRINT(EQUITY.LM.dr_crncy_code)
+
+		EQUITY.LM.dr_sol_id=RPAD(EQUITY.LM.dr_sol_id,8,' ')
+		PRINT(EQUITY.LM.dr_sol_id)
+
+		PRINT(EQUITY.LM.dr_parttran)
+
+		EQUITY.LM.dr_tran_amt=LPAD(EQUITY.LM.dr_tran_amt,17,' ')
+		PRINT(EQUITY.LM.dr_tran_amt)
+
+		EQUITY.LM.dr_particulars=RPAD(EQUITY.LM.dr_particulars,30,' ')
+		PRINT(EQUITY.LM.dr_particulars)
+
+		EQUITY.LM.dr_rpt_code=RPAD(EQUITY.LM.dr_rpt_code,5,' ')
+		PRINT(EQUITY.LM.dr_rpt_code)
+
+		EQUITY.LM.dr_refnum=RPAD(EQUITY.LM.dr_refnum,20,' ')
+		PRINT(EQUITY.LM.dr_refnum)
+
+
+
+		####-------------------------------------------------####
+		# Writing the transaction status in the Response file.
+		####-------------------------------------------------####
+		EQUITY.LM.Tran_outRecord = EQUITY.LM.cr_acctno+ EQUITY.LM.cr_crncy_code+ EQUITY.LM.cr_sol_id+ EQUITY.LM.cr_parttran+ EQUITY.LM.cr_tran_amt+ EQUITY.LM.cr_particulars+ EQUITY.LM.cr_rpt_code+ EQUITY.LM.cr_refnum+ EQUITY.LM.tran_status+ EQUITY.LM.TranId
+		PRINT(EQUITY.LM.Tran_outRecord)
+
+		sv_r= urtn_fileWrite(sv_g + "|" + EQUITY.LM.Tran_outRecord)
+		PRINT(sv_r)
+
+		EQUITY.LM.Tran_outRecord1 = EQUITY.LM.dr_acctno+ EQUITY.LM.dr_crncy_code+ EQUITY.LM.dr_sol_id+ EQUITY.LM.dr_parttran+ EQUITY.LM.dr_tran_amt+ EQUITY.LM.dr_particulars+ EQUITY.LM.dr_rpt_code+ EQUITY.LM.dr_refnum+ EQUITY.LM.tran_status+ EQUITY.LM.TranId
+		PRINT(EQUITY.LM.Tran_outRecord)
+
+		sv_r= urtn_fileWrite(sv_g + "|" + EQUITY.LM.Tran_outRecord1)
+		PRINT(sv_r)
+
+	 #}
+	ENDIF
+			
+	NEXTRECORD:
+
+	####-------------------------------------------------####
+    # Writing the transaction status in the Response file - records that were skipped.
+    ####-------------------------------------------------####
+	IF(EQUITY.LM.ErrFlag == "Y") THEN
+	#{
+        EQUITY.LM.ErrFlag = "N"
+		#EQUITY.LM.cr_particulars = "record skipped"
+		#EQUITY.LM.dr_particulars = "record skipped"
+		EQUITY.LM.tran_status = "FAL"
+		EQUITY.LM.TranId = "NONE"
+
+		####----------------------------------------------------------------------####
+		# To pad space for the variables as per the pre defined response format
+		####----------------------------------------------------------------------####
+		EQUITY.LM.cr_acctno=RPAD(EQUITY.LM.cr_acctno,16,' ')
+		PRINT(EQUITY.LM.cr_acctno)
+
+		PRINT(EQUITY.LM.cr_crncy_code)
+
+		EQUITY.LM.cr_sol_id=RPAD(EQUITY.LM.cr_sol_id,8,' ')
+		PRINT(EQUITY.LM.cr_sol_id)
+
+		PRINT(EQUITY.LM.cr_parttran)
+
+		EQUITY.LM.cr_tran_amt=LPAD(EQUITY.LM.cr_tran_amt,17,' ')
+		PRINT(EQUITY.LM.cr_tran_amt)
+
+		EQUITY.LM.cr_particulars=RPAD(EQUITY.LM.cr_particulars,30,' ')
+		PRINT(EQUITY.LM.cr_particulars)
+
+		EQUITY.LM.cr_rpt_code=RPAD(EQUITY.LM.cr_rpt_code,5,' ')
+		PRINT(EQUITY.LM.cr_rpt_code)
+
+		EQUITY.LM.cr_refnum=RPAD(EQUITY.LM.cr_refnum,20,' ')
+		PRINT(EQUITY.LM.cr_refnum)
+
+		EQUITY.LM.tran_status=RPAD(EQUITY.LM.tran_status,3,' ')
+		PRINT(EQUITY.LM.tran_status)
+
+		EQUITY.LM.TranId=RPAD(EQUITY.LM.TranId,10,' ')
+		PRINT(EQUITY.LM.TranId)
+
+		EQUITY.LM.dr_acctno=RPAD(EQUITY.LM.dr_acctno,16,' ')
+		PRINT(EQUITY.LM.dr_acctno)
+
+		PRINT(EQUITY.LM.dr_crncy_code)
+
+		EQUITY.LM.dr_sol_id=RPAD(EQUITY.LM.dr_sol_id,8,' ')
+		PRINT(EQUITY.LM.dr_sol_id)
+
+		PRINT(EQUITY.LM.dr_parttran)
+
+		EQUITY.LM.dr_tran_amt=LPAD(EQUITY.LM.dr_tran_amt,17,' ')
+		PRINT(EQUITY.LM.dr_tran_amt)
+
+		EQUITY.LM.dr_particulars=RPAD(EQUITY.LM.dr_particulars,30,' ')
+		PRINT(EQUITY.LM.dr_particulars)
+
+		EQUITY.LM.dr_rpt_code=RPAD(EQUITY.LM.dr_rpt_code,5,' ')
+		PRINT(EQUITY.LM.dr_rpt_code)
+
+		EQUITY.LM.dr_refnum=RPAD(EQUITY.LM.dr_refnum,20,' ')
+		PRINT(EQUITY.LM.dr_refnum)
+
+
+
+		EQUITY.LM.Tran_outRecord = EQUITY.LM.cr_acctno+ EQUITY.LM.cr_crncy_code+ EQUITY.LM.cr_sol_id+ EQUITY.LM.cr_parttran+ EQUITY.LM.cr_tran_amt+ EQUITY.LM.cr_particulars+ EQUITY.LM.cr_rpt_code+ EQUITY.LM.cr_refnum+ EQUITY.LM.tran_status+ EQUITY.LM.TranId
+		PRINT(EQUITY.LM.Tran_outRecord)
+
+		sv_r= urtn_fileWrite(sv_g + "|" + EQUITY.LM.Tran_outRecord)
+		PRINT(sv_r)
+
+		EQUITY.LM.Tran_outRecord1 = EQUITY.LM.dr_acctno+ EQUITY.LM.dr_crncy_code+ EQUITY.LM.dr_sol_id+ EQUITY.LM.dr_parttran+ EQUITY.LM.dr_tran_amt+ EQUITY.LM.dr_particulars+ EQUITY.LM.dr_rpt_code+ EQUITY.LM.dr_refnum+ EQUITY.LM.tran_status+ EQUITY.LM.TranId
+		PRINT(EQUITY.LM.Tran_outRecord)
+
+		sv_r= urtn_fileWrite(sv_g + "|" + EQUITY.LM.Tran_outRecord1)
+		PRINT(sv_r)
+
+	#}
+	ENDIF
+
+	#####-----------------------------------------####
+	# To read next record of request file 
+	#####-----------------------------------------####
+	
+	Print(EQUITY.LM.Dr_part_tranFlag)
+	Print(EQUITY.LM.Cr_part_tranFlag)
+
+	sv_x = urtn_fileRead (sv_w + "|" + "BANCS.OUTPARAM.buffer")
+	PRINT(sv_x)
+	IF(sv_x == 0) THEN
+	#{
+		sv_z = BANCS.OUTPARAM.buffer
+	#}
+	ENDIF
+		
+#}
+DO
+		
+
+####--------------------------------------------####
+# To close the Request file  and move to backup
+####--------------------------------------------####
+
+sv_v = urtn_fileClose(EQUITY.LM.FileIndex)
+PRINT(sv_v)
+sv_v = urtn_fileClose(EQUITY.LM.FileIndex2)
+PRINT(sv_v)
+sv_j = "mv" + " " + EQUITY.LM.path + " " + EQUITY.LM.ReqBkp
+PRINT(sv_j)
+sv_h = SYSTEM(sv_j)
+PRINT(sv_h)
+
+####--------------------------------------------####
+# FTP the response file to ebanking server - 
+####--------------------------------------------####
+sv_x = urhk_getFileLocation("COM|LMFTP.com")
+print(sv_x)
+IF(sv_x == 0) THEN
+#{
+	sv_q = SYSTEM(BANCS.OUTPARAM.fileLocation + "LMFTP.com")
+	print(sv_q)
+#}
+ENDIF
+
+	
+####-----------------------------------------####
+# EndOfScript
+####-----------------------------------------####
+ENDOFSCRIPT:
+EXITSCRIPT
+
+END-->

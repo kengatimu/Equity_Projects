@@ -1,0 +1,276 @@
+#------------------------------------
+#  Description     : This script will allocate account Managers to overdrafts accounts opened everyday
+#  Date            : 28-01-2025
+#  Author          : Dennis Chirchir
+#  Calling Script  : ODAAcctMgr005.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             28-01-2025      Dennis Chirchir	Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUSTS") == 0) THEN
+#{
+	CREATEREP("CUSTS")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","ACMOD") == 0) THEN
+#{
+	CREATECLASS("CUSTS","ACMOD",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","ACMOD") == 0) THEN
+#{
+    CREATECLASS("CUSTS","ACMOD", 5)
+#}
+ENDIF
+
+CUSTS.ACMOD.custcount5 = 0
+BANCS.INPUT.moduleName = "LOANINT"
+BANCS.INPUT.parameterId = "ODAMGR"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUSTS.ACMOD.odaAcctmgr = BANCS.OUTPUT.parameterVal
+        PRINT(CUSTS.ACMOD.odaAcctmgr)
+	PRINT(CUSTS.ACMOD.odaAcctmgr)
+#}
+ELSE
+#{
+    CUSTS.ACMOD.errMsg = "Cparam set up not done for CURRMGR"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+###############################################################################################
+#Getting the OD549 accounts and Account Managers
+###############################################################################################
+sv_s="custcount5|"
+sv_s = sv_s + " select count(*) from tbaadm.gam where bank_id = ?SVAR "
+sv_s = sv_s + " and sol_id = ?SVAR "
+sv_s = sv_s + " and schm_code in ('OD549') "
+sv_s = sv_s + " and ACCT_CLS_FLG ! = 'Y' "
+sv_s = sv_s + " and ACCT_MGR_USER_ID = ?SVAR "
+print(sv_s)
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUSTS.ACMOD.odaAcctmgr
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+
+IF (sv_d != 0) THEN 
+#{
+	CUSTS.ACMOD.errMsg = "DB ERROR!"
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	CUSTS.ACMOD.custcount5 = BANCS.OUTPARAM.custcount5
+	print(CUSTS.ACMOD.custcount5)
+	IF (CINT(CUSTS.ACMOD.custcount5)== 0) THEN
+	#{
+		CUSTS.ACMOD.errMsg = "No Records"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+IF (CINT(CUSTS.ACMOD.custcount5) > 0) THEN
+#{
+	CUSTS.ACMOD.errMsg = ""
+	print(CUSTS.ACMOD.odaAcctmgr)
+	############Pick accounts and the free text 11 field to modify	 
+	sv_s="foracid,solid,free_text_11|"
+	sv_s = sv_s + " select foracid,sol_id,free_text_11 from tbaadm.gam,tbaadm.gac where gam.bank_id = ?SVAR "
+	sv_s = sv_s + " and sol_id = ?SVAR "
+	sv_s = sv_s + " and schm_code in ('OD549') and gam.acid=gac.acid and gam.bank_id=gac.bank_id "
+	sv_s = sv_s + " and ACCT_CLS_FLG ! = 'Y' "
+	sv_s = sv_s + " and ACCT_MGR_USER_ID = ?SVAR "
+	sv_s = sv_s + " and free_text_11 is not null "
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUSTS.ACMOD.odaAcctmgr
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_c)
+
+	IF (sv_c==0) then
+	#{
+		CUSTS.ACMOD.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_k = urhk_dbCursorFetch(CUSTS.ACMOD.DbcursorNumber)
+		print(sv_k)
+		sv_q = 0
+		WHILE (sv_k == 0)
+		#{
+			CUSTS.ACMOD.foracid= BANCS.OUTPARAM.foracid
+			CUSTS.ACMOD.solid= BANCS.OUTPARAM.solid
+			CUSTS.ACMOD.free_text_11 = BANCS.OUTPARAM.free_text_11
+			print(CUSTS.ACMOD.foracid)
+			print(CUSTS.ACMOD.solid)
+			print(CUSTS.ACMOD.free_text_11)
+			print(BANCS.STDIN.mySolId)
+			
+			##########Validate RM
+			IF(CUSTS.ACMOD.free_text_11 != "") THEN
+			#{
+				sv_a  = "count|SELECT count(*) FROM tbaadm.RMG,tbaadm.upr WHERE 1 = 1 AND RMG.bank_id = ?SVAR and upr.USER_ID=rmg.LOGIN_ID and  LOGIN_ID =?SVAR and sol_id = ?SVAR and upr.del_flg='N' and rownum<2 ORDER BY  RMG.login_id "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.ACMOD.free_text_11 + "|" + BANCS.STDIN.mySolId
+				sv_c = urhk_dbSelectWithBind(sv_a)
+				if(sv_c == 0) then
+					CUSTS.ACMOD.count = BANCS.OUTPARAM.count
+				else
+					CUSTS.ACMOD.count = 0
+				endif
+				print(CUSTS.ACMOD.count)
+				if(cdouble(CUSTS.ACMOD.count) <= 0) then
+					GOTO NEXTREC
+				endif
+			#}
+			ELSE
+			#{
+					GOTO NEXTREC
+			#}
+			ENDIF
+			############Validate end
+			
+				lv_j = urhk_getAcctDetailsInRepository(CUSTS.ACMOD.foracid)
+				print(lv_j)
+
+				IF (lv_j == 0) THEN
+				#{
+					CUSTS.ACMOD.acid = BANCS.OUTPARAM.acid
+					PRINT(CUSTS.ACMOD.acid)
+					CUSTS.ACMOD.AcctsolId = BANCS.OUTPARAM.acctSolId
+					PRINT(CUSTS.ACMOD.AcctsolId)
+					CUSTS.ACMOD.schmCode = BANCS.OUTPARAM.schmCode
+					PRINT(CUSTS.ACMOD.schmCode)
+					CUSTS.ACMOD.schmType = BANCS.OUTPARAM.schmType
+					PRINT(CUSTS.ACMOD.schmType)
+					CUSTS.ACMOD.acctClsFlag = BANCS.OUTPARAM.acctCloseflg
+					PRINT(CUSTS.ACMOD.acctClsFlag)
+					CUSTS.ACMOD.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+					PRINT(CUSTS.ACMOD.acctCrncyCode)
+				#}
+				ELSE
+				#{
+					GOTO ERROR
+				#}
+				ENDIF
+
+				#--------------------------------------------------------------------------------------------------------------
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMOD.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMOD.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMOD.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMOD.schmType)
+				PRINT(sv_u)
+			
+				sv_u = urhk_ExecSrv("SRV_FetchODAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF (sv_u == 0) THEN
+				#{			
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMOD.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMOD.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMOD.schmType)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMOD.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctClsFlag|" + CUSTS.ACMOD.acctClsFlag)
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+				PRINT(sv_u)
+
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId|" + CUSTS.ACMOD.free_text_11)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|" + CUSTS.ACMOD.acctCrncyCode)
+				PRINT(sv_u)
+
+				sv_u = urhk_ExecSrv("SRV_ModifyODAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF (sv_u == 0) THEN
+				print("SUCCESS")
+				ENDIF
+
+				ENDIF
+
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF (sv_v > 0) then
+					#{
+						sv_u = system("echo 'Error for Acct:"+CUSTS.ACMOD.foracid+" ' >>ODAMgr.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							sv_u = system("echo '"+sv_e+"' >>ODAMgr.log")
+							print(sv_u)
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+		NEXTREC:
+		sv_k = urhk_dbCursorFetch(CUSTS.ACMOD.DbcursorNumber)
+		print(sv_k)
+		
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(CUSTS.ACMOD.DbcursorNumber)
+		print(sv_c)
+#}
+ENDIF
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF(CUSTS.ACMOD.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUSTS.ACMOD.errMsg+"' >>ODAMgr.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

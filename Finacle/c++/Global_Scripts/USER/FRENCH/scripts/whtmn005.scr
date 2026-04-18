@@ -1,0 +1,405 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       whtmn005.scr
+# Author                :       Swati Ganjoo
+# Description           :       This script gets called from SRV_ModifyTranAcctSchmParams_post_process_data.scr
+#                               This script fetches data from custom table
+# Input                 :
+# Output                :
+# Called Script         :
+# Calling Script        :       SRV_ModifyTranAcctSchmParams_post_process_data.scr
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           17-06-2013         Swati Ganjoo      Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="8f372233d5db3e6fd541cdbf54c8624b36a0a5dd1104c45eaf604d77a3988c99"
+	#TRACE ON
+	#========================================================
+	# Check whether CUST Repository exists else create it
+	#========================================================
+	sv_r = REPEXISTS("CUST")
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	#========================================================
+	# Check whether CMILGSP Class exists else create it
+	#========================================================
+	sv_r = CLASSEXISTS("CUST","CMILGSP")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CMILGSP",5)
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST","CGSP")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CGSP",5)
+	#}
+	ENDIF
+	CUST.CMILGSP.errorFlg="N"
+	
+	#========================================================
+	# Getting the modified data in script
+	#========================================================
+	#sv_r = urhk_B2k_PrintRepos("BANCS")
+	#sv_r = urhk_B2k_PrintRepos("ONS")
+	#PRINT(sv_r)
+	IF(FIELDEXISTS(ONS.CUSTOM.custDataIn))THEN
+	#{
+		PRINT(ONS.CUSTOM.custDataIn)
+		PRINT(STRLEN(ONS.CUSTOM.custDataIn))
+		sv_u = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+		IF(sv_u == 0)THEN
+		#{
+			IF(FIELDEXISTS(BANCS.INPUT.milgspschdet1_FIELD_1))THEN
+			#{
+				CUST.CMILGSP.wthTaxPcnt = TOUPPER(BANCS.INPUT.milgspschdet1_FIELD_1)
+				PRINT(CUST.CMILGSP.wthTaxPcnt)
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.milgspschdet1_FIELD_2))THEN
+			#{
+				CUST.CMILGSP.bacid= TOUPPER(TRIM(BANCS.INPUT.milgspschdet1_FIELD_2))
+				PRINT(CUST.CMILGSP.bacid)
+				IF(CUST.CMILGSP.bacid!="")THEN
+				#{
+					BANCS.INPARAM.BINDVARS=CUST.CMILGSP.bacid+"|N|Y"
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_s = "count5|"
+					sv_s = sv_s + " SELECT COUNT(5)"
+					sv_s = sv_s + " FROM TBAADM.APH"
+					sv_s = sv_s + " WHERE BACID =?SVAR"
+					sv_s = sv_s + " AND DEL_FLG =?SVAR"
+					sv_s = sv_s + " AND ENTITY_CRE_FLG =?SVAR"
+					PRINT(sv_s)
+					sv_d =  urhk_dbSelectWithBind(sv_s)
+					PRINT(sv_d)
+					IF (sv_d == 0 ) THEN
+					#{
+						CUST.CMILGSP.count5 = BANCS.OUTPARAM.count5
+						PRINT(CUST.CMILGSP.count5)
+						IF(CUST.CMILGSP.count5== 0) THEN
+						#{
+							CUST.CMILGSP.errorFlg = "Y"
+							#CUST.CMILGSP.errorMsg ="Enter a vaild Withholding Tax Placeholder"
+							CUST.CGSP.errorCode="ERR_001"
+							CALL("whtdp028.scr")
+							CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+							CUST.CMILGSP.errorFocus="prodCode"
+							GOTO ENDOFSCRIPT
+							
+							#}
+						ELSE
+							#{
+							BANCS.INPARAM.BINDVARS=CUST.CMILGSP.bacid+"|N|Y|"+BANCS.STDIN.contextBankId
+							PRINT(BANCS.INPARAM.BINDVARS)
+							sv_s = "count6|"
+							sv_s = sv_s + " SELECT COUNT(6)"
+							sv_s = sv_s + " FROM TBAADM.APH"
+							sv_s = sv_s + " WHERE BACID =?SVAR"
+							sv_s = sv_s + " AND DEL_FLG =?SVAR"
+							sv_s = sv_s + " AND ENTITY_CRE_FLG =?SVAR"
+							sv_s = sv_s + " AND BANK_ID =?SVAR"
+							PRINT(sv_s)
+							sv_d =  urhk_dbSelectWithBind(sv_s)
+							PRINT(sv_d)
+							IF (sv_d == 0 ) THEN
+							#{
+								CUST.CMILGSP.count6 = BANCS.OUTPARAM.count6
+								PRINT(CUST.CMILGSP.count6)
+								IF(CUST.CMILGSP.count6== 0) THEN
+								#{
+									CUST.CMILGSP.errorFlg = "Y"
+									#CUST.CMILGSP.errorMsg ="Withholding Tax Placeholder doesnot belong to context Bank id"
+									CUST.CGSP.errorCode="ERR_002"
+									CALL("whtdp028.scr")
+									CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+									CUST.CMILGSP.errorFocus="prodCode"
+									GOTO ENDOFSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						#}
+					ELSE
+						#{
+						CUST.CMILGSP.errorFlg = "Y"
+						#CUST.CMILGSP.errorMsg ="Select query failed"
+						CUST.CGSP.errorCode="ERR_003"
+						CALL("whtdp028.scr")
+						CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+						CUST.CMILGSP.errorFocus="prodCode"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.milgspschdet1_FIELD_3))THEN
+			#{
+				CUST.CMILGSP.wthTaxAppFlg  = BANCS.INPUT.milgspschdet1_FIELD_3
+				PRINT(CUST.CMILGSP.wthTaxAppFlg )
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.CMILGSP.errorFlg = "Y"
+			#CUST.CMILGSP.errorMsg ="Custom Field values not available"
+			CUST.CGSP.errorCode="ERR_004"
+			CALL("whtdp028.scr")
+			CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+			CUST.CMILGSP.errorFocus="prodCode"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Custom Field values not available"
+		CUST.CGSP.errorCode="ERR_004"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_u = urhk_SRV_GetVal("genDtl.schm.schmCode")
+	IF(sv_u != 0) THEN
+	#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Unable to fetch scheme code"
+		CUST.CGSP.errorCode="ERR_005"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.schmCode = BANCS.OUTPARAM.srvValue
+		print(CUST.CMILGSP.schmCode)
+	#}
+	ENDIF
+	
+	sv_u = urhk_SRV_GetVal("genDtl.schm.schmType")
+	IF(sv_u != 0) THEN
+	#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Unable to fetch scheme Type"
+		CUST.CGSP.errorCode="ERR_006"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.schmType  = BANCS.OUTPARAM.srvValue
+		print(CUST.CMILGSP.schmType)
+	#}
+	ENDIF
+	
+	#========================================================
+	# Selecting the entity cre flag and del flg from
+	# main table to insert it in mod table
+	#========================================================
+	BANCS.INPARAM.BINDVARS=CUST.CMILGSP.schmType+"|"+CUST.CMILGSP.schmCode+"|MILGSP|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = "entityCreFlg,delFlg|"
+	sv_s = sv_s + " SELECT ENTITY_CRE_FLG,DEL_FLG"
+	sv_s = sv_s + " FROM CUSTOM.C_WTH_GSP_DET"
+	sv_s = sv_s + " WHERE SCHM_TYPE =?SVAR"
+	sv_s = sv_s + " AND SCHM_CODE =?SVAR"
+	sv_s = sv_s + " AND MOP_ID =?SVAR"
+	sv_s = sv_s + " AND BANK_ID =?SVAR"
+	PRINT(sv_s)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0 ) THEN
+	#{
+		CUST.CMILGSP.entityCreFlg = BANCS.OUTPARAM.entityCreFlg
+		PRINT(CUST.CMILGSP.entityCreFlg)
+		CUST.CMILGSP.delFlg = BANCS.OUTPARAM.delFlg
+		PRINT(CUST.CMILGSP.delFlg)
+		IF((CUST.CMILGSP.delFlg=="N") AND (CUST.CMILGSP.entityCreFlg=="N"))THEN
+		#{
+			GOTO MAINTABLEUPDATE
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Select query failed"
+		CUST.CGSP.errorCode="ERR_003"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#========================================================
+	# Checking if the record exists in MOD table.
+	#========================================================
+	BANCS.INPARAM.BINDVARS=CUST.CMILGSP.schmType+"|"+CUST.CMILGSP.schmCode+"|MILGSP|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = "count1|"
+	sv_s = sv_s + " SELECT COUNT(1)"
+	sv_s = sv_s + " FROM CUSTOM.C_WTH_GSP_DET_MOD"
+	sv_s = sv_s + " WHERE SCHM_TYPE =?SVAR"
+	sv_s = sv_s + " AND SCHM_CODE =?SVAR"
+	sv_s = sv_s + " AND MOP_ID =?SVAR"
+	sv_s = sv_s + " AND BANK_ID =?SVAR"
+	PRINT(sv_s)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0 ) THEN
+	#{
+		CUST.CMILGSP.count1 = BANCS.OUTPARAM.count1
+		PRINT(CUST.CMILGSP.count1)
+		IF(CUST.CMILGSP.count1=="0")THEN
+		#{
+			GOTO MODTABLEINSERT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Select query failed"
+		CUST.CGSP.errorCode="ERR_003"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS =CUST.CMILGSP.wthTaxAppFlg
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.wthTaxPcnt
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.bacid
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmType
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmCode
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "MILGSP|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = "UPDATE CUSTOM.C_WTH_GSP_DET_MOD SET"
+	sv_s = sv_s + " WTH_TAX_APP_FLG =?SVAR,"
+	sv_s = sv_s + " WTH_TAX_PCNT =?SVAR,"
+	sv_s = sv_s + " BACID =?SVAR"
+	sv_s = sv_s + " WHERE SCHM_TYPE =?NVAR"
+	sv_s = sv_s + " AND SCHM_CODE =?SVAR"
+	sv_s = sv_s + " AND MOP_ID =?SVAR"
+	sv_s = sv_s + " AND BANK_ID =?SVAR"
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	PRINT(sv_d)
+	IF(sv_d==0)THEN
+	#{
+		sv_d = urhk_dbSqlWithBind("COMMIT")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CMILGSP.errorFlg = "Y"
+		#CUST.CMILGSP.errorMsg ="Updation Failed!"
+		CUST.CGSP.errorCode="ERR_008"
+		CALL("whtdp028.scr")
+		CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+		CUST.CMILGSP.errorFocus="prodCode"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	MODTABLEINSERT:
+		BANCS.INPARAM.BINDVARS = CUST.CMILGSP.wthTaxAppFlg  + "|" + CUST.CMILGSP.wthTaxPcnt
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.bacid
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmType
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmCode
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "MILGSP"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s =  "INSERT INTO CUSTOM.C_WTH_GSP_DET_MOD("
+		sv_s = sv_s + " WTH_TAX_APP_FLG,WTH_TAX_PCNT,BACID,"
+		sv_s = sv_s + " SCHM_TYPE,SCHM_CODE,MOP_ID,"
+		sv_s = sv_s + " DEL_FLG,ENTITY_CRE_FLG,BANK_ID)"
+		sv_s = sv_s + " VALUES( "
+		sv_s = sv_s + " ?SVAR, ?SVAR, ?SVAR,"
+		sv_s = sv_s + " ?SVAR, ?SVAR, ?SVAR,"
+		sv_s = sv_s + " ?SVAR, ?SVAR,?SVAR )"
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d==0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CMILGSP.errorFlg = "Y"
+			#CUST.CMILGSP.errorMsg ="Insertion Failed!"
+			CUST.CGSP.errorCode="ERR_007"
+			CALL("whtdp028.scr")
+			CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+			CUST.CMILGSP.errorFocus="prodCode"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	MAINTABLEUPDATE:
+		
+		BANCS.INPARAM.BINDVARS =  CUST.CMILGSP.wthTaxAppFlg
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.wthTaxPcnt
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.bacid
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmType
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CMILGSP.schmCode
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "MILGSP|"+BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_s = "UPDATE CUSTOM.C_WTH_GSP_DET SET"
+		sv_s = sv_s + " WTH_TAX_APP_FLG =?SVAR,"
+		sv_s = sv_s + " WTH_TAX_PCNT =?SVAR,"
+		sv_s = sv_s + " BACID =?SVAR"
+		sv_s = sv_s + " WHERE SCHM_TYPE =?NVAR"
+		sv_s = sv_s + " AND SCHM_CODE =?SVAR"
+		sv_s = sv_s + " AND MOP_ID =?SVAR"
+		sv_s = sv_s + " AND BANK_ID =?SVAR"
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d==0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			#}
+		ELSE
+			#{
+			CUST.CMILGSP.errorFlg = "Y"
+			#CUST.CMILGSP.errorMsg ="Updation Failed!"
+			CUST.CGSP.errorCode="ERR_008"
+			CALL("whtdp028.scr")
+			CUST.CMILGSP.errorMsg=CUST.CGSP.errorDesc
+			CUST.CMILGSP.errorFocus="prodCode"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	ENDOFSCRIPT:
+		IF(CUST.CMILGSP.errorFlg=="Y")THEN
+		#{
+			sv_r = urhk_SRV_SetErr(CUST.CMILGSP.errorMsg)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+		#}
+		ENDIF
+		EXITSCRIPT
+END-->

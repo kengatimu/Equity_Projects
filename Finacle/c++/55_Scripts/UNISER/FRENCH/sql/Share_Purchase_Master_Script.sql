@@ -1,0 +1,72 @@
+ALTER TABLE CUSTOM.SHARE_PURCHASE_MASTER
+ DROP PRIMARY KEY CASCADE;
+
+DROP TABLE CUSTOM.SHARE_PURCHASE_MASTER CASCADE CONSTRAINTS;
+
+CREATE TABLE CUSTOM.SHARE_PURCHASE_MASTER
+(
+  ID_KEY             INTEGER                    NOT NULL,
+  TRAN_ID            VARCHAR2(20 CHAR)          NOT NULL,
+  TRAN_AMOUNT        VARCHAR2(100 BYTE),
+  TRAN_DATE          VARCHAR2(100 BYTE),
+  TRAN_BANK_ID       VARCHAR2(100 BYTE),
+  TRAN_SOL_ID        VARCHAR2(100 BYTE),
+  TRAN_ORDER_NUMBER  VARCHAR2(100 BYTE),
+  CREATED_BY_ID      VARCHAR2(100 BYTE),
+  VERIFIED_BY_ID     VARCHAR2(100 BYTE),
+  VERIFIED_ON_DATE   VARCHAR2(100 BYTE),
+  IS_VERIFIED        INTEGER                    DEFAULT 0
+)
+TABLESPACE SYSTEM
+PCTUSED    40
+PCTFREE    10
+INITRANS   1
+MAXTRANS   255
+STORAGE    (
+            INITIAL          16K
+            NEXT             16K
+            MINEXTENTS       1
+            MAXEXTENTS       505
+            PCTINCREASE      50
+            FREELISTS        1
+            FREELIST GROUPS  1
+            BUFFER_POOL      DEFAULT
+           )
+LOGGING 
+NOCOMPRESS 
+NOCACHE
+NOPARALLEL
+MONITORING;
+
+
+CREATE OR REPLACE TRIGGER CUSTOM.share_purchase_master_trigger
+
+   before insert ON CUSTOM.SHARE_PURCHASE_MASTER 
+   for each row
+begin
+
+    select share_purchase_master_key.nextval into :new.id_key from dual;
+
+   end;
+/
+
+
+ALTER TABLE CUSTOM.SHARE_PURCHASE_MASTER ADD (
+  PRIMARY KEY
+ (ID_KEY)
+    USING INDEX 
+    TABLESPACE SYSTEM
+    PCTFREE    10
+    INITRANS   2
+    MAXTRANS   255
+    STORAGE    (
+                INITIAL          16K
+                NEXT             16K
+                MINEXTENTS       1
+                MAXEXTENTS       505
+                PCTINCREASE      50
+                FREELISTS        1
+                FREELIST GROUPS  1
+               ));
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.SHARE_PURCHASE_MASTER TO TBAGEN;

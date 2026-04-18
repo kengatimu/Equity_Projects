@@ -1,0 +1,553 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : usacmn001.scr
+#   Description     : SAC user
+#   Date            : 06-11-2013
+#   Author          : Bharath
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : 
+#   Calling Script  : getcparamvalue.scr 
+#   Menu Option     : 
+#   Srl. No         Date            Author          	Description.   
+#   -------         ------          ------          	------------
+#   1.0             06-11-2013      Bharath		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+# Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+	CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+sv_a = urhk_B2k_printRepos("BANCS")
+print(sv_a)
+
+CUST.DATA.errMsg 	= ""
+CUST.DATA.resultMsg	= ""
+CUST.DATA.errFld	= "userId"
+CUST.DATA.userId = TRIM(BANCS.INPUT.userId)
+CUST.DATA.userId = TOUPPER(CUST.DATA.userId)
+PRINT(CUST.DATA.userId)
+CUST.DATA.funcCode = TRIM(BANCS.INPUT.funcCode)
+CUST.DATA.funcCode = TOUPPER(CUST.DATA.funcCode)
+PRINT(CUST.DATA.funcCode)
+
+#---------------------------------------------------------------------------------
+# CPARAM
+#---------------------------------------------------------------------------------
+BANCS.INPUT.moduleName = "USAC"
+BANCS.INPUT.parameterId = "WORKCLASS"
+CALL("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+    CUST.DATA.workClass = BANCS.OUTPUT.parameterVal
+    PRINT(CUST.DATA.workClass)
+#}
+ELSE
+#{
+    CUST.DATA.workClass = ""
+    CUST.DATA.errMsg = "CPARAM Setup is not done for WORKCLASS"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+IF( BANCS.INPUT.userId == "" ) THEN
+#{	
+	CUST.DATA.errMsg = "Enter user ID"
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	sv_a = "COUNT| SELECT COUNT(1) FROM TBAADM.UPR"
+	sv_a = sv_a + " WHERE USER_ID=?SVAR and home_bank_id= ?SVAR"
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+	IF(sv_b == 0)THEN
+	#{
+		IF(BANCS.OUTPARAM.COUNT == 0 )THEN
+		#{
+			CUST.DATA.errMsg = "Invalid user ID"
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			IF( CINT(CUST.DATA.workClass) > CINT(BANCS.STDIN.userWorkClass))THEN
+			#{
+				sv_a = "COUNTS|SELECT COUNT(1) FROM TBAADM.UPR"
+				sv_a = sv_a + " WHERE USER_ID=?SVAR and SOL_ID = ?SVAR and home_bank_id= ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_b =  urhk_dbSelectWithBind(sv_a)
+				print(sv_b)
+				IF(sv_b == 0)THEN
+				#{
+					IF(BANCS.OUTPARAM.COUNTS == 0 )THEN
+					#{
+						CUST.DATA.errMsg = "User Belongs to different Sol. You dont have sufficient privileges to SAC the user."
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+
+			IF( CUST.DATA.funcCode == "R" ) THEN
+			#{
+				sv_a = "usrRoleId|SELECT upr.role_id FROM TBAADM.UPR"
+				sv_a = sv_a + " WHERE USER_ID=?SVAR and home_bank_id= ?SVAR"
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_b =  urhk_dbSelectWithBind(sv_a)
+				print(sv_b)
+				IF(sv_b == 0)THEN
+				#{
+					CUST.DATA.usrRoleId = BANCS.OUTPARAM.usrRoleId
+					CUST.DATA.roleList = "|BRM|BRM2|BRM3|AMO|AMO2|AMO3|"
+					print(CUST.DATA.usrRoleId)
+					sv_w = getPosition(CUST.DATA.roleList,"|" + CUST.DATA.usrRoleId + "|")
+					IF ( sv_w <= 0 ) THEN
+						IF (BANCS.STDIN.userWorkClass!="260") THEN
+							CUST.DATA.errMsg = "You have insufficient privileges for selected option"
+							GOTO ENDOFSCRIPT
+						ENDIF
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF	
+	#}
+	ENDIF
+#}
+ENDIF
+
+##############################################
+#USER RESET/ENABLE
+##############################################
+IF( CUST.DATA.funcCode == "R" ) THEN
+#{
+	sv_a = "uctCount|SELECT count(1) FROM ssoadm.USER_CREDS_TBL"
+	sv_a = sv_a + " where user_id= ?SVAR "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+	IF((BANCS.OUTPARAM.uctCount) != 0)THEN
+	#{
+		sv_a = "roleId|SELECT ROLE_ID FROM ssoadm.USER_CREDS_TBL"
+		sv_a = sv_a + " where user_id= '" + CUST.DATA.userId + "' FOR UPDATE NOWAIT "
+		print(sv_a)
+		sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+		IF(sv_b != 0)THEN
+		#{
+			CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		sv_d = urhk_dbSqlWithBind("ROLLBACK")
+		print(sv_d)
+		CUST.DATA.resultMsg = "User unlock Failed."
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	sv_a = "UPDATE ssoadm.USER_CREDS_TBL"
+	sv_a = sv_a + " set NUM_PWD_ATTEMPTS=0,DISABLED_FROM_DATE= sysdate - 50, "
+	sv_a = sv_a + " DISABLED_UPTO_DATE= sysdate - 49 "
+	sv_a = sv_a + " where user_id= ?SVAR "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSqlWithBind(sv_a)
+	print(sv_b)
+	IF(sv_b == 0)THEN
+	#{
+		sv_d = urhk_dbSqlWithBind("COMMIT")
+		print(sv_d)
+		CUST.DATA.resultMsg = "User Reset is Successful"
+		#GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		sv_d = urhk_dbSqlWithBind("ROLLBACK")
+		print(sv_d)
+		CUST.DATA.resultMsg = "User Reset Failed"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+##############################################
+#USER ALREADY LOGGED IN
+##############################################
+IF( (CUST.DATA.funcCode == "U") OR (CUST.DATA.funcCode == "R") ) THEN
+#{
+
+	#UPR UPDATE
+	sv_a = "uprCount| SELECT COUNT(1) FROM TBAADM.UPR "
+	sv_a = sv_a + " where user_id= ?SVAR and VIRTUAL_FLG != 'Y' "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+	IF((BANCS.OUTPARAM.uprCount) !=0)THEN
+	#{
+		sv_a = "SolID| SELECT SOL_ID FROM TBAADM.UPR "
+		sv_a = sv_a + " where user_id= '" + CUST.DATA.userId + "' and VIRTUAL_FLG != 'Y'  FOR UPDATE NOWAIT "
+		print(sv_a)
+		#BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		#print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+		print(sv_b)
+
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		sv_a = "UPDATE TBAADM.UPR "
+		sv_a = sv_a + " set user_logged_on_flg='N' "
+		sv_a = sv_a + " where user_id= ?SVAR and VIRTUAL_FLG != 'Y' "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		print(sv_b)
+
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User Reset is Successful"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+
+
+
+
+	#LGI DELETE
+	sv_a = " lgiCount | SELECT COUNT(1) FROM TBAADM.LGI "
+	sv_a = sv_a + " where user_id= ?SVAR "
+	sv_a = sv_a + " and LOG_ON_MODE='O' and module_id != 'FI' "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+
+	IF((BANCS.OUTPARAM.lgiCount) != 0)THEN
+	#{
+		sv_a = " sessionID | SELECT SESSION_ID FROM TBAADM.LGI "
+		sv_a = sv_a + " where user_id= ?SVAR "
+		sv_a = sv_a + " and LOG_ON_MODE='O' and module_id != 'FI' FOR UPDATE NOWAIT "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbCursorOpenWithBind(sv_a)
+		print(sv_b)
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                PRINT(sv_n)
+		sv_f = urhk_dbCursorFetch(sv_n)
+                PRINT(sv_f)
+		WHILE(sv_f == 0)
+		#{
+			sv_a = " homeSolID | SELECT HOME_SOL_ID FROM TBAADM.LGI "
+			sv_a = sv_a + " where user_id=  '" + CUST.DATA.userId + "' and SESSION_ID =  '" + BANCS.OUTPARAM.sessionID + "' "
+			sv_a = sv_a + " and LOG_ON_MODE='O' and module_id != 'FI' FOR UPDATE NOWAIT "
+			print(sv_a)
+			#BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.OUTPARAM.sessionID
+			#print(BANCS.INPARAM.BINDVARS)
+			sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+			print(sv_b)
+
+			IF(sv_b != 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("ROLLBACK")
+				print(sv_d)
+				CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			sv_f = urhk_dbCursorFetch(sv_n)
+			PRINT(sv_f)
+		#}
+		do
+		sv_c = urhk_dbCursorClose(sv_n)
+		PRINT(sv_c)
+
+		#LGI DELETE
+		sv_a = " DELETE FROM TBAADM.LGI "
+		sv_a = sv_a + " where user_id= ?SVAR "
+		sv_a = sv_a + " and LOG_ON_MODE='O' and module_id != 'FI' "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		print(sv_b)
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User Reset is Successful"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+
+
+	#CRMUSER DELETE
+	sv_a = "crmCount |SELECT count(1) FROM crmuser.crmusersession_tbl "
+	sv_a = sv_a + " where agentid in (select personid from crmuser.users where loginid = ?SVAR)  "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+
+	IF((BANCS.OUTPARAM.crmCount) != 0)THEN
+	#{
+		sv_a = "homeBankID |SELECT HOMEBANKID FROM crmuser.crmusersession_tbl "
+		sv_a = sv_a + " where agentid in (select personid from crmuser.users where loginid = '" + CUST.DATA.userId + "') FOR UPDATE NOWAIT "
+		print(sv_a)
+		#BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		#print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+		print(sv_b)
+
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		sv_a = "DELETE FROM crmuser.crmusersession_tbl "
+		sv_a = sv_a + " where agentid in (select personid from crmuser.users where loginid = ?SVAR) "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		print(sv_b)
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User Reset is Successful"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+
+	#SSO SESSION DELETE
+	sv_a = "ssoCount| SELECT COUNT(1) FROM ssoadm.SSO_SESSION_TBL"
+	sv_a = sv_a + " where user_id= ?SVAR "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSelectWithBind(sv_a)
+	print(sv_b)
+
+	IF((BANCS.OUTPARAM.ssoCount) != 0)THEN
+	#{
+		sv_a = "sessionID| SELECT SESSION_ID FROM ssoadm.SSO_SESSION_TBL"
+		sv_a = sv_a + " where user_id= ?SVAR FOR UPDATE NOWAIT "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbCursorOpenWithBind(sv_a)
+		print(sv_b)
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                PRINT(sv_n)
+		sv_f = urhk_dbCursorFetch(sv_n)
+                PRINT(sv_f)
+		WHILE(sv_f == 0)
+		#{
+
+			sv_a = "entityID| SELECT CTXT_ENTITY FROM ssoadm.SSO_SESSION_TBL"
+			sv_a = sv_a + " where user_id= '" + CUST.DATA.userId + "' and SESSION_ID = '" + BANCS.OUTPARAM.sessionID + "' FOR UPDATE NOWAIT "
+			print(sv_a)
+			#BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+			#print(BANCS.INPARAM.BINDVARS)
+			sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+			print(sv_b)
+			IF(sv_b != 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("ROLLBACK")
+				print(sv_d)
+				CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+			sv_f = urhk_dbCursorFetch(sv_n)
+			PRINT(sv_f)
+		#}
+		do
+		sv_c = urhk_dbCursorClose(sv_n)
+		PRINT(sv_c)
+
+		#SSO SESSION DELETE
+		sv_a = "DELETE FROM ssoadm.SSO_SESSION_TBL"
+		sv_a = sv_a + " where user_id= ?SVAR "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		print(sv_b)
+
+		IF(sv_b != 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User unlock Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			print(sv_d)
+			CUST.DATA.resultMsg = "User Reset is Successful"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	#SSO_AUDIT_TB INSERT
+	sv_a = "INSERT INTO SSOADM.SSO_AUDIT_TBL VALUES "
+	sv_a = sv_a + " ('LOGOUT',?SVAR,SYSDATE-(1/(24*60*60)),'0.0.0.0','M" +"ODE=SESSION DISCARDED BY SYSTEM') "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b =  urhk_dbSqlWithBind(sv_a)
+	print(sv_b)
+
+	IF(sv_b != 0)THEN
+	#{
+		sv_d = urhk_dbSqlWithBind("ROLLBACK")
+		print(sv_d)
+		CUST.DATA.resultMsg = "User unlock Failed."
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		sv_d = urhk_dbSqlWithBind("COMMIT")
+		print(sv_d)
+		CUST.DATA.resultMsg = "User Reset is Successful"
+		#GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF(CUST.DATA.funcCode == "U")THEN
+	#{
+		CUST.DATA.resultMsg = "Unlock user is successful"
+	#}
+	ELSE
+	#{
+		CUST.DATA.resultMsg = "User Reset is Successful"
+	#}
+	ENDIF
+
+	#sv_d = urhk_dbSqlWithBind("COMMIT")
+	#print(sv_d)
+
+#}
+ENDIF
+
+
+ENDOFSCRIPT:
+IF (CUST.DATA.errMsg != "") THEN
+#{
+	sv_s = "Error_01|ERROR:^"+ CUST.DATA.errMsg +"^"+CUST.DATA.errFld
+	sv_u = urhk_SetOrbOut(sv_s)
+	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+#}
+ELSE
+#{
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	sv_g = "RESULT_MSG|" + CUST.DATA.resultMsg
+	sv_z = urhk_SetOrbOut(sv_g)
+	print(sv_z)
+#}
+ENDIF
+
+EXITSCRIPT
+END-->
+

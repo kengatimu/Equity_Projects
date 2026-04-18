@@ -1,0 +1,247 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: MTTcharge.scr
+# Type: NA|default
+# Description: MTTcharge.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="00a995f54332011a02276429e636122b604b4eb101aa95133cb521114a46a075"
+	TRACE ON
+	
+	sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("MTT","TranDetails",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("MTT","PartTranDetails")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("MTT","PartTranDetails",5)
+	#}
+	ENDIF
+	
+	sv_r = REPEXISTS("BANCS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("BANCS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("BANCS","INPARAM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("BANCS","INPARAM",5)
+	#}
+	ENDIF
+	
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","ATM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST","ATM",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","CTODA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST","CTODA",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","GCHRG")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	
+	
+	CUST.ATM.crForacid = CUST.ATM.income_acct
+	PRINT(CUST.ATM.crForacid)
+	CUST.ATM.RefCurrency = BANCS.STDIN.homeCrncyCode
+	PRINT(CUST.ATM.RefCurrency)
+	PRINT(CUST.ATM.todCreAmt)
+	PRINT(CUST.ATM.schmCode)
+	
+	CUST.CTODA.schmCode = CUST.ATM.schmCode
+	
+	BANCS.INPUT.acctId = CUST.ATM.acctNum
+	BANCS.INPUT.inputAvailAmount = CUST.ATM.todCreAmt
+	BANCS.INPUT.inputCrncy = CUST.ATM.RefCurrency
+	CALL("TODCharge.scr")
+	sv_b = BANCS.OUTPUT.collAmount
+	PRINT(sv_b)
+	PRINT(CUST.ATM.tranAmt)
+	CUST.ATM.TodAmtToAvail = CDOUBLE(sv_b) + CDOUBLE(CUST.ATM.tranAmt)
+	PRINT(CUST.ATM.TodAmtToAvail)
+	CUST.ATM.todExpDate = ""
+	sv_u = urhk_createUserDefndTOD(CUST.ATM.TodAmtToAvail)
+	PRINT(sv_u)
+	
+	IF(sv_u != 0 ) THEN
+	#{
+		BANCS.OUTPUT.RespCode = "99"
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CTODA.schmCode + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "IN" + "|" + "N"
+		sv_s = "advanceDays|SELECT DISCRET_ADVN_DAYS FROM TBAADM.DAR WHERE"
+		sv_s = sv_s + " BANK_ID = ?SVAR AND SCHM_CODE = ?SVAR AND DAT_REF_TYPE = ?SVAR"
+		sv_s = sv_s + " AND DEL_FLG = ?SVAR"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d == 0)THEN
+		#{
+			PRINT(BANCS.OUTPARAM.advanceDays)
+			CUST.ATM.advanceDays = BANCS.OUTPARAM.advanceDays
+			#}
+		ELSE
+			#{
+			CUST.ATM.advanceDays = "0"
+		#}
+		ENDIF
+		sv_i = MID$(BANCS.STDIN.BODDate,0,10) + "|" + "0" + "|" + CUST.ATM.advanceDays
+		PRINT(sv_i)
+		sv_u = urhk_B2k_Add_MonthsDays_To_Date(sv_i)
+		PRINT(sv_u)
+		IF(sv_u == 0) THEN
+		#{
+			CUST.ATM.todExpDate = BANCS.OUTPARAM.MODIFIED_DATE
+			#}
+		ELSE
+			#{
+			CUST.ATM.todExpDate = MID$(BANCS.STDIN.BODDate,0,10)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	# Setting to charge amount variable for the update
+	
+	CUST.ATM.TodChargeAmt = sv_b
+	# Calculate the charge amount for granting TOD
+	
+	BANCS.INPUT.acctId = CUST.ATM.acctNum
+	BANCS.INPUT.inputCrncy = CUST.ATM.RefCurrency
+	BANCS.INPUT.inputAvailAmount = sv_b
+	BANCS.INPUT.srvcallmode = "N"
+	
+	CUST.GCHRG.drAcctId                     = CUST.ATM.acctNum
+	CUST.GCHRG.acctCrncyCode                = CUST.ATM.RefCurrency
+	CUST.GCHRG.eventId                      = "TODAEVT"
+	CUST.GCHRG.chrgAmt                      = CUST.ATM.tranAmt + "|" +CUST.ATM.RefCurrency
+	CUST.GCHRG.tranType                     = "T"
+	CUST.GCHRG.tranSubType                  = "BI"
+	
+	CALL("gchrgcommon.scr")
+	
+	IF(CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		CUST.ATM.SuccessOrFailure = "S"
+		#}
+	ELSE
+		#{
+		CUST.ATM.SuccessOrFailure = "F"
+	#}
+	ENDIF
+	
+	GOTO SKIPMTT
+	
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType="T"
+	MTT.TranDetails.TranSubType="BI"
+	
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.InsertTranWithVaLidnFlg = "N"
+	BANCS.INPARAM.CommitFlg="N"
+	BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw="Y"
+	BANCS.INPARAM.CheckExceptions="N"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	PRINT(sv_u)
+	
+	
+	
+	sv_u = urhk_MTTS_DefineTransaction("TOD")
+	PRINT(sv_u)
+	
+	sv_u = urhk_MTTS_PopulateInputDetails("")
+	
+	
+	MTT.PartTranDetails.Account = CUST.ATM.crForacid
+	MTT.PartTranDetails.RefCurrency = CUST.ATM.RefCurrency
+	MTT.PartTranDetails.TranCurrency  = CUST.ATM.RefCurrency
+	MTT.PartTranDetails.ValueDateDiff = 0
+	MTT.PartTranDetails.RefAmount = sv_b
+	#MTT.PartTranDetails.RefNum = ""
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = "Test"
+	MTT.ChargeDetails.EventType = CUST.ATM.eventType
+	MTT.ChargeDetails.EventId = CUST.ATM.eventId
+	
+	sv_u = urhk_MTTS_DefineChargePartTran("CR")
+	PRINT(sv_u)
+	
+	MTT.PartTranDetails.Account = CUST.ATM.acctNum
+	MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+	MTT.PartTranDetails.ValueDateDiff = 0
+	MTT.PartTranDetails.RefAmount = -1 * CDOUBLE(sv_b)
+	#MTT.PartTranDetails.Remarks = ""
+	#MTT.PartTranDetails.RefNum = ""
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = "Test"
+	sv_u = urhk_MTTS_definePartTran("DR")
+	PRINT(sv_u)
+	
+	sv_u = urhk_MTTS_EndDefinition("")
+	PRINT(sv_u)
+	sv_u = urhk_MTTS_Close("")
+	PRINT(sv_r)
+	
+	
+	PRINT(BANCS.OUTPARAM.MTTTranId)
+	
+	
+	IF(BANCS.OUTPARAM.MTTTranId != "" ) THEN
+	#{
+		CUST.ATM.SuccessOrFailure = "S"
+		#}
+	ELSE
+		#{
+		CUST.ATM.SuccessOrFailure = "F"
+	#}
+	ENDIF
+	
+	SKIPMTT:
+		
+END-->

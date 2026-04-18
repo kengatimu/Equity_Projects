@@ -1,0 +1,256 @@
+#---------------------------------------------------------------------------------------
+# Script Name		: ODASME_JobLiftLien.scr
+# Calling Script 	: Batch Job
+# Author			: James Gichiri
+# Date 				: 19/12/2023
+#
+#------------------------------------------------------------------------------------
+
+<--START   
+TRACE ON 
+
+
+if (REPEXISTS("CUST") == 0)then
+	CREATEREP("CUST")
+	
+endif
+
+IF (CLASSEXISTS("CUST","DATA") == 0)then
+	CREATECLASS("CUST", "DATA", 5)
+endif
+	#######----------Check accounts with DPD counter greater thean 1 and have Lien Amount for OD548-----####
+	sv_s = "acids,foracids|"
+	sv_s = sv_s + "select distinct(acid),foracid from CUSTOM.ODSME_BOOK where acid in(select acid from tbaadm.gam where schm_code='OD548' and sol_id=?SVAR) and DPD_COUNTER>=1 and bank_id=?SVAR AND COLLECTED !='Y'"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId +"|"+ BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbcursorOpenWithBind(sv_s)
+	IF(sv_e == 0) THEN
+	#{	
+		CUST.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.DATA.CURSOR_NUMBER)
+		sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+		print(sv_c)
+		BANCS.INPUT.RECCOUNT=cint("1")
+		print(BANCS.INPUT.RECCOUNT)
+
+		WHILE(sv_c == "0")
+		#{
+			CUST.DATA.acids= BANCS.OUTPARAM.acids
+			PRINT(CUST.DATA.acids)
+			CUST.DATA.foracids= BANCS.OUTPARAM.foracids
+			PRINT(CUST.DATA.foracids)
+			#----------------------------Getting Pool id of the account in OD548 product
+
+			sv_s = "poolid,foracid1,schm_code1|"
+			sv_s = sv_s + "SELECT POOL_ID,foracid,schm_code FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND foracid=?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+CUST.DATA.foracids
+			print(BANCS.INPARAM.BINDVARS)
+			sv_e = urhk_dbSelectWithBind(sv_s)
+			print(sv_e)
+			IF(sv_e == 0) THEN
+			#{
+				CUST.DATA.foracid1=BANCS.OUTPARAM.foracid1
+				PRINT(CUST.DATA.foracid1)
+				CUST.DATA.poolid=BANCS.OUTPARAM.poolid
+				PRINT(CUST.DATA.poolid)
+			#}
+			ELSE
+			#{
+				GOTO NEXTREC
+			#}
+			ENDIF
+			#----------------------------Getting SBA/CAA account pooled with OD548 Account
+			sv_s = "foracid2|"
+			sv_s = sv_s + "SELECT foracid FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND allow_sweeps='Y' AND POOL_ID=?SVAR AND SCHM_TYPE IN('CAA','SBA')"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+CUST.DATA.poolid
+			print(BANCS.INPARAM.BINDVARS)
+			sv_e = urhk_dbSelectWithBind(sv_s)
+			print(sv_e)
+			IF(sv_e == 0) THEN
+			#{
+				CUST.DATA.foracid2=BANCS.OUTPARAM.foracid2
+				PRINT(CUST.DATA.foracid2)
+			#}
+			ELSE
+			#{
+				GOTO NEXTREC
+			#}
+			ENDIF
+			#------------------------------------------------------------------------------------> 0 Checking SBA/CAA accounts have OD548 existing liens
+			PRINT(CUST.DATA.foracid2)
+			sv_a = CUST.DATA.foracid2
+			print(sv_a)
+			sv_b = urhk_getAcctDetailsInRepository(sv_a)
+			IF(sv_b == 0) THEN
+			#{
+				sv_k = BANCS.OUTPARAM.lienAmt
+				print(sv_k)
+				sv_y = BANCS.OUTPARAM.ClearBalance
+				print(sv_y)
+				CUST.DATA.EffAvalBal = sv_y
+				CUST.DATA.EffAvalBal = FORMAT$(CDOUBLE(CUST.DATA.EffAvalBal),"%.2f")
+				print(CUST.DATA.EffAvalBal)
+
+				sv_s = "lacid,lamount,lrmks|select acid,LIEN_AMT,LIEN_REMARKS from tbaadm.alt where bank_id=?SVAR and sol_id=?SVAR "
+		 		sv_s = sv_s + "and acid in(select acid from tbaadm.gam where foracid=?SVAR) and LIEN_REMARKS LIKE '%ODASME%'"
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId +"|"+ CUST.DATA.foracid2
+				print(BANCS.INPARAM.BINDVARS)
+				sv_e = urhk_dbSelectWithBind(sv_s)
+				print(sv_e)
+
+				IF(sv_e == 0) THEN
+				#{	
+					CUST.DATA.lrmks= BANCS.OUTPARAM.lrmks
+					PRINT(CUST.DATA.lrmks)
+				#}
+				ELSE
+				#{
+					GOTO NEXTREC
+				#}
+				ENDIF
+				IF((CUST.DATA.EffAvalBal)>(0.00)) THEN
+				#{				
+					PRINT("Proceed")					
+				#}
+				ELSE
+				#{
+					GOTO NEXTREC
+				#}
+				ENDIF
+			#}
+			ENDIF
+				
+			#---------------------------------------------------------------------------------------------------->1 SRV_FetchLienDtlsOnAcForMod  
+			sv_i = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.DATA.foracid2)
+			sv_i = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+			sv_o = urhk_SetUrhkOut("acctLienMaintCrit.moduleType.type|moduleType")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.acid|acid")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.b2kType|b2kType")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.b2kId|b2kId")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.newLienAmt|newLienAmt")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.oldLienAmt|oldLienAmt")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.expiryDate|expiryDate")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.lienReasonCode.refCode|lienReasonCode")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.lienRemarks|lienRemarks")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.delFlg|delFlg")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.effFromDate|effFromDate")
+			sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.ALTCookie|ALTCookie")
+			sv_q = urhk_ExecSrv("SRV_FetchLienDtlsOnAcForMod|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_q)
+
+			#------------------------------------------------------------------------------------------------------->2 SRV_ModifyLienOnAcct 
+
+			IF(sv_q == 0) THEN
+			#{     
+   				PRINT("Setting Lien update data")
+   				CUST.DATA.moduleType = BANCS.OUTPARAM.moduleType
+   				print(CUST.DATA.moduleType)
+   				CUST.DATA.acid = BANCS.OUTPARAM.acid
+   				print(CUST.DATA.acid)
+   				CUST.DATA.b2kType = BANCS.OUTPARAM.b2kType
+   				print(CUST.DATA.b2kType)
+   				CUST.DATA.b2kId = BANCS.OUTPARAM.b2kId
+   				print(CUST.DATA.b2kId)
+   				CUST.DATA.oldLienAmt = BANCS.OUTPARAM.oldLienAmt
+   				print(CUST.DATA.oldLienAmt)
+				CUST.DATA.length = STRLEN(CUST.DATA.oldLienAmt)
+				sv_v = CINT(CUST.DATA.length) - 4
+				print(sv_v)
+				CUST.DATA.oldLienAmt1 = Left$(CUST.DATA.oldLienAmt, sv_v)
+				print(CUST.DATA.oldLienAmt1)
+				#PRINT(CUSTS.DATA.lienamount)
+   				#CUST.DATA.newLienAmt = CDOUBLE(CUST.DATA.oldLienAmt1) + CDOUBLE(CUSTS.DATA.lienamount)
+				CUST.DATA.lienAmt = "0.00"
+   				CUST.DATA.newLienAmt = CUST.DATA.lienAmt
+   				print(CUST.DATA.newLienAmt)
+   				CUST.DATA.expiryDate = BANCS.OUTPARAM.expiryDate
+   				print(CUST.DATA.expiryDate)
+   				CUST.DATA.lienReasonCode = BANCS.OUTPARAM.lienReasonCode
+   				print(CUST.DATA.lienReasonCode)
+   				CUST.DATA.lienRemarks = BANCS.OUTPARAM.lienRemarks
+   				print(CUST.DATA.lienRemarks)
+   				CUST.DATA.delFlg = BANCS.OUTPARAM.delFlg
+   				print(CUST.DATA.delFlg)
+   				CUST.DATA.effFromDate = BANCS.OUTPARAM.effFromDate
+   				print(CUST.DATA.effFromDate)
+   				CUST.DATA.ALTCookie = BANCS.OUTPARAM.ALTCookie
+   				print(CUST.DATA.ALTCookie)
+				CUST.DATA.currency_code="KES"
+
+   				sv_i = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.DATA.foracid2)
+				sv_i = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|" + CUST.DATA.moduleType)
+				sv_i = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|" + CUST.DATA.expiryDate)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.key.serial_num|0")
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.acid|" + CUST.DATA.acid)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.b2kType|" + CUST.DATA.b2kType)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.b2kId|" + CUST.DATA.b2kId)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.newLienAmt|" + CUST.DATA.newLienAmt +"|"+CUST.DATA.currency_code)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.oldLienAmt|" + CUST.DATA.oldLienAmt)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienRemarks|" + CUST.DATA.lienRemarks)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.delFlg|" + CUST.DATA.delFlg)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.effFromDate|" + CUST.DATA.effFromDate)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.ALTCookie|" + CUST.DATA.ALTCookie)
+				sv_i = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienReasonCode.refCode|" + CUST.DATA.lienReasonCode)
+
+				sv_q = urhk_ExecSrv("SRV_ModifyLienOnAcct|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_q)
+
+				IF(sv_q == 0) THEN
+				#{
+					#------------------------------------------------------------------------------------>3 SRV_FetchLienDtlsForVfy 
+					sv_i = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.DATA.foracid2)
+					sv_i = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+					sv_o = urhk_SetUrhkOut("lienMaintLL.<rec_0>.ALTCookie|ALTCookie")
+
+					sv_q = urhk_ExecSrv("SRV_FetchLienDtlsForVfy|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_q)
+
+					IF(sv_q == 0) THEN
+					#{
+						print(BANCS.OUTPARAM.ALTCookie)
+						#------------------------------------------------------------------------------>4 SRV_VerifyLienOnAcct 
+						sv_u = urhk_CopyOutToIn("")
+						print(sv_u)
+						sv_q = urhk_ExecSrv("SRV_VerifyLienOnAcct|retain_all_output = Y|same_user_verify = Y")
+						PRINT(sv_q)
+
+						IF(sv_q == 0) THEN 
+						#{
+							print("Lien Amount updated successfully")
+						#}
+						ELSE
+						#{
+							
+						#}
+						ENDIF			
+					#}
+					ELSE
+					#{
+						
+					#}
+					ENDIF
+				#}
+				ELSE
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			GOTO NEXTREC
+			#BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+			#PRINT(BANCS.INPUT.RECCOUNT)
+			NEXTREC:
+			sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+			print(sv_c)
+
+		#}
+		DO
+	#}
+	ENDIF
+
+TRACE OFF
+END-->

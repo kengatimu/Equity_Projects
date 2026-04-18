@@ -1,0 +1,221 @@
+#==========================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: CDPostProc.scr
+# event: NA
+# description: CDPostProc 
+#=================================================
+<--start
+trace on
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+#{
+        CREATECLASS("CUST","ATM",5)
+#}
+ENDIF
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+        CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+sv_r = REPEXISTS("STDWFS")
+IF (sv_r == 0) THEN
+	CREATEREP("STDWFS")
+ENDIF
+sv_r = CLASSEXISTS("STDWFS", "GLBDATA")
+IF (sv_r == 0) THEN
+	CREATECLASS("STDWFS", "GLBDATA", 5)
+ENDIF
+CUST.ATM.machineId = ""
+sv_u = urhk_getEnv("HOST_NAME")
+if(sv_u==0)then
+#{
+	print(BANCS.OUTPARAM.envValue)
+	CUST.ATM.machineId = BANCS.OUTPARAM.envValue
+#}
+else
+#{
+	CUST.ATM.machineId = ""
+        BANCS.OUTPUT.ReservedField3 = "Envirnoment Setup Issue. Check With Finacle ICT"
+        BANCS.OUTPUT.successOrFailure = "F"
+        BANCS.OUTPUT.RespCode = "99"
+        exitscript
+#}
+endif
+
+########Cash Cloud Charge Collection Logic: CHG0034907 ##########
+IF(BANCS.INPUT.DccId == "POL") THEN
+	IF (BANCS.INPUT.ReservedField2 !="") THEN
+		IF ( (BANCS.INPUT.ReservedField2 =="EAZYBIZ") OR (BANCS.INPUT.ReservedField2 =="EAZYBIZEFT") ) THEN
+			IF ((fieldexists(BANCS.INPUT.RespCode)==1) and (fieldexists(BANCS.OUTPUT.TranId)==1) and (fieldexists(CUST.ATM.LowBalInd)==1)) THEN
+				IF (BANCS.OUTPUT.TranId !="") THEN
+					PRINT(CUST.ATM.LowBalInd)
+					CUST.ATM.chrgFlg =""
+					CUST.ATM.refNum =""
+					CUST.ATM.narrDrChrg =""
+					CUST.ATM.narrCrChrg=""
+					CUST.ATM.TranId = BANCS.OUTPUT.TranId
+
+					#VALIDATING THE TRAN_ID 
+					sv_z ="count|select count(*) from tbaadm.dtd where tran_id =?SVAR and tran_date =to_date(?SVAR, 'dd-mm-yyyy HH24:MI:SS') "
+					sv_z =sv_z + " and del_flg='N' and pstd_flg='Y' and bank_id= ?SVAR and pstd_user_id =?SVAR  "
+					print(sv_z)
+					BANCS.INPARAM.BINDVARS = CUST.ATM.TranId + "|" + BANCS.STDIN.BODDate + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId  
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbSelectWithBind(sv_z)
+					print(sv_d)
+					IF (sv_d == 0) THEN
+						CUST.ATM.count = BANCS.OUTPARAM.count
+						print(CUST.ATM.count)
+						IF (CUST.ATM.count< 1) THEN
+							CUST.ATM.chrgFlg = "N"
+						ELSE
+							CUST.ATM.chrgFlg = "Y"
+						ENDIF
+					ENDIF
+
+					IF(CUST.ATM.chrgFlg == "Y")THEN
+						IF (FIELDEXISTS(BANCS.INPUT.ConsumerNum) == 1) THEN
+						#{
+							IF (BANCS.INPUT.ConsumerNum !="") THEN 
+							#{
+								sv_p = getposition(BANCS.INPUT.ConsumerNum,"|")
+								print (sv_p)
+								IF (sv_p ==0 ) THEN
+									sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.ConsumerNum)
+									IF (sv_u == 0) THEN
+										IF (BANCS.OUTPARAM.schmCode=="INCOM") THEN
+											CUST.ATM.TranFeeContraAcct1 = BANCS.INPUT.ConsumerNum
+										ELSE
+											BANCS.OUTPUT.RespCode = "99"
+											BANCS.OUTPUT.ReservedField3 = "Income Account Defined is not INCOM Type GL:Field 63"
+											BANCS.OUTPUT.successOrFailure="F"
+										ENDIF
+									ELSE
+										BANCS.OUTPUT.RespCode = "99"
+										BANCS.OUTPUT.ReservedField3 = "Income Account Defined is invalid:Field 63"
+										BANCS.OUTPUT.successOrFailure="F"
+									ENDIF
+								ELSE
+									sv_m = MID$(BANCS.INPUT.ConsumerNum, 0, sv_p-1)
+									PRINT(sv_m)
+									sv_u = urhk_getAcctDetailsInRepository(sv_m)
+									IF (sv_u == 0) THEN
+										CUST.ATM.TranFeeCustAcct1 = sv_m			
+									ELSE
+										BANCS.OUTPUT.RespCode = "99"
+										BANCS.OUTPUT.ReservedField3 = "Debit Fee Acct Defined is invalid:Field 63"
+										BANCS.OUTPUT.successOrFailure="F"			
+									ENDIF
+									sv_m = MID$(BANCS.INPUT.ConsumerNum,sv_p, 16)
+									PRINT(sv_m)	
+									sv_u = urhk_getAcctDetailsInRepository(sv_m)
+									IF (sv_u == 0) THEN
+										IF (BANCS.OUTPARAM.schmCode=="INCOM") THEN				
+											CUST.ATM.TranFeeContraAcct1 = sv_m
+										ELSE
+											BANCS.OUTPUT.RespCode = "99"
+											BANCS.OUTPUT.ReservedField3 = "Income Account Defined is not INCOM Type GL:Field 63"
+											BANCS.OUTPUT.successOrFailure="F"
+										ENDIF
+									ELSE
+										BANCS.OUTPUT.RespCode = "99"
+										BANCS.OUTPUT.ReservedField3 = "Income Account Defined is invalid:Field 63"
+										BANCS.OUTPUT.successOrFailure="F"
+									ENDIF
+								ENDIF
+
+								#---------------------------------
+								#  Narrations
+								#-----------------------------------
+
+								IF((fieldexists(BANCS.INPUT.CardAcceptorName)==1) )THEN
+									IF(BANCS.INPUT.CardAcceptorName !="")THEN
+										PRINT(BANCS.INPUT.CardAcceptorName)
+										CUST.ATM.refNum = BANCS.INPUT.CardAcceptorName
+									ELSE
+										CUST.ATM.refNum = ""
+									ENDIF
+								ELSE
+									CUST.ATM.refNum = ""
+								ENDIF
+
+								IF( (fieldexists(CUST.ATM.narrDrFee)==1) ) THEN 
+									IF(CUST.ATM.narrDrFee !="")THEN
+										PRINT(CUST.ATM.narrDrFee)
+										CUST.ATM.narrDrChrg = CUST.ATM.narrDrFee
+									ELSE
+										IF((fieldexists(CUST.ATM.narration)==1) ) THEN
+											IF(CUST.ATM.narration !="")THEN
+												CUST.ATM.narrDrChrg="CHARGES: " + CUST.ATM.narration
+											ELSE
+												CUST.ATM.narrDrChrg="CHARGES " + CUST.ATM.refNum
+											ENDIF 
+										ELSE
+											CUST.ATM.narrDrChrg="CHARGES " + CUST.ATM.refNum
+										ENDIF
+									ENDIF
+								ELSE
+									CUST.ATM.narrDrChrg="CHARGES " + CUST.ATM.refNum
+								ENDIF
+
+								IF( (fieldexists(CUST.ATM.narrCrFee)==1) ) THEN 
+									IF(CUST.ATM.narrCrFee !="")THEN
+										PRINT(CUST.ATM.narrCrFee)
+										CUST.ATM.narrCrChrg = CUST.ATM.narrCrFee
+									ELSE
+										IF((fieldexists(CUST.ATM.narration)==1) ) THEN
+											IF(CUST.ATM.narration !="")THEN
+												CUST.ATM.narrCrChrg="CHARGES: " + CUST.ATM.narration
+											ELSE
+												CUST.ATM.narrCrChrg="CHARGES " + CUST.ATM.refNum
+											ENDIF 
+										ELSE
+											CUST.ATM.narrCrChrg="CHARGES " + CUST.ATM.refNum
+										ENDIF
+									ENDIF
+								ELSE
+									CUST.ATM.narrCrChrg="CHARGES " + CUST.ATM.refNum
+								ENDIF 
+
+								print(CUST.ATM.TranFeeCustAcct1)
+								print(CUST.ATM.TranFeeContraAcct1)
+								print(CUST.ATM.feeAmt)
+								print(CUST.ATM.narrDrChrg)
+								print(CUST.ATM.narrCrChrg)
+
+								call("copyBancsToCustC24.scr")
+								call("CC_SalUPLCharge.scr")
+								call("copyCust24ToBancs.scr")
+
+								IF( (fieldexists(CUST.ATM.errMsg)==1) ) THEN
+									IF(CUST.ATM.errMsg !="") THEN
+										BANCS.OUTPUT.RespCode = "99"
+										BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+										BANCS.OUTPUT.successOrFailure="F"
+										EXITSCRIPT
+									ENDIF
+								ENDIF 
+							#}
+							ENDIF
+						#}
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+######## END OF Cash Cloud Charge Collection Logic: CHG0034907 ##########
+
+#Specific For Finacle 2
+callscriptifexist("vpCDPostProc_54_Header.scr")
+callscriptifexist("vpCDPostProc_54_Footer.scr")
+exitscript
+trace off
+end-->

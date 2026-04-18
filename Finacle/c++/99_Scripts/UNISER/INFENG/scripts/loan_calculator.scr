@@ -1,0 +1,331 @@
+<--START
+TRACE ON
+
+
+        sv_r = REPEXISTS("CUSTS")
+        IF (sv_r == 0) THEN
+        #{
+                CREATEREP("CUSTS")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+        IF (sv_r == 0) THEN
+        #{
+                CREATECLASS("CUSTS", "GLBDATA", 5)
+        #}
+        ENDIF
+
+        sv_b = BANCS.STDIN.mySolId
+        print(sv_b)
+
+        sv_a = urhk_b2k_printRepos("BANCS")
+
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("Foracid"))== 0) ) THEN
+   CUSTS.GLBDATA.errMsg="Provide Account No"
+   sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)
+   GOTO ENDOFSCRIPT
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("bank_id"))== 0) ) THEN
+   CUSTS.GLBDATA.errMsg="Provide Bank id"
+   sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)
+   GOTO ENDOFSCRIPT
+ENDIF
+
+
+print(BANCS.INPUT.Foracid)
+
+			sv_u = "schmcode,acct_ccy |"
+                        sv_u = sv_u + "select schm_code,acct_crncy_code from tbaadm.gam  "
+                        sv_u = sv_u + " where Foracid =?SVAR  AND bank_id=?SVAR "
+                        print(sv_u)
+
+                        BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.INPUT.bank_id
+                        print(BANCS.INPARAM.BINDVARS)
+
+                        sv_w =  urhk_dbSelectWithBind(sv_u)
+                        print(sv_w)
+
+                        IF (sv_w==0) THEN
+                        #{
+                                CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+                                CUSTS.GLBDATA.acct_ccy=BANCS.OUTPARAM.acct_ccy
+                                print(CUSTS.GLBDATA.schmcode)
+                                print(CUSTS.GLBDATA.acct_ccy)
+
+                                IF(CUSTS.GLBDATA.schmcode != "LA527")THEN
+                                #{
+
+                                        print("The provide account is not LA527 acoount")
+                                        CUSTS.GLBDATA.errMsg=" The provide account is not LA527 acoount"
+                                        sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)
+                                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                                        print(sv_u)
+                                        GOTO ENDOFSCRIPT
+
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+
+###############Loan Amount, Installment, Repayment Period, and LACE- Capitalized Charge:#######################
+
+sv_q=""
+sv_q = "loan_amt,repay_prd,lace_cap_amt | select DIS_AMT,REP_PERD_MTHS,CUM_CAPITALIZE_FEES from tbaadm.lam where bank_id=?SVAR"
+sv_q = sv_q + "and acid in (select acid from tbaadm.gam where foracid=?SVAR)"
+
+print(sv_q)
+
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.bank_id + "|" + BANCS.INPUT.Foracid
+print(BANCS.INPARAM.BINDVARS)
+
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+	IF (sv_w==0) THEN
+        #{
+        	CUSTS.GLBDATA.loan_amt=BANCS.OUTPARAM.loan_amt
+        	CUSTS.GLBDATA.repay_prd=BANCS.OUTPARAM.repay_prd
+        	CUSTS.GLBDATA.lace_cap_amt=BANCS.OUTPARAM.lace_cap_amt
+                print(CUSTS.GLBDATA.loan_amt)
+                print(CUSTS.GLBDATA.repay_prd)
+                print(CUSTS.GLBDATA.lace_cap_amt)
+	#}
+	ENDIF
+
+sv_q=""
+sv_q = " installment | select * from (select flow_amt from tbaadm.lrs where acid in (select acid from tbaadm.gam where foracid=?SVAR) order by rcre_time desc) "
+sv_q = sv_q + " where rownum=1"
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid
+print(sv_q)
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+        IF (sv_w==0) THEN
+        #{
+                CUSTS.GLBDATA.installment=BANCS.OUTPARAM.installment
+		print(CUSTS.GLBDATA.installment)
+	#}
+	ELSE
+	#{
+		print("The provide account is Closed")
+                CUSTS.GLBDATA.errMsg="The provide account is Closed"
+                sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                print(sv_u)
+                GOTO ENDOFSCRIPT
+
+	ENDIF
+
+
+
+#############Interest: #########################################################
+
+sv_q=""
+sv_q = "int_code,interest | select INT_TBL_CODE,MAX_INT_PCNT_DR from tbaadm.itc where bank_id=?SVAR and entity_id in (select acid from tbaadm.gam where foracid=?SVAR)"
+sv_q = sv_q + " and INT_TBL_CODE_SRL_NUM in (select max(INT_TBL_CODE_SRL_NUM) from tbaadm.itc where entity_id in (select acid from tbaadm.gam where foracid=?SVAR))"
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.bank_id + "|" + BANCS.INPUT.Foracid + "|" + BANCS.INPUT.Foracid
+print(BANCS.INPARAM.BINDVARS)
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+        IF (sv_w==0) THEN
+        #{
+                CUSTS.GLBDATA.int_code=BANCS.OUTPARAM.int_code
+                CUSTS.GLBDATA.interest=BANCS.OUTPARAM.interest
+		print(CUSTS.GLBDATA.int_code)
+		print(CUSTS.GLBDATA.interest)
+	#}
+	ENDIF
+
+
+##--sv_q=""
+##--sv_q = "interest | select * from (select  nrml_int_pcnt  from tbaadm.lavs where bank_id=?SVAR and INT_TBL_CODE =?SVAR  and crncy_code=?SVAR"
+##--sv_q = sv_q + " order by LCHG_TIME desc ) where rownum=1"
+##--print(sv_q)
+##--BANCS.INPARAM.BINDVARS = BANCS.INPUT.bank_id + "|" + CUSTS.GLBDATA.int_code + "|" + CUSTS.GLBDATA.acct_ccy
+##--print(BANCS.INPARAM.BINDVARS)
+##--sv_w =  urhk_dbSelectWithBind(sv_q)
+##--print(sv_w)
+
+##--        IF (sv_w==0) THEN
+##--        #{
+##--                CUSTS.GLBDATA.interest=BANCS.OUTPARAM.interest
+##--                print(CUSTS.GLBDATA.interest)
+##--        #}
+##--        ENDIF
+
+####### Capitalize charges and insurance charge#######################
+
+sv_q =""
+sv_q =" chrg_type,chrg_amt_coll | select CHARGE_TYPE, CHRGE_AMT_COLLECTED from tbaadm.charge_assessment_table where acid in(select acid from "
+sv_q = sv_q + " tbaadm.gam where foracid =?SVAR)  and charge_type = 'MISC4' " 
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid
+print(BANCS.INPARAM.BINDVARS)
+print(sv_q)
+
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+	IF (sv_w==0) THEN
+        #{
+                CUSTS.GLBDATA.chrg_type=BANCS.OUTPARAM.chrg_type
+                CUSTS.GLBDATA.chrg_amt_coll=BANCS.OUTPARAM.chrg_amt_coll
+                print(CUSTS.GLBDATA.chrg_type)
+                print(CUSTS.GLBDATA.chrg_amt_coll)
+
+		IF (CUSTS.GLBDATA.chrg_amt_coll != "") THEN
+                #{
+                        sv_a = "Loan_Details.CAPITALIZED_CHARGE.CAPITALIZED_CHRG |" + CUSTS.GLBDATA.chrg_amt_coll
+                        print(sv_a)
+                        sv_u = urhk_SetOrbOut(sv_a)
+                #}
+                ELSE
+                #{
+                        CUSTS.GLBDATA.chrg_amt_coll = "0" 
+                        sv_a = "Loan_Details.CAPITALIZED_CHARGE.CAPITALIZED_CHRG |" + CUSTS.GLBDATA.chrg_amt_coll
+                        print(sv_a)
+                        sv_u = urhk_SetOrbOut(sv_a)
+                #}
+                ENDIF
+
+	#}
+	ENDIF
+
+
+sv_q =""
+sv_q =" chrg_type,chrg_amt_coll | select CHARGE_TYPE, CHRGE_AMT_COLLECTED from tbaadm.charge_assessment_table where acid in(select acid from "
+sv_q = sv_q + " tbaadm.gam where foracid =?SVAR)  and charge_type = 'PROSF' "
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid
+print(BANCS.INPARAM.BINDVARS)
+print(sv_q)
+
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+        IF (sv_w==0) THEN
+        #{
+                CUSTS.GLBDATA.chrg_type=BANCS.OUTPARAM.chrg_type
+                CUSTS.GLBDATA.chrg_amt_coll=BANCS.OUTPARAM.chrg_amt_coll
+                print(CUSTS.GLBDATA.chrg_type)
+                print(CUSTS.GLBDATA.chrg_amt_coll)
+
+                IF (CUSTS.GLBDATA.chrg_amt_coll != "") THEN
+                #{
+                        sv_a = "Loan_Details.CAPITALIZED_CHARGE.INSU_CHRG |" + CUSTS.GLBDATA.chrg_amt_coll
+                        print(sv_a)
+                        sv_u = urhk_SetOrbOut(sv_a)
+                #}
+                ELSE
+                #{
+                        CUSTS.GLBDATA.chrg_amt_coll = "0"
+                        sv_a = "Loan_Details.CAPITALIZED_CHARGE.INSU_CHRG |" + CUSTS.GLBDATA.chrg_amt_coll
+			print(sv_a)
+                        sv_u = urhk_SetOrbOut(sv_a)
+                #}
+                ENDIF
+
+        #}
+        ENDIF
+
+
+
+IF (CUSTS.GLBDATA.loan_amt != "") THEN
+#{
+	sv_a = "Loan_Details.LOAN_AMOUNT |" + CUSTS.GLBDATA.loan_amt
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.loan_amt = " "
+        sv_a = "Loan_Details.LOAN_AMOUNT |" + CUSTS.GLBDATA.loan_amt
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+IF (CUSTS.GLBDATA.lace_cap_amt != "") THEN
+#{
+        sv_a = "Loan_Details.LACE_CUM_CAPITALIZED_CHARGE |" + CUSTS.GLBDATA.lace_cap_amt
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.lace_cap_amt =0 
+        sv_a = "Loan_Details.LACE_CUM_CAPITALIZED_CHARGE |" + CUSTS.GLBDATA.lace_cap_amt
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+IF (CUSTS.GLBDATA.installment != "") THEN
+#{
+        sv_a = "Loan_Details.LOAN_INSTALLMENT |" + CUSTS.GLBDATA.installment
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.installment = " "
+        sv_a = "Loan_Details.LOAN_INSTALLMENT |" + CUSTS.GLBDATA.installment
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+IF (CUSTS.GLBDATA.interest != "") THEN
+#{
+        sv_a = "Loan_Details.LOAN_INTEREST |" + CUSTS.GLBDATA.interest
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.interest = " "
+        sv_a = "Loan_Details.LOAN_INTEREST |" + CUSTS.GLBDATA.interest
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+IF (CUSTS.GLBDATA.schmcode != "") THEN
+#{
+        sv_a = "Loan_Details.LOAN_TYPE |" + CUSTS.GLBDATA.schmcode
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.schmcode = " "
+        sv_a = "Loan_Details.LOAN_TYPE |" + CUSTS.GLBDATA.schmcode
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+IF (CUSTS.GLBDATA.repay_prd != "") THEN
+#{
+        sv_a = "Loan_Details.LOAN_REPAYMENT_PERIOD |" + CUSTS.GLBDATA.repay_prd
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ELSE
+#{
+        CUSTS.GLBDATA.repay_prd = " "
+        sv_a = "Loan_Details.LOAN_REPAYMENT_PERIOD |" + CUSTS.GLBDATA.repay_prd
+        print(sv_a)
+        sv_u = urhk_SetOrbOut(sv_a)
+#}
+ENDIF
+
+
+ENDOFSCRIPT:
+
+exitscript
+TRACE OFF
+END-->

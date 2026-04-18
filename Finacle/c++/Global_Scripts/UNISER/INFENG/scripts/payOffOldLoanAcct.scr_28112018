@@ -1,0 +1,613 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: ast0057mn002.scr
+# Type: NA|default
+# Description: Equityt Finacle 10.2.13 to 10.2.18 Porting
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="8947cc5367bd1967ef6d9c51e4634b848201e7d52234510a80c9cf73018ccbe2"
+	TRACE ON
+	
+	sv_a = urhk_B2K_printrepos("BANCS")
+	PRINT(sv_a)
+	
+	#------------------------------------------------------------------------------
+	#	Creating repository and class
+	#	Initializing the variables
+	#	Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+        IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+        #{
+                CREATECLASS("CUST","RATE",5)
+        #}
+        ENDIF
+	
+	CUST.LADISB.errMsg 	= ""
+	CUST.LADISB.err 	= ""
+	
+	#------------------------------------------------------------------------------
+	# Getting acctId code from front end
+	#------------------------------------------------------------------------------
+	sv_u = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.LADISB.loanForacid = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.LADISB.loanForacid)
+		#}
+	ELSE
+		#{
+		CUST.LADISB.errMsg = "Error: urhk_SRV_GetVal failed for foracid"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------
+	#Getting operative account currency code
+	#--------------------------------------------------------------------
+	sv_s = ""
+	sv_s = "oprCrncyCode|SELECT GAM.acct_crncy_code "
+	sv_s = sv_s + "FROM TBAADM.GAM "
+	sv_s = sv_s + "WHERE GAM.foracid = ?SVAR "
+	sv_s = sv_s + "AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + "AND GAM.acct_cls_flg = 'N' "
+	sv_s = sv_s + "AND GAM.del_flg = 'N' "
+	sv_s = sv_s + "AND GAM.entity_cre_flg = 'Y'"
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.INPUT.ladisbdet_FIELD_2 + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF ( sv_d != 0 ) THEN
+	#{
+		CUST.LADISB.errMsg = "Error occured in calculating new loan account currency code"
+		PRINT(CUST.LADISB.errMsg)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.oprCrncyCode= BANCS.OUTPARAM.oprCrncyCode
+		PRINT(BANCS.OUTPARAM.oprCrncyCode)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting rateCode from CPARAM values--'NOR'
+	#-----------------------------------------------------------------------------------------------
+	#BANCS.INPUT.moduleName = "GENERAL"
+	#BANCS.INPUT.parameterId = "NORRATECODE"
+	
+	#CALL ("getcparamvalue.scr")
+	#PRINT(BANCS.OUTPUT.parameterVal)
+	
+	#IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+	#	CUST.LADISB.repayRateCode = BANCS.OUTPUT.parameterVal
+	#	PRINT(CUST.LADISB.repayRateCode)
+		#}
+	#ELSE
+		#{
+	#	CUST.LADISB.errMsg = "NORRATECODE setup not done in CPARAM"
+	#	GOTO ENDOFSCRIPT
+	#}
+	#ENDIF
+	
+	#CUST.LADISB.repayRateCode ="EXPB"
+	#---------------------------------------------------------------------------------
+	# Check if directory exists and create
+	#---------------------------------------------------------------------------------
+	sv_p = SYSTEM("test -d ${FIN_REPORTS_DIR}/"+ BANCS.STDIN.userId)
+	IF(sv_p != 0 ) THEN
+	#{
+		sv_p = SYSTEM("mkdir ${FIN_REPORTS_DIR}"+ BANCS.STDIN.userId)
+		PRINT(sv_p)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	sv_p = urhk_B2k_PID("")
+	PRINT(sv_p)
+	CUST.LADISB.pid = TRIM(BANCS.OUTPARAM.PID)
+	PRINT(CUST.LADISB.pid)
+	CUST.LADISB.sucsFile = "PAYOFFSUCS_"+ CUST.LADISB.pid +".txt"
+	CUST.LADISB.failFile = "PAYOFFFAIL_"+ CUST.LADISB.pid +".txt"
+	PRINT(CUST.LADISB.sucsFile)
+	PRINT(CUST.LADISB.failFile)
+	
+	#-----------------------------------------------------------------------------------------------
+	# Charge Collection
+	#-----------------------------------------------------------------------------------------------
+	sv_a = ""
+	sv_a = "pdCount|select count(1) from tbaadm.gac where acid in("
+	sv_a = sv_a + " select acid from tbaadm.gam where foracid in (select old_foracid from CUSTOM.C_LADISB_PAYOFF_OLDLOAN where loan_foracid=?SVAR AND bank_id =?SVAR)"
+	sv_a = sv_a + " AND bank_id =?SVAR)"
+	sv_a = sv_a + " AND pd_flg='Y' AND bank_id =?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanForacid+ "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	
+	sv_d = urhk_dbselectWithBind(sv_a)
+	PRINT(sv_d)
+	
+	IF ( sv_d != 0 ) THEN
+	#{
+		CUST.LADISB.errMsg = "Error occured in getting the PD count from GAC table"
+		PRINT(CUST.LADISB.errMsg)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.pdCount= BANCS.OUTPARAM.pdCount
+		PRINT(CUST.LADISB.pdCount)
+		
+		IF(CUST.LADISB.pdCount > 1) THEN
+		#{
+			#CUST.LADISB.eventId = "PADUE"
+			CUST.LADISB.parameterId = "LPDY"
+			#}
+		ELSE
+			#{
+			#CUST.LADISB.eventId = "NODUE"
+			CUST.LADISB.parameterId = "LPDN"
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		#Getting event code from CPARAM for disbursement charge
+		#-----------------------------------------------------------------------------------------------
+		BANCS.INPUT.moduleName = "LOANS"
+		BANCS.INPUT.parameterId = CUST.LADISB.parameterId
+		
+		CALL ("getcparamvalue.scr")
+		PRINT(BANCS.OUTPUT.parameterVal)
+		
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			CUST.LADISB.eventId = BANCS.OUTPUT.parameterVal
+			PRINT(CUST.LADISB.eventId)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "NORRATECODE setup not done in CPARAM"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.GCHRG.drAcctId			= BANCS.INPUT.ladisbdet_FIELD_2
+		CUST.GCHRG.acctCrncyCode	= CUST.LADISB.oprCrncyCode
+		CUST.GCHRG.eventId			= CUST.LADISB.eventId
+		CUST.GCHRG.chrgAmt			= ""
+		CUST.GCHRG.tranType			= "T"
+		CUST.GCHRG.tranSubType		= "BI"
+		
+		CALL("gchrgcommon.scr")
+		IF(CUST.GCHRG.successOrFailure == "S") THEN
+		#{
+			PRINT(CUST.GCHRG.chargeTranId)
+			sv_c = "echo '" + CUST.GCHRG.chargeTranId + "' > LadisbChrg.txt"
+			PRINT(sv_c)
+			sv_a = SYSTEM(sv_c)
+			PRINT(sv_a)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "Charge collection failed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------
+	# Getting records from custom table
+	#----------------------------------------------------------------------
+	sv_s = ""
+	sv_s = sv_s + " foracid,opForacid,crAmount,drAmount,oldLoanCrncyCode|"
+	sv_s = sv_s + " SELECT A.old_foracid,A.loan_op_foracid,A.la_op_amt,"
+	sv_s = sv_s + " A.old_la_amt,A.old_la_crncy_code"
+	sv_s = sv_s + " FROM CUSTOM.C_LADISB_PAYOFF_OLDLOAN A"
+	sv_s = sv_s + " WHERE A.del_flg = 'N'"
+	sv_s = sv_s + " AND A.entity_cre_flg = 'N'"
+	sv_s = sv_s + " AND A.loan_foracid=?SVAR"
+	sv_s = sv_s + " AND A.bank_id=?SVAR"
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanForacid + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	sv_c = urhk_dbcursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	
+	IF( sv_c == 0) THEN
+	#{
+		sv_l = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_l)
+		sv_c = urhk_dbCursorFetch(sv_l)
+		PRINT(sv_c)
+		
+		WHILE( sv_c == 0)
+		#{
+			CUST.LADISB.foracid 			= TOUPPER(BANCS.OUTPARAM.foracid)
+			CUST.LADISB.opForacid 			= TOUPPER(BANCS.OUTPARAM.opForacid)
+			CUST.LADISB.crAmount 			= BANCS.OUTPARAM.crAmount
+			CUST.LADISB.drAmount 			= BANCS.OUTPARAM.drAmount
+			CUST.LADISB.oldLoanCrncyCode 	= BANCS.OUTPARAM.oldLoanCrncyCode
+			
+			PRINT(CUST.LADISB.foracid)
+			PRINT(CUST.LADISB.opForacid)
+			PRINT(CUST.LADISB.crAmount)
+			PRINT(CUST.LADISB.drAmount)
+			PRINT(CUST.LADISB.oldLoanCrncyCode)
+			
+			CUST.LADISB.tranId = ""
+			#--------------------------------------------------------------
+			# getting the currency of debit account of payoff
+			#--------------------------------------------------------------
+			sv_a = urhk_getAcctDetailsInRepository(CUST.LADISB.opForacid)
+			PRINT(sv_a)
+			sv_u = 0
+			IF(sv_a == 0) THEN
+			#{
+				CUST.LADISB.OpAcctCrncyCode 	= BANCS.OUTPARAM.acctCrncyCode
+				PRINT(CUST.LADISB.OpAcctCrncyCode)
+				CUST.RATE.acctCrncy = CUST.LADISB.oldLoanCrncyCode
+                                CUST.RATE.refCrncy = CUST.LADISB.OpAcctCrncyCode
+                                CUST.RATE.TranType = "T"
+                                CALL("fetchRateCode.scr")
+
+                                IF(CUST.RATE.errorFlg != "Y")THEN
+                                #{
+                                        CUST.LADISB.repayRateCode = CUST.RATE.rateCode
+                                #}
+                                ELSE
+                                #{
+                                        CUST.LADISB.statFlg = "E"
+                                        CUST.LADISB.errMsg = CUST.RATE.errorMsg
+                                        PRINT(CUST.LADISB.errMsg)
+                                        GOTO ENDOFSCRIPT
+                                #}
+                                ENDIF
+
+				
+				#-----------------------------------------------------------------------
+				# 	Defining Transaction between credit account and debit Account
+				#-----------------------------------------------------------------------
+				IF(CDOUBLE(CUST.LADISB.crAmount) < 0) THEN
+				#{
+					CUST.LADISB.crAmount = -1 * CDOUBLE(CUST.LADISB.crAmount)
+					PRINT(CUST.LADISB.crAmount)
+				#}
+				ENDIF
+				
+				
+				#------------------------------------------------------------------------------------------
+				# Service SRV_FetchLaAcctDtlForPayOff
+				#------------------------------------------------------------------------------------------
+				sv_a = urhk_SetUrhkInp("payOffCrit.payOffValueDate|"+BANCS.STDIN.BODDate)
+				sv_a = urhk_SetUrhkInp("payOffCrit.funcCode|P")
+				sv_a = urhk_SetUrhkInp("payOffCrit.laAcct.foracid|"+CUST.LADISB.foracid)
+				sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranType|T")
+				sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranSubType|BI")
+				sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranSubDesc|BANK INDUCED")
+				sv_a = urhk_SetUrhkInp("payOffCrit.collAcct.foracid|"+CUST.LADISB.opForacid)
+				
+				#IF(CUST.LADISB.OpAcctCrncyCode != CUST.LADISB.oldLoanCrncyCode) THEN
+				#{
+				sv_a = urhk_SetUrhkInp("payOffCrit.tranExcgRateCode.refCode|"+CUST.LADISB.repayRateCode)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("payOffCrit.tranExcgRateCode.refRecType|67")
+				PRINT(sv_a)
+				#}
+				#ENDIF
+				
+				sv_a = urhk_SetUrhkInp("payOffCrit.calcDsaPenalty|N")
+				sv_a = urhk_SetUrhkInp("payOffCrit.reverseSubvention|N")
+				sv_a = urhk_SetUrhkInp("payOffCrit.fcSolId|"+BANCS.STDIN.homeSolId)
+				sv_a = urhk_SetUrhkInp("payOffCrit.prePaymentType|V")
+				sv_a = urhk_SetUrhkInp("assmntMsg.laAcct.foracid|"+CUST.LADISB.foracid)
+				
+				sv_u = urhk_ExecSrv("SRV_FetchLaAcctDtlForPayOff|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				
+				IF(sv_u == 0) THEN
+				#{
+					#------------------------------------------------------------------------------------------
+					# Executing the next service if the above service executed successfully
+					#------------------------------------------------------------------------------------------
+					sv_a= urhk_CopyOutToIn("")
+					sv_u = urhk_ExecSrv("SRV_FetchTranDtlsForPayOff|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_u)
+					
+					IF(sv_u == 0) THEN
+					#{
+						#------------------------------------------------------------------------------------------
+						# Executing the next service if the above service executed successfully
+						#------------------------------------------------------------------------------------------
+						sv_a= urhk_CopyOutToIn("")
+						
+						#sv_u = urhk_ExecSrv("SRV_PayOffLaAcct|retain_all_output = Y|same_user_verify = Y")
+						sv_u = urhk_ExecSrv("NAPI_PayOffLaAcct|retain_all_output = Y|same_user_verify = Y")
+						PRINT(sv_u)
+						
+						IF(sv_u == 0) THEN
+						#{
+							#------------------------------------------------------------------------------------------
+							# If the count is one then payoff modified successfully.
+							# passing all the inputs to payoff service verify function
+							#------------------------------------------------------------------------------------------
+							#------------------------------------------------------------------------------------------
+							# Service SRV_FetchLaAcctDtlForPayOff
+							#------------------------------------------------------------------------------------------
+							PRINT(CUST.LADISB.foracid)
+							sv_a = urhk_SetUrhkInp("payOffCrit.payOffValueDate|"+BANCS.STDIN.BODDate)
+							sv_a = urhk_SetUrhkInp("payOffCrit.funcCode|V")
+							sv_a = urhk_SetUrhkInp("payOffCrit.laAcct.foracid|"+CUST.LADISB.foracid)
+							sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranType|T")
+							sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranSubType|BI")
+							sv_a = urhk_SetUrhkInp("payOffCrit.tranType.tranSubDesc|BANK INDUCED")
+							sv_a = urhk_SetUrhkInp("payOffCrit.collAcct.foracid|"+CUST.LADISB.opForacid)
+							sv_a = urhk_SetUrhkInp("tranObj.tranDetail.ignoreXcpnFlg|Y")
+							
+							IF(CUST.LADISB.OpAcctCrncyCode != CUST.LADISB.oldLoanCrncyCode) THEN
+							#{
+								sv_a = urhk_SetUrhkInp("payOffCrit.tranExcgRateCode.refCode|"+CUST.LADISB.repayRateCode)
+								PRINT(sv_a)
+								sv_a = urhk_SetUrhkInp("payOffCrit.tranExcgRateCode.refRecType|67")
+								PRINT(sv_a)
+							#}
+							ENDIF
+							
+							sv_a = urhk_SetUrhkInp("payOffCrit.calcDsaPenalty|N")
+							sv_a = urhk_SetUrhkInp("payOffCrit.reverseSubvention|N")
+							sv_a = urhk_SetUrhkInp("payOffCrit.fcSolId|"+BANCS.STDIN.homeSolId)
+							sv_a = urhk_SetUrhkInp("payOffCrit.prePaymentType|V")
+							sv_a = urhk_SetUrhkInp("assmntMsg.laAcct.foracid|"+CUST.LADISB.foracid)
+							
+							sv_u = urhk_ExecSrv("SRV_FetchLaAcctDtlForPayOff|retain_all_output = Y|same_user_verify = Y")
+							PRINT(sv_u)
+							
+							IF(sv_u == 0) THEN
+							#{
+								#------------------------------------------------------------------------------------------
+								# Executing the next service if the above service executed successfully
+								#------------------------------------------------------------------------------------------
+								sv_a= urhk_CopyOutToIn("")
+								sv_u = urhk_ExecSrv("SRV_FetchTranDtlsForPayOff|retain_all_output = Y|same_user_verify = Y")
+								PRINT(sv_u)
+								
+								IF(sv_u == 0) THEN
+								#{
+									#------------------------------------------------------------------------------------------
+									# If the count is one then payoff modified successfully.
+									# passing all the inputs to payoff service verify function
+									#------------------------------------------------------------------------------------------
+									sv_a= urhk_CopyOutToIn("")
+									sv_a = urhk_SetUrhkInp("tranObj.tranDetail.ignoreXcpnFlg|Y")
+									PRINT(sv_a)
+									sv_a = urhk_SetUrhkInp("payOffCrit.funcCode|V")
+									PRINT(sv_a)
+									sv_a = urhk_SetUrhkOut("tranObj.tranDetail.tranIdentifier.tranId|tranId")
+									PRINT(sv_a)
+									sv_a = urhk_SetUrhkOut("tranObj.tranDetail.tranIdentifier.tranDate|tranDate")
+									PRINT(sv_a)
+									sv_u = urhk_ExecSrv("NAPI_PayOffLaAcct|retain_all_output = Y|same_user_verify = Y")
+									PRINT(sv_u)
+									
+									IF(sv_u != 0) THEN
+									#{
+										sv_a= urhk_CopyOutToIn("")
+										sv_a = urhk_SetUrhkInp("tranObj.tranDetail.ignoreXcpnFlg|Y")
+										PRINT(sv_a)
+										sv_a = urhk_SetUrhkInp("payOffCrit.funcCode|V")
+										PRINT(sv_a)
+										sv_a = urhk_SetUrhkOut("tranObj.tranDetail.tranIdentifier.tranId|tranId")
+										PRINT(sv_a)
+										sv_a = urhk_SetUrhkOut("tranObj.tranDetail.tranIdentifier.tranDate|tranDate")
+										PRINT(sv_a)
+										sv_u = urhk_ExecSrv("NAPI_PayOffLaAcct|retain_all_output = Y|same_user_verify = Y")
+										PRINT(sv_u)
+									#}
+									ENDIF
+								#}
+								ENDIF
+							#}
+							ENDIF
+							
+							IF((FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) AND (sv_u == 0)) THEN
+							#{
+								CUST.LADISB.tranId= BANCS.OUTPARAM.tranId
+								PRINT(CUST.LADISB.tranId)
+								
+								sv_s = "echo 'Account ID \t Payoff Transaction ID' >>"+CUST.LADISB.sucsFile
+								PRINT(sv_s)
+								sv_a = SYSTEM(sv_s)
+								PRINT(sv_a)
+								
+								sv_s = "echo '" + CUST.LADISB.foracid + ":" + CUST.LADISB.tranId+"' >>"+CUST.LADISB.sucsFile
+								PRINT(sv_s)
+								sv_a = SYSTEM(sv_s)
+								PRINT(sv_a)
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				
+				IF (sv_v > 0) THEN
+				#{
+					sv_i = 1
+					CUST.LADISB.err = CUST.LADISB.foracid
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						CUST.LADISB.err = CUST.LADISB.err + "!" + sv_e
+						PRINT(CUST.LADISB.err)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_e)
+						sv_i = sv_i + 1
+					#}
+					DO
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_c = urhk_dbCursorFetch(sv_l)
+			PRINT(sv_c)
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(sv_l)
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF(CUST.LADISB.errMsg != "") THEN
+		#{
+			sv_s = "echo 'Account ID \t Remarks ' >>"+CUST.LADISB.failFile
+			PRINT(sv_s)
+			sv_a = SYSTEM(sv_s)
+			PRINT(sv_a)
+			
+			sv_s = "echo '"+CUST.LADISB.errMsg+"' >>"+CUST.LADISB.failFile
+			PRINT(sv_s)
+			sv_a = SYSTEM(sv_s)
+			PRINT(sv_a)
+			
+			sv_u = urhk_Setorbout("Error|Payoff Failed, kindly check HPR for the failure report")
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.err != "") THEN
+		#{
+			#sv_s = "echo '" + CUST.LADISB.foracid + ":" + CUST.LADISB.err+"' >>"+CUST.LADISB.failFile
+			sv_s = "echo '" + CUST.LADISB.err+"' >>"+CUST.LADISB.failFile
+			PRINT(sv_s)
+			sv_a = SYSTEM(sv_s)
+			PRINT(sv_a)
+			
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = " DELETE FROM TBAADM.CLTT "
+			sv_s = sv_s + "  WHERE "
+			sv_s = sv_s + "  EVENT_ID ='PYOFF'"
+			sv_s = sv_s + "  AND FUNC_CODE='P'"
+			sv_s = sv_s + "  AND bank_id = ?SVAR"
+			sv_s = sv_s + "  AND RCRE_USER_ID = ?SVAR"
+			PRINT(sv_s)
+			
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			PRINT(sv_d)
+			
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			PRINT(sv_d)
+			
+			#---------------------------------------------------------------------------------
+			# Checking if report file is of zero bytes
+			#---------------------------------------------------------------------------------
+			sv_a = "test -s " + CUST.LADISB.failFile
+			sv_b = SYSTEM(sv_a)
+			PRINT(sv_b)
+			
+			#---------------------------------------------------------------------------------
+			# Moving the File to  HPR menu
+			#---------------------------------------------------------------------------------
+			IF (sv_b == 0)THEN
+			#{
+				sv_a = "cp " + CUST.LADISB.failFile + " ${FIN_REPORTS_DIR}/" + BANCS.STDIN.userId + "/" + CUST.LADISB.failFile
+				PRINT(sv_a)
+				sv_b = SYSTEM(sv_a)
+				PRINT(sv_b)
+				
+				sv_x = "babx4040 ${B2K_SESSION_ID} ${FIN_REPORTS_DIR}/"+ BANCS.STDIN.userId + "/"+ CUST.LADISB.failFile +' '+'"'+" Payoff Error Report "+'"'+" MANAGER 1 N"
+				PRINT(sv_x)
+				sv_h = SYSTEM (sv_x)
+				PRINT(sv_h)
+			#}
+			ENDIF
+			
+			EXITSCRIPT
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------------------
+		# Checking if report file is of zero bytes
+		#---------------------------------------------------------------------------------
+		sv_a = "test -s " + CUST.LADISB.sucsFile
+		sv_b = SYSTEM(sv_a)
+		PRINT(sv_b)
+		
+		#---------------------------------------------------------------------------------
+		# Moving the File to  HPR menu
+		#---------------------------------------------------------------------------------
+		IF (sv_b == 0)THEN
+		#{
+			sv_a = "cp " + CUST.LADISB.sucsFile + " ${FIN_REPORTS_DIR}/" + BANCS.STDIN.userId + "/" + CUST.LADISB.sucsFile
+			PRINT(sv_a)
+			sv_b = SYSTEM(sv_a)
+			PRINT(sv_b)
+			
+			sv_x = "babx4040 ${B2K_SESSION_ID} ${FIN_REPORTS_DIR}/"+ BANCS.STDIN.userId + "/"+ CUST.LADISB.sucsFile +' '+'"'+" Payoff Success Report "+'"'+" MANAGER 1 N"
+			PRINT(sv_x)
+			sv_h = SYSTEM (sv_x)
+			PRINT(sv_h)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

@@ -1,0 +1,483 @@
+#-------------------------------------------------------------------------------------------------------------
+#    Name            : c2bre_file.scr
+#    Description     : Bulk mpesa recon upload
+#    Date            : 24-10-2022
+#    Author          : SUNDAR
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : C2BRE
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           24-oct-2022         SUNDAR              original Version         1.0
+#  2           03-nov-2022         Irungu James        Enable trace        1.1
+#-----------------------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+        endif
+
+	#-----------------------------
+        ## Variable Intialization
+        #-----------------------------
+	CUST.DATA.errMsg   = ""
+	CUST.DATA.Schm_type = ""
+        CUST.DATA.credit1   = CUST.DATA.AccountNo
+	print(CUST.DATA.credit1)
+        #CUST.DATA.credit1   = "0113000504075"
+        CUST.DATA.debit1 = CUST.DATA.DrAccountNo
+	print(CUST.DATA.debit1)
+        #CUST.DATA.debit1 = "0116500204304"
+        CUST.DATA.creditAmt1 = CDOUBLE(CUST.DATA.Amount)
+	CUST.DATA.ref_tran_amt = CUST.DATA.creditAmt1
+        PRINT(CUST.DATA.creditAmt1)
+        CUST.DATA.debitAmt1 = CDOUBLE(CUST.DATA.Amount) * -1
+
+	
+	
+	print(CUST.DATA.MobileNo)
+	print(CUST.DATA.RECEIPTNO)
+	print(CUST.DATA.CName)
+	#CUST.DATA.Tranparticular = "MPS " + CUST.DATA.MobileNo  + " " + CUST.DATA.RECEIPTNO + " " + CUST.DATA.CName
+	CUST.DATA.Tranparticular = "MPS " + CUST.DATA.MobileNo  + " " + CUST.DATA.RECEIPTNO + " " + CUST.DATA.Sender
+	CUST.DATA.Tranparticular = mid$(CUST.DATA.Tranparticular,0,49)
+
+	CUST.DATA.tran_crncy_code = ""
+	sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.credit1)
+	IF (sv_u == 0) THEN
+		CUST.DATA.tran_crncy_code = BANCS.OUTPARAM.acctCrncyCode
+		CUST.DATA.ref_crncy_code = CUST.DATA.tran_crncy_code
+		PRINT(CUST.DATA.tran_crncy_code)
+		CUST.DATA.Schm_type = BANCS.OUTPARAM.schmType
+		Print (CUST.DATA.Schm_type)
+		CUST.DATA.schmcodesh = BANCS.OUTPARAM.schmCode
+		CUST.DATA.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+
+		IF (CUST.DATA.schmcodesh == "VA300") THEN
+			CUST.DATA.TTotal = cdouble (CUST.DATA.creditAmt1) + cdouble (CUST.DATA.EffAvailableAmttr)
+			print (CUST.DATA.TTotal)
+			IF (cdouble (CUST.DATA.TTotal) > 100000) then
+				CUST.DATA.Status = "VA300 Above 100000 balance"
+				GOTO ENDOFSCRIPT
+			ENDIF
+		ENDIF
+		
+		sv_d = "TranYN | select CUSTOM.fn_corp_check(?SVAR,?SVAR) from dual"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.credit1
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+			CUST.DATA.TranYN = BANCS.OUTPARAM.TranYN
+			IF (CUST.DATA.TranYN=="N") THEN
+				CUST.DATA.Status = "Search Not Ok"
+				GOTO ENDOFSCRIPT
+			ENDIF
+		ENDIF
+	ELSE
+		CUST.DATA.Status = "Account Not Found for Transaction Initiate"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	IF(TRIM(BANCS.STDIN.homeCrncyCode) != TRIM(CUST.DATA.tran_crncy_code))THEN
+	#{
+		CUST.DATA.ref_crncy_code = CUST.DATA.tran_crncy_code
+
+		#=======================================#
+		#      Conver amount to other currency  #
+		#=======================================#
+		BANCS.INPARAM.InputAmount       = CDOUBLE(CUST.DATA.creditAmt1)
+		BANCS.INPARAM.FromCurrency      = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.ToCurrency        = CUST.DATA.ref_crncy_code
+		BANCS.INPARAM.RateCode          = "NOR"
+		BANCS.INPARAM.Rate              = ""
+		sv_r = urhk_B2k_ConvertAmount("")
+		print(sv_r)
+		IF(sv_r == 0) THEN
+		#{
+			CUST.DATA.ref_tran_amt = BANCS.OUTPARAM.OutputAmount
+			print(CUST.DATA.ref_tran_amt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+
+	IF (CUST.DATA.Schm_type !="LAA") THEN
+
+		#---------------------------------
+		# Populate MTT details
+		#---------------------------------
+
+			sv_r = urhk_MTTS_PopulateInputDetails("")
+			Print(sv_r)
+
+			IF (sv_r != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				CUST.DATA.errMsg = MTT.Error.Description
+				PRINT(CUST.DATA.errMsg)
+				EXITSCRIPT
+			#}
+			ENDIF
+
+		#---------------------------------
+		#  Closing of MTT if it is opened
+		#---------------------------------
+
+		sv_g = urhk_MTTS_Close("")
+		print(sv_g)
+
+		IF (sv_g != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#-----------------------------
+		#--- Initialize MTT details
+		#-----------------------------
+					
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.PartTranLUWFlg            = "Y"
+		BANCS.INPARAM.IgnoreExcp        = "I"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		sv_o = urhk_MTTS_Initialize("")
+		PRINT(sv_o)
+
+		IF(sv_o != 0)THEN
+		#{
+			sv_o = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#-------------------------------
+		# Define the transaction  #HEADER DETAILS
+		#-------------------------------
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+
+		sv_r = urhk_MTTS_DefineTransaction("AUTOPOST")
+		print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#----------------------------------------------
+		#Main Transaction-------------------------------
+		#----------------------------------------------
+		print(CUST.DATA.ref_tran_amt)
+		print(CUST.DATA.creditAmt1)
+		#--------------------------------------------------------------------------
+		#Credit to  account
+		#--------------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.DATA.credit1
+		MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.ref_tran_amt)
+		MTT.PartTranDetails.Amount              = cdouble(CUST.DATA.creditAmt1)
+		MTT.PartTranDetails.TranCurrency        = CUST.DATA.tran_crncy_code
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.ref_crncy_code
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.DATA.Tranparticular
+		MTT.PartTranDetails.Particulars2    = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.Remarks        = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.TranIdentifier = "AUTOPOST"
+		MTT.PartTranDetails.RateCode            = "NOR"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.DATA.RECEIPTNO
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("CR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+			
+		#Debit to Account 1
+		#-----------------------------------------------------------------------------
+		MTT.PartTranDetails.Account        = CUST.DATA.debit1
+		MTT.PartTranDetails.RefAmount = -(cdouble(CUST.DATA.ref_tran_amt))
+		MTT.PartTranDetails.Amount              = -(cdouble(CUST.DATA.creditAmt1))
+		MTT.PartTranDetails.TranCurrency        = CUST.DATA.tran_crncy_code
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.ref_crncy_code
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.DATA.Tranparticular
+		MTT.PartTranDetails.Particulars2    = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.RateCode            = "NOR"
+		MTT.PartTranDetails.Remarks        = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.TranIdentifier = "AUTOPOST"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.DATA.RECEIPTNO
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("DR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+
+
+		#--------------------------------------------------------------
+		# MTT ending definition to create transaction
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.DATA.tranId)
+
+			
+		#}
+		ENDIF
+
+		#--------------------------------------------------------------
+		# MTT Closing an initialized MTT
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		CUST.DATA.Status = CUST.DATA.errMsg
+	ELSE
+		
+		CUST.DATA.AmtX =  FORMAT$(CDOUBLE(CUST.DATA.ref_tran_amt),"%.2f")
+		Print(CUST.DATA.AmtX)
+		
+		CALL("Common_Interface_CreateRepos.scr")
+
+		CUST.INTERFACE.interfaceRequestVersion = "10.2"
+		CUST.INTERFACE.bankID =BANCS.STDIN.contextBankId
+		CUST.INTERFACE.channelID = "EMP"			
+		
+		CUST.INTERFACE.lastdatepart ="T00:00:00.000"
+		print(CUST.INTERFACE.lastdatepart)
+		
+		CUST.INTERFACE.sign ="-"
+		print(CUST.INTERFACE.sign)
+		
+		sv_s = "date,time|SELECT TO_CHAR(SYSDATE,'YYYY-MM-DD'),TO_CHAR(SYSDATE,'HH:MM:SS') FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0) THEN
+			CUST.INTERFACE.msgDateTime = BANCS.OUTPARAM.date + "T" + BANCS.OUTPARAM.time + ".000"
+			print(CUST.INTERFACE.msgDateTime)
+		ENDIF
+
+		sv_s = "RequestID|SELECT CONCAT(CONCAT('Req_',TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS')),(DBMS_RANDOM.STRING('A',5))) FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0)THEN
+			CUST.INTERFACE.RequestID1 = BANCS.OUTPARAM.RequestID
+			print(CUST.INTERFACE.RequestID1)
+		ELSE
+			CUST.INTERFACE.RequestID1 = "Req_" + MID$(BANCS.STDIN.sysDate,6,4) + MID$(BANCS.STDIN.sysDate,3,2) + MID$(BANCS.STDIN.sysDate,0,2) + MID$(BANCS.STDIN.sysDate,11,2) + MID$(BANCS.STDIN.sysDate,14,2) + MID$(BANCS.STDIN.sysDate,17,2)
+			print(CUST.INTERFACE.RequestID1)
+		ENDIF
+
+
+		CUST.INTERFACE.headerXML = ""
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Header>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestHeader>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<MessageKey>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestUUID>"+ CUST.INTERFACE.RequestID1 +"</RequestUUID>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ServiceRequestId>executeFinacleScript</ServiceRequestId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ServiceRequestVersion>10.2</ServiceRequestVersion>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ChannelId>" + CUST.INTERFACE.channelID + "</ChannelId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</MessageKey>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestMessageInfo>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<BankId>" + BANCS.STDIN.contextBankId + "</BankId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<TimeZone>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</TimeZone>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<EntityId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</EntityId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<EntityType>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</EntityType>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<MessageDateTime>" + CUST.INTERFACE.msgDateTime + "</MessageDateTime>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RequestMessageInfo>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Security>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Token>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<PasswordToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<UserId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</UserId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Password>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Password>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</PasswordToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Token>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<FICertToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</FICertToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUserLoginSessionId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUserLoginSessionId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUser>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUser>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUserPwd>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUserPwd>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<SSOTransferToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</SSOTransferToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Security>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RequestHeader>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Header>"
+
+
+		#-------------------------------------------------------------------------
+		#- Forming the Body for RetCustAdd
+		#-------------------------------------------------------------------------
+	
+		CUST.INTERFACE.bodyXMLMsg = ""
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Body>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<executeFinacleScriptRequest>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<ExecuteFinacleScriptInputVO>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<requestId>laspay_main.scr</requestId>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</ExecuteFinacleScriptInputVO>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<executeFinacleScript_CustomData>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<LASPAY_REQ>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<enteredAmt>" + CUST.DATA.AmtX + "</enteredAmt>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<enteredAmtCcy>" + CUST.DATA.ref_crncy_code+ "</enteredAmtCcy>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<sourceAcctID>" + CUST.DATA.debit1 + "</sourceAcctID>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<AccountID>" + CUST.DATA.credit1 + "</AccountID>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Refnum>" + CUST.DATA.RECEIPTNO + "</Refnum>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<lapaytype>MPESA</lapaytype>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Phone>" + CUST.DATA.MobileNo + "</Phone>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</LASPAY_REQ>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</executeFinacleScript_CustomData>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</executeFinacleScriptRequest>"
+		CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</Body>"
+
+		#-------------------------------------------------------------------------
+		#Appending the header XML and body XML.
+		#-------------------------------------------------------------------------
+		CUST.INTERFACE.reqXMLMsg = "MSG_TYPE=XML,MSG_SUB_TYPE=FIXML###"
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + "<FIXML>"
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + CUST.INTERFACE.headerXML
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + CUST.INTERFACE.bodyXMLMsg
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + "</FIXML>"
+
+		#-------------------------------------------------------------------------------
+		# Setting input values for urhk_ConnectToFIAndSendMsg userhook
+		#-------------------------------------------------------------------------------
+		BANCS.INPARAM.SERVICE_NAME              = "FIJCA"
+		print(BANCS.INPARAM.SERVICE_NAME)
+		BANCS.INPARAM.SEND_RECV_FLG             = "R"
+		sv_a = CUST.INTERFACE.reqXMLMsg
+		PRINT(sv_a)
+		
+		#-------------------------------------------------------------------------
+		#- Executing the userhook to make the Outbound Call
+		#-------------------------------------------------------------------------
+		sv_l = urhk_ConnectToFIAndSendMsg(sv_a)
+		print(sv_l)
+		IF (sv_l != 0) THEN
+			print(BANCS.OUTPARAM.ErrMsg)
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+			CUST.INTERFACE.errorMsgCode = "FIERR"
+			GOTO ENDOFSCRIPT
+		ENDIF
+		IF (BANCS.OUTPARAM.ErrMsg != "") THEN
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+			CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+			CUST.INTERFACE.errorMsgCode = "FIERR"
+			GOTO ENDOFSCRIPT
+		ELSE
+			CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+			print(CUST.INTERFACE.respXMLMsg)
+			CUST.INTERFACE.errorMsgFlg = ""
+			CUST.INTERFACE.errorMsgDesc = ""
+			
+			CUST.INTERFACE.opndate = ""
+			#CUST.INTERFACE.cifid = ""
+			CUST.INTERFACE.errorCode = ""
+			CUST.INTERFACE.errorDesc = ""
+			sv_x = CUST.INTERFACE.respXMLMsg
+					
+			#--------------------------------------------------------------------------------------------------------
+			# Fetching the status of the request
+			#--------------------------------------------------------------------------------------------------------
+			sv_y = "<Status>"
+			sv_z = "</Status>"
+			sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+			sv_e = GETPOSITION(sv_x, sv_z) - 1
+			IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+				CUST.INTERFACE.tranStatus = MID$(sv_x, sv_b, (sv_e - sv_b))
+			ELSE
+				CUST.INTERFACE.tranStatus = ""
+			ENDIF
+			print(CUST.INTERFACE.tranStatus)
+
+			#--------------------------------------------------------------------------------------------------------
+			# If Success fetching cif id and cif opn date else fetching error code and description
+			#--------------------------------------------------------------------------------------------------------
+			IF (CUST.INTERFACE.tranStatus =="SUCCESS")  THEN
+				CUST.INTERFACE.errorMsgFlg = "N"
+				sv_x = CUST.INTERFACE.respXMLMsg
+				sv_y = "<tranID>"
+				sv_z = "</tranID>"
+				sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+				sv_e = GETPOSITION(sv_x, sv_z) - 1
+				IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+					CUST.DATA.tranId = MID$(sv_x, sv_b, (sv_e - sv_b))
+					PRINT(CUST.DATA.tranId)
+				ENDIF		
+			ELSE
+				CUST.INTERFACE.errorMsgFlg = "N"
+				sv_x = CUST.INTERFACE.respXMLMsg
+				sv_y = "<ErrorDesc>"
+				sv_z = "</ErrorDesc>"
+				sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+				sv_e = GETPOSITION(sv_x, sv_z) - 1
+				IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+					CUST.DATA.Status = MID$(sv_x, sv_b, (sv_e - sv_b))
+					PRINT(CUST.DATA.Status)
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDOFSCRIPT:
+#trace off
+exitscript
+end-->

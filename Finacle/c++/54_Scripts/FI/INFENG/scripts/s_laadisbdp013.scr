@@ -1,0 +1,530 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: s_laadisbmn013.scr
+#   Description		: Additional charges are collected after disbursment for scheme LA505.
+#   Date			: 12-09-2013
+#   Author			: Bharath
+#   Input			: NA
+#   Output			: NA
+#   Called Script	:
+#   Calling Script	: NA
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             12-09-2013      Bharath				Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="79530a584c203c683a65015c43a4bcbdec187295a6c758086aee7b62559fcb7d"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_B2K_printRepos("BANCS")
+	print(sv_a)
+	
+	#-------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-------------------------------------------------------------------------------
+	CUST.LADISB.errMsg 		= ""
+	
+	#------------------------------------------------------------------------------
+	# Exitscript if function code is Reversal
+	#------------------------------------------------------------------------------
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.reversalTranId")
+	CUST.LADISB.reversalTran = BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.reversalTran)
+	IF (CUST.LADISB.reversalTran != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Getting acctId code from front end
+	#------------------------------------------------------------------------------
+	sv_a = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+	CUST.LADISB.loanAcctId  = BANCS.OUTPARAM.srvValue
+	print(CUST.LADISB.loanAcctId)
+	
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.disburseAmt")
+	CUST.LADISB.disbAmt             = BANCS.OUTPARAM.srvValue
+	sv_a=getPosition(CUST.LADISB.disbAmt,"|")
+	sv_b=strlen(CUST.LADISB.disbAmt)
+	CUST.LADISB.disbAmt		=LEFT$(CUST.LADISB.disbAmt,sv_a-1)
+	print(CUST.LADISB.disbAmt)
+	
+	sv_b = urhk_SRV_GetVal("acctDisburseTranLA.partTranLL.<rec_0>.tranRmks")
+	CUST.LADISB.tranPart	= TRIM(BANCS.OUTPARAM.srvValue)
+	print(CUST.LADISB.tranPart)
+	
+	#################################################################################
+	# Getting details of loan account
+	#################################################################################
+	sv_s = ""
+	sv_s = sv_s + " laSchmCode |"
+	sv_s = sv_s + " SELECT GAM.schm_code "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.foracid = ?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		CUST.LADISB.errMsg = "The account does not exists."
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.laSchmCode 		= BANCS.OUTPARAM.laSchmCode
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# LA505 ipf sweep
+	#--------------------------------------------------------------------------
+	print(CUST.LADISB.laSchmCode)
+	IF ( CUST.LADISB.laSchmCode == "LA505" ) THEN
+	#{
+		CUST.LADISB.delimeter = "@"
+		IF ( STRLEN(CUST.LADISB.tranPart) > 0 ) THEN
+		#{
+			CUST.LADISB.procFee = LEFT$( CUST.LADISB.tranPart, (GETPOSITION(CUST.LADISB.tranPart, CUST.LADISB.delimeter)-1) )
+			CUST.LADISB.procFee = TRIM(CUST.LADISB.procFee)
+			print(CUST.LADISB.procFee)
+			
+			CUST.LADISB.tranPart = RIGHT$( CUST.LADISB.tranPart, (STRLEN(CUST.LADISB.tranPart)-GETPOSITION(CUST.LADISB.tranPart, CUST.LADISB.delimeter)) )
+			print(CUST.LADISB.tranPart)
+			
+			CUST.LADISB.insuPrem = LEFT$( CUST.LADISB.tranPart, (GETPOSITION(CUST.LADISB.tranPart, CUST.LADISB.delimeter)-1) )
+			CUST.LADISB.insuPrem = TRIM(CUST.LADISB.insuPrem)
+			print(CUST.LADISB.insuPrem)
+			
+			CUST.LADISB.insuCode = RIGHT$( CUST.LADISB.tranPart, (STRLEN(CUST.LADISB.tranPart)-GETPOSITION(CUST.LADISB.tranPart, CUST.LADISB.delimeter)) )
+			CUST.LADISB.insuCode = TRIM(CUST.LADISB.insuCode)
+			print(CUST.LADISB.insuCode)
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.procFee == "" ) THEN
+		#{
+			CUST.LADISB.errMsg = "Please Enter Processing Charges"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.insuPrem == "" ) THEN
+		#{
+			CUST.LADISB.errMsg = "Please Enter Total Premium"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.insuCode == "" ) THEN
+		#{
+			CUST.LADISB.errMsg = "Please Enter Insurance Code"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			sv_s = "refDesc,longrefcode|"
+			sv_s = sv_s + "SELECT ref_desc,LONG_REF_CODE FROM TBAADM.RCT "
+			sv_s = sv_s + " WHERE ref_code = ?SVAR "
+			sv_s = sv_s + " AND ref_rec_type = '38' "
+			sv_s = sv_s + " AND del_flg = 'N' "
+			sv_s = sv_s + " AND bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.LADISB.insuCode + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			
+			IF ( sv_d == 0 ) THEN
+			#{
+				CUST.LADISB.refDesc = BANCS.OUTPARAM.refDesc
+				print(CUST.LADISB.refDesc)
+				CUST.LADISB.longrefcode = BANCS.OUTPARAM.longrefcode
+				print(CUST.LADISB.longrefcode)
+				
+				IF (CUST.LADISB.longrefcode=="") THEN
+				#{
+					CUST.LADISB.errMsg = "ACCOUNT NOT MAINTAINED"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				sv_a = " INSURANCE CODE :  "
+				sv_a = sv_a + CUST.LADISB.insuCode + " NAME : "
+				sv_a = sv_a + CUST.LADISB.refDesc
+				print(sv_a)
+				
+				#sv_u = urhk_TBAF_DispMesg(sv_a)
+				#}
+			ELSE
+				#{
+				CUST.LADISB.errMsg = "INVALID INSURANCE CODE"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			sv_w = CDOUBLE(CUST.LADISB.procFee) + CDOUBLE(CUST.LADISB.insuPrem)
+			print(sv_w)
+			IF ( CDOUBLE(CUST.LADISB.disbAmt) != sv_w ) THEN
+			#{
+				CUST.LADISB.errMsg = "Sum of Premium AND Charges is not Equal to Disbursement Amount"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------
+		#---Getting the operative account to credit
+		#---------------------------------------------------------------------
+		sv_s=""
+		sv_s = sv_s + " operAcctId|"
+		sv_s = sv_s + " SELECT GAM.foracid"
+		sv_s = sv_s + " FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.acid = ("
+		sv_s = sv_s + 			" SELECT LAM.op_acid"
+		sv_s = sv_s + 			" FROM TBAADM.GAM, TBAADM.LAM"
+		sv_s = sv_s + 			" WHERE LAM.acid = GAM.acid"
+		sv_s = sv_s + 			" AND LAM.bank_id = GAM.bank_id"
+		sv_s = sv_s + 			" AND GAM.foracid = ?SVAR"
+		sv_s = sv_s + 			" AND LAM.bank_id = ?SVAR)"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAcctId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		IF ( sv_d == 0 ) THEN
+		#{
+			CUST.LADISB.operAcctId	 = BANCS.OUTPARAM.operAcctId
+			print(CUST.LADISB.operAcctId)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "Error in finding operative account"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF ( CUST.LADISB.operAcctId == "" ) THEN
+		#{
+			CUST.LADISB.errMsg = "Operative account not linked to loan account"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.LADISB.insuPremAc		= CUST.LADISB.longrefcode
+		print(CUST.LADISB.insuPremAc)
+		CUST.LADISB.chrgBacid		= "ASSFNLNS"
+		print(CUST.LADISB.chrgBacid)
+		
+		#---------------------------------------------------------------------
+		#---Getting the office account for bacid and sol
+		#---------------------------------------------------------------------
+		sv_s = "chrgAcct|"
+		sv_s = sv_s + "SELECT foracid FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE GAM.bacid = ?SVAR"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.sol_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.LADISB.chrgBacid 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0 ) THEN
+		#{
+			CUST.LADISB.chrgAcct = BANCS.OUTPARAM.chrgAcct
+			print(CUST.LADISB.chrgAcct)
+			sv_u = urhk_getAcctDetailsInRepository(CUST.LADISB.chrgAcct)
+			print(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_a = urhk_TBAF_DispMesg("Account number is invalid ")
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errMsg = "Error in finding charge account ID"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("MTT")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","TranDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","PartTranDetails",5)
+		#}
+		ENDIF
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","InputDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","LAAddnlDetails")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","LAAddnlDetails",5)
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("MTT","Error",5)
+		#}
+		ENDIF
+		
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+		#{
+			CREATEREP("BANCS")
+		#}
+		ENDIF
+		
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		#{
+			CREATECLASS("BANCS","INPARAM",5)
+		#}
+		ENDIF
+		
+		BANCS.INPARAM.PostTranFlg = "X"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+		BANCS.INPARAM.CommitFlg="Y"
+		BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+		
+		BANCS.INPARAM.ErrorCheckForLuw="N"
+		BANCS.INPARAM.CheckExceptions="N"
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "CI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = "IPF collection"
+		MTT.TranDetails.PostFlag = "X"
+		sv_r = urhk_MTTS_Initialize("")
+		print(sv_r)
+		
+		sv_v = "BAR"
+		print(sv_v)
+		
+		sv_u = urhk_MTTS_DefineTransaction(sv_v)
+		
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		#--------------------------------------------------------------------------
+		# MTT code for creating tranxs
+		#--------------------------------------------------------------------------
+		
+		#--------------------------------------------------
+		# Crediting Account 1
+		#--------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.LADISB.chrgAcct
+		MTT.PartTranDetails.RefCurrency =  "KES"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "IPF collection for " + CUST.LADISB.loanAcctId
+		MTT.PartTranDetails.RefAmount = CUST.LADISB.procFee
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = "Charges "+ CUST.LADISB.insuCode + " - " + CUST.LADISB.refDesc
+		MTT.PartTranDetails.RefNum = CUST.LADISB.insuCode
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "DrPnl"
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		#--------------------------------------------------
+		# Crediting Account 2
+		#--------------------------------------------------
+		
+		MTT.PartTranDetails.Account = CUST.LADISB.insuPremAc
+		MTT.PartTranDetails.RefCurrency =  "KES"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "IPF collection for " + CUST.LADISB.loanAcctId
+		MTT.PartTranDetails.RefAmount = CUST.LADISB.insuPrem
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = "IPF Premium " + CUST.LADISB.insuPrem + " - " + CUST.LADISB.refDesc
+		MTT.PartTranDetails.RefNum = CUST.LADISB.insuCode
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "DrPnl"
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Debiting  Account
+		#------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.LADISB.operAcctId
+		MTT.PartTranDetails.RefCurrency = "KES"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "IPF collection for " + CUST.LADISB.loanAcctId
+		sv_a = cdouble(CUST.LADISB.disbAmt)
+		print(sv_a)
+		sv_a = -(sv_a)
+		print(sv_a)
+		MTT.PartTranDetails.RefAmount = sv_a
+		MTT.PartTranDetails.Remarks = "IPF Prem&Chrg "+ CUST.LADISB.insuCode + " - " + CUST.LADISB.refDesc
+		MTT.PartTranDetails.RefNum = CUST.LADISB.insuCode
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "CrIca"
+		sv_u = urhk_MTTS_definePartTran(sv_e)
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.LADISB.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		sv_b = urhk_MTTS_HandleExceptions("POST")
+		print(sv_b)
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		
+		IF (sv_r == 0) THEN
+		#{
+			IF(FIELDEXISTS(MTT.XCPN.NumExceptions)) THEN
+			#{
+				PRINT(MTT.XCPN.NumExceptions)
+				IF (MTT.XCPN.NumExceptions != 0) THEN
+				#{
+					sv_b = urhk_MTTS_HandleExceptions("POST")
+					print(sv_b)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.LADISB.tranid)
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		# Report file creation
+		#-----------------------------------------------------------------------------------------------
+		sv_p = urhk_B2k_PID("")
+		CUST.LADISB.pid = TRIM(BANCS.OUTPARAM.PID)
+		print(CUST.LADISB.pid)
+		CUST.LADISB.fileName = "LADISB"+ CUST.LADISB.pid +".log"
+		print(CUST.LADISB.fileName)
+		IF (CUST.LADISB.tranid != "") THEN
+		#{
+			sv_s= " SUCCESSFULL: " + CUST.LADISB.tranMsg + " transcation & charges collected successfully Transaction ID:"
+			sv_s = sv_s +  CUST.LADISB.tranid
+			ONS.CUSTOM.custDataOut = ONS.CUSTOM.custDataIn + "~ladisbres|"+CUST.LADISB.tranid+"|"+CUST.LADISB.tranMsg
+			
+			sv_c = "echo '" + CUST.LADISB.tranid + "' > LADTmpTran.txt"
+			print(sv_c)
+			sv_a = system(sv_c)
+			print(sv_a)
+			#}
+		ELSE
+			#{
+			sv_s = "FAILED: " + CUST.LADISB.tranMsg + " transaction & charges were not posted...Proceed with manual intervention from Account."
+			sv_s = sv_s + " " + CUST.LADISB.MTTErrDesc
+			ONS.CUSTOM.custDataOut = ONS.CUSTOM.custDataIn + "~ladisbres|Charges not Collected|"+CUST.LADISB.tranMsg
+		#}
+		ENDIF
+		sv_s = "echo '" + sv_s + "' >"+CUST.LADISB.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		
+		#--------------------------------------------------------------------------------------------------------------
+		# For HPR Entry
+		#--------------------------------------------------------------------------------------------------------------
+		sv_s = "babx4040 ${B2K_SESSION_ID} "+CUST.LADISB.fileName+' '+'"'+"HLADISB Charges Report "+'"'+" MANAGER 1 N"
+		print(sv_s)
+		sv_a = system(sv_s)
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			sv_a = urhk_SRV_SetErr(CUST.LADISB.errMsg)
+			print(CUST.LADISB.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

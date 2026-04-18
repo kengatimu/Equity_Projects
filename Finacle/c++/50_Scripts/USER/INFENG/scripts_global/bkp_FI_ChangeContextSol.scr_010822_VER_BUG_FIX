@@ -1,0 +1,182 @@
+#---------------------------------------------------------------------------------    
+#	Name			: fi_changecontextsol.scr
+#	Description		: To Change local LGI pointer context sol value
+#	Date			: 
+#	Author			: 
+#	Input			: NA
+#	Output			: NA
+#	Called Script	: SRV_AddAndPostXferTran_validate_data.scr
+#	Calling Scrip	: NA
+#	Menu Option		: HTM
+#	Srl. No			Date			Author			Description.   
+#	-------			---------		-------			---------------			
+#	1.0			09-09-2013	Devendran Manan		Original Version
+#----------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#       Creating repository and class
+#       Initializing the variables
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+###############################################################################
+# Validate the channel id for which context switch should be done
+##############################################################################
+
+CUST.DATA.DccId=""
+sv_a = urhk_GetChannelInfo("")
+print(sv_a)
+if (sv_a!=0) then
+#{
+     sv_u = urhk_SRV_SetErr("Error: Channel ID is not passed/Incorrect")
+     BANCS.OUTPUT.successOrFailure="F"
+     GOTO ENDOFSCRIPT
+#}
+else
+#{
+    CUST.DATA.DccId = BANCS.OUTPARAM.DccId
+    print(CUST.DATA.DccId)
+#}
+endif
+
+IF ((CUST.DATA.DccId == "ERP") OR (CUST.DATA.DccId == "IGL") OR ( CUST.DATA.DccId == "OMN") OR ( CUST.DATA.DccId == "ICO") OR ( CUST.DATA.DccId == "DEP") OR ( CUST.DATA.DccId == "POL") OR ( CUST.DATA.DccId == "BRK")) THEN
+#{
+	# Entitled for context switch
+	print("Ok for context switch")
+#}
+ELSE
+#{
+	# Skip the context switching as the channel is not entitled to change
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+CUST.DATA.noOfRecords = "0"
+sv_u = urhk_SRV_NumOfRecs("tranDtl.partTranDetailLL")
+PRINT(sv_u)
+IF (sv_u == 0) THEN
+#{
+	CUST.DATA.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+	PRINT(CUST.DATA.noOfRecords)
+#}
+ELSE
+#{
+	sv_u = urhk_SRV_SetErr("Error:urhk_SRV_NumOfRecs failed")
+	BANCS.OUTPUT.successOrFailure = "F"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_l = 0
+sv_m = ""
+sv_p = ""
+sv_n = 0
+sv_t = 0
+
+WHILE(sv_l < CINT(CUST.DATA.noOfRecords))
+#{
+	sv_v = Format$(sv_l,"%d")
+	sv_r = "<rec_"+sv_v+">"
+	#-------------------------------------------------------------------------------------------
+	# Fetch A/c - foracid
+	#-------------------------------------------------------------------------------------------
+	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".acctId.foracid")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		#("CUST").("DATA").("foracid_"+sv_r) = BANCS.OUTPARAM.srvValue
+		#CUST.DATA.foracid = ("CUST").("DATA").("foracid_"+sv_r)
+		CUST.DATA.foracid = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.foracid)
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for foracid")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".partTranType.code")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		("CUST").("DATA").("partTran _"+sv_r) = BANCS.OUTPARAM.srvValue
+		CUST.DATA.partTran = ("CUST").("DATA").("partTran _"+sv_r)
+		PRINT(CUST.DATA.partTran)
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for part Tran")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".delFlg")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.DATA.delFlg = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.delFlg)
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for delFlg")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	PRINT(CUST.DATA.foracid)
+	IF ((CUST.DATA.delFlg != "Y") AND (CUST.DATA.foracid != "")) THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.foracid)
+		IF (sv_u == 0) THEN
+		#{
+			IF(BANCS.OUTPARAM.acctOwnerShip == "O") THEN
+			#{
+				BANCS.INPARAM.FlagType="A"
+				BANCS.INPARAM.AcctId=CUST.DATA.foracid
+				sv_u = urhk_ContextSOLUpdate("")
+				IF(sv_u != 0) THEN
+				#{
+					sv_u = urhk_SRV_SetErr("Error: Unable to Change Context SOL for Acct:"+CUST.DATA.foracid)
+				#}
+				ENDIF
+				######## Exit after setting successfully for first office account
+				sv_l = CINT(CUST.DATA.noOfRecords)			
+				print(sv_l)
+				GOTO LOOPEND
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	LOOPEND:
+		sv_l = sv_l + 1
+        	print(sv_l)
+
+
+#}
+DO
+
+EXITSCRIPT
+#TRACE OFF
+END-->
+

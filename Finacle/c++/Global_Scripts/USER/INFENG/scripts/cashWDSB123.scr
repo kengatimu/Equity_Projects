@@ -1,0 +1,252 @@
+#-------------------------------------------------------------------------------------    
+#    Name			: cashWDSB123.scr
+#    Description		: SB123 to restrict withdrawals to only 1 per quater and less than 30% of saving
+#				ELSE interest accrued lost for the quater 
+#    Date			: 28-11-2024
+#    Author			: Collins Osuka
+#    Input			: NA
+#    Output			: NA
+#    Called Script	: NA
+#    Calling Script	: s_chargedp001.scr
+#    Menu Option	: 
+#    Srl. No		Date			Author			Description.   
+#    -------		----			------			----------------
+#    1.0		28-11-2024		Collins Osuka		Original Version
+
+#------------------------------------------------------------------------------------- 
+<--START 
+TRACE ON
+
+#------------------------------------------------------------------------------
+# Creating repository and class
+#------------------------------------------------------------------------------
+IF(REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+#{
+   	CREATECLASS("CUST","CPARAM", 5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Getting CSHDCHR_BACID values from CPARAM
+#------------------------------------------------------------------------------
+BANCS.INPUT.moduleName  = "CSHWDS"
+BANCS.INPUT.parameterId = "KONTI_IMPAMBA" 
+CALL ("getcparamvalue.scr") 
+IF(BANCS.OUTPUT.parameterVal != "")THEN 
+#{ 
+	CUST.CPARAM.schmCode = BANCS.OUTPUT.parameterVal 
+	print(CUST.CPARAM.schmCode)
+#} 
+ELSE
+#{
+	CUST.CSHDCHR.errMsg = "CPARAM setup not done for Scheme Code "
+	GOTO ENDOFSCRIPT 
+#}
+ENDIF
+
+
+
+BANCS.INPUT.parameterId = "WITH_AMT1" 
+CALL ("getcparamvalue.scr") 
+IF(BANCS.OUTPUT.parameterVal != "")THEN 
+#{ 
+	CUST.CPARAM.withamt1 = BANCS.OUTPUT.parameterVal 
+	print(CUST.CPARAM.withamt1)
+#} 
+ELSE
+#{
+	CUST.CSHDCHR.errMsg = "CPARAM setup not done for Withdrawal Charges "
+	GOTO ENDOFSCRIPT 
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "WITH_AMT2"
+CALL ("getcparamvalue.scr")
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+      CUST.CPARAM.withamt2 = BANCS.OUTPUT.parameterVal
+      print(CUST.CPARAM.withamt2)
+#}
+ELSE
+#{
+      CUST.CSHDCHR.errMsg = "CPARAM setup not done for Additional  Withdrawal Charges "
+      GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "DEPCHRG" 
+CALL ("getcparamvalue.scr") 
+IF(BANCS.OUTPUT.parameterVal != "")THEN 
+#{ 
+	CUST.CPARAM.depchrg = BANCS.OUTPUT.parameterVal 
+	print(CUST.CPARAM.depchrg)
+#} 
+ELSE
+#{
+	CUST.CSHDCHR.errMsg = "CPARAM setup not done for Charge Event Id "
+	GOTO ENDOFSCRIPT 
+#}
+ENDIF
+
+sv_a = urhk_getAcctDetailsInRepository(COLL.GLBDATA.account)
+IF (sv_a == 0) THEN 
+#{
+	CUST.CPARAM.balance = BANCS.OUTPARAM.clearBalance
+	#The withdrawal amount is more than 30 %
+	IF ((CDOUBLE(BANCS.INPUT.TranAmt)/CDOUBLE(CUST.CPARAM.balance)) > CDOUBLE("0.3")) THEN 
+	#{
+		CUST.CPARAM.chargeAmt = cint(CUST.CPARAM.withamt1) + cint(CUST.CPARAM.withamt2)
+		GOTO CHARGE
+							#interest TBD
+		CALL("intZeroSB123.scr")
+	#}
+	ENDIF
+	
+#}						
+ELSE						
+#{						
+	PRINT("Unable to get account details")						
+#}						
+ENDIF												
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_a = "currentDate, currentQuater, currentYear|"
+sv_a = sv_a + "select to_char(DB_STAT_DATE,'DD-Mon-YYYY'), to_char(DB_STAT_DATE,'Q'), to_char(DB_STAT_DATE,'YYYY') from tbaadm.gct where bank_id = ?SVAR"
+print(sv_a)
+
+sv_w = urhk_dbSelectWithBind(sv_a)
+PRINT(sv_w)
+
+IF (sv_w == 0) THEN 
+#{ 
+	CUST.CPARAM.currentDate = BANCS.OUTPARAM.currentDate
+	print(CUST.CPARAM.currentDate)
+    CUST.CPARAM.currentQuater = BANCS.OUTPARAM.currentQuater
+    print(CUST.CPARAM.currentQuater)
+    CUST.CPARAM.currentYear = BANCS.OUTPARAM.currentYear
+    print(CUST.CPARAM.currentYear)
+
+#}
+ENDIF
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + COLL.GLBDATA.account 
+print(BANCS.INPARAM.BINDVARS)
+sv_a = "countDrDTD|"
+sv_a = sv_a + "select count(*)  from tbaadm.dtd where acid in (select acid from tbaadm.gam where bank_id = ?SVAR  and foracid = ?SVAR ) and tran_type = 'C' and tran_sub_type = 'NP' and del_flg = 'N'"
+print(sv_a)
+sv_w = urhk_dbSelectWithBind(sv_a)
+PRINT(sv_w)
+
+IF (sv_w == 0) THEN
+#{
+	CUST.CPARAM.countDrDTD = BANCS.OUTPARAM.countDrDTD
+	PRINT(CINT(CUST.CPARAM.countDrDTD))
+	IF (CINT(CUST.CPARAM.countDrDTD) < 2) THEN
+	#{
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + COLL.GLBDATA.account
+		print(BANCS.INPARAM.BINDVARS)
+		sv_a = "lastDrDate, lastDrQuater, lastDrYear|"
+		sv_a = sv_a + "select to_char(max(TRAN_date),'DD-Mon-YYYY'), to_char(max(TRAN_date),'Q'), to_char(max(TRAN_date),'YYYY')  from tbaadm.htd where acid in (select acid from tbaadm.gam where bank_id = ?SVAR  and foracid = ?SVAR) and tran_type = 'C' and tran_sub_type = 'NP' and del_flg = 'N'"
+		print(sv_a)
+
+		sv_w = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_w)
+
+		IF (sv_w == 0) THEN
+		#{
+				CUST.CPARAM.lastDrDate = BANCS.OUTPARAM.lastDrDate
+				print(CUST.CPARAM.lastDrDate)
+				CUST.CPARAM.lastDrQuater = BANCS.OUTPARAM.lastDrQuater
+				print(CUST.CPARAM.lastDrQuater)
+				CUST.CPARAM.lastDrYear = BANCS.OUTPARAM.lastDrYear
+				print(CUST.CPARAM.lastDrYear)
+				
+				IF ((CUST.CPARAM.currentQuater == CUST.CPARAM.lastDrQuater AND CUST.CPARAM.currentYear == CUST.CPARAM.lastDrYear)) THEN
+				#{
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + COLL.GLBDATA.account + "|" + CUST.CPARAM.lastDrDate + "|" + CUST.CPARAM.lastDrDate
+					print(BANCS.INPARAM.BINDVARS)
+					sv_a = "countDrHTD|"
+					sv_a = sv_a + "select count(*) from tbaadm.htd where bank_id = '50' and acid in (select acid from tbaadm.gam where bank_id = '50' and foracid = ?SVAR) and tran_type = 'C' and tran_sub_type = 'NP' and tran_date >= TRUNC(to_date(?SVAR), 'Q') and tran_date < add_months(TRUNC(to_date(?SVAR), 'Q'), +3) and del_flg = 'N'"
+					print(sv_a)
+
+					sv_w = urhk_dbSelectWithBind(sv_a)
+					PRINT(sv_w)
+					
+					IF (sv_w == 0) THEN
+					#{
+						CUST.CPARAM.countDrHTD = BANCS.OUTPARAM.countDrHTD
+						
+						
+						IF ((CINT(CUST.CPARAM.countDrHTD) > 0 ) ) THEN
+						#{
+							CUST.CPARAM.chargeAmt = cint(CUST.CPARAM.withamt1) + cint(CUST.CPARAM.withamt2)
+							GOTO CHARGE
+							#interest TBD
+							CALL("intZeroSB123.scr")
+						#}
+						ELSE
+						#{
+							CUST.CPARAM.chargeAmt = cint(CUST.CPARAM.withamt1)
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+				ELSE
+				#{
+					CUST.CPARAM.chargeAmt = cint(CUST.CPARAM.withamt1)
+					
+				#}
+				ENDIF
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		CUST.CPARAM.lastDrDate = left$(BANCS.STDIN.BODDate,10)
+		CUST.CPARAM.chargeAmt = cint(CUST.CPARAM.withamt1) + cint(CUST.CPARAM.withamt2)
+		#handle removing interest
+		CALL("intZeroSB123.scr")
+		GOTO CHARGE
+	#}
+	ENDIF
+#}
+ENDIF
+
+CHARGE:
+print(CUST.CPARAM.chargeAmt)
+
+CUST.GCHRG.tranType = "T"
+CUST.GCHRG.tranSubType = "BI"
+CUST.GCHRG.drAcctId = COLL.GLBDATA.account
+CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+CUST.GCHRG.chrgAmt = CUST.CPARAM.chargeAmt + "|" + BANCS.STDIN.homeCrncyCode
+CUST.GCHRG.eventId = CUST.CPARAM.depchrg
+							
+CALL("gchrgcommon.scr")
+IF (CUST.GCHRG.successOrFailure == "S") THEN
+#{
+	PRINT("Charge collected")
+#}
+ELSE
+#{
+	PRINT("Failure")
+#}
+ENDIF
+
+
+EXITSCRIPT
+END-->

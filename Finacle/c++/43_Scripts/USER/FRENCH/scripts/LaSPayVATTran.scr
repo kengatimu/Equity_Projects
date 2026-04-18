@@ -1,0 +1,864 @@
+<--START
+
+	# Script body goes here
+	TRACE ON
+		####Customization : Collecting the VAT amount based on VAT percentage set at CPARAM ##############################
+		
+		
+		IF (REPEXISTS("CUST") == 0) THEN
+		#{
+			CREATEREP("CUST")
+		#}
+		ENDIF
+		IF (CLASSEXISTS("CUST", "VAT") == 0) THEN
+		#{
+			CREATECLASS("CUST", "VAT", 5)
+		#}
+		ENDIF
+		
+
+                IF (REPEXISTS("MTT") == 0) THEN
+                #{
+                        CREATEREP("MTT")
+                #}
+                ENDIF
+                IF (CLASSEXISTS("MTT", "InputDetails") == 0) THEN
+                #{
+                        CREATECLASS("MTT", "InputDetails", 5)
+                #}
+                ENDIF
+
+		#######Intialising varibles#################
+		
+		
+		IF (FIELDEXISTS(BANCS.INPUT.tranId)) THEN
+		#{
+			IF(BANCS.INPUT.tranId != "")THEN
+			#{
+				CUST.VAT.SattranId	= BANCS.INPUT.tranId
+				PRINT(CUST.VAT.SattranId)
+				#}
+			ELSE
+				#{
+				CUST.VAT.SattranId	= ""
+				PRINT(CUST.VAT.SattranId)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.VAT.SattranId	= ""
+			PRINT(CUST.VAT.SattranId)
+		#}
+		ENDIF
+		
+		IF (FIELDEXISTS(BANCS.INPUT.funcCode)) THEN
+		#{
+			IF(BANCS.INPUT.funcCode != "")THEN
+			#{
+				CUST.VAT.funcCode	= BANCS.INPUT.funcCode
+				PRINT(CUST.VAT.funcCode)
+				#}
+			ELSE
+				#{
+				CUST.VAT.funcCode	= ""
+				PRINT(CUST.VAT.funcCode)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.VAT.funcCode	= ""
+			PRINT(CUST.VAT.funcCode)
+		#}
+		ENDIF
+		
+		
+		CUST.VAT.acid =" "
+		CUST.VAT.intrstAmt="0"
+		sv_s="tranAmt,acid|SELECT SUM(ADJ_AMT),ACID FROM TBAADM.LDA WHERE BANK_ID=?SVAR AND TRIM(TRAN_ID)=?SVAR AND TO_DATE(TRAN_DATE,'DD-MM-YY')=TO_DATE(?SVAR,'DD-MM-YY') AND DMD_FLOW_ID='INDEM' GROUP BY ACID"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + TRIM(CUST.VAT.SattranId) + "|" + MID$(BANCS.STDIN.BODDate,0,10)
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_n = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_n)
+			
+		IF(sv_n == 0)THEN
+		#{
+				CUST.VAT.intrstAmt = BANCS.OUTPARAM.tranAmt
+				PRINT(CUST.VAT.intrstAmt)
+				CUST.VAT.acid = BANCS.OUTPARAM.acid
+				PRINT(CUST.VAT.acid)				
+				
+		#}
+		ELSE
+		#{
+				CUST.VAT.intrstAmt = 0
+				CUST.VAT.errMsg = "No satisfaction entry for the tranID"+CUST.VAT.SattranId
+				PRINT(CUST.VAT.errMsg)
+				GOTO ENDOFSCRIPT
+				
+		#}
+		ENDIF
+
+		
+
+		CUST.VAT.RevTranDate = MID$(BANCS.STDIN.BODDate,0,10)
+		PRINT(CUST.VAT.RevTranDate)
+
+		
+		#Fecthing scheme code for the account############
+		
+		sv_k = "schmCode,foracid,solId,acctCrncyCode|select SCHM_CODE ,FORACID,SOL_ID,ACCT_CRNCY_CODE from TBAADM.GAM  "
+		sv_k = sv_k + " where ACID= ?SVAR "
+		sv_k = sv_k + " AND ENTITY_CRE_FLG = 'Y'"
+		sv_k = sv_k + " AND BANK_ID = ?SVAR "
+		sv_k = sv_k + " AND DEL_FLG = 'N'"
+		
+		
+		PRINT(sv_k)
+		
+		
+		BANCS.INPARAM.BINDVARS =  CUST.VAT.acid + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_k = urhk_dbSelectWithBind(sv_k)
+		PRINT(sv_k)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.schmCode = BANCS.OUTPARAM.schmCode
+			PRINT(CUST.VAT.schmCode)
+			CUST.VAT.foracid = BANCS.OUTPARAM.foracid
+			PRINT(CUST.VAT.foracid)
+			CUST.VAT.solId = BANCS.OUTPARAM.solId
+			PRINT(CUST.VAT.solId)
+			CUST.VAT.acctCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+			PRINT(CUST.VAT.acctCrncyCode)
+                        CUST.VAT.CrncyCode = BANCS.OUTPARAM.acctCrncyCode
+                        PRINT(CUST.VAT.CrncyCode)
+			
+		#}
+		ENDIF
+					
+		CUST.VAT.schmCheck = "N"
+		CUST.VAT.vatPcnt = 0
+		CUST.VAT.vatBacid  = ""
+		#CUST.VAT.foracid = MTT.InputDetails.LoanAccount
+		CUST.VAT.tranId = CUST.VAT.SattranId
+		CUST.VAT.rate = "1"
+		sv_k = 0
+		sv_l = 0
+		CUST.VAT.penalInt = 0
+		CUST.VAT.normalInt = 0
+		CUST.VAT.NrmlOrRev = "N"
+		CUST.VAT.tranFailed ="N"
+		CUST.VAT.loanAcctVatApl = CUST.VAT.foracid
+		CALL("schmCheck.scr")
+		
+		PRINT(CUST.VAT.schmCheck)
+		PRINT(CUST.VAT.vatPcnt)
+		PRINT(CUST.VAT.vatBacid)
+		#CUST.VAT.acctCrncyCode = MTT.InputDetails.LoanAccountCrncyCode
+		CUST.VAT.totalIndSatFcy = CDOUBLE(CUST.VAT.intrstAmt)
+		PRINT(CUST.VAT.totalIndSatFcy)
+		
+		sv_s = "PandLBacid|"
+		sv_s = sv_s + "SELECT INT_PANDL_BACID_DR FROM TBAADM.GSP WHERE SCHM_CODE = ?SVAR"
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.VAT.schmCode + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_k = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_k)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.PandLBacid = BANCS.OUTPARAM.PandLBacid
+			PRINT(CUST.VAT.PandLBacid)
+		#}
+		ENDIF
+		
+		
+		
+		sv_a = CUST.VAT.vatBacid +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+		sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.vatAcct = BANCS.OUTPARAM.AcctId
+			PRINT(CUST.VAT.vatAcct)
+			#}
+		ELSE
+			#{
+			CUST.VAT.vatAcct = ""
+		#}
+		ENDIF
+		sv_a = CUST.VAT.PandLBacid +"|"+  BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+		sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.PAndLAcct = BANCS.OUTPARAM.AcctId
+			PRINT(CUST.VAT.PAndLAcct)
+			#}
+		ELSE
+			#{
+			CUST.VAT.PAndLAcct = ""
+		#}
+		ENDIF
+		
+		sv_s = "penalPandLBacid|"
+		sv_s = sv_s + "SELECT PENAL_PANDL_BACID FROM TBAADM.GSP WHERE SCHM_CODE = ?SVAR"
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.VAT.schmCode + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_k = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_k)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.penalPandLBacid = BANCS.OUTPARAM.penalPandLBacid
+			PRINT(CUST.VAT.penalPandLBacid)
+		#}
+		ENDIF
+		
+		sv_a = CUST.VAT.penalPandLBacid +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+		sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+		
+		IF(sv_k == 0)THEN
+		#{
+			CUST.VAT.penalPAndLAcct = BANCS.OUTPARAM.AcctId
+			PRINT(sv_b)
+			#}
+		ELSE
+			#{
+			CUST.VAT.penalPAndLAcct = ""
+		#}
+		ENDIF
+		
+		sv_b = CDOUBLE(CUST.VAT.vatPcnt)* CDOUBLE(CUST.VAT.intrstAmt)/100
+		PRINT(sv_b)
+		
+		#=======Fetching the normal and penal amounts using the function
+		
+		IF (CUST.VAT.funcCode == "S" ) THEN
+		#{
+			sv_s = "normalInt|"
+			sv_s = sv_s + "SELECT custom.getinterestparts(?SVAR,?SVAR,?SVAR,'N') FROM DUAL"
+			
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.VAT.foracid + "|" + LTRIM(CUST.VAT.intrstAmt) + "|" + BANCS.STDIN.contextBankId
+			
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_n = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_n)
+			
+			IF(sv_n == 0)THEN
+			#{
+				CUST.VAT.normalInt = BANCS.OUTPARAM.normalInt
+				PRINT(CUST.VAT.normalInt)
+				
+				
+				#}
+			ELSE
+				#{
+				CUST.VAT.normalInt = 0
+			#}
+			ENDIF
+			
+			sv_s = "penalInt|"
+			sv_s = sv_s + "SELECT custom.getinterestparts(?SVAR,?SVAR,?SVAR,'P') FROM DUAL"
+			
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.VAT.foracid + "|" +LTRIM( CUST.VAT.intrstAmt) + "|" + BANCS.STDIN.contextBankId
+			
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_n = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_n)
+			
+			IF(sv_n == 0)THEN
+			#{
+				CUST.VAT.penalInt = BANCS.OUTPARAM.penalInt
+				PRINT(CUST.VAT.penalInt)
+				
+				#}
+			ELSE
+				#{
+				CUST.VAT.penalInt = 0
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		sv_r = urhk_B2k_printRepos("MTT")
+		sv_r = urhk_B2k_printRepos("BANCS")
+		IF (CUST.VAT.funcCode == "R" ) THEN
+		#{
+			CUST.VAT.NrmlOrRev = "R"
+			
+			IF(mid$(BANCS.STDIN.BODDate,0,10) != CUST.VAT.RevTranDate) THEN
+			#{
+				sv_s = "normalInt|"
+				sv_s = sv_s + " SELECT sum(TRAN_AMT)  FROM tbaadm.dctd_acli WHERE bank_id = ?SVAR "
+				sv_s = sv_s + " AND (tran_id,tran_date) in (select vat_tran_id,tran_date from custom.C_LOAN_VAT_TRAN_TBL where "
+				sv_s = sv_s + " acid=(select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				sv_s = sv_s + " AND sat_tran_id = LPAD(?SVAR,9,' ') AND vat_tran_id !='NA' AND vat_tran_id is not null "
+				sv_s = sv_s + " AND tran_date = (select to_date(?SVAR, 'DD-MM-YYYY HH24:MI:SS') + (?SVAR) from dual) "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR AND dr_cr_ind='CR') "
+				sv_s = sv_s + " AND tran_particular = ?SVAR  AND part_tran_type = 'D' "
+				sv_s = sv_s + " AND acid = (select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				
+				CUST.VAT.LoanAccount =  " Loan VAT Dr:" +CUST.VAT.foracid
+				
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.foracid
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + LTRIM(CUST.VAT.SattranId)
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.BODDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.RevTranDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.LoanAccount
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.PAndLAcct
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				#}
+			ELSE
+				#{
+				
+				sv_s = "normalInt|"
+				sv_s = sv_s + " SELECT sum(TRAN_AMT) FROM tbaadm.dctd_acli WHERE bank_id = ?SVAR "
+				sv_s = sv_s + " AND (tran_id,tran_date)  in (select vat_tran_id,tran_date from custom.C_LOAN_VAT_TRAN_TBL where "
+				sv_s = sv_s + " acid=(select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				sv_s = sv_s + " AND sat_tran_id = LPAD(?SVAR,9,' ')  AND vat_tran_id !='NA' AND vat_tran_id is not null "
+				sv_s = sv_s + " AND tran_date = to_date(?SVAR, 'DD-MM-YYYY HH24:MI:SS') AND BANK_ID = ?SVAR AND dr_cr_ind='CR') "
+				sv_s = sv_s + " AND tran_particular = ?SVAR  AND part_tran_type = 'D' "
+				sv_s = sv_s + " AND acid = (select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				
+				CUST.VAT.LoanAccount =  " Loan VAT Dr:" +CUST.VAT.foracid
+				
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.foracid
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + LTRIM(CUST.VAT.SattranId)
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.RevTranDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.LoanAccount
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.PAndLAcct
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+			#}
+			ENDIF
+			
+			PRINT(sv_s)
+			
+			sv_n = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_n)
+			
+			IF(sv_n == 0)THEN
+			#{
+				CUST.VAT.normalInt = BANCS.OUTPARAM.normalInt
+				PRINT(CUST.VAT.normalInt)
+				
+				
+				#}
+			ELSE
+				#{
+				CUST.VAT.normalInt = 0
+			#}
+			ENDIF
+			
+			IF(mid$(BANCS.STDIN.BODDate,0,10) != CUST.VAT.RevTranDate) THEN
+			#{
+				sv_s = "penalInt|"
+				sv_s = sv_s + " SELECT sum(TRAN_AMT) FROM tbaadm.dctd_acli WHERE bank_id = ?SVAR "
+				sv_s = sv_s + " AND (tran_id,tran_date) in (select vat_tran_id,tran_date from custom.C_LOAN_VAT_TRAN_TBL where "
+				sv_s = sv_s + " acid=(select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				sv_s = sv_s + " AND sat_tran_id = LPAD(?SVAR,9,' ')  AND vat_tran_id !='NA' AND vat_tran_id is not null "
+				sv_s = sv_s + " AND tran_date = (select to_date(?SVAR, 'DD-MM-YYYY HH24:MI:SS') + (?SVAR) from dual) "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR AND dr_cr_ind='CR') "
+				sv_s = sv_s + " AND tran_particular = ?SVAR  AND part_tran_type = 'D' "
+				sv_s = sv_s + " AND acid = (select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				
+				CUST.VAT.LoanAccount =  " Loan VAT Dr:" +CUST.VAT.foracid
+				
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.foracid
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + LTRIM(CUST.VAT.SattranId)
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.BODDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.RevTranDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.LoanAccount
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.penalPAndLAcct
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				#}
+			ELSE
+				#{
+				
+				sv_s = "penalInt|"
+				sv_s = sv_s + " SELECT sum(TRAN_AMT)  FROM tbaadm.dctd_acli WHERE bank_id = ?SVAR "
+				sv_s = sv_s + " AND (tran_id,tran_date) in (select vat_tran_id,tran_date from custom.C_LOAN_VAT_TRAN_TBL where "
+				sv_s = sv_s + " acid=(select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR)  AND vat_tran_id !='NA' AND vat_tran_id is not null "
+				sv_s = sv_s + " AND sat_tran_id = LPAD(?SVAR,9,' ') "
+				sv_s = sv_s + " AND tran_date = to_date(?SVAR, 'DD-MM-YYYY HH24:MI:SS') AND BANK_ID = ?SVAR AND dr_cr_ind='CR') "
+				sv_s = sv_s + " AND tran_particular = ?SVAR  AND part_tran_type = 'D' "
+				sv_s = sv_s + " AND acid = (select acid from tbaadm.GAM where foracid = ?SVAR "
+				sv_s = sv_s + " AND BANK_ID = ?SVAR) "
+				
+				CUST.VAT.LoanAccount =  " Loan VAT Dr:" +CUST.VAT.foracid
+				
+				BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.foracid
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + LTRIM(CUST.VAT.SattranId)
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.RevTranDate
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.LoanAccount
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + CUST.VAT.penalPAndLAcct
+				BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+			#}
+			ENDIF
+			
+			sv_n = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_n)
+			
+			IF(sv_n == 0)THEN
+			#{
+				CUST.VAT.penalInt = BANCS.OUTPARAM.penalInt
+				PRINT(CUST.VAT.penalInt)
+				
+				
+				#}
+			ELSE
+				#{
+				CUST.VAT.penalInt = 0
+			#}
+			ENDIF
+			
+			
+			
+			
+			
+		#}
+		ENDIF
+		sv_k = CDOUBLE(CUST.VAT.vatPcnt)* (CDOUBLE(CUST.VAT.normalInt))/100
+		IF (CUST.VAT.funcCode == "R" ) THEN
+		#{
+			sv_k = -1*CDOUBLE(CUST.VAT.normalInt)
+		#}
+		ENDIF
+		PRINT(sv_k)
+		
+		sv_l =  CDOUBLE(CUST.VAT.vatPcnt)* (CDOUBLE(CUST.VAT.penalInt))/100
+		IF (CUST.VAT.funcCode == "R" ) THEN
+		#{
+			sv_l = -1*CDOUBLE(CUST.VAT.penalInt)
+		#}
+		ENDIF
+		PRINT(sv_l)
+		
+		
+		##Below steps added to fetch rateCode based on custom table mapping
+		CUST.VAT.rateCode = ""
+		sv_s = "rateCode|SELECT DS_RATE_CODE FROM TBAADM.LAM WHERE BANK_ID=?SVAR AND ACID=?SVAR"
+		BANCS.INPARAM.BINDVARS= CUST.VAT.acid + "|" + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_n = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_n)
+		IF(sv_n == "0")THEN
+		#{
+			CUST.VAT.rateCode = BANCS.OUTPARAM.rateCode
+			PRINT(CUST.VAT.rateCode)
+		#}
+		ENDIF
+		IF(TRIM(CUST.VAT.rateCode) == "")THEN
+		#{
+			sv_s="rateCode|select REPAY_RATE_CODE from tbaadm.gct where bank_id=?SVAR"
+			BANCS.INPARAM.BINDVARS=BANCS.STDIN.contextBankId
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_n = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_n)
+			IF(sv_n == "0")THEN
+			#{
+				CUST.VAT.rateCode = BANCS.OUTPARAM.rateCode
+				PRINT(CUST.VAT.rateCode)
+			#}
+			ELSE
+			#{
+				CUST.VAT.errorMsg = "DB Error,Please contact Admin"
+				sv_u = urhk_SetOrbErr(CUST.VAT.errorMsg)
+				GOTO ENDOFSCRIPT
+			#}	
+			ENDIF
+		#}
+		ENDIF	
+		
+		
+		IF(CUST.VAT.acctCrncyCode != BANCS.STDIN.homeCrncyCode)THEN
+		#{
+			IF (CUST.VAT.funcCode != "R" ) THEN
+			#{
+				CUST.VAT.totalVatSatFcy = sv_k
+				PRINT(CUST.VAT.totalVatSatFcy)
+				CUST.VAT.totalIndSatFcy = CDOUBLE(CUST.VAT.normalInt)
+				PRINT(CUST.VAT.totalIndSatFcy)
+				sv_m = CUST.VAT.totalIndSatFcy
+				PRINT(sv_m)
+				#}
+			ELSE
+				#{
+				CUST.VAT.totalVatSatLcy = sv_k
+				PRINT(CUST.VAT.totalVatSatLcy)
+				CUST.VAT.totalIndSatLcy = -1 * ((CDOUBLE(CUST.VAT.normalInt) *100)/CDOUBLE(CUST.VAT.vatPcnt))
+				PRINT(CUST.VAT.totalIndSatLcy)
+				sv_m = CUST.VAT.totalIndSatLcy
+				PRINT(sv_m)
+			#}
+			ENDIF
+			
+			
+			
+			#convert amounts to home currency
+			IF (CUST.VAT.funcCode != "R" ) THEN
+			#{
+				BANCS.INPARAM.InputAmount=CUST.VAT.normalInt
+				BANCS.INPARAM.FromCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.ToCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				CUST.VAT.totalIndSatLcy = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(CUST.VAT.totalIndSatLcy)
+				
+				BANCS.INPARAM.InputAmount=sv_k
+				BANCS.INPARAM.FromCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.ToCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				CUST.VAT.totalVatSatLcy = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(CUST.VAT.totalVatSatLcy)
+				CUST.VAT.rate = BANCS.OUTPARAM.Rate
+				PRINT(CUST.VAT.rate)
+				sv_b = CUST.VAT.totalVatSatLcy
+				#}
+			ELSE
+				#{
+				BANCS.INPARAM.InputAmount= -1 * CDOUBLE(CUST.VAT.normalInt)
+				BANCS.INPARAM.FromCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.ToCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				CUST.VAT.totalVatSatFcy = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(CUST.VAT.totalVatSatFcy)
+				CUST.VAT.rate = BANCS.OUTPARAM.Rate
+				PRINT(CUST.VAT.rate)
+				sv_b = CUST.VAT.totalVatSatFcy
+				
+				BANCS.INPARAM.InputAmount=sv_m
+				BANCS.INPARAM.FromCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.ToCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				CUST.VAT.totalIndSatFcy = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(CUST.VAT.totalIndSatFcy)
+				
+			#}
+			ENDIF
+			
+			IF (CUST.VAT.funcCode != "R" ) THEN
+			#{
+				BANCS.INPARAM.InputAmount=sv_k
+				BANCS.INPARAM.FromCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.ToCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				sv_k = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(sv_k)
+				CUST.VAT.rate = BANCS.OUTPARAM.Rate
+				
+				BANCS.INPARAM.InputAmount=sv_l
+				BANCS.INPARAM.FromCurrency=CUST.VAT.acctCrncyCode
+				BANCS.INPARAM.ToCurrency=BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.RateCode=CUST.VAT.rateCode
+				BANCS.INPARAM.Rate=0
+				sv_r = urhk_B2k_ConvertAmount("")
+				sv_l = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+				PRINT(sv_l)
+				CUST.VAT.rate = BANCS.OUTPARAM.Rate
+				PRINT(CUST.VAT.rate)
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			IF (CUST.VAT.funcCode != "R" ) THEN
+			#{
+				CUST.VAT.totalVatSatFcy = 0
+				CUST.VAT.totalIndSatFcy  = 0
+				
+				CUST.VAT.totalVatSatLcy = sv_k
+				PRINT(CUST.VAT.totalVatSatLcy)
+				CUST.VAT.totalIndSatLcy = CDOUBLE(CUST.VAT.intrstAmt) - CDOUBLE(CUST.VAT.penalInt)
+				PRINT(CUST.VAT.totalIndSatLcy)
+				CUST.VAT.rate = "1"
+				#}
+			ELSE
+				#{
+				CUST.VAT.totalVatSatFcy = 0
+				CUST.VAT.totalIndSatFcy  = 0
+				
+				CUST.VAT.totalVatSatLcy = sv_k
+				PRINT(CUST.VAT.totalVatSatLcy)
+				CUST.VAT.totalIndSatLcy = -1 * ((CDOUBLE(CUST.VAT.normalInt) *100)/CDOUBLE(CUST.VAT.vatPcnt))
+				PRINT(CUST.VAT.totalIndSatLcy)
+				CUST.VAT.rate = "1"
+				
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		CUST.VAT.tranAmt = CUST.VAT.totalVatSatLcy
+		#CUST.VAT.rateCode = MTT.InputDetails.TranRateCode
+		
+		CUST.VAT.crDrInd = "CR"
+		CUST.VAT.PenalApplFlg	="N"
+		
+		IF(CUST.VAT.schmCheck == "Y")THEN
+		#{
+			IF (sv_k < 0 ) THEN
+			#{
+				sv_k = -1*sv_k
+			#}
+			ENDIF
+			PRINT(sv_k)
+			#--------------Part Transaction for Debiting P&L Account--------------#
+			
+			MTT.InputDetails.PAndLAcct = CUST.VAT.PAndLAcct
+			CUST.VAT.vatAcctDRNrml			     = CUST.VAT.PAndLAcct
+			CUST.VAT.RefAmountDRNrml           = sv_k
+			CUST.VAT.RateCodeDRNrml = CUST.VAT.rateCode
+			
+			
+			#			MTT.PartTranDetails.Account 			= CUST.VAT.PAndLAcct
+			#			MTT.PartTranDetails.RefCurrency 		= BANCS.STDIN.homeCrncyCode
+			#			MTT.PartTranDetails.Remarks 			= "Loan Recovery"
+			#			MTT.PartTranDetails.RefAmount		        = -sv_k
+			
+			IF (CUST.VAT.funcCode == "S" ) THEN
+			#{
+				
+				CUST.VAT.crDrInd = "CR"
+				#MTT.PartTranDetails.Particulars 		= " Loan VAT Dr:" + MTT.InputDetails.LoanAccount
+				CUST.VAT.ParticularsDRNrml         = " Loan VAT Dr:" + CUST.VAT.foracid
+				CUST.VAT.RemarksDRNrml           = "Loan Recovery VAT DR Normal"
+				#}
+			ELSE
+				#{
+				IF (CUST.VAT.funcCode == "R") THEN
+				#{
+					
+					CUST.VAT.crDrInd = "DR"
+					#MTT.PartTranDetails.Particulars 		= " Loan VAT Cr:" + MTT.InputDetails.LoanAccount
+					CUST.VAT.ParticularsDRNrml         = " Loan VAT Cr:" + CUST.VAT.foracid
+					CUST.VAT.RemarksDRNrml           = "Loan Recovery VAT CR Normal"
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			
+			PRINT(sv_b)
+			
+			#---------Part Transaction for  Crediting Vat Collection Account  ----------#
+			MTT.InputDetails.vatAcct = CUST.VAT.vatAcct
+			CUST.VAT.vatAcctCRNrml			     = CUST.VAT.vatAcct
+			CUST.VAT.RefAmountCRNrml           = sv_k
+			CUST.VAT.RateCodeCRNrml = CUST.VAT.rateCode
+			
+			PRINT(CUST.VAT.funcCode)
+			IF (CUST.VAT.funcCode == "S" ) THEN
+			#{
+				
+				CUST.VAT.crDrInd = "CR"
+				#MTT.PartTranDetails.Particulars         = "Loan VAT Cr : " +MTT.InputDetails.LoanAccount
+				CUST.VAT.RemarksCRNrml           = "Loan Recovery VAT CR Normal"
+				CUST.VAT.ParticularsCRNrml         = " Loan VAT Cr:" + CUST.VAT.foracid
+				#}
+			ELSE
+				#{
+				IF (CUST.VAT.funcCode == "R" ) THEN
+				#{
+					
+					CUST.VAT.crDrInd = "DR"
+					#MTT.PartTranDetails.Particulars         = "Loan VAT Dr : " +MTT.InputDetails.LoanAccount
+					CUST.VAT.RemarksCRNrml           = "Loan Recovery VAT DR Normal"
+					CUST.VAT.ParticularsCRNrml         = " Loan VAT Dr:" + CUST.VAT.foracid
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			
+			#--------------Part Transaction for Debiting P&L Account for penal--------------#
+			
+			IF (sv_l < 0 ) THEN
+			#{
+				sv_l = -1*sv_l
+			#}
+			ENDIF
+			PRINT(sv_k)
+			
+			IF(sv_l > 0)THEN
+			#{
+				CUST.VAT.PenalApplFlg	="Y"
+				
+				CUST.VAT.vatAcctDRPenal			     = CUST.VAT.penalPAndLAcct
+				CUST.VAT.RefAmountDRPenal           = sv_l
+				CUST.VAT.RateCodeDRPenal = CUST.VAT.rateCode
+				
+				IF (CUST.VAT.funcCode == "S" ) THEN
+				#{
+					
+					CUST.VAT.crDrInd = "CR"
+					#MTT.PartTranDetails.Particulars 		= " Loan VAT Dr:" + MTT.InputDetails.LoanAccount
+					CUST.VAT.RemarksDRPenal           = "Loan Recovery VAT DR Penal"
+					CUST.VAT.ParticularsDRPenal         = " Loan VAT Dr:" + CUST.VAT.foracid
+					#}
+				ELSE
+					#{
+					IF (CUST.VAT.funcCode == "R") THEN
+					#{
+						
+						CUST.VAT.crDrInd = "DR"
+						#MTT.PartTranDetails.Particulars 		= " Loan VAT Cr:" + MTT.InputDetails.LoanAccount
+						CUST.VAT.RemarksDRPenal           = "Loan Recovery VAT CR Penal"
+						CUST.VAT.ParticularsDRPenal         = " Loan VAT Cr:" + CUST.VAT.foracid
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			#---------Part Transaction for  Crediting Vat Collection Account  ----------#
+			IF(sv_l>0)THEN
+			#{
+				
+				CUST.VAT.vatAcctCRPenal			     = CUST.VAT.vatAcct
+				CUST.VAT.RefAmountCRPenal           = sv_l
+				CUST.VAT.RateCodeCRPenal = CUST.VAT.rateCode
+				
+				PRINT(CUST.VAT.funcCode)
+				IF (CUST.VAT.funcCode == "S" ) THEN
+				#{
+					
+					CUST.VAT.crDrInd = "CR"
+					#MTT.PartTranDetails.Particulars         = "Loan VAT Cr : " +MTT.InputDetails.LoanAccount
+					CUST.VAT.RemarksCRPenal           = "Loan Recovery VAT CR Penal"
+					CUST.VAT.ParticularsCRPenal         = " Loan VAT Cr:" + CUST.VAT.foracid
+					#}
+				ELSE
+					#{
+					IF (CUST.VAT.funcCode == "R" ) THEN
+					#{
+						
+						CUST.VAT.crDrInd = "DR"
+						#MTT.PartTranDetails.Particulars         = "Loan VAT Dr : " +MTT.InputDetails.LoanAccount
+						CUST.VAT.RemarksCRPenal           = "Loan Recovery VAT CR Penal"
+						CUST.VAT.ParticularsCRPenal         = " Loan VAT Cr:" + CUST.VAT.foracid
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		IF((sv_k !=0) OR (sv_l !=0))THEN
+		#{
+			CALL("VATLoanTranCreate.scr")
+			#}
+		ELSE
+			#{
+			CUST.VAT.tranId = "NA"
+			PRINT(CUST.VAT.tranId)
+		#}
+		ENDIF
+		
+		IF (FIELDEXISTS(CUST.VAT.vatTranId) AND (CUST.VAT.tranId != "NA")) THEN
+		#{
+			
+			PRINT(CUST.VAT.vatTranId)
+			CUST.VAT.tranId = CUST.VAT.vatTranId
+			PRINT(CUST.VAT.tranId)
+			
+			
+		#}
+		ENDIF
+		
+		################### End of customization #####################################
+		
+		
+				
+				IF (FIELDEXISTS(CUST.VAT.tranId) AND (CUST.VAT.tranFailed =="N")) THEN
+				#{
+					PRINT(CUST.VAT.tranId)
+					#}
+				ELSE
+					#{
+					if(CUST.VAT.tranId !="")then
+					#{
+					CUST.VAT.tranId = "NA"
+					PRINT(CUST.VAT.tranId)
+					#}
+					endif	
+				#}
+				ENDIF
+				
+				IF (FIELDEXISTS(CUST.VAT.SattranId)) THEN
+				#{
+					PRINT(CUST.VAT.SattranId)
+				#}
+				ENDIF
+				
+				
+				CALL("vatTableUpdate.scr")
+				#trace off
+				
+		
+		
+		ENDOFSCRIPT:
+				EXITSCRIPT
+		TRACE OFF
+END-->

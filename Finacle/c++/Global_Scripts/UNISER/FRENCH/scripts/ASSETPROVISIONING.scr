@@ -1,0 +1,664 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: ASSETPROVISIONING.scr
+# Type: NA|default
+# Description: Equity Finacle 10.2.13 to 10.2.18 Porting
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#------------------------------------------------------------------------------------------------
+#  Name            : ASSETPROVISIONING.scr
+#  Description     : Provision for an Asset
+#  Date            : 21-01-2013
+#  Author          : DhanaPrabhakaran
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : NA
+#  Menu Option     : HASPROV
+#  Srl. No         Date            Author          		Description.
+#  -------         ------          ------          		------------
+#  1.0             21-01-2013      Dhana Prabhakaran    Original Version
+#  2.0             07-03-2013      Dhana Prabhakaran    Variable name changed
+#-----------------------------------------------------------------------------------------------
+
+<--START
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","ASSET") == 0) THEN
+	#{
+		CREATECLASS("CUST","ASSET",5)
+	#}
+	ENDIF
+	
+	CUST.ASSET.errMsg 		= ""
+	
+	#	New field has been dumped into this script "tempProvisionedAmount".
+	#	This tempProvisionedAmount is calculated when APPT and CBPT set up is there.
+	#	On the basis of this field user can manipulate final Provision Amount.
+	sv_g = CDOUBLE(BANCS.INPUT.tempProvisionedAmount)
+	#print(BANCS.INPUT.tempProvisionedAmount)
+	#	New field has been dumped into this script "alterBacidFlg".
+	#	This alterBacidFlg means Bacid(Cr,Dr) has been interchanged already
+	#	IF this flag is YES means "tempProvisionedAmount" is reversal amount.
+	sv_h = BANCS.INPUT.alterBacidFlg
+	
+	#   One more new field "deferredIntAmt" has been dumped in script.
+	#   This will be used only for LAA type of account.
+	sv_i = CDOUBLE(BANCS.INPUT.deferredIntAmt)
+	
+	#----------------------------------------------------------------------------
+	#	Field totalPenalIntAmt (sv_s here) is calculated after dbselect from EIT
+	#	This is done only IF sv_k is not N
+	#----------------------------------------------------------------------------
+	sv_k = "N"
+	IF (sv_k != "N") THEN
+	#{
+		BANCS.INPARAM.b2kId = BANCS.INPUT.b2kId
+		BANCS.INPARAM.b2kType = BANCS.INPUT.b2kType
+		
+		BANCS.GLBDATA.Acid = BANCS.INPARAM.b2kId
+		sv_q = "penal_interest_amount_dr,addnl_interest_amount_dr,stock_interest_amount_dr,qis_interest_amount_dr,ovdu_interest_amount_dr|select penal_interest_amount_dr,addnl_interest_amount_dr,stock_interest_amount_dr,qis_interest_amount_dr,ovdu_interest_amount_dr from TBAADM.EIT where entity_id = ?SVAR "
+		sv_q = sv_q + " AND BANK_ID = ?SVAR  "
+		BANCS.INPARAM.BINDVARS= BANCS.GLBDATA.Acid + "|" + BANCS.STDIN.contextBankId
+		sv_q = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_q)
+		#}
+		IF (sv_q == 1) THEN
+		#{
+			BANCS.GLBDATA.ErrorMesg = "Invalid ID"
+			BANCS.GLBDATA.ErrorMesg = BANCS.GLBDATA.Acid + " : " + BANCS.GLBDATA.ErrorMesg
+			#}
+		ELSE
+			#{
+			BANCS.GLBDATA.penal_interest_amount_dr = BANCS.OUTPARAM.penal_interest_amount_dr
+			BANCS.GLBDATA.addnl_interest_amount_dr = BANCS.OUTPARAM.addnl_interest_amount_dr
+			BANCS.GLBDATA.stock_interest_amount_dr = BANCS.OUTPARAM.stock_interest_amount_dr
+			BANCS.GLBDATA.qis_interest_amount_dr = BANCS.OUTPARAM.qis_interest_amount_dr
+			BANCS.GLBDATA.ovdu_interest_amount_dr = BANCS.OUTPARAM.ovdu_interest_amount_dr
+			
+			sv_r = CDOUBLE(BANCS.GLBDATA.penal_interest_amount_dr)
+			sv_p = CDOUBLE(BANCS.GLBDATA.addnl_interest_amount_dr)
+			sv_t = CDOUBLE(BANCS.GLBDATA.stock_interest_amount_dr)
+			sv_u = CDOUBLE(BANCS.GLBDATA.qis_interest_amount_dr)
+			sv_v = CDOUBLE(BANCS.GLBDATA.ovdu_interest_amount_dr)
+			
+			sv_s = sv_r + sv_p + sv_t + sv_v + sv_u
+			PRINT(sv_s)
+		#}
+		ENDIF
+		
+		IF (sv_s != 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_a = CDOUBLE(BANCS.INPUT.liability)
+	sv_b = CDOUBLE(BANCS.INPUT.intSuspAmount)
+	sv_c = CDOUBLE(BANCS.INPUT.alreadyProvisionedAmount)
+	sv_d = CDOUBLE(BANCS.INPUT.primaryAbsoluteSecuValue)
+	#print(BANCS.INPUT.liability)
+	#print(BANCS.INPUT.intSuspAmount)
+	#print(BANCS.INPUT.alreadyProvisionedAmount)
+	#print(BANCS.INPUT.primaryAbsoluteSecuValue)
+	#-------------------------------------------------------------
+	#Initializing out put provision amt with input provision amt
+	#-------------------------------------------------------------
+	sv_z = sv_g
+	BANCS.OUTPUT.provisionAmount = 0
+	BANCS.OUTPUT.provisionCrBacid=""
+	BANCS.OUTPUT.provisionDrBacid=""
+	BANCS.OUTPUT.provisionRemarks=""
+	#-------------------------------------------------------------------
+	#Generally the liability for the ODA,CCA,LAA a/cs will be negative.
+	#But to calculate the prov amt , we should consider as +ve.
+	#-------------------------------------------------------------------
+	
+	#------------------------------------------------------------------------------
+	#Getting _CR_BACID values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "LOAN_ASSET_PROV"
+	
+	PRINT(BANCS.INPUT.schmCode)
+	IF (BANCS.INPUT.schmCode == "") THEN
+	#{
+		CUST.ASSET.errMsg = "Error in fetching input Scheme Code"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	BANCS.INPUT.parameterId = BANCS.INPUT.schmCode + "_CR_BACID"
+	PRINT(BANCS.INPUT.parameterId)
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ASSET.crBacid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "CPARAM setup not done for CR_BACID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#------------------------------------------------------------------------------
+	#Getting _DR_BACID values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = BANCS.INPUT.schmCode + "_DR_BACID"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.INPUT.parameterId)
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ASSET.drBacid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "CPARAM setup not done for DR_BACID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting BACID4 values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "BACID4"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ASSET.bacid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "CPARAM setup not done for Bacid4 "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting PROV_RMKS values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "PROV_RMKS"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ASSET.provRmks = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "CPARAM setup not done for Privision Remarks "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_a = CDOUBLE(BANCS.INPUT.liability)
+	sv_b = CDOUBLE(BANCS.INPUT.intSuspAmount)
+	sv_e = CDOUBLE(BANCS.INPUT.alreadyProvisionedAmount)
+	
+	#sv_f = CDOUBLE("BANCS.INPUT.primaryAbsoluteSecuValueprimaryAbsoluteSecuValue")
+	#PRINT(BANCS.INPUT.primaryAbsoluteSecuValueprimaryAbsoluteSecuValue)
+	
+	#-provision dr bacid
+	CUST.ASSET.provDrBacid = ""
+	
+	#-provision cr bacid
+	CUST.ASSET.provCrBacid = ""
+	
+	IF (BANCS.INPUT.schmType == "LAA") THEN
+	#{
+		CUST.ASSET.provCrBacid = CUST.ASSET.crBacid
+		CUST.ASSET.provDrBacid = CUST.ASSET.drBacid
+	#}
+	ENDIF
+	
+	# ENDIF
+	PRINT(CUST.ASSET.provCrBacid)
+	PRINT(CUST.ASSET.provDrBacid)
+	BANCS.INPUT.provisionCrBacid = CUST.ASSET.provCrBacid
+	BANCS.INPUT.provisionDrBacid = CUST.ASSET.provDrBacid
+	PRINT(BANCS.INPUT.provisionCrBacid)
+	PRINT(BANCS.INPUT.provisionDrBacid)
+	
+	#------------------------------------------------------------------
+	#---------starting for BANCS.INPUT.alreadyProvisionedAmount
+	#------------------------------------------------------------------
+	sv_i = CUST.ASSET.provCrBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ BANCS.STDIN.mySolId
+	PRINT (sv_i)
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.acctId=BANCS.OUTPARAM.AcctId
+		PRINT(CUST.ASSET.acctId)
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Fetching Credit Account Id"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "acid|"
+	sv_s = sv_s + " SELECT GAM.acid "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.foracid= ?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = CUST.ASSET.acctId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.acid = BANCS.OUTPARAM.acid
+		PRINT(CUST.ASSET.acid)
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Getting acid for Account ID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------
+	#-------------sum of cr
+	#--------------------------------------------------------------------
+	sv_s = "amt|"
+	sv_s = sv_s + "SELECT SUM(ACPART.tran_amt)"
+	sv_s = sv_s + " FROM TBAADM.ACPART"
+	sv_s = sv_s + " WHERE ACPART.part_tran_type='C' "
+	sv_s = sv_s + " AND ACPART.b2k_type='ACCNT'"
+	sv_s = sv_s + " AND ACPART.b2k_id = (SELECT GAM.acid FROM TBAADM.GAM WHERE GAM.foracid =?SVAR AND GAM.bank_id=ACPART.bank_id)"
+	sv_s = sv_s + " AND ACPART.partitioned_acid =?SVAR"
+	sv_s = sv_s + " AND ACPART.pstd_flg !='N'"
+	sv_s = sv_s + " AND ACPART.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|"+CUST.ASSET.acid+"|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.crAmt = BANCS.OUTPARAM.amt
+		PRINT(CUST.ASSET.crAmt)
+		IF (CUST.ASSET.crAmt == "") THEN
+		#{
+			CUST.ASSET.crAmt = 0
+			PRINT(CUST.ASSET.crAmt)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Find Total Tran Amount"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------
+	#----------sum of dr
+	#--------------------------------------------------------------------
+	sv_s = "amt|"
+	sv_s = sv_s + "SELECT SUM(ACPART.tran_amt) "
+	sv_s = sv_s + " FROM TBAADM.ACPART "
+	sv_s = sv_s + " WHERE ACPART.part_tran_type='D'"
+	sv_s = sv_s + " AND ACPART.b2k_type='ACCNT' "
+	sv_s = sv_s + " AND ACPART.b2k_id = (SELECT GAM.acid FROM TBAADM.GAM WHERE GAM.foracid =?SVAR AND GAM.bank_id=ACPART.bank_id)"
+	sv_s = sv_s + " AND ACPART.partitioned_acid =?SVAR"
+	sv_s = sv_s + " AND ACPART.pstd_flg !='N'"
+	sv_s = sv_s + " AND ACPART.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|"+CUST.ASSET.acid+"|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.drAmt = BANCS.OUTPARAM.amt
+		PRINT(CUST.ASSET.drAmt)
+		IF (CUST.ASSET.drAmt == "") THEN
+		#{
+			CUST.ASSET.drAmt = 0
+			PRINT(CUST.ASSET.drAmt)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Finding Tran Amount"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.ASSET.crAmt)
+	PRINT(CUST.ASSET.drAmt)
+	CUST.ASSET.clrProvsnalBal = CDOUBLE(CUST.ASSET.crAmt) - CDOUBLE(CUST.ASSET.drAmt)
+	PRINT(CUST.ASSET.clrProvsnalBal)
+	
+	#--------------------------------------------------------------------
+	#-------------------END for BANCS.INPUT.alreadyProvisionedAmount
+	#--------------------------------------------------------------------
+	
+	
+	#--------------------------------------------------------------------
+	#---------starting for BANCS.INPUT.intSuspAmount
+	#--------------------------------------------------------------------
+	
+	sv_i = CUST.ASSET.bacid +"|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.acctId= BANCS.OUTPARAM.AcctId
+		PRINT(CUST.ASSET.acctId)
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Finding Account ID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "acid|"
+	sv_s = sv_s + "SELECT GAM.acid "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.foracid= ?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id= ?SVAR"
+	BANCS.INPARAM.BINDVARS = CUST.ASSET.acctId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.acid = BANCS.OUTPARAM.acid
+		PRINT(CUST.ASSET.acid )
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Finding acid for Account ID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------
+	#--------------sum of cr
+	#--------------------------------------------------------------------
+	sv_s = "amt|"
+	sv_s = sv_s + " SELECT SUM(ACPART.tran_amt)"
+	sv_s = sv_s + " FROM TBAADM.ACPART"
+	sv_s = sv_s + " WHERE ACPART.part_tran_type='C' "
+	sv_s = sv_s + " AND ACPART.b2k_type='ACCNT'"
+	sv_s = sv_s + " AND ACPART.b2k_id = (SELECT GAM.acid FROM TBAADM.GAM WHERE GAM.foracid =?SVAR AND GAM.bank_id=ACPART.bank_id)"
+	sv_s = sv_s + " AND ACPART.partitioned_acid =?SVAR"
+	sv_s = sv_s + " AND ACPART.pstd_flg !='N'"
+	sv_s = sv_s + " AND ACPART.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|"+CUST.ASSET.acid+"|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.crAmt= BANCS.OUTPARAM.amt
+		PRINT(CUST.ASSET.crAmt)
+		IF (CUST.ASSET.crAmt == "") THEN
+		#{
+			CUST.ASSET.crAmt = 0
+			PRINT(CUST.ASSET.crAmt)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Finding Tran Amount for Account ID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------
+	#----------sum of dr
+	#--------------------------------------------------------------------
+	sv_s = "amt|"
+	sv_s = sv_s + " SELECT SUM(ACPART.tran_amt)"
+	sv_s = sv_s + " FROM TBAADM.ACPART"
+	sv_s = sv_s + " WHERE ACPART.part_tran_type='D' "
+	sv_s = sv_s + " AND ACPART.b2k_type='ACCNT'"
+	sv_s = sv_s + " AND ACPART.b2k_id = (SELECT GAM.acid from TBAADM.GAM WHERE GAM.foracid =?SVAR AND GAM.bank_id=ACPART.bank_id)"
+	sv_s = sv_s + " AND ACPART.partitioned_acid =?SVAR"
+	sv_s = sv_s + " AND ACPART.pstd_flg !='N'"
+	sv_s = sv_s + " AND ACPART.bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|"+CUST.ASSET.acid+"|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	IF (sv_u == 0 ) THEN
+	#{
+		CUST.ASSET.drAmt = BANCS.OUTPARAM.amt
+		PRINT(CUST.ASSET.drAmt)
+		IF (CUST.ASSET.crAmt == "") THEN
+		#{
+			CUST.ASSET.drAmt = 0
+			PRINT(CUST.ASSET.drAmt)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ASSET.errMsg = "Error in Finding Tran Amount for Account ID"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.ASSET.crAmt)
+	PRINT(CUST.ASSET.drAmt)
+	CUST.ASSET.clrSuspAmt= CDOUBLE(CUST.ASSET.crAmt)- CDOUBLE(CUST.ASSET.drAmt)
+	PRINT (CUST.ASSET.clrSuspAmt)
+	CUST.ASSET.clrSuspAmt=CDOUBLE(CUST.ASSET.clrSuspAmt)
+	
+	#--------------------------------------------------------------------
+	#---------------------END for BANCS.INPUT.intSuspAmount
+	#--------------------------------------------------------------------
+	
+	sv_z = 0.0
+	BANCS.OUTPUT.provisionAmount = 0
+	BANCS.OUTPUT.provisionCrBacid=""
+	BANCS.OUTPUT.provisionDrBacid=""
+	BANCS.OUTPUT.provisionRemarks=""
+	
+	#--------------------------------------------------------------------
+	#Generally the liability for the ODA,CCA,LAA a/cs will be negative.
+	#But to calculate the prov amt , we should consider as +ve.
+	#--------------------------------------------------------------------
+	sv_b = CDOUBLE(CUST.ASSET.clrSuspAmt)
+	sv_c = CDOUBLE(CUST.ASSET.clrProvsnalBal)
+	PRINT(sv_a)
+	PRINT(sv_b)
+	PRINT(sv_e)
+	
+	IF (sv_a >0 ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (sv_a < 0 ) THEN
+	#{
+		sv_a = 0 - sv_a
+	#}
+	ENDIF
+	
+	PRINT(BANCS.INPUT.subClassificationSystem)
+	
+	CUST.ASSET.subClsftncode = BANCS.INPUT.subClassificationSystem
+	BANCS.INPUT.parameterId = "SC_" + CUST.ASSET.subClsftncode
+	PRINT(BANCS.INPUT.parameterId)
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	CUST.ASSET.subClsCodeVal = BANCS.OUTPUT.parameterVal
+	
+	IF (CUST.ASSET.subClsCodeVal != "") THEN
+	#{
+		sv_z = ((sv_a - sv_b) * CDOUBLE(CUST.ASSET.subClsCodeVal)) - sv_e
+		PRINT(sv_z)
+		#}
+	ELSE
+		#{
+		sv_s = "max_ceiling_lim|SELECT SUM(SDR.max_ceiling_lim) "
+		sv_s = sv_s + " FROM TBAADM.SDR "
+		sv_s = sv_s + " WHERE SDR.acid=?SVAR"
+		sv_s = sv_s + " AND SDR.del_flg='N' "
+		sv_s = sv_s + " AND SDR.entity_cre_flg='Y' "
+		sv_s = sv_s + " AND SDR.secu_linkage_type='A' "
+		sv_s = sv_s + " AND SDR.bank_id = ?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.b2kId  + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		PRINT(sv_s)
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_u)
+		IF (sv_u == 0 ) THEN
+		#{
+			sv_l = CDOUBLE(BANCS.OUTPARAM.max_ceiling_lim)
+			PRINT(sv_l)
+			sv_l = sv_l / CDOUBLE("2")
+			PRINT(sv_l)
+			#}
+		ELSE
+			#{
+			sv_l = CDOUBLE("0")
+		#}
+		ENDIF
+		
+		sv_z = (((sv_a - sv_b) * 1) - sv_e) - sv_l
+		PRINT(sv_z)
+	#}
+	ENDIF
+	
+	
+	#------------------------------------------------------------------------
+	#This is to ensure the script will never return -ve or zero value.
+	#The Provisioning amt returned from script should be always a +ve amount.
+	#-------------------------------------------------------------------------
+	IF (sv_z < 0) THEN
+	#{
+		IF (BANCS.INPUT.alterBacidFlg == "N") THEN
+		#{
+			sv_z = 0 - sv_z
+			BANCS.OUTPUT.provisionCrBacid=CUST.ASSET.provCrBacid
+			BANCS.OUTPUT.provisionDrBacid=CUST.ASSET.provDrBacid
+			BANCS.OUTPUT.provisionRemarks=CUST.ASSET.provRmks
+			BANCS.OUTPUT.scriptReversalFlg="Y"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF (sv_z > 0) THEN
+	#{
+		IF (BANCS.INPUT.alterBacidFlg == "Y") THEN
+		#{
+			BANCS.OUTPUT.provisionCrBacid=CUST.ASSET.provCrBacid
+			BANCS.OUTPUT.provisionDrBacid=CUST.ASSET.provDrBacid
+			BANCS.OUTPUT.scriptReversalFlg="N"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (sv_z < 0) THEN
+	#{
+		IF (BANCS.INPUT.alterBacidFlg == "Y") THEN
+		#{
+			sv_z = 0 - sv_z
+			BANCS.OUTPUT.provisionRemarks=CUST.ASSET.provRmks
+			BANCS.OUTPUT.scriptReversalFlg="Y"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (sv_z > 0) THEN
+	#{
+		IF (BANCS.INPUT.alterBacidFlg == "N") THEN
+		#{
+			BANCS.OUTPUT.scriptReversalFlg="N"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.provisionAmount = format$(sv_z,"%17.02f")
+	PRINT(BANCS.OUTPUT.provisionAmount)
+	
+	ENDOFSCRIPT:
+		IF (CUST.ASSET.errMsg != "") THEN
+		#{
+			sv_u = SYSTEM("echo '"+CUST.ASSET.errMsg+"' >>AssetsProvision.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+		
+		
+		#BANCS.OUTPUT.scriptReversalFlg="N"
+		##This is to ensure the script will never return -ve or zero value.
+		##The Provisioning amt returned from script should be always a +ve amount.
+		#IF (sv_z < 0) THEN
+		#	IF(BANCS.INPUT.alterBacidFlg == "N") THEN
+		#	sv_z = 0 - sv_z
+		#	BANCS.OUTPUT.provisionCrBacid=BANCS.INPUT.provisionDrBacid
+		#    BANCS.OUTPUT.provisionDrBacid=BANCS.INPUT.provisionCrBacid
+		#    BANCS.OUTPUT.provisionRemarks="Reversal Entry for Asset"
+		#    BANCS.OUTPUT.scriptReversalFlg="Y"
+		#	ENDIF
+		#ENDIF
+		#IF (sv_z > 0) THEN
+		#	IF(BANCS.INPUT.alterBacidFlg == "Y") THEN
+		#	BANCS.OUTPUT.provisionCrBacid=BANCS.INPUT.provisionDrBacid
+		#    BANCS.OUTPUT.provisionDrBacid=BANCS.INPUT.provisionCrBacid
+		#    BANCS.OUTPUT.scriptReversalFlg="N"
+		#	ENDIF
+		#ENDIF
+		#
+		#IF (sv_z < 0) THEN
+		#	IF(BANCS.INPUT.alterBacidFlg == "Y") THEN
+		#	sv_z = 0 - sv_z
+		#    BANCS.OUTPUT.provisionRemarks="Reversal Entry for Asset"
+		#    BANCS.OUTPUT.scriptReversalFlg="Y"
+		#	ENDIF
+		#ENDIF
+		#
+		#IF (sv_z > 0) THEN
+		#	IF(BANCS.INPUT.alterBacidFlg == "N") THEN
+		#    BANCS.OUTPUT.scriptReversalFlg="N"
+		#	ENDIF
+		#ENDIF
+		#
+		#
+		#BANCS.OUTPUT.provisionAmount = format$(sv_z,"%17.02f")
+		
+		TRACE OFF
+END-->

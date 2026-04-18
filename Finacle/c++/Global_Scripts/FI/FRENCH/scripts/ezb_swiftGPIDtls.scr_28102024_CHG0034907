@@ -1,0 +1,225 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_swiftGPIDtls.scr
+#  Description     : fetchs Term Deposit accounts attached to a CIF
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             08-01-2024     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "EZB")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "EZB", 5)
+	#}
+	ENDIF
+
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("PaymentRefNum"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="please enter Payment Reference Number"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "SWIFTGPIDTLS_RES.Error | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		exitscript
+   	ELSE 
+   		CUST.EZB.pymntRefNo = trim(BANCS.INPUT.PaymentRefNum)
+   		print(CUST.EZB.pymntRefNo)
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+	CUST.EZB.null = " "
+
+	#----------------------------------------------------------------------------------------------
+	# validations
+	#----------------------------------------------------------------------------------------------
+
+	lv_q = "cntrycode,chargeCode,recvrBic,recvrBankCode,benefName,senderBic,ioFlg,valueDate,tranId,tranDate,status,customerName,customerAcct |"
+	lv_q = lv_q + "select a.awi_cntry_code,a.charge_option,a.recvr_bic,a.recvr_bank_code,a.benef_party_name,a.sender_bic,a.in_out_ind,"
+	lv_q = lv_q + "y.value_date, y.tran_id, y.tran_date,y.status, p.ord_party_name, p.ord_party_acct"
+	lv_q = lv_q + " from tbaadm.pord a,tbaadm.smh y,tbaadm.porh p"
+	lv_q = lv_q + " where a.pymt_ref_num=?SVAR and a.bank_id=?SVAR and y.sender_ref_num=a.pymt_ref_num and y.bank_id=a.bank_id "
+	lv_q = lv_q + " and p.pymt_ref_num=a.pymt_ref_num AND p.bank_id=a.bank_id AND p.del_flg='N' AND p.entity_cre_flg='Y' "
+	print(lv_q)
+	BANCS.INPARAM.BINDVARS =  CUST.EZB.pymntRefNo +"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbSelectWithBind(lv_q)
+    PRINT(sv_c)
+
+	IF (sv_c == 0)THEN
+	#{
+		CUST.EZB.cntrycode = BANCS.OUTPARAM.cntrycode
+		print(CUST.EZB.cntrycode)
+		CUST.EZB.chargeCode = BANCS.OUTPARAM.chargeCode
+		print(CUST.EZB.chargeCode)
+		CUST.EZB.recvrBic = BANCS.OUTPARAM.recvrBic
+		print(CUST.EZB.recvrBic)
+		CUST.EZB.recvrBankCode = BANCS.OUTPARAM.recvrBankCode
+		print(CUST.EZB.recvrBankCode)
+		CUST.EZB.benefName = BANCS.OUTPARAM.benefName
+		print(CUST.EZB.benefName)
+		CUST.EZB.senderBic = BANCS.OUTPARAM.senderBic
+		print(CUST.EZB.senderBic)
+		CUST.EZB.valueDate = BANCS.OUTPARAM.valueDate
+		print(CUST.EZB.valueDate)
+		CUST.EZB.tranId = BANCS.OUTPARAM.tranId
+		print(CUST.EZB.tranId)
+		CUST.EZB.tranDate = BANCS.OUTPARAM.tranDate
+		print(CUST.EZB.tranDate)
+		CUST.EZB.status = BANCS.OUTPARAM.status
+		print(CUST.EZB.status)
+		CUST.EZB.customerName = BANCS.OUTPARAM.customerName
+		print(CUST.EZB.customerName)
+		CUST.EZB.customerAcct = BANCS.OUTPARAM.customerAcct
+		print(CUST.EZB.customerAcct)
+		CUST.EZB.ioFlg = BANCS.OUTPARAM.ioFlg
+		print(CUST.EZB.ioFlg)
+
+		IF(CUST.EZB.ioFlg=="O")THEN
+			CUST.EZB.oFlg = "Y"
+			CUST.EZB.iFlg = "N"
+		ELSE 
+			CUST.EZB.oFlg = "N"
+			CUST.EZB.iFlg = "Y"
+		ENDIF
+
+		sv_q = 1
+
+		WHILE(sv_q <= 2)
+		#{
+			lv_q = " bankName|select bank_name from tbaadm.bkc where bank_code in (select bank_code from tbaadm.brbic where bank_identifier=?SVAR and bank_id=?SVAR and del_flg='N' and rownum < 2) and bank_id=?SVAR "
+			print(lv_q)
+
+			IF(sv_q == 1)THEN
+				BANCS.INPARAM.BINDVARS =  CUST.EZB.recvrBic +"|"+BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId
+			ELSE 
+				BANCS.INPARAM.BINDVARS =  CUST.EZB.senderBic +"|"+BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId
+			ENDIF 
+
+			print(BANCS.INPARAM.BINDVARS)
+			sv_c = urhk_dbSelectWithBind(lv_q)
+			PRINT(sv_c)
+
+			IF(sv_c == 0)THEN
+			#{
+				IF(sv_q == 1)THEN
+					CUST.EZB.recvrBankName = BANCS.OUTPARAM.bankName
+					print(CUST.EZB.recvrBankName)
+				ELSE 
+					CUST.EZB.senderBankName = BANCS.OUTPARAM.bankName
+					print(CUST.EZB.senderBankName)
+				ENDIF 
+			ELSE 
+				CUST.EZB.errMsg="An error occured!! Contact the administrator."
+				sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+				sv_t = "SWIFTGPIDTLS_RES.Error | " +CUST.EZB.errMsg
+				sv_u = urhk_SetOrbOut(sv_t)
+		   		exitscript
+			#}
+			ENDIF 
+
+			sv_q = sv_q + 1
+			print(sv_q)
+		#}
+		DO
+
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.SenderId| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.TransactionDateTime| " + CUST.EZB.tranDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.TransactionId| " + CUST.EZB.tranId
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.CountryOfOrigin| " + CUST.EZB.cntrycode
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.Status| " + CUST.EZB.status
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.SourceChannel| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ChannelReference| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BankReference| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.UETRReference| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerName| " + CUST.EZB.customerName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.DebitAccount| " + CUST.EZB.customerAcct
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ChargeCode| " + CUST.EZB.chargeCode
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ValueDate| " + CUST.EZB.valueDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankName| " + CUST.EZB.recvrBankName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryName| " + CUST.EZB.benefName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.GPIPaymentStatus| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerDetails.SwiftBic| " + CUST.EZB.senderBic
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerDetails.BankName| " + CUST.EZB.senderBankName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerDetails.SendDate| " + CUST.EZB.tranDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerDetails.SendTime| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.OrderingCustomerDetails.SenderRef| " + CUST.EZB.pymntRefNo
+		sv_u = urhk_SetOrbOut(sv_t)
+
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.SequenceNumber| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.IsGPIBank| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.SwiftBic| " + CUST.EZB.senderBic
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.BankName| " + CUST.EZB.senderBankName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.PaymentIn| " + CUST.EZB.iFlg
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.PaymentOut| " + CUST.EZB.oFlg
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.ParticipantBankDetails.SenderReference| " + CUST.EZB.pymntRefNo
+		sv_u = urhk_SetOrbOut(sv_t)
+
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankDetails.SwiftBic| " + CUST.EZB.recvrBic
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankDetails.BankName| " + CUST.EZB.recvrBankName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankDetails.FinalPaymentIn| " + CUST.EZB.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankDetails.CreditedAt| " + CUST.EZB.tranDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "SWIFTGPIDTLS_RES.<rec_1>.BeneficiaryBankDetails.SenderReference| " + CUST.EZB.pymntRefNo
+		sv_u = urhk_SetOrbOut(sv_t)
+
+	#}
+	ENDIF
+
+
+ENDSCRIPT:
+trace off
+END-->
+

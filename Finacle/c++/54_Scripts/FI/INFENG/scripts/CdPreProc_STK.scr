@@ -1,0 +1,233 @@
+#===========================================================================================*
+# Name                         	:   CdPreProc_STK.scr
+# Date                         	:   14-02-2013
+# Description                   :   Script for Connect24 customization
+# Author                       	:   Anand Pansare
+# Input       					:   BANCS.INPUT Repository
+# output      					:   BANCS.OUTPUT Repositor
+# Called Scripts                :   <none>
+# Calling Script                :   <none>
+# Reference                    	:
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>   	<Description>
+#--------------------------------------------------------------------------
+#   	1     	01-08-2023    	 Anand Pansare 	Modified according to 10x standards.
+#============================================================================================*
+
+<--start
+
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+#{
+	CREATECLASS("CUST","ATM",5)
+#}
+ENDIF
+
+        #==============================================================================================
+        # SMS Charges Consolidation 
+        # Change done By - anand Date: 21-05-2023
+        #==============================================================================================
+
+        IF((BANCS.STDIN.contextBankId == "54") AND (BANCS.INPUT.DccId == "EAZ")) THEN
+        #{
+                IF (fieldexists(BANCS.INPUT.ReservedField1)==1) THEN
+                #{
+                        IF (MID$(BANCS.INPUT.ReservedField1,0,3) == "STK") THEN
+                        #{
+				sv_l = BANCS.INPUT.ReservedField1 
+				sv_m = strlen(sv_l)
+				sv_h = GETPOSITION(sv_l,"|")
+				PRINT(sv_h)
+				PRINT(sv_m)
+				IF(sv_h > 0) then
+				#{
+					sv_j    = MID$(sv_l,0,sv_h-1)
+					PRINT(sv_j)
+					sv_k 	= MID$(sv_l,sv_h,sv_m-sv_h)
+                                        #BANCS.INPUT.ReservedField1 = sv_j + MID$(sv_k,19,(sv_m-sv_h))
+                                        BANCS.OUTPUT.ReservedField1 = sv_j + MID$(sv_k,19,(sv_m-sv_h))
+					print(BANCS.OUTPUT.ReservedField1)
+					print(sv_k)
+					IF(MID$(sv_k,0,19) == "SMS_CHARGE_INCULDED")THEN
+					#{
+						IF((BANCS.INPUT.ReservedField2 == "Evalue") OR (BANCS.INPUT.ReservedField2 == "P2PIntra"))THEN		
+						#{
+							IF(( FIELDEXISTS(BANCS.INPUT.Fee) == 1 ) AND (BANCS.INPUT.Fee != ""))THEN
+							#{
+								CUST.ATM.feetype	= MID$((BANCS.INPUT.Fee),3,1)
+								CUST.ATM.ChargeAmtFull	= MID$((BANCS.INPUT.Fee),4,16)
+								CUST.ATM.feecrncy	= MID$((BANCS.INPUT.Fee),0,3)
+								CUST.ATM.ChargeAmtWODec	= MID$(CUST.ATM.ChargeAmtFull,0,(STRLEN(CUST.ATM.ChargeAmtFull)-2))
+								CUST.ATM.ChargeAmtDecimals = MID$(CUST.ATM.ChargeAmtFull,(STRLEN(CUST.ATM.ChargeAmtFull)-2),STRLEN(CUST.ATM.ChargeAmtFull))
+								CUST.ATM.ChargeAmount 	= CDOUBLE(CUST.ATM.ChargeAmtWODec)+(CDOUBLE(CUST.ATM.ChargeAmtDecimals)/100)
+								print(CUST.ATM.ChargeAmount)
+								
+								IF(CDOUBLE(CUST.ATM.ChargeAmount) >= CDOUBLE("2.26"))THEN
+								#{
+									print(BANCS.INPUT.Command)
+									IF(MID$(BANCS.INPUT.Command,2,2)=="RR")THEN
+									#{
+											BANCS.OUTPUT.Fee = BANCS.OUTPUT.Fee +  "KESC000000000000022605"
+									ELSE
+											BANCS.OUTPUT.Fee = BANCS.OUTPUT.Fee +  "KESD000000000000022605"
+									#}
+									ENDIF
+									PRINT(BANCS.OUTPUT.Fee)
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+
+						#IF(BANCS.INPUT.ReservedField2 == "MinStat") THEN
+						IF(BANCS.INPUT.ReservedField2 == "BalEnq") THEN
+                                                #{
+							sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+							print(sv_h)
+							IF (sv_h==0) THEN
+							#{
+								CUST.ATM.acctSolId = BANCS.OUTPARAM.acctSolId
+								print(CUST.ATM.acctSolId)
+								CUST.ATM.schmCode = BANCS.OUTPARAM.schmCode
+								print(CUST.ATM.schmCode)
+								CUST.ATM.schmType = BANCS.OUTPARAM.schmType
+								print(CUST.ATM.schmType)
+								CUST.ATM.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+								print(CUST.ATM.EffAvailableAmt)
+
+								IF ((CUST.ATM.schmCode =="SB190") OR (CUST.ATM.schmCode =="SB191")) THEN
+								#{
+									BANCS.OUTPUT.Fee = "KESD000000000000000000"
+									PRINT(BANCS.OUTPUT.Fee)
+								#}
+								ENDIF
+
+								sv_a = ""
+								sv_a = sv_a + "frez_code,acct_status|"
+								sv_a = sv_a + " select nvl(trim(gam.frez_code),'N'),smt.acct_status"
+								sv_a = sv_a + " from tbaadm.gam,tbaadm.smt "
+								sv_a = sv_a + " where gam.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+								sv_a = sv_a + " and gam.bank_id = smt.bank_id "
+								sv_a = sv_a + " and  gam.acid = smt.acid "
+								sv_a = sv_a + " and gam.foracid = '"+BANCS.INPUT.Foracid+"' "
+
+								print(sv_a)
+								lv_z = urhk_dbSelectWithBind(sv_a)
+								print(lv_z)
+								IF(lv_z==0) THEN
+								#{
+									CUST.ATM.frez_code   = BANCS.OUTPARAM.frez_code
+									CUST.ATM.acct_status   = BANCS.OUTPARAM.acct_status
+									print(CUST.ATM.frez_code)
+									print(CUST.ATM.acct_status)
+								ELSE
+									CUST.ATM.frez_code     = "N"
+									CUST.ATM.acct_status   = "A"
+								#}
+								endif
+
+								IF (CUST.ATM.frez_code == "D") THEN
+								#{
+									BANCS.OUTPUT.RespCode = "99"
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.ReservedField3 = "Account Frozen. unable To Collect Charges"
+									exitscript
+								#}
+								ENDIF
+								IF (CUST.ATM.frez_code == "T") THEN
+								#{
+									BANCS.OUTPUT.RespCode = "99"
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.ReservedField3 = "Account Frozen. unable To Collect Charges"
+									exitscript
+								#}
+								ENDIF
+								IF (CUST.ATM.acct_status == "D") THEN
+								#{
+									BANCS.OUTPUT.RespCode = "99"
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.ReservedField3 = "Account Dormant. unable To Collect Charges"
+									exitscript
+								#}
+								ENDIF
+
+								IF(( FIELDEXISTS(BANCS.INPUT.Fee) == 1 ) AND (BANCS.INPUT.Fee != ""))THEN
+								#{
+									CUST.ATM.feetype        = MID$((BANCS.INPUT.Fee),3,1)
+									CUST.ATM.ChargeAmtFull  = MID$((BANCS.INPUT.Fee),4,16)
+									CUST.ATM.feecrncy       = MID$((BANCS.INPUT.Fee),0,3)
+									CUST.ATM.ChargeAmtWODec = MID$(CUST.ATM.ChargeAmtFull,0,(STRLEN(CUST.ATM.ChargeAmtFull)-2))
+									CUST.ATM.ChargeAmtDecimals = MID$(CUST.ATM.ChargeAmtFull,(STRLEN(CUST.ATM.ChargeAmtFull)-2),STRLEN(CUST.ATM.ChargeAmtFull))
+									CUST.ATM.ChargeAmount   = CDOUBLE(CUST.ATM.ChargeAmtWODec)+(CDOUBLE(CUST.ATM.ChargeAmtDecimals)/100)
+									print(CUST.ATM.ChargeAmount)
+
+									IF(CDOUBLE(CUST.ATM.ChargeAmount) > CDOUBLE(CUST.ATM.EffAvailableAmt))THEN
+									#{
+
+										CUST.ATM.errMsg = "Insufficient Fund To Collect Charges"
+										BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+										BANCS.OUTPUT.RespCode = "04"
+										BANCS.OUTPUT.successOrFailure = "F"
+									ELSE
+
+										#------------------------------------------------------------------------
+										# Bacid and Crncy Accounts to be searched sol wise
+										#------------------------------------------------------------------------
+										CUST.ATM.inputBacid    = "SMSNOTBRANCH"
+										CUST.ATM.inputCcy      = "KES"
+										CUST.ATM.inputSolID    = CUST.ATM.acctSolId
+
+										sv_s = CUST.ATM.inputBacid + "|" + CUST.ATM.inputCcy + "|" + CUST.ATM.inputSolID
+										PRINT(sv_s)
+										sv_u = urhk_B2k_BacidToAcctId(sv_s)
+										PRINT(sv_u)
+
+										IF(sv_u == 0)THEN
+										#{
+											PRINT(BANCS.OUTPARAM.AcctId)
+											CUST.ATM.CreditAccount  = BANCS.OUTPARAM.AcctId
+											PRINT(CUST.ATM.CreditAccount)
+										ELSE
+											CUST.ATM.CreditAccount  = "0006500506362"
+											print(CUST.ATM.CreditAccount)
+										#}
+										ENDIF
+
+										BANCS.OUTPUT.CrForacid = CUST.ATM.CreditAccount
+										print(CUST.ATM.ChargeAmount)
+										call ("copyBancsToCustC24.scr")
+										call ("BalEnq_STK.scr")
+										call ("copyCust24ToBancs.scr")
+										print("success")
+									#}
+									ENDIF
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+					ELSE
+						PRINT(BANCS.OUTPUT.Fee)
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+        #==============================================================================================
+		
+
+exitscript
+end-->

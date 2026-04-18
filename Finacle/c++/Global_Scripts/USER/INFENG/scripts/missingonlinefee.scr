@@ -1,0 +1,166 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : missingonlinefee.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 30-05-2019
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             30-05-2019     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2f2d9b88241d43c8b9e7a945546318e708c02810a81c95150a17656fe02280c1"
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","MISS") == 0) THEN
+#{
+	CREATECLASS("CUST","MISS",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.MISS.errMsg = ""
+
+sv_q= "acid,foracid|"
+sv_q = sv_q + " select d.acid,g.foracid from tbaadm.dtd d,tbaadm.gam g where d.dth_init_sol_id =?SVAR and d.tran_type ='T' and d.tran_sub_type ='CI' and d.part_tran_type ='D' and d.acid in "
+sv_q = sv_q + " (select acid from tbaadm.gam where acct_ownership ='C'and schm_type !='LAA' and foracid not in(SELECT foracid FROM CUSTOM.ACCT_EXEMPTION_TABLE where EXEMPT_CODE in ('ACCT','LDFEE','WITHEXMPT') and bank_id =?SVAR))"
+sv_q = sv_q + " and d.ENTRY_USER_ID in (SELECT USER_ID FROM TBAADM.UPR WHERE VIRTUAL_FLG ='N') and d.PSTD_USER_ID !='SYSTEM' and d.rpt_code is null and trim(tran_id) not like 'S%' and d.acid=g.acid "
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+PRINT(sv_e)
+
+IF(sv_e == 0) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	IF(sv_q == 1) THEN
+	#{
+		sv_x = urhk_dbCursorClose(sv_m)
+		print(sv_x)
+		CUST.MISS.errMsg ="No Data."
+		sv_e=urhk_SetOrbOut("StattusCode|Error")
+		sv_e=urhk_SetOrbOut("Error|"+CUST.MISS.errMsg )
+		EXITSCRIPT
+	#}
+	ENDIF
+	print(sv_q)
+
+	WHILE (sv_q==0)
+	
+		CUST.MISS.acid=BANCS.OUTPARAM.acid
+		print(CUST.MISS.acid)
+		CUST.MISS.foracid=BANCS.OUTPARAM.foracid
+		print(CUST.MISS.foracid)
+		
+		
+		sv_q = "Dcount|" 
+		sv_q = sv_q + " select count (*) from tbaadm.dtd where acid =?SVAR  "
+		sv_q = sv_q + " and dth_init_sol_id =?SVAR and tran_type ='T' and tran_sub_type ='CI' and part_tran_type ='D'"
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = CUST.MISS.acid + "|" + BANCS.STDIN.mySolId
+		print(BANCS.INPARAM.BINDVARS)			
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.MISS.Dcount=BANCS.OUTPARAM.Dcount
+			print(CUST.MISS.Dcount)
+		#}
+		ENDIF
+		
+		sv_q = "Scount|" 
+		sv_q = sv_q + " select count(*) from tbaadm.dtd where acid =?SVAR and RPT_CODE='TRCRG' and dth_init_sol_id =?SVAR" 
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = CUST.MISS.acid + "|" + BANCS.STDIN.mySolId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.MISS.Scount=BANCS.OUTPARAM.Scount
+			print(CUST.MISS.Scount)
+		#}
+		ENDIF
+		
+			IF (CINT(CUST.MISS.Dcount) == CINT(CUST.MISS.Scount)) THEN
+			#{
+				GOTO NEXTREC
+			#}
+			ELSE
+			#{
+				CUST.MISS.Count = cdouble(CUST.MISS.Dcount)- cdouble(CUST.MISS.Scount)
+				print(CUST.MISS.Count)
+				CUST.MISS.negat ="-1"
+				CUST.MISS.fee = "110"
+				print(CUST.MISS.fee)
+				CUST.MISS.chrg = cdouble(CUST.MISS.negat)*cdouble(CUST.MISS.fee)
+				print(CUST.MISS.chrg)
+				CUST.MISS.chrgAmt =cdouble(CUST.MISS.fee)*CINT(CUST.MISS.Count)
+				print(CUST.MISS.chrgAmt)
+				
+				CUST.GCHRG.tranType = "T"
+				CUST.GCHRG.tranSubType = "BI"
+				CUST.GCHRG.drAcctId = CUST.MISS.foracid
+				CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+				CUST.GCHRG.chrgAmt = CUST.MISS.chrgAmt + "|" + BANCS.STDIN.homeCrncyCode
+				CUST.GCHRG.eventId = "TMTRF1"			
+				PRINT(CUST.GCHRG.eventId)
+				CALL("gchrgcommon.scr")
+				IF (CUST.GCHRG.successOrFailure == "S") THEN
+				#{
+					PRINT("Charge collected")
+					#}
+				ELSE
+					#{
+					PRINT("Failure")
+				#}
+				ENDIF						
+			#}
+			ENDIF
+	NEXTREC:
+	#}
+	#ENDIF	
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	
+	
+	#}
+	DO
+ELSE
+
+CUST.MISS.errMsg ="Data Error"
+sv_e=urhk_SetOrbOut("StattusCode|Error")
+sv_e=urhk_SetOrbOut("Error|"+CUST.MISS.errMsg)
+
+#}
+ENDIF
+
+
+
+EXITSCRIPT
+
+trace off
+end-->
+	

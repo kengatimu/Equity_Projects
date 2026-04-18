@@ -1,0 +1,523 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       postInwardClgCheque_FetchInputDetails.scr
+# Description           :       This script fetches the values passed in Request XML
+# Input                 :
+# Output                :
+# Called Script         :       postInwardClgCheque_main.scr
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           25-06-2013      	   Anik Soni         Original Version         1.0
+#  2	       12-08-2013	   Anik Soni	    Added code for fetching Account name  2.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="3b73147091365f83528f162179ea2485a233ed133f6ac21f7d0134379522de63"
+	TRACE ON
+	
+	
+	sv_v = "PIC_REQ.InstType"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v))) THEN
+	#{
+		
+		CUST.INTERFACE.InstType =("BANCS").("INPUT").(sv_v)
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.errorCode = "ERR089"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	sv_v = "PIC_REQ.InstNum"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v))) THEN
+	#{
+		
+		CUST.INTERFACE.InstNum =("BANCS").("INPUT").(sv_v)
+		CUST.INTERFACE.InstNum = CINT(CUST.INTERFACE.InstNum)
+		CUST.INTERFACE.InstNum = LPAD(CUST.INTERFACE.InstNum,16,' ')
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.errorCode = "ERR071"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	sv_v = "PIC_REQ.InstDate"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v))) THEN
+	#{
+		
+		CUST.INTERFACE.InstDate =("BANCS").("INPUT").(sv_v)
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.errorCode = "ERR072"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	sv_v = "PIC_REQ.BankID"
+	IF(FIELDEXISTS(("BANCS").("INPUT").(sv_v))) THEN
+	#{
+		
+		CUST.INTERFACE.bankID =("BANCS").("INPUT").(sv_v)
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.bankID = BANCS.STDIN.contextBankId
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	# Converting the ChequeDate and TranDate into the rquired formats
+	#-------------------------------------------------------------------------------
+	lv_a = "instdate|SELECT to_char(to_date('"+ CUST.INTERFACE.InstDate + "','DD-MM-YYYY HH24:MI:SS'),'DD-MM-YYYY HH24:MI:SS') from dual"
+	print(lv_a)
+	lv_b = urhk_dbSelectWithBind(lv_a)
+	
+	IF(lv_b == 0) THEN
+	#{
+		CUST.INTERFACE.InstDate = BANCS.OUTPARAM.instdate
+		print(CUST.INTERFACE.InstDate)
+	#}
+	ENDIF
+	
+	
+	#-------------------------------------------------------------------------------
+	#
+	# Fetching multirec data for the Part Transactions
+	#
+	#-------------------------------------------------------------------------------
+	
+	CUST.INTERFACE.recNum = "0"
+	
+	IF((FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum"))) != 1)THEN
+	#{
+		CUST.INTERFACE.errorCode = "ERR077"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	WHILE(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum")))
+	#{
+		#-------------------------------------------------------------------------------
+		#
+		# Check on the existence of the field containing Dr/Cr Indicator
+		#
+		#-------------------------------------------------------------------------------
+		IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.DrCrI")) != 0) THEN
+		#{
+			("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.DrCrI") = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.DrCrI")
+			#}
+		ELSE
+			#{
+			CUST.INTERFACE.errorCode = "ERR076"
+			CUST.INTERFACE.successOrFailure = "F"
+			
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		
+		IF(("CUST").("INTERFACE").("PIC_REQ.ptTrDtl.<rec_"+ CUST.INTERFACE.recNum + ">.DrCrI") == "D") THEN
+		#{
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing AcctNum
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrAcct = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum")
+				BANCS.INPUT.mapAcctNum = CUST.INTERFACE.DrAcct
+				
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR077"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction amount.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TranAmt")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrTranAmt = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TranAmt")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR078"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Currency Code
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrCrncy")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrTrCrncy = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrCrncy")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR079"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Validating the Transaction Currency Code
+			#-------------------------------------------------------------------------------
+			#IF((CUST.INTERFACE.DrTrCrncy != "KES")) THEN
+			#{
+			#CUST.INTERFACE.errorCode = "ERR080"
+			#CUST.INTERFACE.successOrFailure = "F"
+			
+			#GOTO FINISH
+			#}
+			#ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Remarks
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrRemarks")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrRemarks = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrRemarks")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.DrRemarks = ""
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Particular.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrTranPart = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.DrTranPart = ""
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Particular 2.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart2")) != 0) THEN
+			#{
+				CUST.INTERFACE.DrTranPart2 = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart2")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.DrTranPart2 = ""
+			#}
+			ENDIF
+			
+			#}
+		ELSE
+			#{
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing AcctNum
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrAcct = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.AcctNum")
+				
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR077"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction amount.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TranAmt")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrTranAmt = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TranAmt")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR078"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Currency Code
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrCrncy")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrTrCrncy = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrCrncy")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.errorCode = "ERR079"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Validating the Transaction Currency Code
+			#-------------------------------------------------------------------------------
+			#IF((CUST.INTERFACE.CrTrCrncy != "KES")) THEN
+			#{
+			#	CUST.INTERFACE.errorCode = "ERR081"
+			#CUST.INTERFACE.successOrFailure = "F"
+			
+			#GOTO FINISH
+			#}
+			#ENDIF
+			
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Remarks
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrRemarks")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrRemarks = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrRemarks")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.CrRemarks = ""
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Particular.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrTranPart = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.CrTranPart = ""
+				
+			#}
+			ENDIF
+			
+			#-------------------------------------------------------------------------------
+			# Check on the existence of the field containing Transaction Particular 2.
+			#-------------------------------------------------------------------------------
+			IF(FIELDEXISTS(("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart2")) != 0) THEN
+			#{
+				CUST.INTERFACE.CrTranPart2 = ("BANCS").("INPUT").("PIC_REQ.ptTrDtl.<rec_" + CUST.INTERFACE.recNum + ">.TrPart2")
+				#}
+			ELSE
+				#{
+				CUST.INTERFACE.CrTranPart2 = ""
+				
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		CUST.INTERFACE.recNum = CINT(CUST.INTERFACE.recNum) + CINT("1")
+	#}
+	DO
+	
+	CUST.INTERFACE.recNum = CINT(CUST.INTERFACE.recNum)
+	IF (CUST.INTERFACE.recNum != 2) THEN
+	#{
+		CUST.INTERFACE.errorCode = "ERR082"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	#Fetching the Debit Account Name
+	#-------------------------------------------------------------------------------
+	
+	lv_r = "drAcctName,drSolId,drCrncy|SELECT ACCT_NAME,SOL_ID,ACCT_CRNCY_CODE"
+	lv_r = lv_r + " FROM TBAADM.GAM"
+	lv_r = lv_r + " WHERE FORACID ='" + CUST.INTERFACE.DrAcct + "'"
+	lv_r = lv_r + " AND BANK_ID = '" + BANCS.STDIN.contextBankId + "'"
+	
+	print(lv_r)
+	
+	lv_e = urhk_dbSelectWithBind(lv_r)
+	
+	IF (lv_e ==0) THEN
+	#{
+		CUST.INTERFACE.drAcctName = BANCS.OUTPARAM.drAcctName
+		print(CUST.INTERFACE.drAcctName)
+		CUST.INTERFACE.drSolId = BANCS.OUTPARAM.drSolId
+		print(CUST.INTERFACE.drSolId)
+		CUST.INTERFACE.drCrncy = BANCS.OUTPARAM.drCrncy
+		print(CUST.INTERFACE.drCrncy)
+		#}
+	ELSE
+		#{
+		
+		sv_l = strlen(BANCS.STDIN.mySolId)
+		CUST.INTERFACE.drSolId = BANCS.STDIN.mySolId
+		CUST.INTERFACE.drCrncy = BANCS.STDIN.homeCrncyCode
+		CUST.INTERFACE.foracidTrim = MID$(CUST.INTERFACE.DrAcct,sv_l,STRLEN(CUST.INTERFACE.DrAcct))
+		print(CUST.INTERFACE.foracidTrim)
+		BANCS.INPARAM.BINDVARS = CUST.INTERFACE.foracidTrim + "|" +  BANCS.STDIN.contextBankId
+		
+		sv_q = "newForacid|SELECT CUSTOM.VERACIOUS_ACCT(?SVAR,?SVAR)"
+		sv_q = sv_q + " FROM DUAL"
+		
+		sv_e = urhk_dbSelectWithBind(sv_q)
+		print(sv_e)
+		
+		IF(sv_e != 0)THEN
+		#{
+			CUST.INTERFACE.errorCode = "ERR060"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+			#}
+		ELSE
+			#{
+			IF(CINT(BANCS.OUTPARAM.newForacid) == 0)THEN
+			#{
+				#{ No Accounts available
+				CUST.INTERFACE.errorCode = "ERR060"
+				CUST.INTERFACE.successOrFailure = "F"
+				GOTO FINISH
+			#}
+			ENDIF
+			IF(CINT(BANCS.OUTPARAM.newForacid)== 2  )THEN
+			#{
+				#{ Multiple accounts are available
+				CUST.INTERFACE.errorCode = "ERR110"
+				CUST.INTERFACE.successOrFailure = "F"
+				GOTO FINISH
+			#}
+			ENDIF
+			
+			CUST.INTERFACE.errorCode = "VERR113"
+			CUST.INTERFACE.successOrFailure = "F"
+			
+			
+			CUST.INTERFACE.newForacid=BANCS.OUTPARAM.newForacid
+			print(CUST.INTERFACE.newForacid)
+			sv_c = CUST.INTERFACE.errorCode + "|" + CUST.INTERFACE.newForacid
+			sv_u = urhk_SetOrbWarning(sv_c)
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		
+		CUST.INTERFACE.errorCode = "ERR060"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	print(CUST.INTERFACE.DrAcct)
+	print(CUST.INTERFACE.CrAcct)
+	print(CUST.INTERFACE.drSolId)
+	print(CUST.INTERFACE.drCrncy)
+	CUST.INTERFACE.acctIndicator = ""
+	CUST.INTERFACE.ReqRefNum = ""
+	CUST.INTERFACE.procNum = ""
+	sv_a = urhk_GetChannelInfo("")
+	IF (FIELDEXISTS(BANCS.OUTPARAM.DccId)) THEN
+	#{
+		CUST.INTERFACE.DccReqRefNum = BANCS.OUTPARAM.DccReqRefNum
+		print(CUST.INTERFACE.DccReqRefNum)
+		sv_s = "ReqRefNum|SELECT regexp_replace('"+ CUST.INTERFACE.DccReqRefNum + "', '[^[:digit:]]') FROM  DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0) THEN
+		#{
+			CUST.INTERFACE.ReqRefNum = BANCS.OUTPARAM.ReqRefNum
+			print(CUST.INTERFACE.ReqRefNum)
+		#}
+		ENDIF
+		IF(CUST.INTERFACE.ReqRefNum != "") THEN
+		#{
+			BANCS.INPUT.moduleName  = "VER"
+			BANCS.INPUT.parameterId = "PROCNUM"
+			print(BANCS.INPUT.parameterId)
+			CALL ("getcparamvalue.scr")
+			IF (BANCS.OUTPUT.parameterVal != "") THEN
+			#{
+				CUST.INTERFACE.procNum = BANCS.OUTPUT.parameterVal
+				print(CUST.INTERFACE.procNum)
+			#}
+			ENDIF
+			IF(CUST.INTERFACE.procNum != "") THEN
+			#{
+				sv_s = "acctIndicator|SELECT MOD("+ CUST.INTERFACE.ReqRefNum +"," + CUST.INTERFACE.procNum + ") FROM  DUAL"
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+				#{
+					print(BANCS.OUTPARAM.acctIndicator)
+					CUST.INTERFACE.acctIndicator = BANCS.OUTPARAM.acctIndicator
+				#}
+				ENDIF
+				
+				IF(CUST.INTERFACE.acctIndicator != "") THEN
+				#{
+					BANCS.INPUT.moduleName  = "VERSWEEP"
+					BANCS.INPUT.parameterId = CUST.INTERFACE.acctIndicator + "_" + CUST.INTERFACE.CrAcct
+					print(BANCS.INPUT.parameterId)
+					CALL ("getcparamvalue.scr")
+					IF (BANCS.OUTPUT.parameterVal != "") THEN
+					#{
+						CUST.INTERFACE.CrAcct = BANCS.OUTPUT.parameterVal
+						print(CUST.INTERFACE.CrAcct)
+						BANCS.INPARAM.FlagType = "A"
+						BANCS.INPARAM.AcctId = CUST.INTERFACE.CrAcct
+						sv_u = urhk_ContextSOLUpdate("")
+						print(sv_u)
+						IF(sv_u != 0) THEN
+						#{
+							CUST.INTERFACE.errorCode = "ERR060"
+							CUST.INTERFACE.successOrFailure = "F"
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	#trace off
+END-->

@@ -1,0 +1,134 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: s_PostTUATranpost.scr
+# Type: NA|default
+# Description: s_PostTUATranpost.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="bd718a0f58f70c8881845bb7c8ad32fe6c80daa1d28480071cf3461658371a76"
+	TRACE ON
+	sv_r = 	REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	IF(BANCS.STDIN.moduleIdentity == "FI") THEN
+	#{
+		GOTO FINISH
+	#}
+	ELSE
+		#{
+		sv_a = urhk_B2K_PrintRepos("BANCS")
+		PRINT(sv_a)
+		
+		
+		IF (FIELDEXISTS(BANCS.INPUT.srvcallmode)) THEN
+		#{
+			IF (BANCS.INPUT.srvcallmode == "S") THEN
+			#{
+				sv_d = urhk_SRV_GetVal("tranHdr.tranIdentifier.tranDate")
+				BANCS.INPUT.tranDate = MID$(BANCS.OUTPARAM.srvValue,0,10)
+				PRINT(BANCS.INPUT.tranDate)
+				sv_d = urhk_B2k_getDateDiffFromBODDate(BANCS.INPUT.tranDate)
+				PRINT(sv_d)
+				IF (sv_d == 0) THEN
+				#{
+					IF(CINT(BANCS.OUTPARAM.DateDiff) < 0) THEN
+					#{
+						sv_s = urhk_SRV_SetErr("Approval has expired for this referral. Kindly withdraw AND Submit afresh.")
+						PRINT(sv_s)
+						GOTO FINISH
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF((FIELDEXISTS(ONS.CUSTOM.custDataIn)==0) OR (TRIM(ONS.CUSTOM.custDataIn) == "")) THEN
+	#{
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	sv_q = urhk_SRV_GetVal("tranHdr.tranIdentifier.tranId")
+	CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+	sv_q = urhk_SRV_GetVal("tranHdr.tranIdentifier.tranDate")
+	CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue,10)
+	PRINT(CUST.DENOM.tranId)
+	PRINT(CUST.DENOM.tranDate)
+	
+	sv_a = ONS.CUSTOM.custDataIn
+	sv_u = urhk_ParseONSCustData(sv_a)
+	sv_q = urhk_B2k_PRINTRepos("BANCS")
+	PRINT(sv_q)
+	
+	PRINT(ONS.CUSTOM.custDataIn)
+	
+	CUST.DENOM.Flag = BANCS.INPUT.tutmdtl_FIELD_1
+	CUST.DENOM.cucycnt = BANCS.INPUT.tutmdtl_FIELD_2
+	CUST.DENOM.authMatrixId = ""
+	PRINT(CUST.DENOM.Flag)
+	PRINT(CUST.DENOM.cucycnt)
+	
+	#----- Check on denom captured - will help in case BANCS repositories are not flushed ------
+	sv_q = "disFlg|SELECT 1 FROM DUAL WHERE EXISTS (SELECT 1 FROM custom.c_solmnt WHERE sol_id =?SVAR AND dis_flg = 'Y' AND bank_id=?SVAR)"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_DBSelectWithBind(sv_q)
+	PRINT(sv_r)
+	IF((sv_r!=0) AND (CUST.DENOM.Flag!="Y")) THEN
+	#{
+		#sv_r = urhk_SRV_SetErr("Run time error - commit again")
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	IF(CUST.DENOM.Flag == "Y") THEN
+	#{
+		CALL("denomdp018.scr")
+		
+		#-----Query to update Dxfer_id as 'P' in C_DETD and C_DERD table---------------
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId
+		
+		sv_l = "UPDATE custom.c_detd "
+		sv_m = "UPDATE custom.c_derd "
+		sv_l = sv_l + "SET dxfer_flg = 'P',lchg_time=sysdate,lchg_user_id = ?SVAR "
+		sv_m = sv_m + "SET dxfer_flg = 'P' "
+		sv_n = "WHERE dxfer_id = ?SVAR AND dxfer_flg='E' "
+		sv_n = sv_n + "AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') AND bank_id = ?SVAR "
+		
+		sv_a = sv_l + sv_n
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId
+		sv_v = urhk_dbsqlWithBind(sv_a)
+		PRINT(sv_v)
+		
+		sv_b = sv_m + sv_n
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId
+		sv_v = urhk_dbsqlWithBind(sv_b)
+		PRINT(sv_v)
+		
+		
+	#}
+	ENDIF
+	FINISH:
+		TRACE OFF
+END-->

@@ -1,0 +1,315 @@
+########################################################################################################
+#Name               :dealrate.scr
+#Date               :23-09-2015
+#Author             :Marion Kinyanjui
+#Description        :This script is used to fetch values from tbaadm.ftrt(deal rate)
+#Called script      :None
+#Calling Script     :None
+#Input              :
+#Output             :
+########################################################################################################
+<--start
+trace on
+
+####################################################################
+#section      :creating new repository if required
+#Description  :Checks for the existence o the repository STDWFS and
+#               creates a new one by that name if it does not exist
+#####################################################################
+
+IF (REPEXISTS("CUST") == 0 ) THEN
+#{
+CREATEREP("CUST")
+#}
+ENDIF
+
+############################################################################
+#section      :creating new class if required
+#Desscription :checks for the existence of the class GLBDATA in the
+#repository
+#               create a new one if it does not exist
+##############################################################################
+
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+CREATECLASS("CUST","DATA",5)
+#}
+#ELSE
+#{
+#	DELETECLASS("CUST","DATA")
+#	CREATECLASS("CUST","DATA",5)}
+#ENDIF
+#}
+ENDIF
+
+############################################
+#Assigns the values to the variables
+############################################
+
+sv_a = urhk_b2k_PrintRepos("BANCS")
+print(sv_a)
+sv_y=0
+
+sv_a = urhk_GetChannelInfo("")
+print(sv_a)
+CUST.DATA.DccId =BANCS.OUTPARAM.DccId
+print(CUST.DATA.DccId)
+
+#========================================================	
+# Checking if the Inputs are provided in Resquest
+#========================================================
+sv_x="cifId"
+sv_y="treaRefNum"
+
+IF ((FIELDEXISTS(("BANCS").("INPUT").(sv_y))== 1) or (FIELDEXISTS(("BANCS").("INPUT").(sv_x))== 1))THEN
+
+
+#========================================================
+#---Checking if the cifid  and treaRefNum exists or not-------
+#========================================================
+
+IF (((FIELDEXISTS(("BANCS").("INPUT").(sv_x))== "1")) and ((FIELDEXISTS(("BANCS").("INPUT").(sv_y))== "1"))) THEN
+
+CUST.DATA.cifId =BANCS.INPUT.cifId
+CUST.DATA.treaRefNum =BANCS.INPUT.treaRefNum
+
+
+print(BANCS.INPUT.treaRefNum)
+	################################### James - 10/10/2022 - CHG0031393#############################
+IF(CUST.DATA.DccId =="OMN")THEN
+#{
+	IF(CUST.DATA.treaRefNum !="")THEN
+	#{
+
+		#--------------------------------------------------------------
+		#check expired / past deal reference number
+		#---------------------------------------------------------------------
+		sv_s = "count1|"
+		sv_s = sv_s + " select  count(*) from tbaadm.ftrt where bank_id =?SVAR  "
+		sv_s = sv_s + " and REQUEST_DATE=(select db_stat_date from tbaadm.gct where bank_id=?SVAR ) and TR_REF_NUM=?SVAR  "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS= BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId +"|" + CUST.DATA.treaRefNum
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d == 0 ) THEN
+		#{
+			CUST.DATA.count1 = BANCS.OUTPARAM.count1
+			PRINT(CUST.DATA.count1)
+			IF (CUST.DATA.count1==0) THEN
+			#{
+				sv_r = "Invalid/Expired Deal Reference Number. " + CUST.DATA.treaRefNum
+				sv_r = "ERROR|" + sv_r
+				sv_w = urhk_SetOrbOut(sv_r)
+				EXITSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#--------------------------------------------------------------
+		#check if dealcode is used
+		#---------------------------------------------------------------------
+		sv_s = "count1|"
+		sv_s = sv_s + " select count(1)  from tbaadm.dtd where bank_id =?SVAR "
+		sv_s = sv_s + " and TREA_REF_NUM=?SVAR  "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS= BANCS.STDIN.contextBankId +"|" + CUST.DATA.treaRefNum
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d == 0 ) THEN
+		#{
+			CUST.DATA.count1 = BANCS.OUTPARAM.count1
+			PRINT(CUST.DATA.count1)
+			IF (cint(CUST.DATA.count1)> 0) THEN
+			#{
+				sv_r = "The Deal Reference Number is Used. " + CUST.DATA.treaRefNum
+				sv_r = "ERROR|" + sv_r
+				sv_w = urhk_SetOrbOut(sv_r)
+				EXITSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+#}
+ENDIF
+
+
+	################################### James - 10/10/2022 - CHG0031393#############################
+
+
+
+sv_q = "treaRefNum,cifId,DealRate,DealDate,DealCurr,DealCurrTo, DealAmt,TreasuryRate,RateCode| "
+sv_q = sv_q + "select TR_REF_NUM ,CIF_ID,CUST_RATE ,REQUEST_DATE ,FROM_CRNCY_CODE ,TO_CRNCY_CODE,REF_AMT,TREASURY_RATE,RATECODE  "
+sv_q = sv_q + " from tbaadm.ftrt  "
+sv_q = sv_q + " WHERE CIF_ID= ?SVAR and TR_REF_NUM= ?SVAR and bank_id = ?SVAR  and Del_flg!='Y' and STATUS not in ('B','P')"
+
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.cifId + "|" + BANCS.INPUT.treaRefNum + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+IF( sv_e == 0 ) THEN
+sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+print(sv_m)
+sv_n = urhk_dbCursorFetch(sv_m)
+
+#$$$$$$$$$$$$$$$$
+
+sv_g = 0
+CUST.DATA.number = "0"
+WHILE(sv_n == 0)
+#{
+CUST.DATA.varValue1 = BANCS.OUTPARAM.treaRefNum
+print (CUST.DATA.varValue1)
+CUST.DATA.varValue2 = BANCS.OUTPARAM.cifId
+print (CUST.DATA.varValue2)
+CUST.DATA.varValue3 = BANCS.OUTPARAM.DealRate
+print (CUST.DATA.varValue3)
+CUST.DATA.varValue4 = BANCS.OUTPARAM.DealDate
+print (CUST.DATA.varValue4)
+CUST.DATA.varValue5 = BANCS.OUTPARAM.DealCurr
+print (CUST.DATA.varValue5)
+CUST.DATA.varValue6 = BANCS.OUTPARAM.DealCurrTo
+print (CUST.DATA.varValue6)
+CUST.DATA.varValue7 = BANCS.OUTPARAM.DealAmt
+print (CUST.DATA.varValue7)
+CUST.DATA.varValue8 = BANCS.OUTPARAM.TreasuryRate
+print (CUST.DATA.varValue8)
+IF  ((CUST.DATA.DccId =="MYS") OR (CUST.DATA.DccId =="OMN") )THEN
+
+CUST.DATA.varValue9 = BANCS.OUTPARAM.RateCode
+print (CUST.DATA.varValue9)
+
+ENDIF						
+
+IF (CUST.DATA.varValue1 != "") THEN
+#{
+sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.treaRefNum|" + CUST.DATA.varValue1
+print(sv_p)
+sv_u = urhk_SetOrbOut(sv_p)
+
+ENDIF
+IF (CUST.DATA.varValue2 != "") THEN
+#{
+sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.cifId|" + CUST.DATA.varValue2
+print(sv_p)
+sv_u = urhk_SetOrbOut(sv_p)
+
+ENDIF
+IF (CUST.DATA.varValue3 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealRate|" + CUST.DATA.varValue3
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+
+
+ENDIF
+IF (CUST.DATA.varValue4 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealDate|" + CUST.DATA.varValue4
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+
+
+ENDIF
+IF (CUST.DATA.varValue5 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealCurr|" + CUST.DATA.varValue5
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+
+
+ENDIF
+IF (CUST.DATA.varValue6 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealCurrTo|" + CUST.DATA.varValue6
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+
+
+ENDIF
+IF (CUST.DATA.varValue7 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealAmt|" + CUST.DATA.varValue7
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+ENDIF
+
+IF (CUST.DATA.varValue8 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.TreasuryRate|" + CUST.DATA.varValue8
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+ENDIF
+
+IF  (CUST.DATA.DccId =="MYS")THEN
+
+IF (CUST.DATA.varValue9 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.RateCode|" + CUST.DATA.varValue9
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+ENDIF
+
+ENDIF
+
+################################### James - 10/10/2022 - CHG0031393#############################
+
+IF  (CUST.DATA.DccId =="OMN")THEN
+
+IF (CUST.DATA.varValue9 != "") THEN
+#{
+	sv_p = "ACCTLISTStruct.<rec_" + CUST.DATA.number + ">.Acct.DealRateCode|" + CUST.DATA.varValue9
+	print(sv_p)
+	sv_u = urhk_SetOrbOut(sv_p)
+ENDIF
+
+ENDIF
+
+################################### James - 10/10/2022 - CHG0031393#############################
+
+
+
+sv_n = urhk_dbCursorFetch(sv_m)
+sv_g = sv_g + 1
+CUST.DATA.number = sv_g
+print(CUST.DATA.number)
+
+DO
+
+IF(sv_g ==0)THEN
+print(sv_g)
+sv_a = "count|select count(1) from tbaadm.ftrt  WHERE CIF_ID= ?SVAR and TR_REF_NUM= ?SVAR and bank_id = ?SVAR and Del_flg!='Y' and STATUS not in ('B','P') "
+print(sv_a)
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.cifId + "|" + BANCS.INPUT.treaRefNum + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_q= urhk_dbSelectWithBind(sv_a)
+print(sv_q)
+
+IF (BANCS.OUTPARAM.count==0) THEN
+
+print("Deal Ref Not Found")	 
+sv_u=urhk_SetOrbOut("description|Deal Ref Not Found")
+sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+
+ENDIF
+ENDIF
+sv_n = urhk_dbCursorClose(sv_m)
+
+exitscript
+#$$$$$$$$$$$$$$$
+
+ENDIF
+ENDIF
+ELSE
+print("No Input details received")
+CUST.DATA.successOrFailure="F"
+CUST.DATA.errorCode="ERR008"
+GOTO ERROREXIT
+ENDIF
+EXITSCRIPT
+trace off
+end-->	

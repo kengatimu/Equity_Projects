@@ -1,0 +1,258 @@
+#####################################################################################
+#   Source Name                 :   cpmod_audit.scr
+#   Date                        :   18-06-2010
+#   Description                 :   This script is used for auditing.
+#   Input                       :   None
+#   Output                      :   None
+#   Author                      :   Pankaj Gaur
+#   Calling Script              :   cpmod_det.scr.
+#   Called Script               :   None
+#   Reference                   :
+#   Modification History        :
+#           <Serial No>     <Date>      <Author>        <Description>
+####################################################################################
+
+<--START
+CHECKSUM="29b28dbb7f23220cf02965dc1f9d02a987129fed9c9cd7da79b14f65198f4466"
+	TRACE ON
+	lv_r = REPEXISTS("AUDIT")
+	IF (lv_r == 0) THEN
+	#{
+		CREATEREP("AUDIT")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("AUDIT", "KEY")==0) THEN
+	#{
+		CREATECLASS("AUDIT", "KEY",5)
+		#}
+	ELSE
+		#{
+		DELETECLASS("AUDIT", "KEY")
+		CREATECLASS("AUDIT", "KEY",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("AUDIT","NEW")==0) THEN
+	#{
+		CREATECLASS("AUDIT","NEW",5)
+		#}
+	ELSE
+		#{
+		DELETECLASS("AUDIT","NEW")
+		CREATECLASS("AUDIT","NEW",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("AUDIT","OLD")==0) THEN
+	#{
+		CREATECLASS("AUDIT","OLD",5)
+		#}
+	ELSE
+		#{
+		DELETECLASS("AUDIT","OLD")
+		CREATECLASS("AUDIT","OLD",5)
+	#}
+	ENDIF
+	
+	IF(CUST.DATA.adtProcCode=="A") THEN
+	#{
+		GOTO ADD
+	#}
+	ENDIF
+	
+	IF(CUST.DATA.adtProcCode=="M") THEN
+	#{
+		GOTO MODIFY
+	#}
+	ENDIF
+	
+	IF(CUST.DATA.adtProcCode=="D") THEN
+	#{
+		GOTO DELETE
+	#}
+	ENDIF
+	IF(CUST.DATA.adtProcCode=="V") THEN
+	#{
+		GOTO VERIFY
+	#}
+	ENDIF
+	IF(CUST.DATA.adtProcCode=="X") THEN
+	#{
+		GOTO CANCEL
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.fatalErrorFlg = "Y"
+	BANCS.OUTPUT.fatalErrorMsg = "Invalid value [" + CUST.DATA.adtProcCode + "] in CUST.DATA.adtProcCode"
+	GOTO ENDOFSCRIPT
+	
+	fnInitAudit:
+		#{
+		print("fnInitAudit function")
+		print(CUST.CPMOD.moduleId)
+		# Begin. Initialise for all key fields
+		AUDIT.KEY.field1 = CUST.CPMOD.moduleId
+		AUDIT.KEY.field2 = BANCS.STDIN.contextBankId
+		# End
+		RETURN
+	#}
+	
+	fnPopBancsRep:
+		#{
+		print("fnPopBancsRep function")
+		BANCS.INPARAM.AUDITSOLID    =   BANCS.STDIN.mySolId
+		BANCS.INPARAM.TABLENAME     =   "CPMOD"
+		BANCS.INPARAM.ACCTNUM       =   ""
+		BANCS.INPARAM.GLSUBHEADCODE =   ""
+		BANCS.INPARAM.OPERCODE      =   CUST.DATA.adtProcCode
+		IF(CUST.CPMOD.funcCode =="V") THEN
+		#{
+			print("in case of verify")
+			BANCS.INPARAM.AUTH_ID = BANCS.STDIN.userId
+			#}
+		ELSE
+			#{
+			print("cases other than verify")
+			BANCS.INPARAM.AUTH_ID ="!"
+		#}
+		ENDIF
+		BANCS.INPARAM.REFNUM        =   ""
+		#Autoverify should be Y if mod table is not present
+		BANCS.INPARAM.AUTOVERIFY    =  "N"
+		print(BANCS.INPARAM.AUTH_ID)
+		PRINT(BANCS.INPARAM.OPERCODE)
+		IF(CUST.CPMOD.funcCode != "A") THEN
+		#{
+			lv_s = "refnum|SELECT MAX(REF_NUM)"
+			lv_s = lv_s + " FROM tbaadm.ADT "
+			lv_s = lv_s + " WHERE TABLE_NAME = ?SVAR "
+			lv_s = lv_s + " AND TABLE_KEY = '" + AUDIT.KEY.field1 + "/" + BANCS.STDIN.contextBankId + "/' "
+			
+			BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.TABLENAME
+			IF(CUST.CPMOD.funcCode == "V") THEN
+			#{
+				lv_s = lv_s + " AND AUTH_ID = '!' "
+				lv_s = lv_s + " AND FUNC_CODE IN ('A','M','D','X') "
+			#}
+			ENDIF
+			
+			IF(CUST.CPMOD.funcCode == "M") THEN
+			#{
+				IF(CUST.CPMOD.encflg == "Y") THEN
+				#{
+					lv_s = lv_s + " AND AUTH_ID != '!' "
+					lv_s = lv_s + " AND FUNC_CODE IN ('A','V') "
+					#}
+				ELSE
+					#{
+					lv_s = lv_s + " AND AUTH_ID = '!' "
+					lv_s = lv_s + " AND FUNC_CODE IN ('A','M') "
+				#}
+				ENDIF
+			#}
+			ENDIF
+			IF(CUST.CPMOD.funcCode == "X") THEN
+			#{
+				lv_s = lv_s + " AND AUTH_ID = '!' "
+				lv_s = lv_s + " AND FUNC_CODE IN ('A','M') "
+			#}
+			ENDIF
+			lv_s = lv_s +" AND BANK_ID = ?SVAR "
+			print(lv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			lv_d = urhk_dbSelectWithBind(lv_s)
+			
+			IF(lv_d == 0) THEN
+			#{
+				BANCS.INPARAM.REFNUM = BANCS.OUTPARAM.refnum
+				print(BANCS.INPARAM.REFNUM)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		RETURN
+	#}
+	
+	fnPopOldNewVals:
+		#{
+		# Begin
+		# Generate list of fields here which should not be present
+		# DB.C_ANM.first_name_adtReq = ""
+		# End
+		# Begin. Add the comparison for all fields between Begin and End
+		
+		print("fnPopOldNewVals function")
+		IF ((fieldexists(CUST.CPMOD.moduleDesc_adtReq) == 0) AND (CUST.DATA.moduleDesc != CUST.CPMOD.moduleDesc)) THEN
+		#{
+			AUDIT.NEW.moduleDesc    =   CUST.CPMOD.moduleDesc
+			AUDIT.OLD.moduleDesc    =   CUST.DATA.moduleDesc
+		#}
+		ENDIF
+		
+		IF ((fieldexists(CUST.CPMOD.lchg_user_id_adtReq) == 0) AND (CUST.DATA.lchg_user_id != CUST.CPMOD.lstusrid)) THEN
+		#{
+			AUDIT.NEW.moduleDesc    =   CUST.CPMOD.lstusrid
+			AUDIT.OLD.moduleDesc    =   CUST.DATA.lchg_user_id
+		#}
+		ENDIF
+		
+		RETURN
+	#}
+	
+	fnCallAudit:
+		#{
+		print("fnCallAudit function")
+		print(BANCS.INPARAM.AUTH_ID)
+		PRINT(BANCS.INPARAM.OPERCODE)
+		lv_a = urhk_Audit(BANCS.INPARAM.REFNUM)
+		print(lv_a)
+		print(BANCS.INPARAM.AUTH_ID)
+		PRINT(BANCS.INPARAM.OPERCODE)
+		print(BANCS.OUTPARAM.successOrFailure)
+		CUST.DATA.adtSuccessOrFailure = BANCS.OUTPARAM.successOrFailure
+		IF (CUST.DATA.adtSuccessOrFailure == "F") THEN
+		#{
+			CUST.DATA.errorMesg = BANCS.OUTPARAM.errorMesg
+		#}
+		ENDIF
+		
+		RETURN
+	#}
+	
+	ADD:
+	DELETE:
+	VERIFY:
+	CANCEL:
+		#{
+		GOSUB fnInitAudit
+		GOSUB fnPopBancsRep
+		GOSUB fnCallAudit
+		
+		GOTO ENDOFSCRIPT
+		#}
+		
+		
+	MODIFY:
+		#{
+		GOSUB fnInitAudit
+		GOSUB fnPopBancsRep
+		GOSUB fnPopOldNewVals
+		GOSUB fnCallAudit
+		
+		GOTO ENDOFSCRIPT
+		#}
+		
+	ENDOFSCRIPT:
+		#{
+		IF(REPEXISTS("AUDIT")==1) THEN
+		#{
+			DELETEREP("AUDIT")
+		#}
+		ENDIF
+		EXITSCRIPT
+		#}
+END-->

@@ -1,0 +1,806 @@
+<--start
+#############################################################################
+#Developed by : Alex Musumbi :2020 EFT XML Generation                       #
+#                                                                           #
+#############################################################################
+trace on
+
+		IF (REPEXISTS("EBC") == 0) THEN
+		#{
+				CREATEREP("EBC")
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("EBC","EFT") == 0) THEN
+		#{
+				CREATECLASS("EBC","EFT",5)
+		#}
+		ENDIF
+
+		print(" EFT XML FILE generation confirmed")
+		sv_r=urhk_B2k_PrintRepos("BANCS")
+		print(sv_r)
+
+		EBC.EFT.file_path = "/finreports/BCDC/xml/"
+		EBC.EFT.end_of_line = ""
+		EBC.EFT.from_date= BANCS.INPUT.fromDate
+		EBC.EFT.todate = BANCS.INPUT.toDate
+
+		sv_a = "xmlmessage,tempSysDate,dateyy,dateTT|"
+		sv_a = sv_a + "SELECT TO_CHAR(systimestamp,'yymmddhhmissxff'),TO_CHAR(sysdate,'YYMMDDHH24MISS'),trim(TO_CHAR(sysdate,'YYYY-MM-DDHH24:MI:SS')),TO_CHAR(sysdate,'YYYY-MM-DD') FROM dual"
+		sv_r = urhk_dbSelectWithBind(sv_a)
+		IF (sv_r == 0) THEN
+			EBC.EFT.msgTime = BANCS.OUTPARAM.xmlmessage
+			EBC.EFT.tempSysDate = BANCS.OUTPARAM.tempSysDate
+			EBC.EFT.msgTime = MID$(EBC.EFT.msgTime,0,10)+"T"+MID$(EBC.EFT.msgTime,10,12)
+			EBC.EFT.dateyy= BANCS.OUTPARAM.dateyy
+			EBC.EFT.dateTT= BANCS.OUTPARAM.dateTT
+			EBC.EFT.dateyy = MID$(EBC.EFT.dateyy,0,10)+"T"+MID$(EBC.EFT.dateyy,10,12)
+
+		ELSE
+			EXITSCRIPT
+		ENDIF
+
+		EBC.EFT.file_name = EBC.EFT.tempSysDate +  ".xml"
+		EBC.EFT.file_name = EBC.EFT.msgTime + ".xml"
+
+		print(EBC.EFT.file_name)
+		sv_m = "touch " + EBC.EFT.file_path + EBC.EFT.file_name
+		sv_m = SYSTEM(sv_m)
+		print(sv_m)
+
+
+			sv_g= "insert into custom.EFT_STATUS1 (TRAN_ID,BANK_CODE,DEBIT_ACCOUNT,ENTRY_AMT,CREDIT_ACCT,CREDIT_ACCT_NAME,CREDIT_BANK,TXN_TYPE,status)"
+			sv_g = sv_g + " select OTC.TRAN_ID,DEST_BANK_CODE, gam.foracid,TRAN_AMT,otc.DEST_CUST_ACCT,DEST_CUST_NAME,DEST_BANK_CODE,tran_code,'1'"
+			sv_g = sv_g + " from tbaadm.otc,tbaadm.gam  where  gam.acid=otc.cust_acct and gam.bank_id = otc.bank_id"
+			sv_g = sv_g + " and gam.bank_id = '43'and otc.ENTITY_CRE_FLG='Y'"
+			sv_g = sv_g + " and otc.tran_code in ('CASH','CORT','DIVI','GOVT','HEDG','INTC','INTE','LOAN','PENS','SALA','SECU','SSBE','SUPP','TAXS','TRAD','TREA','WHLD','VOICE','WHLD')"
+			sv_g = sv_g + " and to_char(SETTLEMENT_DATE,'dd-mm-yyyy') between '"+EBC.EFT.from_date+"' and '"+EBC.EFT.todate+"' "
+			sv_g = sv_g + " and OTC.TRAN_ID NOT IN (SELECT TRAN_ID FROM CUSTOM.EFT_STATUS1)"
+			BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10)
+			print (sv_g)
+			sv_d = urhk_dbSqlWithBind(sv_g)
+			print(sv_g)
+
+			IF (sv_g == 0) THEN
+
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			PRINT(sv_d)
+
+
+			ENDIF
+
+			sv_g= "insert into custom.EFT_STATUS1 (TRAN_ID,TRAN_DATE,BANK_CODE,DEBIT_ACCOUNT,ENTRY_AMT,CREDIT_ACCT,CREDIT_ACCT_NAME,CREDIT_BANK,TXN_TYPE,status) "
+			sv_g= sv_g + " select TRAN_ID,TRAN_DATE,BANKCODE,CUSTACC,remitamt,RECEIVERACC,RECEIVERACCNAME,BANKCODE,ECSTRANCODE,'1'  from CUSTOM.ECS_TRAN where tran_id is not null "
+			sv_g= sv_g + " and ECSTRANCODE in ('CASH','CORT','DIVI','GOVT','HEDG','INTC','INTE','LOAN','PENS','SALA','SECU','SSBE','SUPP','TAXS','TRAD','TREA','WHLD','VOICE','WHLD') "
+			sv_g= sv_g + " and to_char(lchg_time,'dd-mm-yyyy')  between '"+EBC.EFT.from_date+"' and '"+EBC.EFT.todate+"' "
+			sv_g= sv_g + " and (ECS_TRAN.TRAN_ID,ECS_TRAN.TRAN_DATE) NOT IN (SELECT TRAN_ID,TRAN_DATE FROM CUSTOM.EFT_STATUS1) "
+			BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10)
+			print (sv_g)
+			sv_d = urhk_dbSqlWithBind(sv_g)
+			print(sv_g)
+			IF (sv_g == 0) THEN
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				PRINT(sv_d)
+			ENDIF  
+
+
+##EFT ccount 
+ 
+		sv_w ="Nooftrn,totalamt|"
+		sv_w = sv_w + " SELECT count(otc.tran_id),sum(tran_amt) from tbaadm.otc,custom.eft_status1 where otc.bank_id='43'" 
+		sv_w = sv_w + " and to_char(SETTLEMENT_DATE,'dd-mm-yyyy') between '"+EBC.EFT.from_date+"' and '"+EBC.EFT.todate+"' "
+		sv_w = sv_w +   " and tran_code in('CASH','CORT','DIVI','GOVT','HEDG','INTC','INTE','LOAN','PENS','SALA','SECU','SSBE','SUPP','TAXS','TRAD','TREA','WHLD','VOICE','WHLD') and otc.ENTITY_CRE_FLG='Y' and eft_status1.tran_id=otc.tran_id and eft_status1.status='1'"
+		print(sv_w)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		sv_r = urhk_dbSelectWithBind(sv_w)
+		print(sv_r)
+
+		if(sv_r == 0)then
+			EBC.EFT.Nooftrn = BANCS.OUTPARAM.Nooftrn
+			EBC.EFT.totalamt = BANCS.OUTPARAM.totalamt
+		endif
+
+
+
+		EBC.EFT.TDATE = mid$(BANCS.STDIN.BODDate,0,10)
+		Print (EBC.EFT.TDATE)
+####SI count 
+#		sv_w ="Nooftrn,totalamt|"
+#		sv_w = sv_w +   " Select count(dtd.tran_id),sum(tran_amt)  from tbaadm.dtd,tbaadm.emd,tbaadm.pyrd,tbaadm.pyrh,tbaadm.gam where gam.bank_id = ?SVAR and emd.B2K_ID=pyrh.PR_B2K_ID and dtd.SI_SRL_NUM = emd.B2K_ID " 
+#		sv_w = sv_w +   "  and pyrh.PR_SRL_NUM=pyrd.PR_SRL_NUM and pyrd.acid=gam.acid and gam.bank_id = dtd.bank_id  and gam.bank_id = emd.bank_id  and gam.bank_id = pyrd.bank_id" 
+#		sv_w = sv_w +   "  and gam.bank_id = pyrh.bank_id and pyrh.PART_TRAN_TYPE='D' and dtd.part_tran_type='C' and dtd.TRAN_TYPE='T' and dtd.TRAN_SUB_TYPE='SI' and dtd.del_flg!='Y' and dtd.tran_date=to_date(?SVAR,'DD-MM-YYYY') "
+#		print(sv_w)
+#		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ EBC.EFT.TDATE
+#		sv_r = urhk_dbSelectWithBind(sv_w)
+#		print(sv_r)
+#
+#		if(sv_r == 0)then
+#			EBC.EFT.Nooftrn1 = BANCS.OUTPARAM.Nooftrn
+#			EBC.EFT.totalamt1 = BANCS.OUTPARAM.totalamt
+#		endif
+
+
+##PAYDET ccount 
+
+		sv_w ="Nooftrn,totalamt|"
+		sv_w = sv_w + " SELECT count(ECS_TRAN.tran_id),sum(ECS_TRAN.remitamt) from  CUSTOM.ECS_TRAN,custom.eft_status1"
+		sv_w = sv_w + " where  ECS_TRAN.bank_id='43' AND ECS_TRAN.tran_date =to_date(?SVAR,'DD-MM-YYYY') "
+		sv_w = sv_w + " and ECS_TRAN.ECSTRANCODE in('CASH','CORT','DIVI','GOVT','HEDG','INTC','INTE','LOAN','PENS','SALA','SECU','SSBE','SUPP','TAXS','TRAD','TREA','WHLD','VOICE','WHLD') "
+		sv_w = sv_w + " and eft_status1.tran_id=ECS_TRAN.tran_id and eft_status1.status='1'"
+		print(sv_w)
+		BANCS.INPARAM.BINDVARS = EBC.EFT.todate
+		sv_r = urhk_dbSelectWithBind(sv_w)
+		print(sv_r)
+
+		if(sv_r == 0)then
+			EBC.EFT.Nooftrn2 = BANCS.OUTPARAM.Nooftrn
+			EBC.EFT.totalamt2 = BANCS.OUTPARAM.totalamt
+		endif
+
+		#EBC.EFT.Nooftrn = cint(EBC.EFT.Nooftrn)  + cint (EBC.EFT.Nooftrn1) + cint (EBC.EFT.Nooftrn2)
+		#EBC.EFT.totalamt = cdouble (EBC.EFT.totalamt) + cdouble(EBC.EFT.totalamt1) + cdouble(EBC.EFT.totalamt2)
+
+		EBC.EFT.Nooftrn = cint(EBC.EFT.Nooftrn) + cint (EBC.EFT.Nooftrn2)
+		EBC.EFT.totalamt = cdouble (EBC.EFT.totalamt) + cdouble(EBC.EFT.totalamt2)
+		Print (EBC.EFT.totalamt)
+		EBC.EFT.totalamt = FORMAT$(CDOUBLE(EBC.EFT.totalamt),"%.2f")
+
+		print(EBC.EFT.Nooftrn)
+		print(EBC.EFT.totalamt)
+		EBC.EFT.xmlheader="<?xml version=*1.0* encoding=*ISO-8859-15*?>"
+		print(EBC.EFT.xmlheader)
+		EBC.EFT.xmlns4="<Document xmlns=*urn:iso:std:iso:20022:tech:xsd:pacs.008.001.02* "
+		EBC.EFT.xmlns6 =" xmlns:xsi=*http://www.w3.org/2001/XMLSchema-instance*>"
+		print(EBC.EFT.xmlns4)
+		
+		EBC.EFT.currencydif="*CDF*"
+        sv_z = '*'
+        sv_y = '"'
+	#	sv_t = '$'
+        #sv_u = " "
+		BANCS.INPARAM.BINDVARS = EBC.EFT.xmlheader +"|"+sv_z +"|"+ sv_y +"|"+  EBC.EFT.xmlns4 +"|"+sv_z +"|"+ sv_y +"|"+EBC.EFT.currencydif+"|"+sv_z +"|"+ sv_y +"|"+EBC.EFT.xmlns6+"|"+sv_z +"|"+ sv_y 
+        print(BANCS.INPARAM.BINDVARS)
+        sv_a= "a1,a2,a3,a4|select replace (?SVAR,?SVAR,?SVAR),replace (?SVAR,?SVAR,?SVAR),replace (?SVAR,?SVAR,?SVAR),replace (?SVAR,?SVAR,?SVAR) from dual "
+        sv_b=urhk_dbSelectWithBind(sv_a)
+        print(sv_b)
+
+        if(sv_b == 0) THEN
+        #{
+                EBC.EFT.xmlheader=BANCS.OUTPARAM.a1
+                EBC.EFT.xmlns4=BANCS.OUTPARAM.a2
+				EBC.EFT.xmlns6=BANCS.OUTPARAM.a4
+				EBC.EFT.currencydif=BANCS.OUTPARAM.a3
+               
+        #}
+        endif
+		EBC.EFT.xmlns4 = EBC.EFT.xmlns4+EBC.EFT.xmlns6
+		
+sv_s= "Rownumber,tran_id,TRAN_CODE,TRAN_AMT,sol_id,free_text,DEST_BANK_CODE,cust_acct,cust_name,DEST_BRANCH_CODE,DEST_CUST_ACCT,sol_id,DEST_CUST_NAME,ACCT_NAME,foracid,tran_rmks,Iban_number|"
+sv_s = sv_s +  " select ROW_NUMBER() OVER(ORDER BY TRAN_CODE asc) AS Rownumber, TRAN_CODE ,   TRAN_CODE,TRAN_AMT, SOL_ID,FREE_TEXT,DEST_BANK_CODE, "
+sv_s = sv_s +  " CUST_ACCT,CUST_NAME, DEST_BRANCH_CODE ,DEST_CUST_ACCT, SOL_ID_1, DEST_CUST_NAME, ACCT_NAME, FORACID, TRAN_RMKS, IBAN_NUMBER  from  "
+#HOTCE
+sv_s = sv_s +  " (select ecs_tran_ref_no, TRAN_CODE,TRAN_AMT,otc.sol_id,free_text, DEST_BANK_CODE, cust_acct,cust_name,DEST_BRANCH_CODE,DEST_CUST_ACCT, "
+sv_s = sv_s +  " otc.sol_id SOL_ID_1,DEST_CUST_NAME,GAM.ACCT_NAME, gam.foracid,tran_rmks,Iban_number from tbaadm.otc,tbaadm.gam,custom.eft_status1  "
+sv_s = sv_s +  " where gam.foracid=otc.free_text5 and  gam.bank_id = otc.bank_id and gam.bank_id = '43' and gam.acid=otc.cust_acct   "
+sv_s = sv_s +  " and otc.ENTITY_CRE_FLG='Y' and otc.tran_code in ('CASH','CORT','DIVI','GOVT','HEDG','INTC','INTE','LOAN','PENS','SALA','SECU','SSBE','SUPP','TAXS','TRAD','TREA','WHLD','VOICE','WHLD')"
+sv_s = sv_s +  " and otc.tran_id=eft_status1.tran_id and eft_status1.status='1' and  to_char(SETTLEMENT_DATE,'dd-mm-yyyy') between '"+EBC.EFT.from_date+"' and '"+EBC.EFT.todate+"' union "
+#SI
+#sv_s = sv_s +  " Select dtd.tran_id ecs_tran_ref_no , emd.TRANSACTION_CODE TRAN_CODE , dtd.TRAN_AMT TRAN_AMT, gam.sol_id SOL_ID , ' ' free_text , emd.OTHER_BANK_CODE DEST_BANK_CODE , "
+#sv_s = sv_s +  " gam.acid cust_acct,  '' cust_name,  emd.OTHER_BRANCH_CODE DEST_BRANCH_CODE ,emd.OTHER_PARTY_ACCT DEST_CUST_ACCT ,gam.sol_id SOL_ID_1 ,emd.OTHER_PARTY_NAME DEST_CUST_NAME, "
+#sv_s = sv_s +  " gam.acct_name, gam.foracid ,  dtd.TRAN_PARTICULAR , gam.IBAN_NUMBER from tbaadm.dtd,tbaadm.emd,tbaadm.pyrd,tbaadm.pyrh,tbaadm.gam where gam.bank_id = ?SVAR and emd.B2K_ID=pyrh.PR_B2K_ID  "
+#sv_s = sv_s +  " and dtd.SI_SRL_NUM = emd.B2K_ID and pyrh.PR_SRL_NUM=pyrd.PR_SRL_NUM and pyrd.acid=gam.acid and gam.bank_id = dtd.bank_id  and gam.bank_id = emd.bank_id and gam.bank_id = pyrd.bank_id and gam.bank_id = pyrh.bank_id"
+#sv_s = sv_s +  " and pyrh.PART_TRAN_TYPE='D' and dtd.part_tran_type='C' and dtd.TRAN_TYPE='T' and dtd.TRAN_SUB_TYPE='SI' and dtd.del_flg!='Y' and   dtd.tran_date=to_date(?SVAR,'DD-MM-YYYY') union "
+#PAYDET
+sv_s = sv_s +  " SELECT  trim(ECS_TRAN.tran_id) ECS_TRAN_REF_NO,ECS_TRAN.ECSTRANCODE TRAN_CODE,ECS_TRAN.remitamt TRAN_AMT,ECS_TRAN.SOLID SOL_ID,FREETXT1, "
+sv_s = sv_s +  " BANKCODE,CUSTACC,regexp_replace(CUSTNAME,'[^0-9A-Za-z ]',' '),BRANCHCODE,RECEIVERACC, ECS_TRAN.solid,RECEIVERACCNAME,regexp_replace(GAM.ACCT_NAME,'[^0-9A-Za-z ]',' '),gam.foracid, "
+#sv_s = sv_s +  " regexp_replace(TRANRMKS,'[^0-9A-Za-z ]',' '),concat(concat(BANKCODE,BRANCHCODE),RECEIVERACC) CUSTDESTACCIBAN "
+sv_s = sv_s +  " regexp_replace(TRANRMKS,'[^0-9A-Za-z ]',' '),iban_number "
+sv_s = sv_s +  " FROM  CUSTOM.ECS_TRAN,tbaadm.gam,custom.eft_status1 where gam.foracid=CUSTACC and gam.bank_id='43' "
+sv_s = sv_s +  " AND  to_char(ECS_TRAN.tran_date,'dd-mm-yyyy') between '"+EBC.EFT.from_date+"' and '"+EBC.EFT.todate+"' and ECS_TRAN.tran_id=eft_status1.tran_id  and eft_status1.status='1' ) "
+
+	BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10)  
+        print(sv_s)
+
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ EBC.EFT.TDATE
+        sv_x = urhk_dbCursorOpenWithBind(sv_s)
+        print(sv_x)
+
+        sv_c = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        PRINT(sv_c)
+        sv_d = urhk_dbCursorFetch(sv_c)
+        print(sv_d)
+
+		
+
+		
+		EBC.EFT.xmlns2="<Document xmlns="+"urn:iso:std:iso:20022:tech:xsd:pacs.008.001.02"+">"
+		EBC.EFT.xmlns3="<xmlns:xsi="+"'"+""+"http://www.w3.org/2001/XMLSchema-instance"+""+"'"+">"
+		print(EBC.EFT.xmlns2)
+		print(EBC.EFT.xmlns3)
+		
+		EBC.EFT.xmlns3="<xmlns:xsi="+"'"+""+"http://www.w3.org/2001/XMLSchema-instance"+""+"'"+">"
+		
+		EBC.EFT.xmlns5="<xmlns:xsi="+"'"+""+"http://www.w3.org/2001/XMLSchema-instance"+""+"'"+">"
+		
+		print(EBC.EFT.xmlns5)
+		
+		
+
+            EBC.EFT.fi="<FIToFICstmrCdtTrf>"
+            EBC.EFT.gp="<GrpHdr>"
+            print(EBC.EFT.msgTime)
+            sv_m = "echo    '" +EBC.EFT.xmlheader+ "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+           # sv_m = "echo    "<?xml version=\'1.0\' encoding=\'ISO-8859-15\'?>"  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+            sv_m = SYSTEM(sv_m)
+            print(sv_m)
+		
+		
+            sv_m = "echo '" +EBC.EFT.xmlns4+ "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+            sv_m = SYSTEM(sv_m)
+            print(sv_m)
+
+              sv_m = "echo '" +EBC.EFT.fi+ "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+              sv_m = "echo '" +EBC.EFT.gp+ "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.MsgID="<MsgId>10008D</MsgId> "
+              print(EBC.EFT.MsgID)
+
+              EBC.EFT.MsgID2="EBC.EFT.msgTime"
+              print(EBC.EFT.MsgID2)
+
+              EBC.EFT.MsgID3="<MsgId>10008D"+EBC.EFT.msgTime+"</MsgId> "
+              print(EBC.EFT.MsgID3)
+
+
+              sv_m = "echo '"+EBC.EFT.MsgID3+ EBC.EFT.end_of_line +"'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag1= "<CreDtTm>"+EBC.EFT.dateyy+"</CreDtTm>"
+
+              sv_m = "echo '" + EBC.EFT.Tag1 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag2= "<NbOfTxs>"+EBC.EFT.Nooftrn+"</NbOfTxs>"
+              sv_m = "echo '" + EBC.EFT.Tag2 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag3= "<TtlIntrBkSttlmAmt Ccy="+EBC.EFT.currencydif+">"+EBC.EFT.totalamt + "</TtlIntrBkSttlmAmt>"
+              sv_m = "echo '"+ EBC.EFT.Tag3 + EBC.EFT.end_of_line +"'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag4=  "<IntrBkSttlmDt>"+EBC.EFT.dateTT+"</IntrBkSttlmDt>"
+              sv_m = "echo '" + EBC.EFT.Tag4 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag5=  "<SttlmInf>"
+              sv_m = "echo '" + EBC.EFT.Tag5 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag7=  "<SttlmMtd>CLRG</SttlmMtd>"
+              sv_m = "echo '" + EBC.EFT.Tag7 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+               EBC.EFT.Tag8=  "<ClrSys>"
+              sv_m = "echo '" + EBC.EFT.Tag8 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag9=  "<Prtry>ACH</Prtry>"
+              sv_m = "echo '" + EBC.EFT.Tag9 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag81=  "</ClrSys>"
+              sv_m = "echo '"+ EBC.EFT.Tag81 + EBC.EFT.end_of_line +"'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag10=  "</SttlmInf>"
+              sv_m = "echo '" + EBC.EFT.Tag10 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag82=  "<InstgAgt>"
+              sv_m = "echo '" + EBC.EFT.Tag82 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag11=  "<FinInstnId>"
+              sv_m = "echo '" + EBC.EFT.Tag11 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag83=  "<BIC>BCDCCDKI</BIC>"
+              sv_m = "echo '" + EBC.EFT.Tag83 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag84=  "</FinInstnId>"
+              sv_m = "echo '" + EBC.EFT.Tag84 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag13=  "</InstgAgt>"
+              sv_m = "echo '" + EBC.EFT.Tag13 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.Tag14=  "</GrpHdr>"
+              sv_m = "echo '" + EBC.EFT.Tag14 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+			  sv_r=urhk_B2k_PrintRepos("BANCS")
+              print(sv_r)
+
+			###
+			print(EBC.EFT.Nooftrn)
+			# transaction Loop
+			#if (EBC.EFT.Rownumber =="1") then
+			
+			#print(EBC.EFT.tran_id)
+			WHILE(sv_d == 0)
+			#{
+					if(sv_d == 0)then
+						EBC.EFT.TRAN_CODE = BANCS.OUTPARAM.TRAN_CODE
+						EBC.EFT.TRAN_AMT = BANCS.OUTPARAM.TRAN_AMT
+						EBC.EFT.DEST_BANK_CODE = BANCS.OUTPARAM.DEST_BANK_CODE
+						EBC.EFT.DEST_BRANCH_CODE = BANCS.OUTPARAM.DEST_BRANCH_CODE
+						EBC.EFT.cust_acct = BANCS.OUTPARAM.cust_acct
+						EBC.EFT.DEST_CUST_ACCT = BANCS.OUTPARAM.DEST_CUST_ACCT
+						EBC.EFT.cust_name = BANCS.OUTPARAM.cust_name
+						EBC.EFT.sol_id = BANCS.OUTPARAM.sol_id
+						EBC.EFT.tran_id= BANCS.OUTPARAM.tran_id
+						EBC.EFT.DEST_CUST_NAME = BANCS.OUTPARAM.DEST_CUST_NAME
+						EBC.EFT.ACCT_NAME = BANCS.OUTPARAM.ACCT_NAME
+						EBC.EFT.foracid = BANCS.OUTPARAM.foracid
+						EBC.EFT.Bank_ID = "43"
+						EBC.EFT.Bank_bcdc = "00011"
+						EBC.EFT.Iban_number = BANCS.OUTPARAM.Iban_number
+						EBC.EFT.Rownumber = BANCS.OUTPARAM.Rownumber
+						EBC.EFT.tran_rmks = BANCS.OUTPARAM.tran_rmks
+					endif
+			
+					print (EBC.EFT.tran_id)
+					#        print(EBC.EFT.TRAN_CODE)
+					#        print(EBC.EFT.TRAN_CODE)
+					#        print(EBC.EFT.TRAN_AMT)
+							print(EBC.EFT.DEST_BANK_CODE)
+							print(EBC.EFT.DEST_BRANCH_CODE)
+					#        print(EBC.EFT.cust_acct)
+					#       print(EBC.EFT.cust_name)
+					#        print(EBC.EFT.DEST_CUST_ACCT)
+					#        print(EBC.EFT.cust_name)
+					print(EBC.EFT.Rownumber)
+					EBC.EFT.Receiver_bic =""
+					sv_f= "Receiver_bic|"
+					sv_f= sv_f + " select distinct bank_identifier from tbaadm.brbic where del_flg='N'"
+					sv_f= sv_f +  " and bank_id='43' and bank_code='"+EBC.EFT.DEST_BANK_CODE+"' and paysys_id='RTGS'"
+					print(sv_f)
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+					sv_x = urhk_dbSelectWithBind(sv_f)
+					print(sv_x)
+					if(sv_x == 0)then
+					    print(BANCS.OUTPARAM.Receiver_bic)
+						EBC.EFT.Receiver_bic =left$(BANCS.OUTPARAM.Receiver_bic,8)
+					endif
+					
+					print(EBC.EFT.Receiver_bic)
+		
+					EBC.EFT.Tag15=  "<CdtTrfTxInf>"
+					sv_m = "echo '" + EBC.EFT.Tag15 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag16=  "<PmtId>"
+					sv_m = "echo '" + EBC.EFT.Tag16 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					print(EBC.EFT.tran_id)
+					#EBC.EFT.Tag17=  "<InstrId>"+EBC.EFT.sol_id+EBC.EFT.tempSysDate+EBC.EFT.sol_id+EBC.EFT.TRAN_CODE+EBC.EFT.tran_id+"</InstrId>"
+					#EBC.EFT.Tag17=  "<InstrId>KIN/"+EBC.EFT.sol_id+EBC.EFT.tempSysDate+EBC.EFT.sol_id+EBC.EFT.TRAN_CODE+EBC.EFT.tran_id+"</InstrId>"
+					EBC.EFT.Tag17=  "<InstrId>KIN/"+EBC.EFT.sol_id+EBC.EFT.tempSysDate+"</InstrId>"
+					print(EBC.EFT.Tag17)
+					sv_m = "echo '" + EBC.EFT.Tag17 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+		
+					EBC.EFT.Tag18=  "<EndToEndId>NOTPROVIDED</EndToEndId>"
+					sv_m = "echo '" + EBC.EFT.Tag18 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					#EBC.EFT.sol_id+EBC.EFT.tempSysDate+ EBC.EFT.TRAN_CODE+
+					#EBC.EFT.Tag19=  "<TxId>KIN/1001117111511215700101105093087</TxId>"
+		
+					print(EBC.EFT.TRAN_CODE)
+						print(EBC.EFT.tran_id)
+					#EBC.EFT.Tag19=  "<TxId>KIN/"+EBC.EFT.sol_id+EBC.EFT.tempSysDate+EBC.EFT.sol_id+EBC.EFT.TRAN_CODE+EBC.EFT.tran_id+"</TxId>"
+					EBC.EFT.Tag19=  "<TxId>KIN/"+EBC.EFT.sol_id+EBC.EFT.tempSysDate+EBC.EFT.TRAN_CODE+EBC.EFT.tran_id+"</TxId>"
+					print(EBC.EFT.Tag19)
+					sv_m = "echo '" + EBC.EFT.Tag19 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag20=  "</PmtId>"
+					sv_m = "echo '" + EBC.EFT.Tag20+ EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag21=  "<PmtTpInf>"
+					sv_m = "echo '" + EBC.EFT.Tag21 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag22=  "<SvcLvl>"
+					sv_m = "echo '" + EBC.EFT.Tag22 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag23=  "<Cd>SEPA</Cd>"
+					sv_m = "echo '" + EBC.EFT.Tag23 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag24=  "</SvcLvl>"
+					sv_m = "echo '" + EBC.EFT.Tag24 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag25=  "<LclInstrm>"
+					sv_m = "echo '" + EBC.EFT.Tag25 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag26=  "<Prtry>TRF</Prtry> "
+					sv_m = "echo '" + EBC.EFT.Tag26 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag28=  "</LclInstrm>"
+					sv_m = "echo '" + EBC.EFT.Tag28 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag29=  "<CtgyPurp>"
+					sv_m = "echo '" + EBC.EFT.Tag29 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag30=  "<Cd>CASH</Cd> "
+					sv_m = "echo '" + EBC.EFT.Tag30 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag31=  "</CtgyPurp>"
+					sv_m = "echo '" + EBC.EFT.Tag31 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag32=  "</PmtTpInf>"
+					sv_m = "echo '" + EBC.EFT.Tag32 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag33=  "<IntrBkSttlmAmt Ccy="+EBC.EFT.currencydif+">"+EBC.EFT.TRAN_AMT + "</IntrBkSttlmAmt>"
+					sv_m = "echo '" + EBC.EFT.Tag33 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag34=  "<ChrgBr>SLEV</ChrgBr>"
+		
+					sv_m = "echo '" + EBC.EFT.Tag34 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag36=  "<Dbtr>"
+					sv_m = "echo '" + EBC.EFT.Tag36 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					#EBC.EFT.Tag37=  "<Nm>CIE SUCRIERE KWILU-NGONGO sender name</Nm> "
+					EBC.EFT.Tag37=  "<Nm>"+EBC.EFT.ACCT_NAME+"</Nm> "
+					sv_m = "echo '" + EBC.EFT.Tag37 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag38=  "<Id>"
+					sv_m = "echo '" + EBC.EFT.Tag38 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag39=  "<OrgId>"
+					sv_m = "echo '" + EBC.EFT.Tag39 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag40=  "<BICOrBEI>BCDCCDKI</BICOrBEI> "
+					sv_m = "echo '" + EBC.EFT.Tag40 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag41=  "</OrgId>"
+					sv_m = "echo '" + EBC.EFT.Tag41 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag85=  "</Id>"
+					sv_m = "echo '" + EBC.EFT.Tag85 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag86=  "</Dbtr>"
+					sv_m = "echo '" + EBC.EFT.Tag86 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+		
+					EBC.EFT.Tag42=  "<DbtrAcct>"
+					sv_m = "echo '" + EBC.EFT.Tag42 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag43=  "<Id>"
+					sv_m = "echo '" + EBC.EFT.Tag43 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					# EBC.EFT.Tag44="<IBAN>"+EBC.EFT.Bank_ID+EBC.EFT.sol_id+EBC.EFT.foracid+"</IBAN>"
+					#EBC.EFT.Tag44="<IBAN>05"+EBC.EFT.sol_id+EBC.EFT.foracid+"</IBAN>"
+					#EBC.EFT.Tag44="<IBAN>05"+EBC.EFT.sol_id+EBC.EFT.foracid+"</IBAN>"
+					IF (FIELDEXISTS(EBC.EFT.foracid) == 1) THEN
+						print(EBC.EFT.foracid)
+						sv_a = urhk_getAcctDetailsInRepository(EBC.EFT.foracid)
+						print(sv_a)
+						IF (sv_a == 0) THEN
+							print(BANCS.STDIN.mySolId)
+							print(BANCS.OUTPARAM.acctSolId)
+							print(BANCS.OUTPARAM.schmCode)
+							IF (BANCS.OUTPARAM.acctOwnerShip == "O") THEN
+								sv_q = STRLEN(EBC.EFT.foracid)
+								print(sv_q)
+								IF ((sv_q) == "15") THEN
+									EBC.EFT.bankcodeeft="00011001"
+									print(EBC.EFT.bankcodeeft)
+								ENDIF
+								IF ((sv_q) <"15") THEN
+									EBC.EFT.bankcodeeft="000011001"
+									print(EBC.EFT.bankcodeeft)
+								ENDIF
+								EBC.EFT.Iban_number = EBC.EFT.bankcodeeft + EBC.EFT.foracid
+								print(EBC.EFT.Iban_number)
+							ENDIF
+						ENDIF
+					ENDIF
+					EBC.EFT.Tag44="<IBAN>"+EBC.EFT.Iban_number+"</IBAN>"
+                                       # EBC.EFT.Tag44="<IBAN>00011150510000012618564</IBAN>" 
+ 					sv_m = "echo '" + EBC.EFT.Tag44 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag45=  "</Id>"
+					sv_m = "echo '" + EBC.EFT.Tag45 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag46=  "</DbtrAcct>"
+					sv_m = "echo '" + EBC.EFT.Tag46 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag47=  "<DbtrAgt>"
+					sv_m = "echo '" + EBC.EFT.Tag47 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag48=  "<FinInstnId>"
+					sv_m = "echo '" + EBC.EFT.Tag48 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag49=  "<BIC>BCDCCDKI</BIC> "
+					sv_m = "echo '" + EBC.EFT.Tag49 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag50=  "</FinInstnId>"
+					sv_m = "echo '" + EBC.EFT.Tag50+ EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag51=  "</DbtrAgt>"
+					sv_m = "echo '" + EBC.EFT.Tag51 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag90=  "<CdtrAgt>"
+					sv_m = "echo '" + EBC.EFT.Tag90 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+		
+					EBC.EFT.Tag52=  "<FinInstnId>"
+					sv_m = "echo '" + EBC.EFT.Tag52 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag53=  "<BIC>"+EBC.EFT.Receiver_bic+"</BIC> "
+					#EBC.EFT.Tag53=  "<BIC>SBICCDKX Beneficiay bic id </BIC> "
+					sv_m = "echo '" + EBC.EFT.Tag53 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag54=  "</FinInstnId>"
+					sv_m = "echo '" + EBC.EFT.Tag54 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+							EBC.EFT.Tag55=  "</CdtrAgt>"
+					sv_m = "echo '" + EBC.EFT.Tag55 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+							EBC.EFT.Tag56=  "<Cdtr>"
+					sv_m = "echo '" + EBC.EFT.Tag56 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					# EBC.EFT.Tag57=  "<Nm>INDICO SARL Beneficiary name  </Nm> "
+					EBC.EFT.Tag57=  "<Nm>"+EBC.EFT.DEST_CUST_NAME+"</Nm> "
+					sv_m = "echo '" + EBC.EFT.Tag57 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag58=  "<Id>"
+					sv_m = "echo '" + EBC.EFT.Tag58 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag59=  "<OrgId>"
+					sv_m = "echo '" + EBC.EFT.Tag59 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag60=  "<BICOrBEI>"+EBC.EFT.Receiver_bic+"</BICOrBEI> "
+					sv_m = "echo '" + EBC.EFT.Tag60 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag61=  "</OrgId>"
+					sv_m = "echo '" + EBC.EFT.Tag61 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag62=  "</Id>"
+					sv_m = "echo '" + EBC.EFT.Tag62 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag63=  "</Cdtr>"
+					sv_m = "echo '" + EBC.EFT.Tag63 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag64=  "<CdtrAcct>"
+					sv_m = "echo '" + EBC.EFT.Tag64 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+		
+						EBC.EFT.Tag65=  "<Id>"
+					sv_m = "echo '" + EBC.EFT.Tag65 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					# EBC.EFT.Tag66=  "<IBAN>00015010020101757800267 Beneficiary account</IBAN> >"
+					# EBC.EFT.Tag66=  "<IBAN>"+EBC.EFT.DEST_CUST_ACCT+"</IBAN>"
+						print(EBC.EFT.DEST_BANK_CODE)
+						print(EBC.EFT.DEST_BRANCH_CODE)
+				      EBC.EFT.Tag66=  "<IBAN>"+EBC.EFT.DEST_BANK_CODE+EBC.EFT.DEST_BRANCH_CODE+EBC.EFT.DEST_CUST_ACCT+"</IBAN>"
+						# EBC.EFT.Tag66=  "<IBAN>"+EBC.EFT.Iban_number+"</IBAN>"
+					sv_m = "echo '" + EBC.EFT.Tag66 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag67=  "</Id>"
+					sv_m = "echo '" + EBC.EFT.Tag67 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag68=  "</CdtrAcct>"
+					sv_m = "echo '" + EBC.EFT.Tag68 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag69=  "<Purp>"
+					sv_m = "echo '" + EBC.EFT.Tag69 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+						EBC.EFT.Tag70=  "<Cd>CASH</Cd>"
+					sv_m = "echo '" + EBC.EFT.Tag70 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag71=  "</Purp>"
+					sv_m = "echo '" + EBC.EFT.Tag71 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag72=  "<RmtInf>"
+					sv_m = "echo '" + EBC.EFT.Tag72 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+		
+					EBC.EFT.Tag73=  "<Ustrd>"+EBC.EFT.tran_rmks+"</Ustrd> "
+					sv_m = "echo '" + EBC.EFT.Tag73 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag74=  "</RmtInf>"
+					sv_m = "echo '" + EBC.EFT.Tag74 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					print(sv_m)
+		
+					EBC.EFT.Tag75=  "</CdtTrfTxInf>"
+					sv_m = "echo '" + EBC.EFT.Tag75 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+					sv_m = SYSTEM(sv_m)
+					#print(sv_m)
+				sv_d = urhk_dbCursorFetch(sv_c)
+				print(sv_d)
+				
+
+	#}
+	DO
+	sv_d = urhk_dbCursorClose(sv_c)
+
+
+                sv_r=urhk_B2k_PrintRepos("BANCS")
+                print(sv_r)
+
+#  if (EBC.EFT.Rownumber == " ") then
+#        exit
+#              endif
+#endif
+
+              EBC.EFT.fi2="</FIToFICstmrCdtTrf>"
+              sv_m = "echo '" + EBC.EFT.fi2 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+              EBC.EFT.tag87="</Document>"
+              sv_m = "echo '" + EBC.EFT.tag87 + EBC.EFT.end_of_line + "'  >> " + EBC.EFT.file_path + EBC.EFT.file_name
+              sv_m = SYSTEM(sv_m)
+              print(sv_m)
+
+          sv_k= "update custom.eft_status1 set status='0' where  eft_status1.status='1'"  
+          print (sv_g)
+          sv_p = urhk_dbSqlWithBind(sv_k)
+
+            print(sv_p)
+
+              IF (sv_p == 0) THEN
+               #{
+              sv_p = urhk_dbSqlWithBind("COMMIT")
+                      PRINT(sv_p)
+               #}
+ENDIF
+
+
+trace off
+end-->

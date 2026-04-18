@@ -1,0 +1,380 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: cietxnPAYGLAPI001.scr
+# Type: NA|default
+# Description: cietxnPAYGLAPI001.scr
+# Author: shivakrishna.d
+# Date: 9/25/18 10:03 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="7a6cab2c44c03c2808652fcb38927bc2f7984711578c101350980a9155a97244"
+	# Script body goes here
+	
+	TRACE ON
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CIETXN Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CIETXN")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CIETXN",5)
+	#}
+	ENDIF
+	CUST.PAYGLAPI.scriptSuccess = "Y"
+	CUST.CIETXN.errorMsg = " "
+	CUST.CIETXN.entity1TranId = " "
+	CUST.CIETXN.entity1TranDate = ""
+	CUST.CIETXN.entity2TranId = " "
+	CUST.CIETXN.entity2TranDate = ""
+	CUST.CIETXN.nostroAcct = " "
+	CUST.CIETXN.vostroAcct = " "
+	CUST.CIETXN.ieTxnRefNo = " "
+	CUST.CIETXN.ieTxnInitEntity = " "	
+	
+	CUST.CIETXN.entity1TranId =CUST.PAYGLAPI.tranid
+	PRINT(CUST.CIETXN.entity1TranId)
+	
+	
+	
+	CUST.CIETXN.entity1TranDate = MID$(BANCS.STDIN.BODDate,0,10)
+	PRINT(CUST.CIETXN.entity1TranDate)
+	
+	CUST.CIETXN.nostroAcct = CUST.PAYGLAPI.nostroAcct
+	PRINT(CUST.CIETXN.nostroAcct)
+	
+	######################################################################################
+	# Get Current Txn Ref Amt and Ref Crncy to Compare with Original Ref Amt and Ref Crncy
+	######################################################################################
+	
+	CUST.CIETXN.refAmt = ""
+	CUST.CIETXN.refCrncy = ""
+	
+	
+	CUST.CIETXN.refAmt =  CUST.PAYGLAPI.tranAmt
+	PRINT(CUST.CIETXN.refAmt)
+	CUST.CIETXN.refCrncy = CUST.PAYGLAPI.tranCrncy
+	PRINT(CUST.CIETXN.refCrncy)
+	
+	
+	######################################################################################
+	# Create Transaction in the Other Entity Through FI Call
+	######################################################################################
+	
+	PRINT(CUST.PAYGLAPI.ieRefNo)
+	CUST.CIETXN.ieTxnRefNo = CUST.PAYGLAPI.ieRefNo
+	PRINT(CUST.CIETXN.ieTxnRefNo)
+	CUST.CIETXN.entity2 = MID$(CUST.PAYGLAPI.ieRefNo,0,2)
+	CUST.CIETXN.ieTxnInitEntity = CUST.CIETXN.entity2
+	CUST.CIETXN.ieRefAmt = ""
+	CUST.CIETXN.ieRefCrncy = ""
+	
+	BANCS.INPARAM.BINDVARS = CUST.PAYGLAPI.ieRefNo
+	sv_s = "crAcctNum,ieRefAmt,ieRefCrncy|"
+	sv_s = sv_s + " SELECT CR_ACCOUNT_ID,REF_AMT,REF_CRNCY_CODE"
+	sv_s = sv_s + " FROM TBAADM.IEPAGL "
+	sv_s = sv_s + " WHERE STATUS_FLG = 'I'"
+	sv_s = sv_s + " AND IE_TXN_REF_NO = ?SVAR"
+	
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.CIETXN.crAcctNum = BANCS.OUTPARAM.crAcctNum
+		PRINT(CUST.CIETXN.crAcctNum)
+		CUST.CIETXN.ieRefAmt = BANCS.OUTPARAM.ieRefAmt
+		PRINT(CUST.CIETXN.ieRefAmt)
+		CUST.CIETXN.ieRefCrncy = BANCS.OUTPARAM.ieRefCrncy
+		PRINT(CUST.CIETXN.ieRefCrncy)
+		#}
+	ELSE
+		#{
+		CUST.PAYGLAPI.scriptSuccess = "N"
+		CUST.PAYGLAPI.errorMsg = "Invalid reference Number"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	
+	####################################################################
+	# Find the Vostro Account Number
+	####################################################################
+	
+	CUST.CIETXN.targetEntity = CUST.CIETXN.entity2
+	PRINT(CUST.CIETXN.targetEntity)
+	
+	IF(CUST.CIETXN.targetEntity == BANCS.STDIN.contextBankId)THEN
+	#{
+		#FI Call Not Required
+		GOTO UPDATE_IEPAGL
+	#}
+	ENDIF
+	
+	VOSTRO:
+		CUST.CIETXN.parameterId = "PA" + "_VOSTRO_" + CUST.CIETXN.targetEntity
+		PRINT(CUST.CIETXN.parameterId)
+		
+		sv_s = "vostroAcct|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+		sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+		sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+		sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+		sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+		sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+		sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+		sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+		sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+		PRINT(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CIETXN.parameterId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CIETXN.errorFlg = "Y"
+			CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Unable to find Nostro/Vostro Account"
+			sv_u = urhk_SRV_SetErr(CUST.CIETXN.errorMsg)
+			CUST.PAYGLAPI.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.vostroAcct = BANCS.OUTPARAM.vostroAcct
+		PRINT(CUST.CIETXN.vostroAcct)
+		
+		IF(TRIM(CUST.CIETXN.vostroAcct) == "")THEN
+		#{
+			CUST.CIETXN.errorFlg = "Y"
+			CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Unable to find Nostro/Vostro Account"
+			sv_u = urhk_SRV_SetErr(CUST.CIETXN.errorMsg)
+			CUST.PAYGLAPI.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.acctNumSolId = ""
+		CUST.CIETXN.acctNumCcy = ""
+		
+		sv_s = "acctNumSolId,acctNumCcy|"
+		sv_s = sv_s + " SELECT SOL_ID,ACCT_CRNCY_CODE"
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE FORACID = ?SVAR"
+		sv_s = sv_s + " AND DEL_FLG != 'Y'"
+		PRINT(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.CIETXN.crAcctNum
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		
+		IF(sv_d == 0)THEN
+		#{
+			CUST.CIETXN.acctNumSolId = BANCS.OUTPARAM.acctNumSolId
+			PRINT(CUST.CIETXN.acctNumSolId)
+			CUST.CIETXN.acctNumCcy = BANCS.OUTPARAM.acctNumCcy
+			PRINT(CUST.CIETXN.acctNumCcy)
+			#}
+		ELSE
+			#{
+			CUST.PAYGLAPI.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.inputBankId = CUST.CIETXN.entity2
+		CUST.CIETXN.inputBacid = CUST.CIETXN.vostroAcct
+		CUST.CIETXN.inputSolId = CUST.CIETXN.acctNumSolId
+		CUST.CIETXN.inputCcy = CUST.CIETXN.acctNumCcy
+		CUST.CIETXN.inputBacidOrForacid = CUST.CIETXN.vostroAcct
+		
+		CALL("cietxndp032.scr")
+		
+		PRINT(CUST.CIETXN.outputForacid)
+		IF(TRIM(CUST.CIETXN.outputForacid) == "")THEN
+		#{
+			CUST.CIETXN.errorFlg = "Y"
+			CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Unable to find Nostro/Vostro Account"
+			sv_u = urhk_SRV_SetErr(CUST.CIETXN.errorMsg)
+			CUST.PAYGLAPI.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.vostroAcct = CUST.CIETXN.outputForacid
+		
+		#######################################################################################
+		
+		CUST.CIETXN.refAmt =  CUST.PAYGLAPI.tranAmt
+		PRINT(CUST.CIETXN.refAmt)
+		CUST.CIETXN.refCrncy = CUST.PAYGLAPI.tranCrncy
+		PRINT(CUST.CIETXN.refCrncy)
+		
+		
+		
+		#######################################################################################
+		
+		sv_r = CLASSEXISTS("CUST","INTERFACE")
+		IF(sv_r == 0) THEN
+		#{
+			CREATECLASS ("CUST","INTERFACE",5)
+		#}
+		ENDIF
+		
+		PRINT(BANCS.STDIN.sysDate)
+		
+		sv_s = "RequestID|SELECT CONCAT(CONCAT('Req_',TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS')),(DBMS_RANDOM.STRING('A',5))) FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0)THEN
+		#{
+			CUST.CIETXN.RequestID = BANCS.OUTPARAM.RequestID
+			PRINT(CUST.CIETXN.RequestID)
+			#}
+		ELSE
+			#{
+			CUST.CIETXN.RequestID = "Req_" + MID$(BANCS.STDIN.sysDate,6,4) + MID$(BANCS.STDIN.sysDate,3,2) + MID$(BANCS.STDIN.sysDate,0,2) + MID$(BANCS.STDIN.sysDate,11,2) + MID$(BANCS.STDIN.sysDate,14,2) + MID$(BANCS.STDIN.sysDate,17,2)
+			PRINT(CUST.CIETXN.RequestID)
+		#}
+		ENDIF
+		
+		CUST.INTERFACE.interfaceRequestID = "XferTrnAdd"
+		CUST.INTERFACE.interfaceRequestVersion = "10.2"
+		CUST.INTERFACE.RequestID = CUST.CIETXN.RequestID
+		CUST.INTERFACE.bankID = CUST.CIETXN.entity2
+		CUST.INTERFACE.channelID = "COR"
+		CUST.INTERFACE.tranType = "T"
+		CUST.INTERFACE.tranSubType = "CI"
+		CUST.INTERFACE.drAcctID = CUST.CIETXN.crAcctNum
+		CUST.INTERFACE.crAcctID = CUST.CIETXN.vostroAcct
+		CUST.INTERFACE.tranAmtCr = CUST.CIETXN.refAmt
+		CUST.INTERFACE.tranCcyCr = CUST.CIETXN.refCrncy
+		CUST.INTERFACE.tranAmtDr = CUST.CIETXN.refAmt
+		CUST.INTERFACE.tranCcyDr = CUST.CIETXN.refCrncy
+		CUST.INTERFACE.tranParticularsCr = "Paymet To A/c GL Txn"
+		CUST.INTERFACE.tranParticularsDr = "Paymet To A/c GL Txn"
+		CUST.INTERFACE.tranRmksCr = "Paymet To A/c GL Txn"
+		CUST.INTERFACE.tranRmksDr = "Paymet To A/c GL Txn"
+		CUST.INTERFACE.drValueDate = MID$(BANCS.STDIN.BODDate,0,10)
+		CUST.INTERFACE.crValueDate = MID$(BANCS.STDIN.BODDate,0,10)
+		CUST.INTERFACE.rateCode = ""
+		CUST.INTERFACE.drRate = "1.00"
+		CUST.INTERFACE.crRate = "1.00"
+		CUST.INTERFACE.chkInstDetails = "N"
+		CUST.INTERFACE.instDate = ""
+		CUST.INTERFACE.instAlpha = ""
+		CUST.INTERFACE.instNum = ""
+		CUST.INTERFACE.instType = ""
+		CUST.INTERFACE.chargeAmtPartTran = "N"
+		CUST.INTERFACE.errorMsgFlg = "N"
+		CUST.INTERFACE.errorMsgCode = " "
+		CUST.INTERFACE.errorMsgDesc = " "
+		CUST.INTERFACE.errorDesc = " "
+		CUST.INTERFACE.errorCode = " "
+		
+		CALL("cietxnmn003.scr")
+		
+		IF(CUST.INTERFACE.errorMsgFlg == "Y")THEN
+		#{
+			sv_u = urhk_dbSqlWithBind("ROLLBACK")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SRV_SetErr("Could not create transaction in the other entity")
+			PRINT(sv_u)
+			
+			lv_a = CUST.INTERFACE.errorDesc
+			
+			lv_l = STRLEN(lv_a)
+			lv_n = 0
+			lv_s = ""
+			WHILE(lv_n < lv_l)
+			#{
+				PRINT(lv_a)
+				PRINT(lv_n)
+				lv_c = ""
+				lv_c = MID$(lv_a,lv_n,1)
+				PRINT(lv_c)
+				
+				IF(lv_c == "|")THEN
+				#{
+					PRINT("IF")
+					lv_s = lv_s + " - "
+					PRINT(lv_s)
+					GOTO NEXT_CHAR
+				#}
+				ENDIF
+				
+				IF(lv_c == "'")THEN
+				#{
+					PRINT("IF")
+					lv_s = lv_s + ""
+					PRINT(lv_s)
+					GOTO NEXT_CHAR
+				#}
+				ENDIF
+				
+				lv_s = lv_s + lv_c
+				PRINT(lv_s)
+				
+			NEXT_CHAR:
+				
+				lv_n = lv_n + 1
+			#}
+			DO
+			
+			PRINT(lv_a)
+			PRINT(lv_s)
+			
+			CUST.INTERFACE.errorDesc = lv_s
+			CUST.INTERFACE.errorDesc = CUST.INTERFACE.errorCode + " - " + CUST.INTERFACE.errorDesc
+			PRINT(CUST.INTERFACE.errorDesc)
+			CUST.PAYGLAPI.scriptSuccess = "N"
+			CUST.PAYGLAPI.errorMsg = CUST.INTERFACE.errorDesc
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.entity2TranId = CUST.INTERFACE.tranId
+		PRINT(CUST.CIETXN.entity2TranId)
+		CUST.CIETXN.entity2TranDate = MID$(CUST.INTERFACE.tranDate,0,10)
+		PRINT(CUST.CIETXN.entity2TranDate)
+		
+		######################################################################################
+		# Update data into the IEPAGL Custom Table
+		######################################################################################
+		
+	UPDATE_IEPAGL:
+		
+		CALL("cietxndp043.scr")
+		
+		IF(CUST.PAYGLAPI.scriptSuccess == "N")THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+END-->
+

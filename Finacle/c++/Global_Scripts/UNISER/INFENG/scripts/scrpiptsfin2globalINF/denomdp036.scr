@@ -1,0 +1,167 @@
+################################################################################################    
+#  Name			:  denomdp036.scr
+#  Date			:  10-Aug-2010
+#  Description		:  Daily batch job to truncate the c_detd/c_derd table entries older than 60 days
+#  Author		:  Castro / Sandeep Patil
+#  Batch Job Id		:  DELD
+#  MODULE CODE          :  DENOM
+# Bank			: STANDARD BANK
+#  Modification History	:
+#  ====================
+#  Serial No.	DATE		Author			Description
+################################################################################################
+<--START
+CHECKSUM="0f3432ceb8e0e795371bbee2fc571db43c27a10e30a612fdfdbd7004f4807f01"
+	TRACE ON
+	sv_r = 	REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	CUST.DENOM.flgRep="N"
+	CUST.DENOM.denomCnt="0"
+	CUST.DENOM.denomRCnt="0"
+	
+	#-------------- CREATION OF LOG FILES : START ----------------------------------------------------
+	sv_l = "today|SELECT TO_CHAR(sysdate,'DDMMYYYYHHMISS') FROM dual"
+	sv_s = urhk_DBSelect(sv_l)
+	
+	CUST.DENOM.reportFile = "TmpMassCls_"+BANCS.OUTPARAM.today+".log"
+	
+	CUST.DENOM.BODDate1 =  LEFT$(BANCS.STDIN.BODDate,10)
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.BODDate1
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = "denomCnt|SELECT COUNT(1) "
+	sv_l = sv_l + "FROM c_detd "
+	sv_l = sv_l + "WHERE tran_date <= (TO_DATE(?SVAR,'DD-MM-YYYY') - 60) "
+	PRINT(sv_l)
+	sv_s = urhk_DBSelectWithBind(sv_l)
+	PRINT(sv_s)
+	IF(sv_s==0)THEN
+	#{
+		CUST.DENOM.denomCnt=BANCS.OUTPARAM.denomCnt
+		PRINT(CUST.DENOM.denomCnt)
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.BODDate1
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = "denomRCnt|SELECT COUNT(1) "
+	sv_l = sv_l + "FROM c_derd "
+	sv_l = sv_l + "WHERE tran_date <= (TO_DATE(?SVAR,'DD-MM-YYYY') - 60) "
+	PRINT(sv_l)
+	sv_s = urhk_DBSelectWithBind(sv_l)
+	PRINT(sv_s)
+	IF(sv_s==0)THEN
+	#{
+		CUST.DENOM.denomRCnt=BANCS.OUTPARAM.denomRCnt
+		PRINT(CUST.DENOM.denomRCnt)
+	#}
+	ENDIF
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.BODDate1 + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_l = "DELETE FROM c_detd "
+	sv_l = sv_l + "WHERE tran_date <= (TO_DATE(?SVAR,'DD-MM-YYYY') - 60) AND bank_id = ?SVAR "
+	PRINT(sv_l)
+	sv_s = urhk_dbsqlWithBind(sv_l)
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.BODDate1 + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_l = "DELETE FROM c_derd "
+	sv_l = sv_l + "WHERE tran_date <= (TO_DATE(?SVAR,'DD-MM-YYYY') - 60) AND bank_id = ?SVAR "
+	PRINT(sv_l)
+	sv_u = urhk_dbsqlWithBind(sv_l)
+	PRINT(sv_u)
+	
+	IF((sv_s==0) OR (sv_u==0))THEN
+	#{
+		sv_s = urhk_DBSql("COMMIT")
+		PRINT(sv_s)
+		IF(sv_s==0)THEN
+		#{
+			CUST.DENOM.flgRep="Y"
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		IF(CUST.DENOM.denomCnt==0)THEN
+		#{
+			CUST.DENOM.flgRep="Y"
+			#}
+		ELSE
+			#{
+			#-----Creating Record variable------------------
+			
+			CUST.DENOM.Rec = "Error in Data Base"
+			PRINT(CUST.DENOM.Rec)
+			
+			#----------Writting into File------------------------
+			sv_y = "echo '"+ CUST.DENOM.Rec+ "' >> " + CUST.DENOM.reportFile
+			PRINT(sv_y)
+			sv_a = system(sv_y)
+			#------------------For HPRNTINQ menu option---------------------------
+			
+			sv_p = "exebatch mrbx4004 $B2K_SESSION_ID denomdp001.mrt "+ CUST.DENOM.reportFile+" DENOM"
+			PRINT(sv_p)
+			sv_t = system(sv_p)
+			PRINT(sv_t)
+			IF(sv_t == 0)THEN
+			#{
+				sv_p = "exebatch babx4040 $B2K_SESSION_ID  DENOM.rpt 'TRANSACTION DENOMINATIONS DELETE REPORT' 'MANAGER' '1' 'N'"
+				PRINT(sv_p)
+				sv_x = system(sv_p)
+				PRINT(sv_x)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(CUST.DENOM.flgRep=="Y")THEN
+	#{
+		#-----Creating Record variable------------------
+		
+		CUST.DENOM.Rec1 = "1" + "|" + CUST.DENOM.denomCnt + " rows deleted from c_detd table"
+		PRINT(CUST.DENOM.Rec1)
+		
+		CUST.DENOM.Rec2 = "2" + "|" + CUST.DENOM.denomRCnt + " rows deleted from c_derd table"
+		PRINT(CUST.DENOM.Rec2)
+		
+		#----------Writting into File------------------------
+		sv_y = "echo '"+ CUST.DENOM.Rec1+ "' >> " + CUST.DENOM.reportFile
+		PRINT(sv_y)
+		sv_a = system(sv_y)
+		sv_y = "echo '"+ CUST.DENOM.Rec2+ "' >> " + CUST.DENOM.reportFile
+		PRINT(sv_y)
+		sv_a = system(sv_y)
+		#------------------For HPRNTINQ menu option---------------------------
+		
+		sv_p = "exebatch mrbx4004 $B2K_SESSION_ID denomdp001.mrt "+ CUST.DENOM.reportFile+" DENOM"
+		PRINT(sv_p)
+		sv_t = system(sv_p)
+		PRINT(sv_t)
+		IF(sv_t == 0)THEN
+		#{
+			sv_p = "exebatch babx4040 $B2K_SESSION_ID DENOM.rpt 'TRANSACTION DENOMINATIONS DELETE REPORT' 'MANAGER' '1' 'N'"
+			PRINT(sv_p)
+			sv_x = system(sv_p)
+			PRINT(sv_x)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	TRACE OFF
+END-->

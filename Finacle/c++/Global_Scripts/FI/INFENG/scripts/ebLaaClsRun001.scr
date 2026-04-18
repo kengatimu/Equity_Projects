@@ -1,0 +1,418 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Name                   : ebLaaClsRun.scr
+#   Date                   : 15-Aug-2019
+#   Description            : Loan CLose
+#   Input                  :
+#   Output                 :
+#   Author                 : Vino Palani
+#   Called Script          :
+#   Calling Script         :
+#   Reference              :
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Modification History   :
+#
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#Reps/Class
+#++++++++++
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        ##print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        EQSRV.GLBDATA.sucYN = ""
+        EQSRV.GLBDATA.srvMsg = ""
+        EQSRV.GLBDATA.datName = ""
+        EQSRV.GLBDATA.laaAcctNum = ""
+        EQSRV.GLBDATA.operAcctNum = ""
+        EQSRV.GLBDATA.intAccrAmt = ""
+        EQSRV.GLBDATA.intBookAmt = ""
+        EQSRV.GLBDATA.laSolId = ""
+        EQSRV.GLBDATA.laSchmCode = ""
+        EQSRV.GLBDATA.laAcid = ""
+        EQSRV.GLBDATA.clearBalance = ""
+        EQSRV.GLBDATA.AvailableAmt = ""
+        EQSRV.GLBDATA.EffAvailableAmt = ""
+        EQSRV.GLBDATA.OpCrncy = ""
+        EQSRV.GLBDATA.OpSchmType = ""
+        EQSRV.GLBDATA.loanIntTot = ""
+        sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+        if(sv_u == 0)then
+                print(MTT.InputDetails.Argument1)
+		if(fieldexists(MTT.InputDetails.Argument2)==1)then
+		#{
+			print(MTT.InputDetails.Argument2)
+			if(MTT.InputDetails.Argument2!="")then
+			#{
+				EQSRV.GLBDATA.laaAcctNum   = MTT.InputDetails.Argument1
+				EQSRV.GLBDATA.operAcctNum = MTT.InputDetails.Argument2 
+				print(EQSRV.GLBDATA.laaAcctNum)
+				print(EQSRV.GLBDATA.operAcctNum)
+			#}
+			else
+			#{
+				BANCS.INPUT.AcctNum = MTT.InputDetails.Argument1
+				sv_l = strlen(MTT.InputDetails.Argument1)
+				sv_f = mid$(MTT.InputDetails.Argument1,0,sv_l)
+				sv_l = strlen(MTT.InputDetails.Argument1)
+				sv_p = getposition(sv_f,"|")
+				EQSRV.GLBDATA.laaAcctNum   = mid$(sv_f,0,(sv_p-1))
+				EQSRV.GLBDATA.operAcctNum = mid$(sv_f,sv_p,sv_l)
+				print(EQSRV.GLBDATA.laaAcctNum)
+				print(EQSRV.GLBDATA.operAcctNum)
+			#}
+			endif
+		#}
+		endif
+
+        else
+                sv_u = urhk_MTTS_Close("")
+                print(sv_u)
+                goto VAYU
+        endif
+        BANCS.INPARAM.foracid = EQSRV.GLBDATA.laaAcctNum
+        sv_u = urhk_getLoanAcctInterestDetails("")
+        if(sv_u==0)then
+               print(BANCS.OUTPARAM.intAccruedTillDate)
+                EQSRV.GLBDATA.intAccrAmt = BANCS.OUTPARAM.intAccruedTillDate
+               print(BANCS.OUTPARAM.intBookedTillDate)
+                EQSRV.GLBDATA.intBookAmt = BANCS.OUTPARAM.intBookedTillDate
+                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.laaAcctNum)
+                if(sv_u==0)then
+                        EQSRV.GLBDATA.laSolId = BANCS.OUTPARAM.acctSolId
+                        EQSRV.GLBDATA.laSchmCode = BANCS.OUTPARAM.schmCode
+                else
+                        EQSRV.GLBDATA.sucYN = "N"
+                        EQSRV.GLBDATA.srvMsg = "Invalid Loan Account " + EQSRV.GLBDATA.laaAcctNum
+			sv_e = EQSRV.GLBDATA.srvMsg
+			sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                        goto VAYU
+                endif
+                sv_q = urhk_B2k_ForacidToAcid(EQSRV.GLBDATA.laaAcctNum)
+                if(sv_q==0)then
+                        EQSRV.GLBDATA.laAcid = BANCS.OUTPARAM.Acid
+                else
+                        EQSRV.GLBDATA.sucYN = "N"
+                        EQSRV.GLBDATA.srvMsg = "Invalid Loan Account " + EQSRV.GLBDATA.laaAcctNum
+			sv_e = EQSRV.GLBDATA.srvMsg
+			sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                        goto VAYU
+                endif
+		lv_g = "lpayYN | select payoff_flg from tbaadm.lam where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.laAcid
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_g)
+		lv_h = urhk_dbSelectWithBind(lv_g)
+		if(lv_h==0)then
+			EQSRV.GLBDATA.lpayYN = BANCS.OUTPARAM.lpayYN
+		else
+			EQSRV.GLBDATA.lpayYN = "N"
+		endif
+        else
+                EQSRV.GLBDATA.sucYN = "N"
+                EQSRV.GLBDATA.srvMsg = "Invalid Loan Account " + EQSRV.GLBDATA.laaAcctNum
+		sv_e = EQSRV.GLBDATA.srvMsg
+		sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                goto VAYU
+        endif
+        sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.operAcctNum)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.clearBalance = BANCS.OUTPARAM.clearBalance
+                EQSRV.GLBDATA.AvailableAmt = BANCS.OUTPARAM.AvailableAmt
+                EQSRV.GLBDATA.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+                EQSRV.GLBDATA.OpCrncy = BANCS.OUTPARAM.acctCrncyCode
+                EQSRV.GLBDATA.OpSchmType = BANCS.OUTPARAM.schmType
+        else
+                EQSRV.GLBDATA.sucYN = "N"
+                EQSRV.GLBDATA.srvMsg = "Invalid Operative Account " + EQSRV.GLBDATA.operAcctNum + " LoanAcct " + EQSRV.GLBDATA.laaAcctNum
+		sv_e = EQSRV.GLBDATA.srvMsg
+		sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                goto VAYU
+        endif
+        EQSRV.GLBDATA.loanIntTot = cdouble(EQSRV.GLBDATA.intAccrAmt) + cdouble(EQSRV.GLBDATA.intBookAmt)
+        if(cdouble(EQSRV.GLBDATA.loanIntTot)<=0)then
+                EQSRV.GLBDATA.sucYN = "Y"
+                EQSRV.GLBDATA.srvMsg = "TOCLS"
+                goto VAYUCLS
+        endif
+        print(EQSRV.GLBDATA.loanIntTot)
+        print(EQSRV.GLBDATA.clearBalance)
+        if(cdouble(EQSRV.GLBDATA.loanIntTot) > cdouble(EQSRV.GLBDATA.clearBalance))then
+                EQSRV.GLBDATA.sucYN = "N"
+                EQSRV.GLBDATA.srvMsg = "Insufficient Balance in Operative Account " + EQSRV.GLBDATA.operAcctNum + " LoanAcct " + EQSRV.GLBDATA.laaAcctNum 
+		sv_e = EQSRV.GLBDATA.srvMsg
+		sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                goto VAYU
+        endif
+        #++++++++++++++++++++++++++++++++++++++++++++ lgen +++++++++++++++++++++++++++++++++++++++++++
+        sv_l = EQSRV.GLBDATA.laaAcctNum + " " + EQSRV.GLBDATA.laSolId + " {~~~NULL!~~~} {~~~NULL!~~~} {~~~NULL!~~~} " + EQSRV.GLBDATA.laaAcctNum + " " + EQSRV.GLBDATA.laaAcctNum + " D I E Y N 0 0 {~~~NULL!~~~} N {~~~NULL!~~~} E {~~~NULL!~~~} L"
+        EQSRV.GLBDATA.datName = "lgen" + EQSRV.GLBDATA.laaAcctNum + ".DAT"
+        sv_q = "echo '" + sv_l + "' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_s = "echo $B2K_SESSION_ID"
+        print(system(sv_s))
+        sv_a = "nohup exebatch labx4001 $B2K_SESSION_ID < ./" +EQSRV.GLBDATA.datName
+        sv_r = system(sv_a)
+        if(sv_r==0)then
+	#{
+                sv_a = "rm -f " + EQSRV.GLBDATA.datName
+		sv_r = system(sv_a)
+	#}
+        endif
+        #++++++++++++++++++++++++++++++++++++++++++++ ldsp +++++++++++++++++++++++++++++++++++++++++++
+        sv_l =EQSRV.GLBDATA.laSolId + " " + EQSRV.GLBDATA.laaAcctNum + " A {~~~NULL!~~~} " + EQSRV.GLBDATA.laaAcctNum + " " + EQSRV.GLBDATA.laaAcctNum + "  O {~~~NULL!~~~} {~~~NULL!~~~} {~~~NULL!~~~} N L"
+        sv_p =" sol_set_id report_to type_of_demand schm_code_list from_acct_num to_acct_num recovery_mode recovery_option coll_pend_fee product_group pymnt_prioritization menu_parm"
+        EQSRV.GLBDATA.datName = "ldsp" + EQSRV.GLBDATA.laaAcctNum + ".DAT"
+        sv_q = "echo '" + sv_l + "' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '" + sv_p + "' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo 'Loans Demand Satisfaction Process' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_l = EQSRV.GLBDATA.laaAcctNum
+        sv_q = "echo '" + sv_l + "' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_q = "echo '' >> " + EQSRV.GLBDATA.datName
+        sv_s = system(sv_q)
+        sv_s = "echo $B2K_SESSION_ID"
+        print(system(sv_s))
+        sv_a = "nohup exebatch labx4004 $B2K_SESSION_ID < ./" +EQSRV.GLBDATA.datName
+        sv_r = system(sv_a)
+        if(sv_r==0)then
+	#{
+                sv_a = "rm -f " + EQSRV.GLBDATA.datName
+		sv_r = system(sv_a)
+	#}
+        endif
+        #++++++++++++++++++++++++++++++++++++++++++++ ldsp +++++++++++++++++++++++++++++++++++++++++++
+VAYUCLS:
+        #++++++++++++++++++++++++++++++++++++++++++++ Close +++++++++++++++++++++++++++++++++++++++++++
+        if ( BANCS.STDIN.mySolId != EQSRV.GLBDATA.laSolId ) then
+	#{
+                sv_u = urhk_SetUrhkInp("sol.solId|" +EQSRV.GLBDATA.laSolId )
+                sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+		#{
+                        print(BANCS.OUTPARAM.successOrFailure)
+                        sv_s = BANCS.OUTPARAM.successOrFailure
+		#}
+                else
+		#{
+                        sv_s = "X"
+		#}
+                endif
+                if (( sv_u != 0 ) and ( sv_s != "S"))then
+		#{
+                        EQSRV.GLBDATA.sucYN = "N"
+                        EQSRV.GLBDATA.srvMsg = "CCS Failed " + EQSRV.GLBDATA.laaAcctNum
+			sv_e = EQSRV.GLBDATA.srvMsg
+			sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+                        goto VAYU
+		#}
+                endif
+	#}
+        endif
+        sv_i = urhk_SetUrhkInp("acctBasic.foracid|" + EQSRV.GLBDATA.laaAcctNum )
+        sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+	#{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+	#}
+        else
+	#{
+                sv_s = "X"
+	#}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+	#{
+                sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + EQSRV.GLBDATA.laaAcctNum )
+                sv_u = urhk_SetUrhkInp("acctBasic.acid|" + EQSRV.GLBDATA.laAcid )
+                sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + EQSRV.GLBDATA.laSchmCode )
+                sv_u = urhk_ExecSrv(" SRV_CloseLoanAcctAndVerify|retain_all_output = Y")
+                print(sv_u)
+                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+		#{
+                        print(BANCS.OUTPARAM.successOrFailure)
+                        sv_s = BANCS.OUTPARAM.successOrFailure
+		#}
+                else
+		#{
+                        sv_s = "X"
+		#}
+                endif
+                if (( sv_u == 0 ) and ( sv_s=="S") ) then
+		#{
+                        EQSRV.GLBDATA.sucYN = "Y"
+                        EQSRV.GLBDATA.srvMsg = "Loan Closed Successfully  " + EQSRV.GLBDATA.laaAcctNum
+			sv_e = EQSRV.GLBDATA.srvMsg
+			sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+		#}
+                else
+		#{
+                        EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.laaAcctNum
+			EBSRV.GLBDATA.errid = EQSRV.GLBDATA.laaAcctNum
+                        callscriptifexist("ebsrvHandler.scr")
+                        EQSRV.GLBDATA.sucYN = "N"
+                        EQSRV.GLBDATA.srvMsg = "Loan Closure Failed " + EQSRV.GLBDATA.SrvError
+                        goto VAYU
+		#}
+                endif
+	#}
+        else
+	#{
+                EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.laaAcctNum
+		EBSRV.GLBDATA.errid = EQSRV.GLBDATA.laaAcctNum
+                callscriptifexist("ebsrvHandler.scr")
+                EQSRV.GLBDATA.sucYN = "N"
+                EQSRV.GLBDATA.srvMsg = "Loan Closure Fetch Failed " + EQSRV.GLBDATA.SrvError
+		if(fieldexists(EQSRV.GLBDATA.LaErrorCode)==1)then
+		#{
+			if((EQSRV.GLBDATA.LaErrorCode=="E7840") and (EQSRV.GLBDATA.lpayYN=="Y"))then
+			#{
+				lv_i = " insert into tbaadm.eit_cls_update  select * from tbaadm.eit where bank_id=?SVAR and entity_id=?SVAR "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.laAcid
+				print(BANCS.INPARAM.BINDVARS)
+				print(lv_i)
+				lv_m = urhk_dbSqlWithBind(lv_i)
+				if(lv_m==0)then
+				#{
+					print("close")
+					lv_m = urhk_dbSqlWithBind("commit")
+				else
+					goto VAYU
+				#}
+				endif
+				lv_i = " update tbaadm.eit set accrued_upto_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),last_accrual_run_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),booked_upto_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),last_book_run_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),book_for_rev_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),interest_calc_upto_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),last_interest_run_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR),next_int_run_date_dr=(select db_stat_date from tbaadm.gct where bank_id=?SVAR) where bank_id=?SVAR and entity_id=?SVAR "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.laAcid 
+				print(BANCS.INPARAM.BINDVARS)
+				print(lv_i)
+				lv_m = urhk_dbSqlWithBind(lv_i)
+				if(lv_m==0)then
+				#{
+					lv_m = urhk_dbSqlWithBind("commit")
+				#}
+				else
+				#{
+					goto VAYU
+				#}
+				endif
+				if ( BANCS.STDIN.mySolId != EQSRV.GLBDATA.laSolId ) then
+				#{
+					sv_u = urhk_SetUrhkInp("sol.solId|" +EQSRV.GLBDATA.laSolId )
+					sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+					if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+					#{
+						print(BANCS.OUTPARAM.successOrFailure)
+						sv_s = BANCS.OUTPARAM.successOrFailure
+					#}
+					else
+					#{
+						sv_s = "X"
+					#}
+					endif
+					if (( sv_u != 0 ) and ( sv_s != "S"))then
+					#{
+						EQSRV.GLBDATA.sucYN = "N"
+						EQSRV.GLBDATA.srvMsg = "CCS Failed " + EQSRV.GLBDATA.laaAcctNum
+						sv_e = EQSRV.GLBDATA.srvMsg
+						sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+						goto VAYU
+					#}
+					endif
+				#}
+				endif
+				sv_i = urhk_SetUrhkInp("acctBasic.foracid|" + EQSRV.GLBDATA.laaAcctNum )
+				sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr")
+				print(sv_u)
+				if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+				#{
+					print(BANCS.OUTPARAM.successOrFailure)
+					sv_s = BANCS.OUTPARAM.successOrFailure
+				#}
+				else
+				#{
+					sv_s = "X"
+				#}
+				endif
+				if (( sv_u == 0 ) and ( sv_s=="S") ) then
+				#{
+					sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + EQSRV.GLBDATA.laaAcctNum )
+					sv_u = urhk_SetUrhkInp("acctBasic.acid|" + EQSRV.GLBDATA.laAcid )
+					sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + EQSRV.GLBDATA.laSchmCode )
+					sv_u = urhk_ExecSrv(" SRV_CloseLoanAcctAndVerify|retain_all_output = Y")
+					print(sv_u)
+					if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+					#{
+						print(BANCS.OUTPARAM.successOrFailure)
+						sv_s = BANCS.OUTPARAM.successOrFailure
+					#}
+					else
+					#{
+						sv_s = "X"
+					#}
+					endif
+					if (( sv_u == 0 ) and ( sv_s=="S") ) then
+					#{
+						EQSRV.GLBDATA.sucYN = "Y"
+						EQSRV.GLBDATA.srvMsg = "Loan Closed Successfully  " + EQSRV.GLBDATA.laaAcctNum
+						sv_e = EQSRV.GLBDATA.srvMsg
+						sv_u = system("echo '"+sv_e+"' >>SuccessFailure.log")
+					#}
+					else
+					#{
+						EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.laaAcctNum
+						EBSRV.GLBDATA.errid = EQSRV.GLBDATA.laaAcctNum
+						callscriptifexist("ebsrvHandler.scr")
+						EQSRV.GLBDATA.sucYN = "N"
+						EQSRV.GLBDATA.srvMsg = "Loan Closure Failed " + EQSRV.GLBDATA.SrvError
+						goto VAYU
+					#}
+					endif
+				#}
+				else
+				#{
+					EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.laaAcctNum
+					EBSRV.GLBDATA.errid = EQSRV.GLBDATA.laaAcctNum
+					callscriptifexist("ebsrvHandler.scr")
+					EQSRV.GLBDATA.sucYN = "N"
+					EQSRV.GLBDATA.srvMsg = "Loan Closure Fetch Failed " + EQSRV.GLBDATA.SrvError
+				#}
+				endif
+
+			#}
+			endif
+		#}
+		endif
+                goto VAYU
+	#}
+        endif
+        #++++++++++++++++++++++++++++++++++++++++++++ Close +++++++++++++++++++++++++++++++++++++++++++
+VAYU:
+        print(EQSRV.GLBDATA.sucYN)
+        print(EQSRV.GLBDATA.srvMsg)
+        exitscript
+trace off
+end-->

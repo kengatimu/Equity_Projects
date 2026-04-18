@@ -1,0 +1,458 @@
+#------------------------------------------------------------------------------------------------    
+#  Name            : eventchargesmn001.scr
+#  Description     : During closure of the account, if the tranxs are exceeding 4
+#                  : then charges are collected along with closure charges.
+#  Date            : 05-02-2013
+#  Author          : Dhana Prabhakaran
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-02-2013      Dhana Prabhakaran    Original Version
+#  2.0             12-03-2013      Dhana Prabhakaran    Additional cparam variable has been added
+#-----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="30e6f10ce494f90ccbc496b79955374223e226f04377b7ea5d6ae6ed1568c534"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","EVCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","EVCHRG",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM", 5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Initializing the variables
+	#------------------------------------------------------------------------------
+	CUST.EVCHRG.errMsg              = ""
+	CUST.EVCHRG.foracid             = BANCS.INPUT.account
+	CUST.EVCHRG.tryear              = ""
+	CUST.EVCHRG.BODDate             = ""
+	CUST.EVCHRG.chrgCollCrncy       = BANCS.INPUT.chrgCollCrncy
+	CUST.EVCHRG.ctforacid        	= ""
+	CUST.EVCHRG.ctsolId         	= ""
+	CUST.EVCHRG.ctTranYear      	= ""
+	CUST.EVCHRG.ctNumDrTrxns   	= ""
+	CUST.EVCHRG.ctamt		= ""
+	
+	CUST.EVCHRG.BODDate  = LEFT$(BANCS.STDIN.BODDate,10)
+	print(CUST.EVCHRG.BODDate)
+	CUST.EVCHRG.tryear   = MID$(CUST.EVCHRG.BODDate,6,4)
+	print(CUST.EVCHRG.tryear)
+	
+	#------------------------------------------------------------------------------
+	#Getting EVCHRG_AMTT values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName  = "EVCHRGS"
+	BANCS.INPUT.parameterId = "EVCHRG_AMTT"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.inpamt1= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.inpamt1)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.errMsg = "CPARAM setup not done for Amount "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#Getting EVCHRG_AMT values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "EVCHRG_AMT"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.inpamt2= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.inpamt2)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.errMsg = "CPARAM setup not done for Amount "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#Getting EVCHRG_CRDE values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "EVCHRG_CRDE"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.CurncyCde= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.CurncyCde)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.errMsg = "CPARAM setup not done for CurrencyCode "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting EVCHRG_TCDE values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "EVCHRG_TCDE"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.amtTblecde= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.amtTblecde)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.errMsg = "CPARAM setup not done for AmountTableCode "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting EVCHRG_SCDE values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "EVCHRG_SCDE"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.schmCode= BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.schmCode)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.errMsg = "CPARAM setup not done for SchmCode "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of cash withdrawals from dtd
+	# if the count is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = "Count|SELECT COUNT(1) "
+	sv_s = sv_s + " FROM TBAADM.DTD ,TBAADM.GAM "
+	sv_s = sv_s + " WHERE GAM.acid = DTD.acid "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + " AND GAM.bank_id = DTD.bank_id "
+	sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+	sv_s = sv_s + " AND DTD.sol_id = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_ownership ='C' "
+	sv_s = sv_s + " AND GAM.del_flg ='N' "
+	sv_s = sv_s + " AND GAM.acct_cls_flg ='N' "
+	sv_s = sv_s + " AND GAM.schm_code =?SVAR "
+	sv_s = sv_s + " AND GAM.acct_crncy_code = ?SVAR "
+	sv_s = sv_s + " AND DTD.tran_type in ('C','T') "
+	sv_s = sv_s + " AND DTD.tran_sub_type in ('CI','NP') "
+	sv_s = sv_s + " AND DTD.part_tran_type = 'D' "
+	sv_s = sv_s + " AND DTD.pstd_flg = 'Y' "
+	sv_s = sv_s + " AND DTD.del_flg = 'N' "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.EVCHRG.foracid + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.mySolId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.schmCode +"|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.homeCrncyCode
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.EVCHRG.Count=BANCS.OUTPARAM.Count
+		print(CUST.EVCHRG.Count)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.ctamt = CDOUBLE("0")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF ( CINT(CUST.EVCHRG.Count) != 0 ) THEN
+	#{
+		CUST.EVCHRG.foracid = BANCS.INPUT.account
+		print(CUST.EVCHRG.foracid)
+		
+		sv_s = "csjaCount|"
+		sv_s = sv_s + " SELECT COUNT(1) "
+		sv_s = sv_s + " FROM CUSTOM.C_SJA "
+		sv_s = sv_s + " WHERE C_SJA.sol_id  = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.foracid   = ?SVAR "
+		sv_s = sv_s + " AND C_SJA.bank_id   = ?SVAR "
+		sv_s = sv_s + " AND C_SJA.tran_year = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.del_flg   = 'N'"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId + "|" + CUST.EVCHRG.foracid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.EVCHRG.tryear
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.EVCHRG.csjaCount=BANCS.OUTPARAM.csjaCount
+			print(CUST.EVCHRG.csjaCount)
+			#}
+		ELSE
+			#{
+			CUST.EVCHRG.csjaCount = "0"
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.ctamt = CDOUBLE("0")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#########################################################################
+	
+	#-------------------------------------------
+	# If the count is not zero, then system will
+	# update the num_dr_trxns = num_dr_trxns + 1
+	# else it will insert a new record into c_sja
+	# table with num_dr_trxns value as 1.
+	#-------------------------------------------
+	
+	IF (CINT(CUST.EVCHRG.csjaCount)!=0) THEN
+	#{
+		sv_s = "c_sjaForacid,c_sjaNoDr|"
+		sv_s = sv_s + " SELECT C_SJA.foracid,C_SJA.num_dr_trxns,"
+		sv_s = sv_s + " C_SJA.tran_year "
+		sv_s = sv_s + " FROM CUSTOM.C_SJA "
+		sv_s = sv_s + " WHERE C_SJA.sol_id = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.foracid = ?SVAR "
+		sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+		sv_s = sv_s + " AND C_SJA.tran_year = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.del_flg = 'N'"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId +"|"+CUST.EVCHRG.foracid+"|"+BANCS.STDIN.contextBankId + "|" + CUST.EVCHRG.tryear
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.EVCHRG.c_sjaNoDr = BANCS.OUTPARAM.c_sjaNoDr
+			print(CUST.EVCHRG.c_sjaNoDr)
+			#}
+		ELSE
+			#{
+			CUST.EVCHRG.errMsg ="error in getting values  from c_sja table "
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.EVCHRG.NewDrNum = CINT(CUST.EVCHRG.c_sjaNoDr) + CINT(CUST.EVCHRG.Count)
+		print(CUST.EVCHRG.NewDrNum)
+		
+		sv_s = " UPDATE CUSTOM.C_SJA  SET num_dr_trxns = ?SVAR,"
+		sv_s = sv_s + " CUSTOM.C_SJA .LAST_DR_DATE = to_date(?SVAR,'dd-mm-yyyy')"
+		sv_s = sv_s + " WHERE CUSTOM.C_SJA .foracid = ?SVAR "
+		sv_s = sv_s + " AND CUSTOM.C_SJA .tran_year = ?SVAR"
+		sv_s = sv_s + " AND CUSTOM.C_SJA .del_flg ='N'"
+		sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.EVCHRG.NewDrNum  +"|"+CUST.EVCHRG.BODDate +"|"+CUST.EVCHRG.foracid + "|" + CUST.EVCHRG.tryear + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		IF ( sv_d != 0 ) THEN
+		#{
+			sv_u = system("echo 'Update C_SJA failed for Acct:"+CUST.EVCHRG.foracid+" ' >>eventchrg.log")
+			print(sv_u)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		
+		sv_s = "INSERT INTO CUSTOM.C_SJA(SOL_ID,FORACID,TRAN_YEAR,DEL_FLG,NUM_DR_TRXNS,LAST_DR_DATE,LCHG_USER_ID,LCHG_TIME,RCRE_USER_ID,RCRE_TIME,BANK_ID) VALUES("
+		sv_s = sv_s + " ?SVAR,"
+		sv_s = sv_s + " ?SVAR,"
+		sv_s = sv_s + " ?SVAR,"
+		sv_s = sv_s + " 'N',"
+		sv_s = sv_s + " ?SVAR,"
+		sv_s = sv_s + " to_date(?SVAR,'dd-mm-yyyy'),"
+		sv_s = sv_s + " ?SVAR,"
+		sv_s = sv_s + "SYSDATE,"
+		sv_s = sv_s + "?SVAR,"
+		sv_s = sv_s + "SYSDATE,"
+		sv_s = sv_s + "?SVAR)"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId +"|"+CUST.EVCHRG.foracid+"|"+CUST.EVCHRG.tryear + "|" + CUST.EVCHRG.Count +"|" + CUST.EVCHRG.BODDate + "|" + BANCS.STDIN.userId + "|" +BANCS.STDIN.userId + "|" +BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		IF ( sv_d != 0 ) THEN
+		#{
+			sv_u = system("echo 'Insert C_SJA failed for Acct:"+CUST.EVCHRG.foracid+" ' >>eventchrg.log")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of accounts from C_SJA where num_dr_trxns > 4
+	# if the count is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = "csjaCount|"
+	sv_s = sv_s + " SELECT count(1) "
+	sv_s = sv_s + " FROM CUSTOM.C_SJA "
+	sv_s = sv_s + " WHERE C_SJA.sol_id = ?SVAR"
+	sv_s = sv_s + " AND C_SJA.foracid = ?SVAR "
+	sv_s = sv_s + " AND C_SJA.tran_year = ?SVAR"
+	sv_s = sv_s + " AND C_SJA.num_dr_trxns > ?SVAR "
+	sv_s = sv_s + " AND C_SJA.del_flg = 'N'"
+	sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId +"|"+CUST.EVCHRG.foracid+"|"+CUST.EVCHRG.tryear + "|" + CUST.CPARAM.inpamt2 +"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.EVCHRG.csjaCount = BANCS.OUTPARAM.csjaCount
+		print(CUST.EVCHRG.csjaCount)
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.ctamt = CDOUBLE("0")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CINT(CUST.EVCHRG.csjaCount) > 0) THEN
+	#{
+		#--------------------------------------------------------------------------
+		# Selecting accounts from C_SJA where num_dr_trxns > 4
+		#--------------------------------------------------------------------------
+		sv_s = "foracid,solId,tranYear,numDrTrxns|"
+		sv_s = sv_s + " SELECT C_SJA.foracid,C_SJA.sol_id,"
+		sv_s = sv_s + " C_SJA.tran_year,C_SJA.num_dr_trxns "
+		sv_s = sv_s + " FROM CUSTOM.C_SJA "
+		sv_s = sv_s + " WHERE C_SJA.sol_id = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.foracid = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.tran_year = ?SVAR"
+		sv_s = sv_s + " AND C_SJA.num_dr_trxns > ?SVAR"
+		sv_s = sv_s + " AND C_SJA.del_flg = 'N'"
+		sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId +"|"+CUST.EVCHRG.foracid+"|"+CUST.EVCHRG.tryear + "|" + CUST.CPARAM.inpamt2+"|"+BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.EVCHRG.ctforacid   	= BANCS.OUTPARAM.foracid
+			CUST.EVCHRG.ctsolId     	= BANCS.OUTPARAM.solId
+			CUST.EVCHRG.ctTranYear     	= BANCS.OUTPARAM.tranYear
+			CUST.EVCHRG.ctNumDrTrxns   	= BANCS.OUTPARAM.numDrTrxns
+			#}
+		ELSE
+			#{
+			CUST.EVCHRG.errMsg ="Fetch failed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------
+		# Cashwithdrawal Charge. This amount will debit from the customer
+		# account and credit into income account. This amount is derived
+		# from the amount table code. the code for the cash withdrawal chrg
+		# is SUCHR.
+		#------------------------------------------------------------------
+		BANCS.INPARAM.InputAmount		= CUST.CPARAM.inpamt1
+		BANCS.INPARAM.CurrencyCode		= CUST.CPARAM.CurncyCde
+		BANCS.INPARAM.AmountTableCode		= CUST.CPARAM.amtTblecde
+		sv_u = urhk_B2k_GetASTMAmount("")
+		print(sv_u)
+		
+		IF (sv_u == 1) THEN
+		#{
+			CUST.EVCHRG.ctamt = -CDOUBLE(CUST.CPARAM.inpamt1)
+			print(CUST.EVCHRG.ctamt)
+		#}
+		ENDIF
+		
+		CUST.EVCHRG.ctamt = BANCS.OUTPARAM.OutputAmount
+		print(CUST.EVCHRG.ctamt)
+		CUST.EVCHRG.ctamt = CDOUBLE(CUST.EVCHRG.ctamt) * (CDOUBLE(CUST.EVCHRG.ctNumDrTrxns) - CDOUBLE(CUST.CPARAM.inpamt2))
+		print (CUST.EVCHRG.ctamt)
+		
+		#-------------------------------------------------------
+		# Once its collected charges for extra cash withdrawal,
+		# system will update the num_dr_trxns into 4 in C_SJA.
+		#-------------------------------------------------------
+		sv_s = "UPDATE CUSTOM.C_SJA SET num_dr_trxns=?SVAR"
+		sv_s = sv_s + " WHERE C_SJA.foracid=?SVAR "
+		sv_s = sv_s + " AND C_SJA.tran_year=?SVAR "
+		sv_s = sv_s + " AND C_SJA.del_flg='N'"
+		sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.CPARAM.inpamt2  + "|" + CUST.EVCHRG.ctforacid +"|" + CUST.EVCHRG.tryear + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		IF ( sv_d != 0 ) THEN
+		#{
+			sv_u = system("echo 'Update C_SJA failed for Acct:"+CUST.EVCHRG.ctforacid+" ' >>eventchrg.log")
+			print(sv_u)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.EVCHRG.ctamt = CDOUBLE("0")
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.EVCHRG.errMsg != "") THEN
+		#{
+			CUST.EVCHRG.ctamt = CDOUBLE("0")
+			sv_u = system("echo '"+CUST.EVCHRG.errMsg+"' >>eventchrg.log")
+		#}
+		ENDIF
+		
+		BANCS.OUTPUT.collAmount = CUST.EVCHRG.ctamt
+		BANCS.OUTPUT.AmountWithNoDiscount = CUST.EVCHRG.ctamt
+		BANCS.OUTPUT.collCrncy = CUST.EVCHRG.chrgCollCrncy
+		print(BANCS.OUTPUT.collAmount)
+		print(BANCS.OUTPUT.collCrncy)
+		print(BANCS.OUTPUT.AmountWithNoDiscount)
+		
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

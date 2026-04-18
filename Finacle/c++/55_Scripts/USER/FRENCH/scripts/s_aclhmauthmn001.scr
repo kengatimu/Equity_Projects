@@ -1,0 +1,158 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : s_aclhmauthmn001.scr
+#   Description     :
+#   Date            : 13-02-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : SRV_VerifyAcctSanctLimit_post_process_data.scr
+#   Calling Script  : getcparamvalue.scr, gchrgcommon.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          Description.
+#   -------         ------          ------          ------------
+#   1.0             13-02-2013      Sateesh     Original Version
+#   2.0		05-08-2013	    Vijaya V	 Changes for TOL - 364579
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0417b6c0836438c7620b9ac3d9b0577257ad073d41ca26b0bda6e6346ebc7a65"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#	Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LMTCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","LMTCHRG",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-----------------------------------------------------------------------------------------------
+	CUST.LMTCHRG.errMsg = ""
+	
+	print (CUST.LMTCHRG.modifyFlg)
+	
+	IF(CUST.LMTCHRG.modifyFlg == "N")THEN
+	#{
+		print("Sanction Limit not modified")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting bacid from LMTCHRG values
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "LIMITCHARGES"
+	BANCS.INPUT.parameterId = "EVENT_ID"
+	CALL ("getcparamvalue.scr")
+	print(BANCS.OUTPUT.parameterVal)
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.eventId= BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "eventid setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting loan account number and sanction limit
+	#-----------------------------------------------------------------------------------------------
+	sv_g =  urhk_SRV_GetVal("limitHdr.limitAcct.foracid")
+	IF(sv_g == 0)THEN
+	#{
+		CUST.LMTCHRG.acctId = BANCS.OUTPARAM.srvValue
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "Error in getting Account number from frontend"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_g =  urhk_SRV_GetVal("limitHdr.limitAcct.crncyCode")
+	IF(sv_g == 0)THEN
+	#{
+		CUST.LMTCHRG.acctCrncyCode = BANCS.OUTPARAM.srvValue
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "Error in getting Account Crncy code from frontend"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_g =  urhk_SRV_GetVal("limitLL.<rec_0>.sanctLimit")
+	IF(sv_g == 0)THEN
+	#{
+		CUST.LMTCHRG.sanctLimit = BANCS.OUTPARAM.srvValue
+		print(CUST.LMTCHRG.sanctLimit)
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "Error in getting Sanction limit from frontend"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.GCHRG.drAcctId			= CUST.LMTCHRG.acctId
+	CUST.GCHRG.acctCrncyCode	= CUST.LMTCHRG.acctCrncyCode
+	CUST.GCHRG.eventId			= CUST.CPARAM.eventId
+	CUST.GCHRG.chrgAmt			= CUST.LMTCHRG.sanctLimit
+	CUST.GCHRG.tranType			= "T"
+	CUST.GCHRG.tranSubType		= "BI"
+       	#+++++++++++++++++++ODA Agent (Vino Palani 08/05/2020) Starts 
+        sv_b = urhk_getAcctDetailsInRepository(CUST.GCHRG.drAcctId)
+        if(sv_b==0)then
+                CUST.GCHRG.drSchmCode = BANCS.OUTPARAM.schmCode
+        else
+                CUST.GCHRG.drSchmCode = ""
+        endif
+        if(CUST.GCHRG.drSchmCode=="OD541")then
+                exitscript
+        endif
+        #++++++++++++++++++Ends
+	CALL("gchrgcommon.scr")
+	IF(CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		print(CUST.GCHRG.tranId)
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = CUST.GCHRG.gchrgErrMsg
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		IF(CUST.LMTCHRG.errMsg != "") THEN
+		#{
+			sv_u = urhk_SRV_setErr(CUST.LMTCHRG.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

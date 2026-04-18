@@ -1,0 +1,115 @@
+<--start
+trace on
+# ==============================================================================
+# This script contains the transaction creation logic for TTUM upload
+# ==============================================================================
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+#{
+	CREATECLASS("CUST", "INTERFACE", 5)
+#}
+ENDIF
+
+sv_r = 0
+sv_c = 0
+sv_i = -1
+MTT.OutputDetails.keyFieldString = ""
+MTT.InputDetails.inputRecordString = ""
+
+BANCS.INPUT.numOfRecPerSet = "9999"
+BANCS.INPUT.counter_i = "0"
+BANCS.INPUT.counter_j = "1"
+
+sv_n = ""
+sv_e = "CrncyHolImplFlg | select ccy_cal_implmntd_flg from tbaadm.gct where BANK_ID = ?SVAR "
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+sv_u = urhk_dbSelectWithBind(sv_e)
+IF ( sv_u == 0 ) THEN
+#{
+	sv_n = BANCS.OUTPARAM.CrncyHolImplFlg
+#}
+ENDIF
+sv_r = urhk_MTTS_PopulateInputDetails("")
+while (sv_r < 1)
+	sv_c = sv_c + 1
+	sv_s = Format$(sv_c, "%d")
+	print(sv_c)
+
+	sv_i = sv_i + 1
+	BANCS.INPUT.counter_i  = Format$(sv_i, "%d")
+
+	sv_u = CINT(BANCS.INPUT.numOfRecPerSet) - CINT(BANCS.INPUT.counter_i)
+	print(sv_u)
+	IF (sv_u == 0) THEN
+		#sv_x = urhk_b2k_printRepos("BANCS")
+		print("SET COUNTER J:" + BANCS.INPUT.counter_j)
+		sv_y = CINT(BANCS.INPUT.counter_j) + 1
+		BANCS.INPUT.counter_j = sv_y
+		sv_i = 0
+	ENDIF
+
+	MTT.OutputDetails.keyFieldString = sv_s + "|" + MTT.InputDetails.inputRecordString
+
+	sv_j = urhk_B2k_checkForPipeChar(MTT.InputDetails.inputRecordString)
+	IF (sv_j != 0) THEN
+		MTT.Error.Description="Upload Record Should not contain PIPE Characters"
+		MTT.OutputDetails.keyFieldString = sv_s + "|"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"
+		goto NXTREC
+	ENDIF
+
+	call("INTERFACE_parseTTUM711.scr")
+
+	IF (FIELDEXISTS(MTT.Error.Description)) THEN
+		print(MTT.Error.Description)
+	ENDIF
+
+	print(BANCS.OUTPUT.successOrFailure)
+
+	IF (BANCS.OUTPUT.successOrFailure == "S") THEN
+		MTT.TranDetails.TranDate = "0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "Y"
+		MTT.TranDetails.ReversalFlg = "N"
+
+		sv_r = getenv("INTERFACE_CHNL_ID")
+		print(sv_r)
+		IF (TRIM(sv_r) != "") THEN
+			MTT.TranDetails.DeliveryChannelId = sv_r
+		ENDIF
+		
+		BANCS.INPUT.TranIdentifier = "TTUMREC_SET" + BANCS.INPUT.counter_j
+		print(BANCS.INPUT.TranIdentifier)
+		sv_r = urhk_MTTS_DefineTransaction(BANCS.INPUT.TranIdentifier)
+		IF (sv_r != 0) THEN
+			goto NXTREC
+		ENDIF
+
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = BANCS.INPUT.TranIdentifier
+		MTT.PartTranDetails.PTranBusinessType="UPLOAD"
+		MTT.PartTranDetails.Remarks="IGLSUPL"
+
+		sv_r = urhk_MTTS_DefinePartTran("FIRST")
+		IF (sv_r != 0) THEN
+			goto NXTREC
+		ENDIF
+
+	ENDIF
+
+NXTREC:
+	MTT.OutputDetails.keyFieldString = ""
+	MTT.InputDetails.inputRecordString = ""
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+do
+
+MTT.OutputDetails.keyFieldString = "" + "|" + MTT.InputDetails.inputRecordString
+sv_r = urhk_MTTS_EndDefinition("")
+end-->

@@ -1,0 +1,828 @@
+##vpdrcLoanRecDataTranLienMn.scr
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("LAREC")==0)then
+        #{
+                createrep("LAREC")
+        #}
+        endif
+        if(classexists("LAREC","GLBDATA")==0)then
+        #{
+                createclass("LAREC","GLBDATA",5)
+        #}
+        endif
+	LAREC.GLBDATA.odAcid = ""
+	LAREC.GLBDATA.opAcid = ""
+	LAREC.GLBDATA.LiopAcctId = ""
+	LAREC.GLBDATA.srvErrMsg = ""
+	LAREC.GLBDATA.srvErrCode = ""
+	LAREC.GLBDATA.srvSucFail = ""
+	LAREC.GLBDATA.orgLienAmt = ""
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+        #{
+                LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                LAREC.GLBDATA.srvErrCode = "MTT"
+                LAREC.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        LAREC.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+        LAREC.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "OD Loan Recovery"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.ModuleId        = "HTM"
+        sv_u = urhk_MTTS_DefineTransaction("ODLoanRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                LAREC.GLBDATA.srvErrCode = "MTT"
+                LAREC.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+	lv_q = " shdlNum,flowId,odAcid,opAcid,dmdAmt,totAdjAmt,outstandAmt,dmdDate | select a.shdl_num,a.flow_id,a.od_acid,a.op_acid,a.dmd_amt,a.tot_adj_amt,a.dmd_amt-a.tot_adj_amt as outstandAmt,to_char(a.dmd_date,'DD-MM-YYYY') " 
+	lv_q = lv_q + " from custom.odla_dmd_tbl a where a.bank_id=?SVAR "
+	###lv_q = lv_q + " and a.od_acid=?SVAR and a.op_acid=?SVAR "
+        lv_q = lv_q + " and a.op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+        lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) "
+        lv_q = lv_q + " and not exists(select 1 from tbaadm.ta_cot where acid=a.od_acid and entity_cre_flg='Y' "
+	lv_q = lv_q + " and del_flg='N' and chrge_off_principal-principal_recovery >0 and chrge_off_date is not null) "
+	lv_q = lv_q + " and a.entity_cre_flg='Y' and a.del_flg='N' and a.dmd_amt-a.tot_adj_amt >0 "
+	lv_q = lv_q + " and a.dmd_date<=to_date(?SVAR,'DD-MM-YYYY') "
+	###BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.odAcid + "|" + LAREC.GLBDATA.opAcid + "|" + left$(BANCS.STDIN.BODDate,10)  		
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + left$(BANCS.STDIN.BODDate,10)  		
+	print(lv_q)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                LAREC.GLBDATA.olarecCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                LAREC.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                LAREC.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                LAREC.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        LAREC.GLBDATA.laarec = 0
+        sv_z = urhk_dbCursorFetch(LAREC.GLBDATA.olarecCurNum)
+        if(sv_z!=0)then
+        #{
+                LAREC.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                LAREC.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                LAREC.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		LAREC.GLBDATA.shdlNum = BANCS.OUTPARAM.shdlNum
+		LAREC.GLBDATA.flowId = BANCS.OUTPARAM.flowId
+		LAREC.GLBDATA.odAcid = BANCS.OUTPARAM.odAcid
+		LAREC.GLBDATA.opAcid = BANCS.OUTPARAM.opAcid
+		LAREC.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+		LAREC.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+		LAREC.GLBDATA.outstandAmt = BANCS.OUTPARAM.outstandAmt
+		LAREC.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+
+		print(LAREC.GLBDATA.shdlNum)
+		print(LAREC.GLBDATA.flowId)
+		print(LAREC.GLBDATA.odAcid)
+		print(LAREC.GLBDATA.opAcid)
+		print(LAREC.GLBDATA.dmdAmt)
+		print(LAREC.GLBDATA.totAdjAmt)
+		print(LAREC.GLBDATA.outstandAmt)
+
+                sv_a= urhk_B2k_AcidToForacid(LAREC.GLBDATA.odAcid)
+                if(sv_a==0)then
+		#{
+                        LAREC.GLBDATA.odAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        LAREC.GLBDATA.odAcctId = ""
+		#}
+                endif
+                sv_a= urhk_B2k_AcidToForacid(LAREC.GLBDATA.opAcid)
+                if(sv_a==0)then
+		#{
+                        LAREC.GLBDATA.opAcctId = BANCS.OUTPARAM.Foracid
+                        LAREC.GLBDATA.LiopAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        LAREC.GLBDATA.opAcctId = ""
+			LAREC.GLBDATA.LiopAcctId = ""
+		#}
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(LAREC.GLBDATA.odAcctId)
+                if(sv_u == 0)then
+                #{
+                        LAREC.GLBDATA.odEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        LAREC.GLBDATA.odclearBalance = BANCS.OUTPARAM.clearBalance
+                        LAREC.GLBDATA.odsanLim = BANCS.OUTPARAM.sanctionLimit
+                        LAREC.GLBDATA.oddrawingPower = BANCS.OUTPARAM.drawingPower
+                        LAREC.GLBDATA.odavalAmt = BANCS.OUTPARAM.AvailableAmt
+                        LAREC.GLBDATA.odlienamt = BANCS.OUTPARAM.lienAmt
+                        LAREC.GLBDATA.odCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                #}
+                else
+                #{
+                        LAREC.GLBDATA.oddrawingPower = 0
+                        LAREC.GLBDATA.odEffBal = 0
+                        LAREC.GLBDATA.odclearBalance = 0
+                        LAREC.GLBDATA.odsanLim = 0
+                        LAREC.GLBDATA.odavalAmt = 0
+                        LAREC.GLBDATA.odlienamt = 0
+                        LAREC.GLBDATA.odCrncyCode = ""
+                #}
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(LAREC.GLBDATA.opAcctId)
+                if(sv_u == 0)then
+                #{
+                        LAREC.GLBDATA.opEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        LAREC.GLBDATA.opclearBalance = BANCS.OUTPARAM.clearBalance
+                        LAREC.GLBDATA.opsanLim = BANCS.OUTPARAM.sanctionLimit
+                        LAREC.GLBDATA.opdrawingPower = BANCS.OUTPARAM.drawingPower
+                        LAREC.GLBDATA.opavalAmt = BANCS.OUTPARAM.AvailableAmt
+                        LAREC.GLBDATA.oplienamt = BANCS.OUTPARAM.lienAmt
+                        LAREC.GLBDATA.opCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			LAREC.GLBDATA.opCifId = BANCS.OUTPARAM.cifId
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                #}
+                else
+                #{
+                        LAREC.GLBDATA.opdrawingPower = 0
+                        LAREC.GLBDATA.opEffBal = 0
+                        LAREC.GLBDATA.opclearBalance = 0
+                        LAREC.GLBDATA.opsanLim = 0
+                        LAREC.GLBDATA.opavalAmt = 0
+                        LAREC.GLBDATA.oplienamt = 0
+                        LAREC.GLBDATA.opCrncyCode = ""
+			LAREC.GLBDATA.opCifId = ""
+                #}
+                endif
+		if(cdouble(LAREC.GLBDATA.odclearBalance)>=0)then
+		#{
+			goto NXTREC
+		#}
+		endif
+#org Oper Lien Lift
+		if(cdouble(LAREC.GLBDATA.oplienamt) != cdouble("0"))then
+		#{
+                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt  where b2k_id in (select trim(max(b2k_id)) from tbaadm.alt where acid =?SVAR "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' and lien_reason_code='ODLA' and b2k_id is not null and bank_id =?SVAR) and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and lien_reason_code='ODLA' and b2k_id is not null and acid =?SVAR and bank_id =?SVAR "
+                        BANCS.INPARAM.BINDVARS = LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        if(sv_d == 0)then
+                        #{
+                                LAREC.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                LAREC.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                LAREC.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                LAREC.GLBDATA.Lib2kid = LAREC.GLBDATA.b2kid
+				LAREC.GLBDATA.orgLienAmt = BANCS.OUTPARAM.amount1
+                        #}
+                        else
+                        #{
+                                LAREC.GLBDATA.amount1 = "0"
+                                LAREC.GLBDATA.acid = ""
+                                LAREC.GLBDATA.b2kid = ""
+                                LAREC.GLBDATA.Lib2kid = ""
+				LAREC.GLBDATA.orgLienAmt = "0"
+                        #}
+                        endif
+                        if(LAREC.GLBDATA.b2kid!="")then
+                        #{
+				print(LAREC.GLBDATA.amount1)
+                                BANCS.INPARAM.b2kId = LAREC.GLBDATA.b2kid
+                                BANCS.INPARAM.acctNum = LAREC.GLBDATA.opAcctId
+                                BANCS.INPARAM.blockMode = "M"
+                                BANCS.INPARAM.lienAmt = cdouble(LAREC.GLBDATA.amount1) * -1
+                                BANCS.INPARAM.expiryDate = left$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.remarks = "Lien Lifted during OD Loan Payment"
+                                BANCS.INPARAM.reasonCode = "ODLA"
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                        #}
+                        else
+                        #{
+                                sv_u = "1"
+                        #}
+                        endif
+                        if( sv_u != 0 )then
+                        #{
+                                print("od loans lien lift failed")
+			#}
+			else
+			#{
+                                print("od loand lien lift success")
+                                sv_y = urhk_dbSqlWithBind("Commit")
+                                print(sv_y)
+			#}
+			endif
+			sv_u = urhk_getAcctDetailsInRepository(LAREC.GLBDATA.opAcctId)
+			if(sv_u == 0)then
+			#{
+				LAREC.GLBDATA.opEffBal = BANCS.OUTPARAM.EffAvailableAmt
+				LAREC.GLBDATA.opclearBalance = BANCS.OUTPARAM.clearBalance
+				LAREC.GLBDATA.opavalAmt = BANCS.OUTPARAM.AvailableAmt
+				LAREC.GLBDATA.oplienamt = BANCS.OUTPARAM.lienAmt
+				print(LAREC.GLBDATA.opEffBal)
+				print(LAREC.GLBDATA.opclearBalance)
+				print(BANCS.OUTPARAM.AvailableAmt)
+				print(BANCS.OUTPARAM.lienAmt)
+				print(BANCS.OUTPARAM.SystemReservedAmt)
+			#}
+			else
+			#{
+				LAREC.GLBDATA.opavalAmt = 0
+				LAREC.GLBDATA.opclearBalance = 0
+			#}
+			endif
+		#}
+		endif
+#val after lief lift
+		print(LAREC.GLBDATA.opEffBal)
+		print(LAREC.GLBDATA.outstandAmt)
+#Operative Account With Dr Balance after lien lift ,get multi source payment
+		if(cdouble(LAREC.GLBDATA.opEffBal)<=0)then
+		#{
+                        lv_m = " mcifId,mdrAcctId,mdrAmt|select cif_id,foracid,clr_bal_amt from tbaadm.gam where bank_id=?SVAR "
+                        lv_m = lv_m + " and acct_ownership<>'O' and cif_id =?SVAR and acid<>?SVAR "
+                        lv_m = lv_m + " and schm_type in ('SBA','CAA') and acct_crncy_code=?SVAR "
+                        lv_m = lv_m + " and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' "
+                        lv_m = lv_m + " and acct_cls_date is null and clr_bal_Amt >=1 and frez_code <>'D' "
+                        lv_m = lv_m + " and mode_of_oper_code='SELF' "
+                        lv_m = lv_m + " and schm_code not in ('SB102','SB103','SB114','SB121','SB122','SB123','SB124','SB133','SB150','VA300','SB113','SB101') "
+                        ##lv_m = lv_m + " and lien_amt<=0 "
+                        lv_m = lv_m + " and rownum<=1 order by cif_id,clr_bal_amt desc "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.opCifId +  "|" + LAREC.GLBDATA.opAcid + "|" + LAREC.GLBDATA.odCrncyCode 
+                        print(lv_m)
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_s = urhk_dbSelectWithBind(lv_m)
+                        if(lv_s==0)then
+                        #{
+                                LAREC.GLBDATA.mcifId = BANCS.OUTPARAM.mcifId
+                                LAREC.GLBDATA.mdrAcctId = BANCS.OUTPARAM.mdrAcctId
+                                LAREC.GLBDATA.mdrAmt = BANCS.OUTPARAM.mdrAmt
+				LAREC.GLBDATA.isMultiSPay = "Y"
+				LAREC.GLBDATA.opAcctId = LAREC.GLBDATA.mdrAcctId
+                        #}
+                        else
+                        #{
+                                LAREC.GLBDATA.mcifId = ""
+                                LAREC.GLBDATA.mdrAcctId = ""
+                                LAREC.GLBDATA.mdrAmt = ""
+                                LAREC.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                        sv_u = urhk_getAcctDetailsInRepository(LAREC.GLBDATA.mdrAcctId)
+                        if(sv_u == 0)then
+                        #{
+                                LAREC.GLBDATA.mopEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                LAREC.GLBDATA.mopclearBalance = BANCS.OUTPARAM.clearBalance
+                                LAREC.GLBDATA.mopavalAmt = BANCS.OUTPARAM.AvailableAmt
+                                LAREC.GLBDATA.moplienamt = BANCS.OUTPARAM.lienAmt
+                                print(LAREC.GLBDATA.mopEffBal)
+                                print(LAREC.GLBDATA.mopclearBalance)
+                                print(BANCS.OUTPARAM.AvailableAmt)
+                                print(BANCS.OUTPARAM.lienAmt)
+                                print(BANCS.OUTPARAM.SystemReservedAmt)
+                        #}
+                        else
+                        #{
+				LAREC.GLBDATA.mopEffBal = 0
+                                LAREC.GLBDATA.mopavalAmt = 0
+                                LAREC.GLBDATA.mopclearBalance = 0
+                        #}
+                        endif
+		#}
+		else
+		#{
+			LAREC.GLBDATA.mopEffBal = 0
+			LAREC.GLBDATA.isMultiSPay = "N"
+		#}
+		endif
+		print(LAREC.GLBDATA.mopEffBal)
+                print(LAREC.GLBDATA.opEffBal)
+                print(LAREC.GLBDATA.outstandAmt)
+#tran Aamount and lien amount derivation
+		if(LAREC.GLBDATA.isMultiSPay=="Y")then
+		#{
+			print(LAREC.GLBDATA.mopEffBal)
+			print(LAREC.GLBDATA.outstandAmt)
+			if(cdouble(LAREC.GLBDATA.mopEffBal)>0)then
+			#{
+				if(cdouble(LAREC.GLBDATA.mopEffBal) >= cdouble(LAREC.GLBDATA.outstandAmt))then
+				#{
+					LAREC.GLBDATA.tranAmt = cdouble(LAREC.GLBDATA.outstandAmt)
+					LAREC.GLBDATA.markLienAmt = cdouble("0")
+				#}
+				endif
+				if(cdouble(LAREC.GLBDATA.mopEffBal) < cdouble(LAREC.GLBDATA.outstandAmt))then
+				#{
+					LAREC.GLBDATA.tranAmt = cdouble(LAREC.GLBDATA.mopEffBal) 
+					LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.outstandAmt) - cdouble(LAREC.GLBDATA.mopEffBal)
+				#}
+				endif
+			#}
+			else
+			#{
+				LAREC.GLBDATA.tranAmt = "0"		
+				LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.outstandAmt)
+			#}
+			endif
+		#}
+		else
+		#{
+			print(LAREC.GLBDATA.opEffBal)
+			print(LAREC.GLBDATA.outstandAmt)
+			if(cdouble(LAREC.GLBDATA.opEffBal)>0)then
+			#{
+				if(cdouble(LAREC.GLBDATA.opEffBal) >= cdouble(LAREC.GLBDATA.outstandAmt))then
+				#{
+					LAREC.GLBDATA.tranAmt = cdouble(LAREC.GLBDATA.outstandAmt)
+					LAREC.GLBDATA.markLienAmt = cdouble("0")
+				#}
+				endif
+				if(cdouble(LAREC.GLBDATA.opEffBal) < cdouble(LAREC.GLBDATA.outstandAmt))then
+				#{
+					LAREC.GLBDATA.tranAmt = cdouble(LAREC.GLBDATA.opEffBal) 
+					LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.outstandAmt) - cdouble(LAREC.GLBDATA.opEffBal)
+				#}
+				endif
+			#}
+			else
+			#{
+				LAREC.GLBDATA.tranAmt = "0"		
+				LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.outstandAmt)
+			#}
+			endif
+		#}
+		endif
+#Tran Entry 
+		print(LAREC.GLBDATA.shdlNum)
+		print(LAREC.GLBDATA.flowId)
+		print(LAREC.GLBDATA.dmdAmt)
+		print(LAREC.GLBDATA.totAdjAmt)
+		print(LAREC.GLBDATA.outstandAmt)
+		print(LAREC.GLBDATA.mopEffBal)
+		print(LAREC.GLBDATA.opEffBal)
+		print(LAREC.GLBDATA.tranAmt)
+		print(LAREC.GLBDATA.markLienAmt)
+		print(LAREC.GLBDATA.orgLienAmt)
+		print(LAREC.GLBDATA.isMultiSPay)
+
+		print(LAREC.GLBDATA.opAcctId)
+		print(LAREC.GLBDATA.odAcctId)
+	
+		if( (LAREC.GLBDATA.opAcctId!="") and (LAREC.GLBDATA.odAcctId!="") and (cdouble(LAREC.GLBDATA.tranAmt)>0) )then 
+		#{
+				print("in tran")
+                                MTT.PartTranDetails.Account 	= LAREC.GLBDATA.opAcctId
+                                MTT.PartTranDetails.RefCurrency = LAREC.GLBDATA.odCrncyCode 
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate   =  "0"
+                                if(LAREC.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Particulars = "Int recovery for:" + LAREC.GLBDATA.odAcctId
+                                endif
+                                if(LAREC.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Particulars = "Prin recovery for:" + LAREC.GLBDATA.odAcctId
+                                endif
+                                MTT.PartTranDetails.RefAmount = -1*cdouble(LAREC.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+                                if(LAREC.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Remarks = "Interest Recovery"
+                                endif
+                                if(LAREC.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Remarks = "Principal Recovery"
+                                endif
+                                 if(LAREC.GLBDATA.isMultiSPay=="Y")then
+                                        MTT.PartTranDetails.RefNum = "By MultiPay"
+                                else
+                                        MTT.PartTranDetails.RefNum = "By DfltPay"
+                                endif
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.CarveAmtFlg = "Y"
+                                MTT.PartTranDetails.ProxyPstgInd= "P"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                print(MTT.PartTranDetails.TranIdentifier)
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                print(sv_r)
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Debit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        LAREC.GLBDATA.srvErrCode = "MTT"
+                                        LAREC.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                MTT.PartTranDetails.Account = LAREC.GLBDATA.odAcctId
+                                MTT.PartTranDetails.RefCurrency = LAREC.GLBDATA.odCrncyCode 
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate           =  "0"
+                                if(LAREC.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Particulars = "Int recovery from:" + LAREC.GLBDATA.odAcctId
+                                endif
+                                if(LAREC.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Particulars = "Prin recovery from:" + LAREC.GLBDATA.odAcctId
+                                endif
+                                MTT.PartTranDetails.RefAmount = 1 * cdouble(LAREC.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+                                if(LAREC.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Remarks = "Interest Recovery"
+                                endif
+                                if(LAREC.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Remarks = "Principal Recovery"
+                                endif
+                               if(LAREC.GLBDATA.isMultiSPay=="Y")then
+                                        MTT.PartTranDetails.RefNum = "By MultiPay"
+                                else
+                                        MTT.PartTranDetails.RefNum = "By DfltPay"
+                                endif
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Credit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        LAREC.GLBDATA.srvErrCode = "MTT"
+                                        LAREC.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                sv_u = urhk_MTTS_EndDefinition("")
+                                print(sv_u)
+                                if (sv_u != 0) then
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        print (MTT.Error.Description)
+                                        LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        LAREC.GLBDATA.srvErrCode = "MTT"
+                                        LAREC.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                        LAREC.GLBDATA.TranId = ""
+                                else
+                                        LAREC.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                                        print(LAREC.GLBDATA.TranId)
+                                endif
+                                print(MTT.XCPN.NumExceptions)
+                                print(MTT.XCPN.NumWarnings)
+                                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                                #{
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                LAREC.GLBDATA.srvErrCode = "MTT"
+                                                LAREC.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                else
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                LAREC.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                LAREC.GLBDATA.srvErrCode = "MTT"
+                                                LAREC.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                #}
+                                endif
+
+				if(LAREC.GLBDATA.TranId!="")then
+				#{
+					print(LAREC.GLBDATA.totAdjAmt)	
+					print(LAREC.GLBDATA.tranAmt)
+					LAREC.GLBDATA.updAmt = cdouble(LAREC.GLBDATA.totAdjAmt) + cdouble(LAREC.GLBDATA.tranAmt) 
+					print(LAREC.GLBDATA.updAmt)
+					lv_t = " update custom.odla_dmd_tbl set tot_adj_amt=?NVAR, last_adj_date=to_date(?SVAR,'DD-MM-YYYY'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR,host_machine_id=?SVAR "
+					lv_t = lv_t + " where bank_id = ?SVAR and flow_id=?SVAR and od_acid=?SVAR and op_acid=?SVAR and dmd_date=to_date(?SVAR,'DD-MM-YYYY') and dmd_amt=?NVAR "
+					lv_t = lv_t + " and entity_cre_flg='Y' and del_flg='N' "
+					BANCS.INPARAM.BINDVARS = LAREC.GLBDATA.updAmt + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.STDIN.userId + "|" + LAREC.GLBDATA.TranId + "|" + LAREC.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.flowId + "|" + LAREC.GLBDATA.odAcid + "|" + LAREC.GLBDATA.opAcid + "|" +  LAREC.GLBDATA.dmdDate + "|" + LAREC.GLBDATA.dmdAmt 
+					print(BANCS.INPARAM.BINDVARS)
+					print(lv_t)
+					lv_h = urhk_dbSqlWithBind(lv_t)
+					print(lv_h)
+					if(lv_h==0)then
+					#{
+						print("reconcile success")
+						lv_h = urhk_dbSqlWithBind("commit")
+						print(lv_h)
+					#}
+					else
+					#{
+						print("recocile failed")
+					#}
+					endif
+				#}
+				endif
+				if(cdouble(LAREC.GLBDATA.markLienAmt)>0)then
+				#{
+					sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt  where b2k_id in (select trim(max(b2k_id)) from tbaadm.alt where acid =?SVAR "
+					sv_s = sv_s + " and b2k_type = 'ULIEN' and lien_reason_code='ODLA' and b2k_id is not null and bank_id =?SVAR) and b2k_type = 'ULIEN' "
+					sv_s = sv_s + " and lien_reason_code='ODLA' and b2k_id is not null and acid =?SVAR and bank_id =?SVAR "
+					BANCS.INPARAM.BINDVARS = LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					if(sv_d == 0)then
+					#{
+						LAREC.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+						LAREC.GLBDATA.acid = BANCS.OUTPARAM.acid
+						LAREC.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+						LAREC.GLBDATA.Lib2kid = LAREC.GLBDATA.b2kid
+					#}
+					else
+					#{
+						LAREC.GLBDATA.amount1 = "0"
+						LAREC.GLBDATA.acid = ""
+						LAREC.GLBDATA.b2kid = ""
+						LAREC.GLBDATA.Lib2kid = ""
+					#}
+					endif
+					sv_s = "lien_amt|select sum(DMD_AMT - TOT_ADJ_AMT) out from custom.odla_dmd_tbl where bank_id =?SVAR and  od_acid =?SVAR "
+					sv_s = sv_s + " and op_sol_id =?SVAR and entity_cre_flg='Y' and del_flg='N' and dmd_amt-tot_adj_amt >0 and dmd_date<=to_date(?SVAR,'DD-MM-YYYY')"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.odAcid + "|" + BANCS.STDIN.mySolId + "|" + left$(BANCS.STDIN.BODDate,10) 
+					PRINT(BANCS.INPARAM.BINDVARS)
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					if(sv_d == 0)then
+					#{
+						LAREC.GLBDATA.markLienAmt = BANCS.OUTPARAM.lien_amt
+						print(LAREC.GLBDATA.markLienAmt)
+					#}
+					endif	
+					if(LAREC.GLBDATA.b2kid!="")then
+					#{
+						print(LAREC.GLBDATA.markLienAmt)
+						print(LAREC.GLBDATA.amount1)
+						#LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.markLienAmt) + cdouble(LAREC.GLBDATA.amount1)
+						print(LAREC.GLBDATA.markLienAmt)
+						BANCS.INPARAM.b2kId = LAREC.GLBDATA.b2kid 
+						BANCS.INPARAM.acctNum = LAREC.GLBDATA.LiopAcctId 
+						BANCS.INPARAM.blockMode = "M"
+						BANCS.INPARAM.lienAmt = cdouble(LAREC.GLBDATA.markLienAmt) *  1
+						BANCS.INPARAM.expiryDate = "31-12-2099"
+						BANCS.INPARAM.remarks = "Lien for loans on od"
+						BANCS.INPARAM.reasonCode = "ODLA"
+						BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+						BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+						sv_u = urhk_updateLien("")
+						if(sv_u!=0)then
+						#{
+							print("Unable to Mark the lien on operative account for loan recovery")
+							LAREC.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+							LAREC.GLBDATA.srvErrCode = "Lien"
+							LAREC.GLBDATA.srvSucFail = "F"
+							goto NXTREC
+						#}
+						else
+						#{
+							print("Lien Success")
+							LAREC.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+							LAREC.GLBDATA.srvErrCode = "Lien"
+							LAREC.GLBDATA.srvSucFail = "S"
+							lv_i = urhk_dbSqlWithBind("commit")
+							goto NXTREC
+						#}
+						endif
+					#}
+					else
+					#{
+						BANCS.INPARAM.acctNum = LAREC.GLBDATA.LiopAcctId 
+						BANCS.INPARAM.blockMode = "A"
+						BANCS.INPARAM.lienAmt = cdouble(LAREC.GLBDATA.markLienAmt) *  1
+						BANCS.INPARAM.expiryDate = "31-12-2099"
+						BANCS.INPARAM.remarks = "Lien for loans on od"
+						BANCS.INPARAM.reasonCode = "ODLA"
+						BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+						BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+						sv_u = urhk_updateLien("")
+						if(sv_u!=0)then
+						#{
+							print("Unable to Mark the lien on operative account for loan recovery")
+							LAREC.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+							LAREC.GLBDATA.srvErrCode = "Lien"
+							LAREC.GLBDATA.srvSucFail = "F"
+							goto NXTREC
+						#}
+						else
+						#{
+							print("Lien Success")
+							LAREC.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+							LAREC.GLBDATA.srvErrCode = "Lien"
+							LAREC.GLBDATA.srvSucFail = "S"
+							lv_i = urhk_dbSqlWithBind("commit")
+							goto NXTREC
+						#}
+						endif
+					#}
+					endif
+				#}
+				endif
+	
+		#}
+		else
+		#{
+				print("in Lien")
+				print(LAREC.GLBDATA.orgLienAmt)
+				print(LAREC.GLBDATA.markLienAmt)
+                                if(cdouble(LAREC.GLBDATA.markLienAmt)>0)then
+                                #{
+                                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt  where b2k_id in (select trim(max(b2k_id)) from tbaadm.alt where acid =?SVAR "
+                                        sv_s = sv_s + " and b2k_type = 'ULIEN' and lien_reason_code='ODLA' and b2k_id is not null and bank_id =?SVAR) and b2k_type = 'ULIEN' "
+                                        sv_s = sv_s + " and lien_reason_code='ODLA' and b2k_id is not null and acid =?SVAR and bank_id =?SVAR "
+                                        BANCS.INPARAM.BINDVARS = LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.opAcid + "|" + BANCS.STDIN.contextBankId
+                                        PRINT(BANCS.INPARAM.BINDVARS)
+                                        print(sv_s)
+                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                        print(sv_d)
+                                        if(sv_d == 0)then
+                                        #{
+                                                LAREC.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                                LAREC.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                                LAREC.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                                LAREC.GLBDATA.Lib2kid = LAREC.GLBDATA.b2kid
+                                        #}
+                                        else
+                                        #{
+                                                LAREC.GLBDATA.amount1 = "0"
+                                                LAREC.GLBDATA.acid = ""
+                                                LAREC.GLBDATA.b2kid = ""
+                                                LAREC.GLBDATA.Lib2kid = ""
+                                        #}
+                                        endif
+					sv_s = "lien_amt|select sum(DMD_AMT - TOT_ADJ_AMT) out from custom.odla_dmd_tbl where bank_id =?SVAR and  od_acid =?SVAR "
+                                        sv_s = sv_s + " and op_sol_id =?SVAR and entity_cre_flg='Y' and del_flg='N' and dmd_amt-tot_adj_amt >0 and dmd_date<=to_date(?SVAR,'DD-MM-YYYY')"
+                                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + LAREC.GLBDATA.odAcid + "|" + BANCS.STDIN.mySolId + "|" + left$(BANCS.STDIN.BODDate,10)
+                                        PRINT(BANCS.INPARAM.BINDVARS)
+                                        print(sv_s)
+                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                        print(sv_d)
+                                        if(sv_d == 0)then
+                                        #{
+						LAREC.GLBDATA.markLienAmt = BANCS.OUTPARAM.lien_amt
+						print(LAREC.GLBDATA.markLienAmt)
+					#}
+					endif
+                                        
+                                        if(LAREC.GLBDATA.b2kid!="")then
+                                        #{
+                                                print(LAREC.GLBDATA.markLienAmt)
+                                                print(LAREC.GLBDATA.amount1)
+                                                #LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.markLienAmt) + cdouble(LAREC.GLBDATA.amount1)
+                                                print(LAREC.GLBDATA.markLienAmt)
+                                                BANCS.INPARAM.b2kId = LAREC.GLBDATA.b2kid
+                                                BANCS.INPARAM.acctNum = LAREC.GLBDATA.LiopAcctId 
+                                                BANCS.INPARAM.blockMode = "M"
+                                                BANCS.INPARAM.lienAmt = cdouble(LAREC.GLBDATA.markLienAmt) *  1
+                                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                BANCS.INPARAM.reasonCode = "ODLA"
+                                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                sv_u = urhk_updateLien("")
+                                                if(sv_u!=0)then
+                                                #{
+                                                        print("Unable to Mark the lien on operative account for loan recovery")
+                                                        LAREC.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                        LAREC.GLBDATA.srvErrCode = "Lien"
+                                                        LAREC.GLBDATA.srvSucFail = "F"
+                                                        goto NXTREC
+                                                #}
+                                                else
+                                                #{
+                                                        print("Lien Success")
+                                                        LAREC.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                        LAREC.GLBDATA.srvErrCode = "Lien"
+                                                        LAREC.GLBDATA.srvSucFail = "S"
+                                                        lv_i = urhk_dbSqlWithBind("commit")
+                                                        goto NXTREC
+                                                #}
+                                                endif
+                                        #}
+                                        else
+                                        #{
+						#LAREC.GLBDATA.markLienAmt = cdouble(LAREC.GLBDATA.orgLienAmt) + cdouble(LAREC.GLBDATA.markLienAmt)
+						print(LAREC.GLBDATA.markLienAmt)
+                                                BANCS.INPARAM.acctNum = LAREC.GLBDATA.LiopAcctId 
+                                                BANCS.INPARAM.blockMode = "A"
+                                                BANCS.INPARAM.lienAmt = cdouble(LAREC.GLBDATA.markLienAmt) *  1
+                                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                BANCS.INPARAM.reasonCode = "ODLA"
+                                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                sv_u = urhk_updateLien("")
+                                                if(sv_u!=0)then
+                                                #{
+                                                        print("Unable to Mark the lien on operative account for loan recovery")
+                                                        LAREC.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                        LAREC.GLBDATA.srvErrCode = "Lien"
+                                                        LAREC.GLBDATA.srvSucFail = "F"
+                                                        goto NXTREC
+                                                #}
+                                                else
+                                                #{
+                                                        print("Lien Success")
+                                                        LAREC.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                        LAREC.GLBDATA.srvErrCode = "Lien"
+                                                        LAREC.GLBDATA.srvSucFail = "S"
+                                                        lv_i = urhk_dbSqlWithBind("commit")
+                                                        goto NXTREC
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                #}
+                                endif
+		#}
+		endif
+
+                NXTREC:
+                        print(LAREC.GLBDATA.srvErrMsg)
+                        print(LAREC.GLBDATA.srvErrCode)
+                        print(LAREC.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(LAREC.GLBDATA.olarecCurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(LAREC.GLBDATA.olarecCurNum)
+                                print(sv_u)
+                                LAREC.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                LAREC.GLBDATA.srvErrCode = "DBCursor"
+                                LAREC.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        #}
+                        endif
+                        LAREC.GLBDATA.laarec = cint(LAREC.GLBDATA.laarec) + 1
+                        LAREC.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + LAREC.GLBDATA.laarec
+                        print(LAREC.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(LAREC.GLBDATA.olarecCurNum)
+        print(sv_u)
+Endofscript:
+        print(LAREC.GLBDATA.srvErrCode)
+        print(LAREC.GLBDATA.srvErrMsg)
+        print(LAREC.GLBDATA.srvSucFail)
+        exitscript
+
+trace off
+end-->

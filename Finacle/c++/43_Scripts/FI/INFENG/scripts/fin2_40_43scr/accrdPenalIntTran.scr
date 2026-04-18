@@ -1,0 +1,242 @@
+###########################################################################################
+#  Script Name     :   accrdPenalIntTran.scr
+#
+#  Input To Script :   The input values to the script are values from accrd_penal_adj_ptr 
+#  Desc            :   Transfer penal collected and penal refund to
+#                      respective accts.
+#                      For penal collected amt
+#                           Part Tran 1: Debit Loan/Loan Int acct for penal
+#                           collected.
+#                           Part tran 2: Credit the Penal P&L
+#                      For Penal refund amt
+#                           Part tran 3: Debit the Penal P&L For penal refund
+#                           calculated
+#                           Part Tran 4: Credit Loan acct.   
+##########################################################################################
+
+<--start
+trace on
+sv_r = urhk_MTTS_PopulateInputDetails("")
+
+###############################################################################
+# Define the Transaction
+###############################################################################
+
+if (sv_r < 1) then
+
+	MTT.TranDetails.TranDate=MTT.InputDetails.TranDate
+	MTT.TranDetails.TranType="T"
+	MTT.TranDetails.TranSubType="BI"
+    	#MSG0318292="Create Transaction for Accured Penal Interest"
+    	sv_x = urhk_getMSGCodeErrDesc("MSG0318292")
+    	if(sv_x == 0) then
+        	MTT.TranDetails.Remarks = BANCS.OUTPARAM.errDesc
+    	endif	
+	MTT.TranDetails.IgnoreExcp="I"
+	MTT.TranDetails.Consolidate="Y"
+	MTT.TranDetails.PrintAdviceInd="B"
+	MTT.TranDetails.sysTranCode = "LOANAA043"
+
+	sv_z = urhk_MTTS_DefineTransaction("accrdPenal")
+endif
+
+while(sv_r < 1)
+###############################################################################
+# Get all the amounts into local variables . Please do not set these variables
+# anywhere else in this script. The variables are : -
+# sv_a = CollAmt
+# sv_b = AccuredAmt(Refund)
+# sv_c = BookedAmt	
+###############################################################################
+	
+	sv_a = CDOUBLE(MTT.InputDetails.CollAmt)
+	sv_b = CDOUBLE(MTT.InputDetails.RefundAmt)
+	#sv_c = sv_a - sv_b
+	print(sv_a) 
+    print(sv_b) 
+    #print(sv_c) 
+	
+###############################################################################
+# Part Tran 1. Debit the Loan or Loan Int A/C for the collected penal interest
+###############################################################################
+	if(sv_a != 0) then
+	#{
+		MTT.PartTranDetails.Account = MTT.InputDetails.LoanAcct
+	#Dumping Loan int account for Ijara product		
+		if(MTT.InputDetails.isIjarahAcct == "Y") then 
+			MTT.PartTranDetails.Account = MTT.InputDetails.LoanIntAcct 
+		endif 
+		print(MTT.PartTranDetails.Account)
+		MTT.PartTranDetails.RefAmount= -sv_a
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.LoanAcct + ": Accured Penal Interest"
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.CurrencyCode
+		MTT.PartTranDetails.Consolidate="N" 
+		MTT.PartTranDetails.TranIdentifier="accrdPenal"    
+		MTT.PartTranDetails.PTranBusinessType="ACCRPENALINT"
+		MTT.PartTranDetails.GlDate=MTT.InputDetails.TranDate
+		MTT.PartTranDetails.sysPartTranCode = "PTRN00742"
+		MTT.PartTranDetails.IgnoreExcp = "I"
+
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAcct
+		MTT.LAAddnlDetails.OriginOfTran = "accrdPenal"
+		MTT.LAAddnlDetails.DemandSatisfyFlg = "N"
+		MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.CollFlowId
+
+		#This is penal collection case
+        if(sv_a > 0) then
+        #{
+            MTT.LAAddnlDetails.raiseDemandFlg = "N"
+            MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.FlowId
+            MTT.LAAddnlDetails.DemandSatisfyFlg = "Y"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00743"
+        #}
+        endif
+
+		sv_z = urhk_MTTS_DefineLoanPartTran("INT_DEBIT1")
+		if (sv_z == 1) then
+			exitscript
+		endif
+	#}
+	endif
+
+#################################################################################
+# Part Tran 2. Credit the P&L A/C or SUSP A/C based on
+#              GCT Recognize Interest Flg for the collected penal interest
+#################################################################################
+
+
+    if(sv_a != 0) then
+	#{
+		MTT.PartTranDetails.Account = MTT.InputDetails.PLAC
+        #MTT.PartTranDetails.Particulars = MTT.InputDetails.PLAC
+        MTT.PartTranDetails.Particulars = MTT.InputDetails.LoanAcct + ": Accured Penal Interest"
+        print(MTT.PartTranDetails.Account)
+        MTT.PartTranDetails.RefAmount= sv_a
+        print(MTT.PartTranDetails.RefAmount)
+	PRINT(MTT.InputDetails.RateCode)
+	IF(TRIM(MTT.InputDetails.RateCode) == "")THEN
+	#{
+		sv_s = "RateCode|SELECT REPAY_RATE_CODE FROM TBADM.GCT WHERE BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                print(sv_s)
+                print(BANCS.INPARAM.BINDVARS)
+                sv_d = urhk_dbselectWithBind(sv_s)
+                print(sv_d)
+                IF(sv_d == "0")THEN
+                #{
+            		MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.RateCode
+                #}
+                ENDIF
+	#}
+	ELSE
+	#{
+       		MTT.PartTranDetails.RateCode=MTT.InputDetails.RateCode 
+	#}
+	ENDIF
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.CurrencyCode
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="accrdPenal"
+        MTT.PartTranDetails.PTranBusinessType="ACCRPENALINT"
+        MTT.PartTranDetails.GlDate=MTT.InputDetails.TranDate
+		MTT.PartTranDetails.sysPartTranCode = "PTRN00744"
+	MTT.PartTranDetails.IgnoreExcp = "I"
+
+        sv_z = urhk_MTTS_DefinePartTran("PLCREDIT")
+        if (sv_z == 1) then
+            exitscript
+        endif
+	#}
+	endif
+
+#################################################################################
+# Part Tran 3. Debit P&L A/C or SUSP A/C based on
+#              GCT Recognize Interest Flg for the penal refund interest
+#################################################################################
+
+
+    if(sv_b != 0) then
+	#{
+		MTT.PartTranDetails.Account = MTT.InputDetails.PLAC
+        #MTT.PartTranDetails.Particulars = MTT.InputDetails.PLAC
+        MTT.PartTranDetails.Particulars = MTT.InputDetails.LoanAcct + ": Accured Penal Interest"
+	PRINT(MTT.InputDetails.RateCode)
+	IF(TRIM(MTT.InputDetails.RateCode) == "")THEN
+	#{
+		sv_s = "RateCode|SELECT REPAY_RATE_CODE FROM TBADM.GCT WHERE BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+                print(sv_s)
+                print(BANCS.INPARAM.BINDVARS)
+                sv_d = urhk_dbselectWithBind(sv_s)
+                print(sv_d)
+                IF(sv_d == "0")THEN
+                #{
+            		MTT.PartTranDetails.RateCode= BANCS.OUTPARAM.RateCode
+                #}
+                ENDIF
+	#}
+	ELSE
+	#{
+       		MTT.PartTranDetails.RateCode=MTT.InputDetails.RateCode 
+	#}
+	ENDIF
+        print(MTT.PartTranDetails.Account)
+        MTT.PartTranDetails.RefAmount= -sv_b
+        print(MTT.PartTranDetails.RefAmount)
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.CurrencyCode
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="accrdPenal"
+        MTT.PartTranDetails.PTranBusinessType="ACCRPENALINT"
+        MTT.PartTranDetails.GlDate=MTT.InputDetails.TranDate
+		MTT.PartTranDetails.sysPartTranCode = "PTRN00744"
+	MTT.PartTranDetails.IgnoreExcp = "I"
+
+        sv_z = urhk_MTTS_DefinePartTran("PLCREDIT")
+        if (sv_z == 1) then
+            exitscript
+        endif
+    #}
+	endif
+
+################################################################################
+# Part Tran 4. Credit Loan A/C for the penal refund interest
+###############################################################################
+    if(sv_b != 0) then
+    #{
+    MTT.PartTranDetails.Account = MTT.InputDetails.LoanAcct
+	print(MTT.PartTranDetails.Account)	
+	MTT.PartTranDetails.RefAmount= sv_b
+	print(MTT.PartTranDetails.RefAmount)
+	#MTT.PartTranDetails.Particulars=MTT.InputDetails.LoanAcct
+	MTT.PartTranDetails.Particulars=MTT.InputDetails.LoanAcct + ": Accured Penal Interest"
+	MTT.PartTranDetails.RefCurrency=MTT.InputDetails.CurrencyCode
+	MTT.PartTranDetails.Consolidate="N" 
+	MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAcct
+	MTT.LAAddnlDetails.OriginOfTran = "accrdPenal"
+	MTT.PartTranDetails.TranIdentifier="accrdPenal"    
+	MTT.PartTranDetails.PTranBusinessType="ACCRPENALINT"
+	MTT.LAAddnlDetails.DemandSatisfyFlg = "Y"
+	MTT.LAAddnlDetails.raiseDemandFlg = "Y"
+	MTT.PartTranDetails.GlDate=MTT.InputDetails.TranDate
+	MTT.PartTranDetails.sysPartTranCode = "PTRN00743"
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.CollFlowId
+    MTT.LAAddnlDetails.TypeOfDemand = "A"
+    MTT.LAAddnlDetails.AdvancePaymentFlg="N"
+
+	sv_z = urhk_MTTS_DefineLoanPartTran("INT_DEBIT")
+	if (sv_z == 1) then
+	exitscript
+	endif
+	#}
+	endif
+############################################################################### 
+# End Of part tran definitions
+###############################################################################
+
+	
+		sv_z = urhk_MTTS_EndDefinition("")
+sv_r = urhk_MTTS_PopulateInputDetails("")
+DO
+#trace off
+end-->

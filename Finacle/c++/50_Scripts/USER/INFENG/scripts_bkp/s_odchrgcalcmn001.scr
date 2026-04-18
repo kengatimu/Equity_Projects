@@ -1,0 +1,260 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: s_odchrgcalcmn001.scr
+# Type: NA|default
+# Description: s_odchrgcalcmn001.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#------------------------------------------------------------------------------------------------
+#   Name            : odchrgcalcmn001.scr
+#   Description     : Get ODCharges event id
+#   Date            : 10-03-2013
+#   Author          : Bharath Reddy B
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : getcparamvalue.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             10-03-2013      Bharath Reddy B	Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="4fe3683619cede9b0c1c6f59d7b76555f87cdf180a75a0de7ab260eca03d63b9"
+	TRACE ON
+	IF (CLASSEXISTS("CUST","ODCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","ODCHRG",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Initializing Out Variables
+	#-----------------------------------------------------------------------------------------------
+	sv_u = urhk_SetOrbOut("Error|dummy")
+	sv_u = urhk_SetOrbOut("eventId|dummy")
+	CUST.ODCHRG.errMsg = ""
+	
+	IF (BANCS.STDIN.contextBankId=="43") THEN
+		GOTO ENDOFSCRIPT
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting odcharge eventid from cparam
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "ODCHRG"
+	BANCS.INPUT.parameterId = "EVNTID"
+	
+	CALL ("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.eventId = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.CPARAM.eventId)
+		#}
+	ELSE
+		#{
+		CUST.ODCHRG.errMsg = "EVNTID setup not done in CPARAM"
+	#}
+	ENDIF
+	
+	sv_u = urhk_SRV_NumOfRecs("tranDtl.partTranDetailLL")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.ODCHRG.recCount = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.ODCHRG.recCount)
+	#}
+	ENDIF
+	
+	sv_l = 0
+	WHILE(sv_l < CINT(CUST.ODCHRG.recCount))
+	#{
+		sv_v = Format$(sv_l,"%d")
+		sv_r = "<rec_"+sv_v+">"
+		print(sv_r)		
+		sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL."+sv_r+".todEntityId")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.ODCHRG.todEntityId = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.ODCHRG.todEntityId)
+		#}
+		ENDIF
+		
+		IF (CUST.ODCHRG.todEntityId != "" ) THEN
+		#{
+			#-------------------------------------------------------------------------------------------
+			# Getting TOD Debit Account Id
+			#-------------------------------------------------------------------------------------------
+			sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL."+sv_r+".acctId.foracid")
+			PRINT(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				CUST.ODCHRG.acctId = BANCS.OUTPARAM.srvValue
+				PRINT(CUST.ODCHRG.acctId)
+				#}
+			ELSE
+				#{
+				CUST.TMCHRG.errMsg = "Error: urhk_SRV_GetVal failed for Account Number"
+				BANCS.OUTPUT.successOrFailure = "F"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			#---------------------------------------------------------------------
+			#---Getting remarks from dat table
+			#---------------------------------------------------------------------
+			sv_s=""
+			sv_s = sv_s + " remarks,todGrantAmt|"
+			sv_s = sv_s + " SELECT DAT.free_text, DAT.discret_advn_amt"
+			sv_s = sv_s + " FROM TBAADM.DAT"
+			sv_s = sv_s + " WHERE DAT.acid = ("
+			sv_s = sv_s + 			" SELECT GAM.acid"
+			sv_s = sv_s + 			" FROM TBAADM.GAM"
+			sv_s = sv_s + 			" WHERE GAM.bank_id = DAT.bank_id"
+			sv_s = sv_s + 			" AND GAM.foracid = ?SVAR)"
+			sv_s = sv_s + " AND DAT.bank_id = ?SVAR"
+			sv_s = sv_s + " AND DAT.entity_id = ?SVAR"
+			#sv_s = sv_s + " AND DAT.entity_type = 'TODIN'"
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.ODCHRG.acctId 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.ODCHRG.todEntityId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_d = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_d)
+			IF ( sv_d != 0 ) THEN
+			#{
+				CUST.ODCHRG.remarks = ""
+				CUST.TMCHRG.errMsg = "Error: Error in finding remarks"
+				BANCS.OUTPUT.successOrFailure = "F"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CUST.ODCHRG.remarks	 = BANCS.OUTPARAM.remarks
+				PRINT(CUST.ODCHRG.remarks)
+				CUST.ODCHRG.todGrantAmt	 = BANCS.OUTPARAM.todGrantAmt
+				PRINT(CUST.ODCHRG.todGrantAmt)
+			#}
+			ENDIF
+
+			#### Start Tod charges exemption
+			sv_s=""
+			sv_s = sv_s + " sumfutureamt|"
+			sv_s = sv_s + " select sum(FUTURE_AMT) as sumfutureamt from   tbaadm.ftx where  bank_id=?SVAR and del_flg='N' "
+			sv_s = sv_s + " and acid in (select acid from tbaadm.gam where bank_id=?SVAR and foracid=?SVAR ) "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId 	+ "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.ODCHRG.acctId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_d)
+			IF ( sv_d != 0 ) THEN
+			#{
+			#}
+			ELSE
+				CUST.ODCHRG.sumfutureamt = BANCS.OUTPARAM.sumfutureamt
+				PRINT(CUST.ODCHRG.sumfutureamt)
+				IF (CINT(CUST.ODCHRG.sumfutureamt) > 0) THEN
+					CUST.ODCHRG.remarks = ""
+					PRINT(CUST.ODCHRG.remarks)
+				ENDIF
+			ENDIF
+				
+			#### End  Tod charges exemption
+			
+			IF ( CUST.ODCHRG.remarks == "CHARGES" ) THEN
+			#{
+				sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL."+sv_r+".acctId.crncyCode")
+				PRINT(sv_u)
+				IF (sv_u == 0) THEN
+				#{
+					CUST.ODCHRG.acctCrncy = BANCS.OUTPARAM.srvValue
+					PRINT(CUST.ODCHRG.acctCrncy)
+					#}
+				ELSE
+					#{
+					CUST.TMCHRG.errMsg = "Error: urhk_SRV_GetVal failed for account currency"
+					BANCS.OUTPUT.successOrFailure = "F"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL."+sv_r+".tranAmt")
+				PRINT(sv_u)
+				IF (sv_u == 0) THEN
+				#{
+					CUST.ODCHRG.tranAmt = BANCS.OUTPARAM.srvValue
+					PRINT(CUST.ODCHRG.tranAmt)
+					CUST.ODCHRG.todGrantAmt = CUST.ODCHRG.todGrantAmt + RIGHT$(CUST.ODCHRG.tranAmt,STRLEN(CUST.ODCHRG.tranAmt)-GETPOSITION(CUST.ODCHRG.tranAmt,"|")+1)
+					PRINT(CUST.ODCHRG.todGrantAmt)
+					#}
+				ELSE
+					#{
+					CUST.TMCHRG.errMsg = "Error: urhk_SRV_GetVal failed for transaction amount"
+					BANCS.OUTPUT.successOrFailure = "F"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				CUST.GCHRG.drAcctId			= CUST.ODCHRG.acctId
+				CUST.GCHRG.acctCrncyCode	= CUST.ODCHRG.acctCrncy
+				CUST.GCHRG.eventId			= CUST.CPARAM.eventId
+				#			CUST.GCHRG.chrgAmt			= CUST.ODCHRG.tranAmt
+				CUST.GCHRG.chrgAmt			= CUST.ODCHRG.todGrantAmt
+				CUST.GCHRG.tranType			= "T"
+				CUST.GCHRG.tranSubType		= "BI"
+				
+				CALL("gchrgcommon.scr")
+				IF(CUST.GCHRG.successOrFailure == "S") THEN
+				#{
+					PRINT(CUST.GCHRG.tranId)
+					#}
+				ELSE
+					#{
+					CUST.ODCHRG.errMsg = CUST.GCHRG.gchrgErrMsg
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_l = sv_l + 1
+		PRINT(sv_l)
+	#}
+	DO
+	
+	ENDOFSCRIPT:
+		IF(CUST.ODCHRG.errMsg != "") THEN
+		#{
+			sv_u = urhk_SRV_setErr(CUST.ODCHRG.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

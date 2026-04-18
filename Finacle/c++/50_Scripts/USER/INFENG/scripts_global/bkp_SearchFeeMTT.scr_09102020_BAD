@@ -1,0 +1,260 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : SearchFeeMTT.scr
+#  Description     : This script will call CDAA modifiation services to modify data present in CUSTSom table
+#  Date            : 15-09-2020
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : SRV
+#  Menu Option     : HOAACCA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-09-2020      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="241077deeab9cbb9e4c1515546cbf9adfad83c186db837736eac8aa8569ed600"
+TRACE ON
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+sv_s = urhk_B2k_PrintRepos("MTT")
+print(sv_s)
+
+sv_a = urhk_MTTS_PopulateInputDetails("")
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","WITH") == 0) THEN
+#{
+        CREATECLASS("CUST","WITH",5)
+#}
+ENDIF
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+	sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","PartTranDetails")
+	IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","InputDetails")
+	IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","Error")
+	IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+	ENDIF
+	sv_r = CLASSEXISTS("BANCS","INPARAM")
+	IF (sv_r == 0) THEN
+	CREATECLASS("BANCS","INPARAM",5)
+	ENDIF
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+
+	BANCS.INPARAM.PostTranFlg               = "Y"
+	BANCS.INPARAM.CommitFlg                 = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+	BANCS.INPARAM.ValidationFlag            = "Y"
+	BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+	BANCS.INPARAM.CheckExceptions           = "N"
+
+	sv_u = urhk_MTTS_Initialize("")
+        print (sv_u)
+
+        IF (sv_u != 0) THEN
+        #{
+                sv_c = "Initialisation of MTT Failed"
+                MTT.Error.Description = sv_c
+                sv_u = urhk_MTTS_ReportErrorCondition("")
+               EXITSCRIPT 
+        #}
+        ENDIF
+
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+	print(sv_a)
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.IgnoreExcp = "I"
+	MTT.TranDetails.Consolidate = "N"
+	MTT.TranDetails.Remarks = "SEARCH FEE CHARGE"
+	
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+
+	sv_r = urhk_MTTS_DefineTransaction("WITHTran")	
+
+	#PNLSEARCH	4000650050117
+	CUST.WITH.crBacid = "PNLSEARCH"
+	sv_i = CUST.WITH.crBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ BANCS.STDIN.mySolId
+	print(sv_i)
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	if(sv_u == 0 )then
+		CUST.WITH.CrAcct = BANCS.OUTPARAM.AcctId
+		print(CUST.WITH.CrAcct)
+	else
+		CUST.WITH.CrAcctId = "4000650050117"
+	endif	
+
+
+#	CUST.WITH.foracid = "4004200664528"
+	CUST.WITH.foracid = BANCS.INPUT.uAccount
+	print(CUST.WITH.foracid)
+	
+	CUST.WITH.SearchFee = "8850"
+	print(CUST.WITH.SearchFee)
+
+	sv_v = "WITHTran"
+	print(sv_v)
+
+	
+	sv_b = urhk_getAcctDetailsInRepository(CUST.WITH.foracid)
+	
+	IF(sv_b == 0) then
+	#{
+		sv_t = BANCS.OUTPARAM.EffAvailableAmt
+		Print (sv_t)
+		CUST.WITH.AvaBal = sv_t
+		CUST.WITH.cifId = BANCS.OUTPARAM.cifId
+                PRINT(CUST.WITH.cifId)
+		CUST.WITH.schmCode = BANCS.OUTPARAM.schmCode
+		print(CUST.WITH.schmCode)
+		CUST.WITH.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode 
+		print(CUST.WITH.acctCrncyCode)
+	#}
+	ENDIF	
+if ((CUST.WITH.schmCode == "CA200") or (CUST.WITH.schmCode == "CA203") or (CUST.WITH.schmCode == "CA205") or (CUST.WITH.schmCode == "CA207") or (CUST.WITH.schmCode == "CA244")) then
+#{
+
+#------------------------------------------------------------------------------
+#Check search status
+#------------------------------------------------------------------------------
+sv_a="value|select STRUSERFIELD10 from crmuser.corporate where BANK_ID = ?SVAR AND CORP_KEY=?SVAR"
+print(sv_a)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.WITH.cifId
+print(BANCS.INPARAM.BINDVARS)
+sv_q = urhk_dbSelectWithBind(sv_a)
+print(sv_q)
+
+IF (sv_q==0) THEN
+#{
+	CUST.WITH.value =BANCS.OUTPARAM.value
+	print(CUST.WITH.value)
+
+	IF (CUST.WITH.value!="001") THEN
+	#{
+
+#CustomerDebit
+		MTT.PartTranDetails.Account     = CUST.WITH.foracid
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		if (CUST.WITH.acctCrncyCode =="USD")then
+			MTT.PartTranDetails.RateCode ="TTB"
+		else
+			MTT.PartTranDetails.RateCode    ="MEAN"
+		endif
+		MTT.PartTranDetails.Rate        = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "SEARCH FEE /"+ CUST.WITH.CrAcct
+		MTT.PartTranDetails.RefAmount = -(cdouble(CUST.WITH.SearchFee))
+		print(MTT.PartTranDetails.RefAmount)
+		print(cdouble(CUST.WITH.AvaBal))
+		print(cdouble(CUST.WITH.SearchFee))
+		if (cdouble(CUST.WITH.AvaBal) < cdouble(CUST.WITH.SearchFee)) then
+		#{				
+			MTT.PartTranDetails.TODRefType          = "IN"
+			MTT.PartTranDetails.TodEntityType   = "TODIN"
+			print(CUST.WITH.foracid)
+			MTT.PartTranDetails.TodEntityId     = CUST.WITH.foracid 
+			MTT.PartTranDetails.TodLevIntFlg    = "N"
+			MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+			MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+			MTT.PartTranDetails.TodPermittedBy  = "SYSTEM" 
+			MTT.PartTranDetails.TodRemarks      = "Charges TOD"
+			MTT.PartTranDetails.Consolidate     = "N"
+		#}
+		endif
+		
+		MTT.PartTranDetails.Remarks = "Dr.SEARCH FEE CHARGE"
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		#sv_e = "CustDr"
+		#print(sv_e)
+		sv_r = urhk_MTTS_DefinePartTran("CustDr")
+		print(sv_r)
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+#WITH Credit
+		MTT.PartTranDetails.Account     = CUST.WITH.CrAcct
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode    ="MEAN"
+		MTT.PartTranDetails.Rate        = "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "SEARCH FEE /" + CUST.WITH.foracid
+		MTT.PartTranDetails.RefAmount = (cdouble(CUST.WITH.SearchFee))
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = "Cr from:" + CUST.WITH.foracid
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		#sv_e = "WITHIncome"
+		#print(sv_e)
+		sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+		print(sv_r)
+
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+
+
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.WITH.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.WITH.tranid)
+		#}
+		ENDIF	
+	#}
+	ENDIF
+#}
+ENDIF
+#}
+endif
+
+EXITSCRIPT
+trace off
+end-->
+
+
+
+

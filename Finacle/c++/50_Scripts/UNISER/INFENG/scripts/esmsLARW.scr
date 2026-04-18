@@ -1,0 +1,200 @@
+#  Name            : esmsLARW.scr 
+#  Description     : LA572 disbursement,partial payment and payoff SMS 
+#  Date            : 11-05-2023
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : SRV
+#  Menu Option     : HBJE-SFEE
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             11-05-2023      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+
+<--START
+
+CHECKSUM="7096eabd43fb6a787064ee21f6ee2917faa9c06ebdc03d4baa3934a4b0fe4375"
+	TRACE ON
+	sv_a = urhk_B2K_printRepos("BANCS")
+	print(sv_a)
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+
+        IF(CLASSEXISTS("CUST","MESSAGING")==0) THEN
+        #{
+                CREATECLASS("CUST","MESSAGING",5)
+        #}
+        ENDIF	
+
+	#--------------------------------------
+	#Laspay
+	#--------------------------------------
+
+	if(fieldexists(CUST.LADISB.module) == 1)then
+		print(CUST.LADISB.module)
+		if((CUST.LADISB.module =="LASPAY") or (CUST.LADISB.module =="PAYOFF"))then
+		#{
+			if(CUST.LADISB.module =="PAYOFF")then
+				print(CUST.INTERFACE.payOffAmt)
+				print(CUST.INTERFACE.laAcctforacid)
+				CUST.INTERFACE.enteredAmt = CUST.INTERFACE.payOffAmt
+				CUST.INTERFACE.AccountID = CUST.INTERFACE.laAcctforacid
+				CUST.INTERFACE.position = GETPOSITION(CUST.INTERFACE.enteredAmt, "|")
+				CUST.INTERFACE.position = CINT(CUST.INTERFACE.position) - 1
+				PRINT(CUST.INTERFACE.position)
+				CUST.INTERFACE.enteredAmt = MID$(CUST.INTERFACE.enteredAmt, 0, CINT(CUST.INTERFACE.position))
+				PRINT(CUST.INTERFACE.enteredAmt)
+
+			else
+				print(CUST.INTERFACE.enteredAmt)
+			endif
+			
+			sv_s = "phoneno,name,bal|SELECT PHONENO,SUBSTR (LTRIM (GAM.ACCT_NAME),1,INSTR (LTRIM (GAM.ACCT_NAME), ' ') - 1)," 
+			sv_s = sv_s + " gam.clr_bal_amt,gam.foracid, gam.bank_id  FROM tbaadm.cphone c,tbaadm.gam  where gam.cif_id=c.PHONE_B2KID "  
+			sv_s = sv_s + " AND c.PREFERREDFLAG='Y'   AND gam.bank_id=c.bank_id AND gam.bank_id='50' AND GAM.ACCT_CLS_FLG='N' and gam.foracid=?SVAR  AND gam.bank_id=?SVAR "  
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.INTERFACE.AccountID + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			if(sv_d != 0)then
+			#{
+				CUST.LADISB.errMsg      = "Error in finding  value"
+				EXITSCRIPT
+			#}
+			else
+			#{
+				CUST.MESSAGING.MOBILENUMBER= BANCS.OUTPARAM.phoneno
+				print(CUST.MESSAGING.MOBILENUMBER)
+				CUST.MESSAGING.bal = BANCS.OUTPARAM.bal
+				print(CUST.MESSAGING.bal)
+				CUST.LADISB.name = BANCS.OUTPARAM.name
+				print(CUST.LADISB.name)
+				CUST.LADISB.Dear="Dear "
+				print(CUST.LADISB.Dear)
+				CUST.LADISB.repay=" ,CONFIRMED. RWF.  "
+				print(CUST.LADISB.repay)
+				if(CUST.LADISB.module =="LASPAY")then
+					CUST.LADISB.repayloan=" received to pay your loan partially, your loan balance is Rwf  "
+					print(CUST.LADISB.repayloan)
+					CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.INTERFACE.enteredAmt + CUST.LADISB.repayloan + CUST.MESSAGING.bal 
+					print(CUST.MESSAGING.MESSAGETEXT)
+				else
+					CUST.LADISB.repayloan=" received to pay your loan fully , your loan balance is Rwf 0, Thank you for Banking with us "
+					CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.INTERFACE.enteredAmt + CUST.LADISB.repayloan
+					print(CUST.MESSAGING.MESSAGETEXT)
+				endif		
+	
+				GOTO ENDOFSCRIPT
+			#}
+			endif
+		#}
+		else
+		#{
+			if(CUST.LADISB.module =="LADISP")then
+	
+		
+				#------------------------------------------------------------------------------
+				# Getting acctId code from front end
+				#------------------------------------------------------------------------------	
+				sv_a = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+				CUST.LADISB.loanAcctId  = BANCS.OUTPARAM.srvValue
+				print(CUST.LADISB.loanAcctId)
+				
+				#------------------------------------------------------------------------------
+				# Calling common script for common values
+				#------------------------------------------------------------------------------
+				print(CUST.LADISB.loanAcctId)
+				
+				#################################################################################
+				#
+				#################################################################################	
+				sv_a = urhk_SRV_GetVal("acctDisburseTranLA.schmCode.schmCode")
+				CUST.LADISB.laSchmCode=BANCS.OUTPARAM.srvValue
+				print(CUST.LADISB.laSchmCode)	
+				IF (CUST.LADISB.laSchmCode == "LA572")  THEN
+				#{
+					sv_s = "phoneno,trandate,name,FLOW_AMT,foracid,NEXT_DMD_DATE,bank_id |"
+					sv_s = sv_s + " SELECT PHONENO ,(select TO_CHAR(db_stat_date, 'DD-Mon-RRRR') as  from tbaadm.gct where bank_id='50') as TRAN_DATE  "
+					sv_s = sv_s + " , SUBSTR (LTRIM (GAM.ACCT_NAME),1,INSTR (LTRIM (GAM.ACCT_NAME), ' ') - 1), "
+					sv_s = sv_s + " abs(gam.clr_bal_amt),gam.foracid,  "
+					sv_s = sv_s + " TO_CHAR(NEXT_DMD_DATE, 'DD-Mon-RRRR'), gam.bank_id  "
+					sv_s = sv_s + " FROM TBAADM.lrs,tbaadm.cphone c,tbaadm.gam,tbaadm.gac WHERE lrs.ACID=gam.acid  AND gam.cif_id=c.PHONE_B2KID  "
+					sv_s = sv_s + " AND c.PREFERREDFLAG='Y'   AND gam.bank_id=c.bank_id AND gam.bank_id=gac.bank_id AND lrs.bank_id=gam.bank_id AND  gac.ACID=gam.acid AND lrs.bank_id=c.bank_id  "
+					sv_s = sv_s + " AND gac.bank_id='50'  AND GAM.ACCT_CLS_FLG='N' AND lrs.FLOW_ID='EIDEM' AND lrs.LAST_REC_FLG='Y' AND gam.foracid= ?SVAR  AND gam.bank_id= ?SVAR  "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					IF (sv_d != 0) THEN
+					#{
+						CUST.LADISB.errMsg 	= "Error in finding  value"
+						EXITSCRIPT
+					#}
+					ELSE
+					#{
+						CUST.MESSAGING.MOBILENUMBER= BANCS.OUTPARAM.phoneno
+						print(CUST.MESSAGING.MOBILENUMBER)	
+						CUST.LADISB.trandate=BANCS.OUTPARAM.trandate
+						print(CUST.LADISB.trandate)
+						CUST.LADISB.name=BANCS.OUTPARAM.name
+						print(CUST.LADISB.name)
+						CUST.LADISB.foracid=BANCS.OUTPARAM.foracid
+						print(CUST.LADISB.foracid)
+						CUST.LADISB.FLOW_AMT=BANCS.OUTPARAM.FLOW_AMT
+						print(CUST.LADISB.FLOW_AMT)
+						CUST.LADISB.NEXT_DMD_DATE=BANCS.OUTPARAM.NEXT_DMD_DATE
+						print(CUST.LADISB.NEXT_DMD_DATE)
+						CUST.LADISB.bank_id=BANCS.OUTPARAM.bank_id
+						print(CUST.LADISB.bank_id)
+						
+						CUST.LADISB.Dear="Dear "
+						print(CUST.LADISB.Dear)
+						CUST.LADISB.repay=" ,CONFIRMED. Your loan application has been approved and credited in your account. Repayment amount is RWF.  "
+						print(CUST.LADISB.repay)
+						CUST.LADISB.repayloan=" to be repaid on "
+						print(CUST.LADISB.repayloan)
+						
+						CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.LADISB.FLOW_AMT + CUST.LADISB.repayloan + CUST.LADISB.NEXT_DMD_DATE 
+						print(CUST.MESSAGING.MESSAGETEXT)	
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF		
+				else
+					EXITSCRIPT
+				endif	
+			else
+				EXITSCRIPT
+			endif	
+			
+		#}	EXITSCRIPT
+		endif	
+	else
+		EXITSCRIPT
+	endif
+	
+	ENDOFSCRIPT:
+	callscriptifexist("esmspushLARW.scr")
+EXITSCRIPT
+END-->
+

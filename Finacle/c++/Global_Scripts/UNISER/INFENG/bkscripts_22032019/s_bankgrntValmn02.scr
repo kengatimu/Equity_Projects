@@ -1,0 +1,180 @@
+############################################################################################################									
+# Source Name						: s_bankgrntValmn02.scr
+# Date								: 16-JAN-2013
+# Description						: Margin Details tab visit is mandatory
+# Input								: None
+# Output							: None
+# Called Script						: None
+# Calling Script					: SRV_AddOutwardBGDtls_validate_data.scr
+# Author     						: Shilpa
+# Modification History				:
+#		< Version No.> 			<Date>		<Author Name> 		<Description>
+#		 0.1					16-JAN-2013 	Shilpa 			Original Version
+#		0.2				08-JUL-2013	Priya K			Modified for Call Id - 355718
+############################################################################################################
+<--START
+CHECKSUM="014ae1c4b3eec3cd3da0c172b3285084b7f419e3dfcbe6c763310a6f07fcfc40"
+	#TRACE ON
+	
+	#############################################################################
+	#Custom Repository creation
+	#############################################################################
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	#############################################################################
+	# Initialization of custom variables
+	#############################################################################
+	CUST.DATA.bgType = ""
+	CUST.DATA.marginAmt = 0
+	CUST.DATA.bgDet = ""
+	
+	##############################################################################
+	# Fetching value from front end
+	###############################################################################
+	#sv_u = urhk_B2k_printRepos("BANCS")
+	#print(sv_u)
+	
+	sv_a=urhk_SRV_GetVal("bgCritDtl.bgType.type")
+	print(sv_a)
+	IF (sv_a == 0 ) THEN
+	#{
+		CUST.DATA.bgType= BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.bgType)
+	#}
+	ENDIF
+	
+	sv_a=urhk_SRV_GetVal("bgGuaranteeDtl.bgPurpose")
+	print(sv_a)
+	IF (sv_a == 0 ) THEN
+	#{
+		CUST.DATA.bgPurp = BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.bgPurp)
+	#}
+	ENDIF
+	
+	####################################################################
+	# Mandatory for Purpose of Guarantee
+	####################################################################
+	
+	IF (CUST.DATA.bgPurp == "") THEN
+	#{
+		sv_u=urhk_SRV_SetErr("bgGuaranteeDtl.bgPurpose|Purpose of Guarantee is mandatory")
+	#}
+	ENDIF
+	
+	
+	#MODIFICATION DONE FOR CALL ID - 355718 BY PRIYA K
+	
+	########################################################################################
+	# fetching value from front end
+	########################################################################################
+	sv_a = urhk_SRV_GetVal("bgGuaranteeDtl.bgDetails")
+	print(sv_a)
+	IF (sv_a == 0) THEN
+	#{
+		CUST.DATA.desc= BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.desc)
+	#}
+	ENDIF
+	
+	##############################################################
+	# checking for Guarantee Details
+	###############################################################
+	IF (CUST.DATA.desc == "") THEN
+	#{
+		sv_u=urhk_SRV_SetErr("bgGuaranteeDtl.bgDetails|Details of Guarantee is mandatory")
+		print(sv_u)
+	#}
+	ENDIF
+	
+	# MODIFICATION ENDS HERE
+	
+	#######################################################################################################
+	# Validation of effective date
+	#######################################################################################################
+	
+	IF ((BANCS.STDIN.contextBankId == "54") OR (BANCS.STDIN.contextBankId == "55"))THEN
+	#{
+		
+		sv_a = urhk_SRV_GetVal("bgGuaranteeDtl.bgEffectiveDate")
+		PRINT(sv_a)
+		IF (sv_a == 0) THEN
+		#{
+			CUST.DATA.bgeffDate= BANCS.OUTPARAM.srvValue
+			PRINT(CUST.DATA.bgeffDate)
+		#}
+		ENDIF
+		
+		CUST.DATA.bgeffDate = MID$(CUST.DATA.bgeffDate,0,10)
+		
+		sv_s = urhk_B2K_getDateDiffFromBODDate(CUST.DATA.bgeffDate)
+		PRINT(sv_s)
+		CUST.DATA.DIFF = CINT(BANCS.OUTPARAM.DateDiff)
+		PRINT(CUST.DATA.DIFF)
+		
+		IF (CUST.DATA.DIFF != CINT("0")) THEN
+		#{
+			sv_u=urhk_SRV_SetErr("bgGuaranteeDtl.bgEffectiveDate|Effective date should be equal to BOD date")
+			PRINT(sv_u)
+			#}
+		ELSE
+			#{
+			GOTO ENDSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#####################################################################
+	# Calling getcparamvalue.scr script
+	#####################################################################
+	
+	BANCS.INPUT.moduleName = "TRADE_FINANCE"
+	BANCS.INPUT.parameterId = "BG_TYPE"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.bgValue = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg = "BG TYPE IS NOT SET"
+		GOTO ENDSCRIPT
+	#}
+	ENDIF
+	####################################################################
+	# Comparing bg type
+	####################################################################
+	print(CUST.DATA.bgType)
+	print(CUST.DATA.bgValue)
+	sv_a = STRICMP(CUST.DATA.bgType,CUST.DATA.bgValue)
+	print(sv_a)
+	
+	IF (sv_a == 1) THEN
+	#{
+		sv_u = urhk_SRV_NumOfRecs("bgMarginMsg.tfcMarginLL")
+		CUST.DATA.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+		PRINT(CUST.DATA.noOfRecords)
+		IF ((CUST.DATA.noOfRecords == "") OR (CUST.DATA.noOfRecords == 0)) THEN
+		#{
+			sv_u=urhk_SRV_SetErr("bgMarginMsg.tfcMarginHeader.totalCashMargin|Error:Margin details tab must be visited")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDSCRIPT :
+		EXITSCRIPT
+		#TRACE OFF
+END-->

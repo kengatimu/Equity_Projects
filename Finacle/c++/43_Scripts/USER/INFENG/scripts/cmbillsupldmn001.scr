@@ -1,0 +1,516 @@
+<--START
+#=================================================================================================================*
+# Name                          :   cmbillsupldmn001.scr
+# Date                          :   22-02-2013
+# Description                   :   This script is used to upload the file and do the transaction USing TTUM exe.
+# Author                        :   Chethan.S
+# Called Scripts                :   <None>
+# Calling Script                :   <None>
+# Reference                     :
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>            <Description>
+#--------------------------------------------------------------------------
+#   1           17-02-2013      Chethan.S               Original version
+#   2           10-10-2013      Bharath			Modified upload path and process initiated in background
+#Using tabSpace 4
+#=================================================================================================================*
+
+#TRACE ON
+
+#----------------------------------------------------------------------------------
+# Creating the custom repository and Class
+#----------------------------------------------------------------------------------
+
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+    CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","BILLS") == 0) THEN
+#{
+    CREATECLASS("CUST","BILLS",5)
+#}
+ENDIF
+
+CUST.BILLS.errMsg = ""
+
+BANCS.INPUT.moduleName  = "BILLSUPLOAD"
+BANCS.INPUT.parameterId = "CRNCYCODE"
+
+CALL ("getcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.BILLS.crncyCode = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    #CUST.BILLS.errMsg = "Upload file Path setup not done CPARAM"
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Currenecy code setup not done in CPARAM^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "BILLSUPLOAD"
+BANCS.INPUT.parameterId = "ACCOUNTNUMBER1"
+
+CALL ("getcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.BILLS.acctNumbTran = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    #CUST.BILLS.errMsg = "Upload file Path setup not done CPARAM"
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Account Number setup not done in CPARAM^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+sv_u = urhk_getEnv("USER_PASS")
+print(sv_u)
+IF (sv_u != 0) THEN
+#{
+	print("User Id Password is not set, taking default value")
+	sv_z = urhk_SetOrbOut("Error_01|ERROR^User Id Password is not set in common ENV^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	CUST.BILLS.userPass = BANCS.OUTPARAM.envValue
+	print(CUST.BILLS.userPass)
+#}
+ENDIF
+
+sv_u = urhk_getEnv("FIN_REPORTS_DIR")
+print(sv_u)
+
+IF (sv_u == 0) THEN
+#{
+	CUST.BILLS.rptPath = BANCS.OUTPARAM.envValue
+	print(CUST.BILLS.rptPath)
+	IF(CUST.BILLS.rptPath == "") THEN
+	#{	
+		CUST.BILLS.rptPath = "1"
+	#}
+	ENDIF
+#}
+ENDIF		
+
+sv_u = urhk_getEnv("CTL_PATH")
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+    PRINT("User Id Password is not set")
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Control file path is not set in common ENV^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+    PRINT(BANCS.OUTPARAM.envValue)
+    CUST.BILLS.ctlFilePath = BANCS.OUTPARAM.envValue
+    PRINT(CUST.BILLS.ctlFilePath)
+#}
+ENDIF
+
+sv_u = urhk_getEnv("DATA_PATH")
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Data file path is not set in common ENV^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+    PRINT(BANCS.OUTPARAM.envValue)
+    CUST.BILLS.CMFilePath = BANCS.OUTPARAM.envValue
+    #CUST.CDDUM.FilePath = CUST.CDDUM.dataPath + CUST.CDDUM.FileName
+    PRINT(CUST.BILLS.CMFilePath)
+    #----------TOL - 367144-------------#
+    BANCS.INPUT.upldPath = CUST.BILLS.CMFilePath
+    #---------------------------------------------------------------
+    # Calling common script to append userId to upload file path
+    #---------------------------------------------------------------
+    CALL("appendUserId.scr")
+    CUST.BILLS.CMFilePath = BANCS.INPUT.upldPath
+    PRINT(CUST.BILLS.CMFilePath)
+#}
+ENDIF
+
+CUST.BILLS.fileName = BANCS.INPUT.upldFileName
+print(CUST.BILLS.fileName)
+
+CUST.BILLS.testMode = BANCS.INPUT.testMode
+print(CUST.BILLS.testMode)
+
+CUST.BILLS.tranRmks = BANCS.INPUT.tranRmks
+print(CUST.BILLS.tranRmks)
+
+#------------------------------------------------------------
+# Check whether the Mandatory fields entered
+#------------------------------------------------------------
+
+IF ( CUST.BILLS.fileName == "" ) THEN
+#{
+	sv_z = urhk_SetOrbOut("Error_01|ERROR^Enter the File Name^upldFileName")
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+IF ( CUST.BILLS.testMode == "" ) THEN
+#{
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Please Select the Test Field^testMode")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+IF ( CUST.BILLS.tranRmks == "" ) THEN
+#{
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^Enter the Tran Remarks field^tranRmks")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+IF ( CUST.BILLS.testMode == "Y") THEN
+#{
+        CUST.BILLS.posting = "T"
+        CUST.BILLS.Rename = "N"
+#}
+ELSE
+#{
+        CUST.BILLS.posting = "P"
+        CUST.BILLS.Rename = "Y"
+#}
+ENDIF
+
+#-------------------------------------------------------------------
+# Insert the record into the Upload Status table
+#-------------------------------------------------------------------
+
+sv_s = " filSrlNum "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT NVL(MAX(upld_srl_num),0) + 1 "
+sv_s = sv_s + " FROM CUSTOM.C_UPLD_EQT_TBL "
+sv_S = sv_S + " WHERE upld_file_name = ?SVAR "
+print(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.BILLS.fileName
+
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+
+If(sv_d == 0 ) THEN
+#{
+	CUST.BILLS.fileSrlNum = BANCS.OUTPARAM.filSrlNum
+	print(CUST.BILLS.fileSrlNum)
+#}
+ELSE
+#{
+	CUST.BILLS.fileSrlNum = "1"
+	print(CUST.BILLS.fileSrlNum)
+#}
+ENDIF
+
+sv_s = " INSERT INTO CUSTOM.C_UPLD_EQT_TBL "
+sv_s = sv_s + " ( "
+sv_s = sv_s + " upld_file_name, "
+sv_s = sv_s + " upld_srl_num, "
+sv_s = sv_s + " status, "
+sv_s = sv_s + " status_desc,"
+sv_s = sv_s + " tran_id, "
+sv_s = sv_S + " bank_id, "
+sv_s = sv_s + " rcre_time, "
+sv_s = sv_s + " rcre_user_id, "
+sv_s = sv_s + " del_flg "
+sv_s = sv_s + " ) "
+sv_s = sv_s + " VALUES "
+sv_s = sv_s + " ( "
+sv_s = sv_s + "?SVAR,"
+sv_s = sv_s + "?SVAR,"
+sv_s = sv_s + "'P',"
+sv_s = sv_s + "'Initial insertionion',"
+sv_s = sv_s + " '', "
+sv_s = sv_s + "?SVAR,"
+sv_s = sv_s + "sysdate,"
+sv_s = sv_s + "?SVAR,"
+sv_s = sv_s + "'N'"
+sv_s = sv_s + " ) "
+print(sv_s)
+
+BANCS.INPARAM.BINDVARS = CUST.BILLS.fileName + "|" + CUST.BILLS.fileSrlNum + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSQLWithBind(sv_s)
+print(sv_d)
+
+IF(sv_d == 0) THEN
+#{
+	sv_d = urhk_dbSQLWithBind("COMMIT")
+	print(sv_d)
+#}
+ENDIF
+
+#-------------------------------------------------------------------------
+# Executing the COM file to check whether the file is valid or not
+#------------------------------------------------------------------------
+
+sv_c = urhk_getFileLocation("COM|cmbillsuplddp001.com")
+print(sv_c)
+IF(sv_c == 0) THEN
+#{
+	CUST.BILLS.comFileLocation = BANCS.OUTPARAM.fileLocation
+	print(CUST.BILLS.comFileLocation)
+#}
+ELSE
+#{
+	CUST.BILLS.errMsg = "Upload process failed please retry"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_s = CUST.BILLS.comFileLocation + "cmbillsuplddp001.com"
+print(sv_s)
+
+CUST.BILLS.fileNamePath = CUST.BILLS.CMFilePath + CUST.BILLS.fileName
+print(CUST.BILLS.fileNamePath)
+
+sv_d = urex(sv_s,"file.dat",CUST.BILLS.fileNamePath+"|" + BANCS.STDIN.contextBankId+"|"+ CUST.BILLS.fileName)
+print(sv_d)
+
+IF(sv_d != 0 ) THEN
+#{
+	sv_z = urhk_SetOrbOut("Error_01|ERROR^Technical Error in urex execution for checking file exist or not^upldFileName")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+print(CUST.BILLS.fileExist)
+
+IF(CUST.BILLS.fileExist != "Y" ) THEN
+#{
+    sv_z = urhk_SetOrbOut("Error_01|ERROR^File Does not Exists in the Specific path^upldFileName")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#-----------------------------------------------------------------------
+# Delete the record from the C_PAYBIL table
+#-----------------------------------------------------------------------
+
+sv_s = "DELETE CUSTOM.C_PAYBILLCOLL "
+sv_s = sv_s + " WHERE entry_user_id = ?SVAR"
+sv_s = sv_s + " AND bank_id = ?SVAR "
+print(sv_s)
+print(BANCS.STDIN.userId)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+sv_d = urhk_dbSQLWithBind(sv_s)
+print(sv_d)
+
+IF(sv_d == 0 ) THEN
+#{
+	sv_d = urhk_dbSQLWithBind("COMMIT")
+	print(sv_d)
+#}
+ENDIF
+
+#-----------------------------------------------------------
+# Getting sysdate from dual table
+#-----------------------------------------------------------
+sv_s = "tmpname|SELECT to_char(sysdate,'ddmmyyhhmmss')" 
+sv_s = sv_s + " FROM DUAL"
+
+PRINT(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_d)
+IF (sv_d ==0) THEN
+#{
+  CUST.BILLS.tmpfilename = "cbilpay_" + BANCS.OUTPARAM.tmpname + "." + "txt"
+#}
+ENDIF
+
+#-----------------------------------------------------------
+# Using SQL Loader upload the file into C_PAYBIL table
+#-----------------------------------------------------------
+
+CUST.BILLS.ctlFilePath = CUST.BILLS.ctlFilePath + "cmbillsupld.ctl"
+print(CUST.BILLS.fileName)
+
+sv_a = "sed 's/$/|" + BANCS.STDIN.contextBankId + "/g' " + CUST.BILLS.CMFilePath + CUST.BILLS.fileName  + " > "  + CUST.BILLS.tmpfilename
+print(sv_a)
+sv_r = SYSTEM(sv_a)
+PRINT(sv_r)
+
+sv_b = "sqlldr " + CUST.BILLS.userPass + "  control=" + CUST.BILLS.ctlFilePath + " data=" + CUST.BILLS.tmpfilename
+print(sv_b)
+
+sv_a = SYSTEM(sv_b)
+print(sv_a)
+
+IF(sv_a != 0 ) THEN
+#{
+	sv_z = urhk_SetOrbOut("Error_01|ERROR^Upload process failed please retry^upldFileName")
+    sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_s = "rm -f " + CUST.BILLS.tmpfilename
+print(sv_s)
+sv_r = SYSTEM(sv_s)
+PRINT(sv_r)
+
+#----------------------------------------------------------------------------------
+#---    Executing com file in background 
+#----------------------------------------------------------------------------------
+sv_u = urhk_getFileLocation("COM|cmbillsupldmn001.com")
+print(sv_u)
+IF (sv_u == 0) THEN
+#{
+	#----------------------------------------------------------------------------------
+	#---    Setting Env variables
+	#----------------------------------------------------------------------------------
+	sv_a = "rptPath|" + CUST.BILLS.rptPath
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "bankId|" + BANCS.STDIN.contextBankId
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "crncyCode|" + CUST.BILLS.crncyCode
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "fileName|" + CUST.BILLS.fileName
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "onsUser|" + BANCS.STDIN.userId
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "acctNumTran|" + CUST.BILLS.acctNumbTran
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "tranRmks|" + CUST.BILLS.tranRmks
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "pstdFlg|" + CUST.BILLS.posting
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "renameFlg|" + CUST.BILLS.Rename
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+
+	sv_a = "fileNamePath|" + CUST.BILLS.fileNamePath
+	sv_u = urhk_putEnvForCallShellScript(sv_a)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Error in setting env variable"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.scriptName = "cmbillsupldmn001.com"
+	BANCS.INPARAM.arguments = ""
+	sv_u = urhk_CallShellScript("b")
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.BILLS.errMsg = "Upload process failed please retry"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	CUST.BILLS.errMsg = "Unable to load com file"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF (CUST.BILLS.errMsg != "") THEN
+#{
+	sv_z = urhk_SetOrbOut("Error_01|ERROR^"+CUST.BILLS.errMsg+"^testMode")
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+#}
+ELSE
+#{
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	sv_g = "RESULT_MSG|Upload/Process Initiated SuccessFully" 
+	sv_z = urhk_SetOrbOut(sv_g)
+#}
+ENDIF
+
+exitscript
+
+end-->

@@ -1,0 +1,162 @@
+#-------------------------------------------------------------------------------------------------------
+# Source Name           :   s_chqValmn003.scr
+# Date                  :   18-03-2013
+# Author                :   Shishira
+# Title                 :   OutwardClearingValidation
+# Description           :   Verify the input of HOCTM menu for Add function
+# Sources called        :   NA
+# Sources called from   :   s_chqValmn001.scr
+# RS Approach Document  :
+# Modification History  :
+# <Serial No.>      <Date>          <Author Name>       <Description>
+# 0.00a             18-Mar-2013     Shishira        Original version
+# 0.00b				25-Apr-2013		Shishira		Modified Script
+# 0.00c				26-Apr-2013		Shishira		Modified Script Removed CUSTOM.URA_PAY
+#-------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="593e88cf18fea1648ce77060a627b9b2c37fb8ae3a3f9e01d767c9f3a5de6c0b"
+	TRACE ON
+	#-----------------------------------------------
+	# Creating Repository
+	#-----------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------
+	# Main Logic
+	#----------------------------------------------------
+	print(CUST.DATA.pTranAmt)
+	
+	print(CUST.DATA.tranRmk)
+	
+	print(CUST.DATA.acctNo)
+	
+	CUST.DATA.ammt=CUST.DATA.pTranAmt
+	#---------------------------------------
+	#From CPARAM
+	#---------------------------------------
+	BANCS.INPUT.moduleName = "CLEARING"
+	BANCS.INPUT.parameterId = "CHQVAL_ACCT1"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.DATA.pAcct=BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_SetErr("Error: Parameter value for "+BANCS.INPUT.parameterId+" is not set in C_CPARAM_VALUE_TABLE")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.DATA.acctNo==CUST.DATA.pAcct)THEN
+	#{
+		IF (CUST.DATA.tranRmk =="")THEN
+		#{
+			sv_u = urhk_SRV_SetErr("Error: ENTER PRN No. In Remarks Field")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			sv_r = urhk_B2k_isStringNumeric(CUST.DATA.tranRmk)
+			IF ( sv_r != 0 ) THEN
+			#{
+				sv_u = urhk_SRV_SetErr("Error: The PRN is not Correct..Numbers Only")
+				BANCS.OUTPUT.successOrFailure="F"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				sv_s="count|SELECT COUNT(1) "
+				sv_s = sv_s + "FROM URA_REG a "
+				sv_s = sv_s + "WHERE status='A' "
+				sv_s = sv_s + "AND a.expiresat >=TRUNC(SYSDATE) "
+				sv_s = sv_s + "AND NOT EXISTS "
+				sv_s = sv_s + 	"(SELECT 1 "
+				sv_s = sv_s + 	"FROM URA_PAY b "
+				sv_s = sv_s + 	"WHERE a.regno = b.regno "
+				sv_s = sv_s + 	"AND bank_id = ?SVAR) "
+				sv_s = sv_s + "AND a.regno = ?SVAR "
+				sv_s = sv_s + "AND bank_id = ?SVAR "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.tranRmk +"|"+ BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				CUST.DATA.couunt = BANCS.OUTPARAM.count
+				print(CUST.DATA.couunt)
+				IF (CUST.DATA.couunt=="0") THEN
+				#{
+					sv_u = urhk_SRV_SetErr("Error: Reg No. Incorrect OR Has expired try again")
+					BANCS.OUTPUT.successOrFailure="F"
+					GOTO ENDOFSCRIPT
+					#}
+				ELSE
+					#{
+					sv_s = "REG,NAME,AMOUNT|"
+					sv_s = sv_s + "SELECT a.regno,a.taxpayername,a.amount "
+					sv_s = sv_s + "FROM URA_REG a "
+					sv_s = sv_s + "WHERE status='A'"
+					sv_s = sv_s + "AND a.expiresat >=TRUNC(sysdate) "
+					sv_s = sv_s + "AND not exists "
+					sv_s = sv_s + 	"(SELECT 1 "
+					sv_s = sv_s + 	"FROM URA_PAY b "
+					sv_s = sv_s + 	"WHERE a.regno = b.regno "
+					sv_s = sv_s + 	"AND bank_id = ?SVAR) "
+					sv_s = sv_s + "AND a.REGNO = ?SVAR "
+					sv_s = sv_s + "AND bank_id = ?SVAR "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.tranRmk +"|"+ BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_w = urhk_dbSelectWithBind(sv_s)
+					print(sv_w)
+					IF ( sv_w != 0 ) THEN
+					#{
+						sv_u = urhk_SRV_SetErr("Error: Db Error, Try Later")
+						BANCS.OUTPUT.successOrFailure="F"
+						GOTO ENDOFSCRIPT
+						#}
+					ELSE
+						#{
+						CUST.DATA.ref = BANCS.OUTPARAM.REG
+						CUST.DATA.name = BANCS.OUTPARAM.NAME
+						CUST.DATA.amt = BANCS.OUTPARAM.AMOUNT
+						
+						IF (cint(CUST.DATA.amt)!=cint(CUST.DATA.ammt)) THEN
+						#{
+							sv_a = "QUIT .......ENTERED AMOUNT DOES NOT TALLY WITH URA AMOUNT: " + CUST.DATA.amt
+							print(sv_a)
+							sv_u = urhk_SRV_SetErr("Error: "+sv_a)
+							BANCS.OUTPUT.successOrFailure="F"
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	EXITSCRIPT
+	Finish :
+		EXIT
+		TRACE OFF
+END-->

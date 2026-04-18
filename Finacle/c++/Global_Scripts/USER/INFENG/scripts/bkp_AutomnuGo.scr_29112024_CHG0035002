@@ -1,0 +1,373 @@
+-------------------------------------------------------------------------------------------------------------
+#    Name            : Automnu.scr
+#    Description     : Automation menu 
+#    Date            : 01-JAN-2023
+#    Author          : Irungu James
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : CAUTOMNU
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           01-JAN-2023         Irungu James              Original Version         1.0
+#-----------------------------------------------------------------------------------------------------------
+<--start
+trace on
+if(repexists("CUST")==0)then
+	createrep("CUST")
+endif
+
+if(classexists("CUST","DATA")==0)then
+    createclass("CUST","DATA",5)
+endif
+
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+
+	CUST.DATA.funcCode = BANCS.INPUT.funcCode
+	print(CUST.DATA.funcCode)
+	CUST.DATA.fileName = BANCS.INPUT.fileName
+	print(BANCS.INPUT.fileName)
+
+	sv_s = "filename |"
+        sv_s = sv_s + " select substr('"+ CUST.DATA.fileName +"',instr('"+ CUST.DATA.fileName +"' ,'\',-1)+1) "
+        sv_s = sv_s + " from dual "
+        print(sv_s)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        print(sv_d)
+        if(sv_d == 0) then
+		CUST.DATA.filename = BANCS.OUTPARAM.filename
+		print(CUST.DATA.filename)
+	ELSE
+		CUST.DATA.filename = ""
+		
+		CUST.DATA.msg = "Error_2|Error.2^Select a valid file "
+		sv_c = urhk_setorbout("SuccessOrFailure|N")
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+		GOTO ENDOFSCRIPT
+	ENDIF
+IF ((CUST.DATA.funcCode == "UL") OR  (CUST.DATA.funcCode == "US")  OR  (CUST.DATA.funcCode == "UA")  OR  (CUST.DATA.funcCode == "UC")  OR  (CUST.DATA.funcCode == "LI")  OR   (CUST.DATA.funcCode == "OA") )  then
+#	IF ((CUST.DATA.funcCode == "UL") OR  (CUST.DATA.funcCode == "UC")  OR  (CUST.DATA.funcCode == "LI")  OR   (CUST.DATA.funcCode == "OA") OR  (CUST.DATA.funcCode == "SC") OR (CUST.DATA.funcCode == "VC")   )  then
+		sv_r = urhk_getEnv("ONS_LOG_DIR")
+		if(sv_r == 0) then
+			CUST.DATA.FilePath = BANCS.OUTPARAM.envValue
+			print(CUST.DATA.FilePath)
+		endif
+		CUST.DATA.FilePath = CUST.DATA.FilePath +"/"+BANCS.STDIN.userId+"/"+CUST.DATA.filename
+		print(CUST.DATA.FilePath)
+		call("cdataupdp004.scr")
+		sv_r = system("sleep 5")
+		sv_u = urhk_getFileLocation("COM|AutoUploads.com")
+		print(sv_u)
+		print(BANCS.OUTPARAM.fileLocation)
+		if(sv_u == 0)then
+			sv_a = "fCode|" + CUST.DATA.funcCode
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "stuserId|" + BANCS.STDIN.userId
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "bankId|" + BANCS.STDIN.contextBankId
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "EventType|MTTRUN"
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "dfilpth|" + CUST.DATA.FilePath
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "dfilname|" + CUST.DATA.filename
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			BANCS.INPARAM.scriptName = "AutoUploads.com"
+			BANCS.INPARAM.arguments = ""
+			sv_u = urhk_CallShellScript("b")
+			print(sv_u)
+			if(sv_u != 0)then
+				print("failed")
+			else
+				print("success")
+			endif
+		endif
+		lv_b = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_x="File Uploaded successfully. Pull report after sometime for results"
+		CUST.DATA.message = "RESULT_MSG|"+sv_x
+		sv_u = urhk_SetOrbOut(CUST.DATA.message)
+	ENDIF
+		
+	IF(CUST.DATA.funcCode == "LR")THEN
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CUST_AUTO_LIEN_LIFT where FILE_NAME='"+CUST.DATA.filename+"'")
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "File name Doesn't Exists"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO ENDOFSCRIPT
+		ENDIF
+		lv_d = urhk_B2k_PID("")
+		IF (lv_d == 0) THEN
+			CUST.DATA.pid = BANCS.OUTPARAM.PID
+			PRINT(CUST.DATA.pid)
+		ENDIF
+		#-----------------------------------------------------------------------------------------
+		#Calling the sql to create the report
+		#-----------------------------------------------------------------------------------------
+		CUST.DATA.lstFile = "Lien_Lift_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+		CUST.DATA.inputStr = CUST.DATA.filename
+		print(CUST.DATA.inputStr)
+
+		CUST.DATA.ReportHeader = "FORACID|LIEN_REMARKS|LIEN_REASON_CODE|LIEN_ID|DETAILS_LOG|PROCESSED_FLG|LIFTED_FLG| "
+
+		lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+		PRINT(lv_a)
+		lv_s = SYSTEM(lv_a)
+		PRINT(lv_s)
+
+		sv_a = "exebatch spbx4001" + " " + "CUSTOM.LIEN_LIFT_RESULT.LIEN_LIFT_RESULT_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+		PRINT(sv_a)
+		lv_u = SYSTEM(sv_a)
+		PRINT(lv_u)
+		IF (lv_u != 0) THEN
+		#{
+			CUST.DATA.errMsg = "Report generation Failed"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+		ELSE
+			#=====================================================================
+			# Move the file to HPR menu
+			#=====================================================================
+			CUST.DATA.userId = BANCS.STDIN.userId
+			CUST.DATA.title = "Lien Lift Upload REPORT For "+CUST.DATA.filename
+			PRINT(CUST.DATA.title)
+			lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+			PRINT(lv_a)
+			lv_x = SYSTEM(lv_a)
+			PRINT(lv_x)
+			if(lv_x == 0) then
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+				sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.filename+". Check status in HPR"
+				sv_z = urhk_SetOrbOut(sv_g)
+				PRINT(sv_z)
+			ELSE
+				CUST.DATA.msg = "Error_2|Error.2^Lien Lift Report Generation Failed "
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				GOTO ENDOFSCRIPT
+			ENDIF
+		ENDIF
+	ENDIF
+
+	IF(CUST.DATA.funcCode == "CR")THEN
+		##Create Report the close Account
+
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CUST_AUTO_ACCT_CLS where FILE_NAME='"+CUST.DATA.filename+"'")
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "File name Doesn't Exists"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+			lv_d = urhk_B2k_PID("")
+			IF (lv_d == 0) THEN
+				CUST.DATA.pid = BANCS.OUTPARAM.PID
+				PRINT(CUST.DATA.pid)
+			ENDIF
+
+			#-----------------------------------------------------------------------------------------
+			#Calling the sql to create the report
+			#-----------------------------------------------------------------------------------------
+			CUST.DATA.lstFile = "Acct_cls_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+			CUST.DATA.inputStr = CUST.DATA.filename
+			print(CUST.DATA.inputStr)
+
+			CUST.DATA.ReportHeader = "FORACID|CLOSE_FLG|CLR_BAL_AMT|LIEN|DETAILS|"
+
+			lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+			PRINT(lv_a)
+			lv_s = SYSTEM(lv_a)
+			PRINT(lv_s)
+
+			sv_a = "exebatch spbx4001" + " " + "CUSTOM.ACCT_CLS.ACCT_CLOSE_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+			PRINT(sv_a)
+			lv_u = SYSTEM(sv_a)
+			PRINT(lv_u)
+			IF (lv_u != 0) THEN
+			#{
+				CUST.DATA.errMsg = "Report generation Failed"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			ELSE
+				#=====================================================================
+				# Move the file to HPR menu
+				#=====================================================================
+				CUST.DATA.userId = BANCS.STDIN.userId
+				CUST.DATA.title = "Acct Closure Upload REPORT For "+CUST.DATA.filename
+				PRINT(CUST.DATA.title)
+				lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+				PRINT(lv_a)
+				lv_x = SYSTEM(lv_a)
+				PRINT(lv_x)
+				if(lv_x == 0) then
+					sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+					sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.filename+". Check status in HPR"
+					sv_z = urhk_SetOrbOut(sv_g)
+					PRINT(sv_z)
+				ELSE
+					CUST.DATA.msg = "Error_2|Error.2^Acct Cls Report Generation Failed "
+					sv_c = urhk_setorbout("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+					GOTO ENDOFSCRIPT
+				ENDIF
+			ENDIF	
+	ENDIF
+	
+	IF(CUST.DATA.funcCode == "SR")THEN
+		##Create Report the Schm Change Account
+
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CUST_AUTO_ACCT_SCHM where FILE_NAME='"+CUST.DATA.filename+"'")
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "File name Doesn't Exists"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+			lv_d = urhk_B2k_PID("")
+			IF (lv_d == 0) THEN
+				CUST.DATA.pid = BANCS.OUTPARAM.PID
+				PRINT(CUST.DATA.pid)
+			ENDIF
+
+			#-----------------------------------------------------------------------------------------
+			#Calling the sql to create the report
+			#-----------------------------------------------------------------------------------------
+			CUST.DATA.lstFile = "Acct_Schm_Chg_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+			CUST.DATA.inputStr = CUST.DATA.filename
+			print(CUST.DATA.inputStr)
+
+			CUST.DATA.ReportHeader = "FORACID|CURR_SCHM|TARGET_SCHM|DETAILS|"
+
+			lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+			PRINT(lv_a)
+			lv_s = SYSTEM(lv_a)
+			PRINT(lv_s)
+
+			sv_a = "exebatch spbx4001" + " " + "CUSTOM.ACCT_SCHM_CHG.ACCT_SCHM_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+			PRINT(sv_a)
+			lv_u = SYSTEM(sv_a)
+			PRINT(lv_u)
+			IF (lv_u != 0) THEN
+			#{
+				CUST.DATA.errMsg = "Report generation Failed"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			ELSE
+				#=====================================================================
+				# Move the file to HPR menu
+				#=====================================================================
+				CUST.DATA.userId = BANCS.STDIN.userId
+				CUST.DATA.title = "Acct Schm Change Upload REPORT For "+CUST.DATA.filename
+				PRINT(CUST.DATA.title)
+				lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+				PRINT(lv_a)
+				lv_x = SYSTEM(lv_a)
+				PRINT(lv_x)
+				if(lv_x == 0) then
+					sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+					sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.filename+". Check status in HPR"
+					sv_z = urhk_SetOrbOut(sv_g)
+					PRINT(sv_z)
+				ELSE
+					CUST.DATA.msg = "Error_2|Error.2^Acct Schm Change Report Generation Failed "
+					sv_c = urhk_setorbout("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+					GOTO ENDOFSCRIPT
+				ENDIF
+			ENDIF	
+	ENDIF
+	
+	IF(CUST.DATA.funcCode == "AR")THEN
+		##Create Report the Acct Mgr Change
+
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CUST_AUTO_ACCT_MGR where FILE_NAME='"+CUST.DATA.filename+"'")
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			CUST.DATA.msg = "File name Doesn't Exists"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+			lv_d = urhk_B2k_PID("")
+			IF (lv_d == 0) THEN
+				CUST.DATA.pid = BANCS.OUTPARAM.PID
+				PRINT(CUST.DATA.pid)
+			ENDIF
+
+			#-----------------------------------------------------------------------------------------
+			#Calling the sql to create the report
+			#-----------------------------------------------------------------------------------------
+			CUST.DATA.lstFile = "Acct_Mgr_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+			CUST.DATA.inputStr = CUST.DATA.filename
+			print(CUST.DATA.inputStr)
+
+			CUST.DATA.ReportHeader = "FORACID|MRG_SRC|ACCT_MGR|FLG|DETAILS|"
+
+			lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+			PRINT(lv_a)
+			lv_s = SYSTEM(lv_a)
+			PRINT(lv_s)
+
+			sv_a = "exebatch spbx4001" + " " + "CUSTOM.ACCT_MGR.ACCT_MGR_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+			PRINT(sv_a)
+			lv_u = SYSTEM(sv_a)
+			PRINT(lv_u)
+			IF (lv_u != 0) THEN
+			#{
+				CUST.DATA.errMsg = "Report generation Failed"
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			ELSE
+				#=====================================================================
+				# Move the file to HPR menu
+				#=====================================================================
+				CUST.DATA.userId = BANCS.STDIN.userId
+				CUST.DATA.title = "Acct Mgr Chg Upload REPORT For "+CUST.DATA.filename
+				PRINT(CUST.DATA.title)
+				lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+				PRINT(lv_a)
+				lv_x = SYSTEM(lv_a)
+				PRINT(lv_x)
+				if(lv_x == 0) then
+					sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+					sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.DATA.filename+". Check status in HPR"
+					sv_z = urhk_SetOrbOut(sv_g)
+					PRINT(sv_z)
+				ELSE
+					CUST.DATA.msg = "Error_2|Error.2^Acct Mgr Change Report Generation Failed "
+					sv_c = urhk_setorbout("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+					GOTO ENDOFSCRIPT
+				ENDIF
+			ENDIF	
+	ENDIF
+
+
+
+
+
+ENDOFSCRIPT:
+exitscript
+#trace off
+end-->

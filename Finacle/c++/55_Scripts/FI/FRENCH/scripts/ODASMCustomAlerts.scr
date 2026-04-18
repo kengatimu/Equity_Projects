@@ -1,0 +1,161 @@
+<--START
+TRACE ON
+
+	#--------------------------------------------------------------------------
+	# Initialise Repository
+	#--------------------------------------------------------------------------
+	IF (REPEXISTS("CUST")==0)THEN
+		CREATEREP("CUST")
+	ENDIF
+	IF(CLASSEXISTS("CUST","DATA")==0)then
+		CREATECLASS("CUST","DATA",5)
+	ENDIF
+
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+
+
+	########################################
+	#Fetch Eligible Accounts for Alerts#####
+	########################################
+	sv_s = "trgacid,trgforacid,AccontName,PhoneNumber,LimitExpiry,DbStatDate,shortname,CLRBALAMT|"
+	sv_s = sv_s + " SELECT GAM.acid,foracid,acct_name,phone_num,TO_CHAR(LIM_EXP_DATE,'DD-MM-YYYY'),TO_CHAR(DB_STAT_DATE,'DD-MM-YYYY'),ACCT_SHORT_NAME,CLR_BAL_AMT from tbaadm.GAM,tbaadm.LHT,tbaadm.gct WHERE GAM.acid in (select ACID FROM TBAADM.LHT WHERE  BANK_ID=?SVAR"
+	sv_s = sv_s + " AND (LIM_EXP_DATE-SYSDATE)<=30 AND LHT.ACID IN (SELECT ACID FROM TBAADM.GAM WHERE SCHM_CODE IN ('ODASM','OD548') AND CLR_BAL_AMT <0)) AND GAM.ACID=LHT.ACID and gam.del_flg='N' and acct_cls_flg='N' and gct.bank_id=gam.bank_id "
+
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId 
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_e = urhk_dbcursorOpenWithBind(sv_s)
+	print(sv_e)
+		
+	IF(sv_e == 0) THEN
+		#{
+
+		CUST.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.DATA.CURSOR_NUMBER)
+		sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+		print(sv_c)
+		BANCS.INPUT.RECCOUNT=cint("1")
+		print(BANCS.INPUT.RECCOUNT)
+		
+		WHILE(sv_c == "0")
+		#{
+		CUST.DATA.trgacid= BANCS.OUTPARAM.trgacid
+		PRINT(CUST.DATA.trgacid)
+		CUST.DATA.trgforacid= BANCS.OUTPARAM.trgforacid
+		PRINT(CUST.DATA.trgforacid)
+		CUST.DATA.AccontName= BANCS.OUTPARAM.AccontName
+		PRINT(CUST.DATA.AccontName)
+		CUST.DATA.PhoneNumber= BANCS.OUTPARAM.PhoneNumber
+		PRINT(CUST.DATA.PhoneNumber)
+		CUST.DATA.LimitExpiry = BANCS.OUTPARAM.LimitExpiry
+		PRINT(CUST.DATA.LimitExpiry)
+		CUST.DATA.DbStatDate = BANCS.OUTPARAM.DbStatDate
+		PRINT(CUST.DATA.DbStatDate)
+		sv_a=BANCS.OUTPARAM.CLRBALAMT
+		sv_b=MID$(sv_a,1,12)
+		sv_k=TRIM(sv_b)
+		print(sv_k)
+		CUST.DATA.CLRBALAMT= sv_k
+		CUST.DATA.shortname = BANCS.OUTPARAM.shortname
+		PRINT(CUST.DATA.shortname)
+
+		CUST.DATA.MESSAGE1 = "Dear"
+		PRINT(CUST.DATA.MESSAGE1)
+		CUST.DATA.MESSAGE2 = "Your Overdraft Limit of KES:"
+		PRINT(CUST.DATA.MESSAGE2)
+		CUST.DATA.MESSAGE3 = "would be overdue in 30 Days."
+		CUST.DATA.MESSAGE4 = "would be overdue in 7 Days."
+
+		PRINT(CUST.DATA.MESSAGE3)
+		CUST.DATA.MESSAGE = CUST.DATA.MESSAGE1 +" "+ CUST.DATA.shortname +","+ CUST.DATA.MESSAGE2 +" "+ CUST.DATA.CLRBALAMT +" "+ CUST.DATA.MESSAGE3
+		PRINT(CUST.DATA.MESSAGE)
+
+		CUST.DATA.MESSAGE5 = CUST.DATA.MESSAGE1 +" "+ CUST.DATA.shortname +","+ CUST.DATA.MESSAGE2 +" "+ CUST.DATA.CLRBALAMT +" "+ CUST.DATA.MESSAGE4
+		PRINT(CUST.DATA.MESSAGE)
+
+
+		#}
+		
+		BANCS.INPARAM.date1 = CUST.DATA.LimitExpiry
+		PRINT(BANCS.INPARAM.date1)
+		BANCS.INPARAM.date2 = CUST.DATA.DbStatDate
+		PRINT(BANCS.INPARAM.date2)
+
+		sv_i = urhk_B2k_dateDiff("")
+		print(sv_i)
+		PRINT(BANCS.OUTPARAM.dateDiff)
+
+		CUST.DATA.DATEDIFF = BANCS.OUTPARAM.dateDiff
+
+		IF (CUST.DATA.DATEDIFF == "30") THEN
+
+		#{
+
+		sv_i = "INSERT INTO CUSTOM.ALERT_SME (ACID, FORACID, ACCT_NAME, PHONE_NUM,BANK_ID,RCRE_TIME,MESSAGE_TYPE,MESSAGE,MESSAGE_STATUS,AMOUNT) "
+		sv_i = sv_i + " VALUES (?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR,SYSDATE,'A',?SVAR,'0','0')"
+		print (sv_i)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.trgacid +"|"+ CUST.DATA.trgforacid +"|"+ CUST.DATA.AccontName +"|"+ CUST.DATA.PhoneNumber +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.MESSAGE
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_i = urhk_dbSqlWithBind(sv_i)
+		print (sv_i)
+		
+		#}
+		ENDIF
+		
+		IF (CUST.DATA.DATEDIFF == "7") THEN
+
+		#{
+
+		sv_i = "INSERT INTO CUSTOM.ALERT_SME (ACID, FORACID, ACCT_NAME, PHONE_NUM,BANK_ID,RCRE_TIME,MESSAGE_TYPE,MESSAGE,MESSAGE_STATUS,AMOUNT) "
+		sv_i = sv_i + " VALUES (?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR,SYSDATE,'A',?SVAR,'0','0')"
+		print (sv_i)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.trgacid +"|"+ CUST.DATA.trgforacid +"|"+ CUST.DATA.AccontName +"|"+ CUST.DATA.PhoneNumber +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.MESSAGE4
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_i = urhk_dbSqlWithBind(sv_i)
+		print (sv_i)
+		
+		#}
+		ENDIF 
+
+
+		PRINT(CUST.DATA.DATEDIFF)
+		IF (CUST.DATA.DATEDIFF < "0") THEN
+
+		#{
+
+		sv_i = "INSERT INTO CUSTOM.ALERT_SME (ACID, FORACID, ACCT_NAME, PHONE_NUM,BANK_ID,RCRE_TIME,MESSAGE_TYPE,MESSAGE,MESSAGE_STATUS,AMOUNT) "
+		sv_i = sv_i + " VALUES (?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR,SYSDATE,'D','This Customer Overdraft Limit is already overdue.','0','0')"
+		print (sv_i)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.trgacid +"|"+ CUST.DATA.trgforacid +"|"+ CUST.DATA.AccontName +"|"+ CUST.DATA.PhoneNumber +"|"+ BANCS.STDIN.contextBankId
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_i = urhk_dbSqlWithBind(sv_i)
+		print (sv_i)
+
+		#}
+		ENDIF
+
+
+		GOTO NEXTREC
+
+			BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+			PRINT(BANCS.INPUT.RECCOUNT)
+			
+		NEXTREC:
+		sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+		print(sv_c)
+
+		DO
+
+	ENDIF
+	
+EXITSCRIPT
+END-->
+

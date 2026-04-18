@@ -1,0 +1,258 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : eMubendeMonthlyCharge.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 11-03-2021
+#  Author          : Edwin Zico
+#  job             : MUBCH 
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             11-03-2021     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2f2d9b88241d43c8b9e7a945546318e708c02810a81c95150a17656fe02280c1"
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","WITH") == 0) THEN
+#{
+	CREATECLASS("CUST","WITH",5)
+#}
+ENDIF
+
+CUST.WITH.errMsg = ""
+
+sv_s = "cif_id|select cif_id from custom.irml where bank_id =?SVAR and del_flg ='N' and free_text1 like 'MUBENDECHRG%'"
+PRINT(sv_s)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_e = urhk_dbCursorOpenWithBind(sv_s)
+PRINT(sv_e)
+
+IF(sv_e == 0) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        sv_q = urhk_dbCursorFetch(sv_m)
+        print(sv_q)
+
+        IF(sv_q == 1) THEN
+        #{
+                sv_x = urhk_dbCursorClose(sv_m)
+                print(sv_x)
+                CUST.WITH.errMsg ="No Data."
+                sv_e=urhk_SetOrbOut("StattusCode|Error")
+                sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg )
+                EXITSCRIPT
+        #}
+        ENDIF
+        print(sv_q)
+
+        WHILE (sv_q==0)
+		CUST.WITH.foracid = BANCS.OUTPARAM.cif_id
+
+		sv_u = urhk_getAcctDetailsInRepository(CUST.WITH.foracid)
+		IF (sv_u != 0)THEN
+		#{
+			CUST.WITH.errMsg ="Invalid account"
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg )
+			GOTO NEXTREC
+		#}
+		ELSE
+		#{
+			CUST.WITH.AcctBal = BANCS.OUTPARAM.EffAvailableAmt
+			print(CUST.WITH.AcctBal)
+			CUST.WITH.acid = BANCS.OUTPARAM.acid
+			print(CUST.WITH.acid)
+			CUST.WITH.Crncy= BANCS.OUTPARAM.acctCrncyCode
+			Print(CUST.WITH.Crncy)
+		#}
+		ENDIF			
+				
+		CUST.WITH.CrAcct="1030650011259"
+		CUST.WITH.FixedChrg ="35000"
+					
+		#---------------------------------------------lien start
+		IF (cdouble(CUST.WITH.FixedChrg) > cdouble(CUST.WITH.AcctBal)) THEN
+		#{
+			IF(CLASSEXISTS("CUST","DATA")==0) THEN
+				CREATECLASS("CUST","DATA",5)
+			ENDIF
+			CUST.DATA.foracid = CUST.WITH.foracid 
+			CUST.DATA.amt = CUST.WITH.FixedChrg 
+			CUST.DATA.EventID = "DEPCHRG"
+			CUST.DATA.RateCode  = "TTB"
+			CUST.DATA.lienRemarks = "MUBENDE FIXED CHARGE"
+			CALL("AutoLienMain.scr")
+			GOTO NEXTREC		
+		#}
+		ENDIF
+		#--------------------------------------------lien end
+
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+			sv_r = REPEXISTS("MTT")
+			IF (sv_r == 0) THEN
+				CREATEREP("MTT")
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","TranDetails")
+			IF (sv_r == 0) THEN
+				CREATECLASS("MTT","TranDetails",5)
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","PartTranDetails")
+			IF (sv_r == 0) THEN
+				CREATECLASS("MTT","PartTranDetails",5)
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","InputDetails")
+			IF (sv_r == 0) THEN
+				CREATECLASS("MTT","InputDetails",5)
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","Error")
+			IF (sv_r == 0) THEN
+				CREATECLASS("MTT","Error",5)
+			ENDIF
+			sv_r = CLASSEXISTS("BANCS","INPARAM")
+			IF (sv_r == 0) THEN
+			CREATECLASS("BANCS","INPARAM",5)
+			ENDIF
+
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+
+			BANCS.INPARAM.PostTranFlg 		= "Y"
+			BANCS.INPARAM.CommitFlg 		= "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+			BANCS.INPARAM.ValidationFlag 		= "Y"
+			BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+			BANCS.INPARAM.CheckExceptions 		= "N"			
+
+
+			sv_a = urhk_MTTS_PopulateInputDetails("")
+			print(sv_a)
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = "SAME DAY WITH CHARGE"
+
+			print(CUST.WITH.CrAcct)
+			print(CUST.WITH.foracid)
+			print(CUST.WITH.FixedChrg)
+			
+			sv_v = "WITHTran"
+			print(sv_v)
+
+			sv_r = urhk_MTTS_DefineTransaction("WITHTran")
+
+			IF((CUST.WITH.FixedChrg > 0)  and (CUST.WITH.CrAcct!=""))THEN
+			#{		
+			#CustomerDebit
+				MTT.PartTranDetails.Account 	= CUST.WITH.foracid
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.RateCode 	="MEAN"
+				MTT.PartTranDetails.Rate 	= "0"
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = "MUBENDE FIXED CHARGE/"+ CUST.WITH.CrAcct 
+				MTT.PartTranDetails.RefAmount = -(cdouble(CUST.WITH.FixedChrg))
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "Dr.SAME DAY WITH CHARGE" 
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "CustDr"
+				print(sv_e)
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				print(sv_r)
+				IF(fieldexists(MTT.Error.Description)) THEN
+				#{
+					print(MTT.Error.Description)
+					CUST.WITH.MTTErrDesc = MTT.Error.Description
+				#}
+				ENDIF
+			#WITH Credit
+				MTT.PartTranDetails.Account 	= CUST.WITH.CrAcct
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.RateCode 	="MEAN"
+				MTT.PartTranDetails.Rate 	= "0"
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = "MUBENDE FIXED CHARGE REF/" + CUST.WITH.foracid
+				MTT.PartTranDetails.RefAmount = (cdouble(CUST.WITH.FixedChrg))
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "Cr from:" + CUST.WITH.foracid
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "WITHIncome"
+				print(sv_e)
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				print(sv_r)
+				
+				IF(fieldexists(MTT.Error.Description)) THEN
+				#{
+					print(MTT.Error.Description)
+					CUST.WITH.MTTErrDesc = MTT.Error.Description
+				#}
+				ENDIF
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.WITH.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.WITH.tranid)
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)			
+				GOTO NEXTREC
+			#}
+			ENDIF
+		NEXTREC:
+
+        sv_q = urhk_dbCursorFetch(sv_m)
+        print(sv_q)
+        #}
+        DO
+#}
+ELSE
+#{
+        CUST.WITH.errMsg ="Data Error"
+        sv_e=urhk_SetOrbOut("StattusCode|Error")
+        sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg)
+#}
+ENDIF
+
+EXITSCRIPT
+
+trace off
+end-->
+	
+
+
+

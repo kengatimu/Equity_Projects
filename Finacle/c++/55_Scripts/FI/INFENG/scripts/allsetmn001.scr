@@ -1,0 +1,444 @@
+<--START
+CHECKSUM="8f468e036eef8e8ba6a39f0042337e0aa5763795561c92762458610efd5edcc6"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName = "ACCOUNT_OPENING"
+	BANCS.INPUT.parameterId = "CREDITACCT"
+	CALL("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.crAct = BANCS.STDIN.mySolId + BANCS.OUTPUT.parameterVal
+		print(CUST.DATA.crAct)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg = "CPARAM setup not done for credit account number"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_a = urhk_B2k_printRepos("BANCS")
+	print(sv_a)
+	
+	CUST.DATA.errMsg 	= ""
+	CUST.DATA.resultMsg	= ""
+	CUST.DATA.userId = TRIM(BANCS.INPUT.userId)
+	CUST.DATA.userId = TOUPPER(CUST.DATA.userId)
+	PRINT(CUST.DATA.userId)
+	CUST.DATA.funcCode = TRIM(BANCS.INPUT.funcCode)
+	CUST.DATA.funcCode = TOUPPER(CUST.DATA.funcCode)
+	PRINT(CUST.DATA.funcCode)
+	
+	IF (CUST.DATA.funcCode =="") THEN
+	#{
+		CUST.DATA.errMsg ="Option Not Valid"
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		sv_s = "schmtype|"
+		sv_s = sv_s + " select schm_type from tbaadm.gam where bank_id= ?SVAR AND foracid=?SVAR "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" + CUST.DATA.funcCode
+		sv_m = urhk_dbSelectWithBind(sv_s)
+		print(sv_m)	
+		print(BANCS.INPARAM.BINDVARS)
+		IF (sv_m == 0) THEN
+		#{
+			
+			CUST.DATA.schmtype = BANCS.OUTPARAM.schmtype
+			print(CUST.DATA.schmtype)
+			IF (CUST.DATA.schmtype!="LAA") THEN
+			#{
+				
+				CUST.DATA.resultMsg="ENTER A LOAN ACCOUNT"
+				GOTO ENDOFSCRIPT
+				
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.DATA.resultMsg="ENTER A LOAN ACCOUNT"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	
+	IF (( CUST.DATA.funcCode != "" ) AND ( CUST.DATA.userId != "" )) THEN
+	#{
+		sv_a = "update  TBAADM.GAC set FREE_TEXT_14=?SVAR where bank_id=?SVAR AND acid in "
+		sv_a = sv_a + " (SELECT acid FROM TBAADM.GAM WHERE ENTITY_CRE_fLG='Y'  AND DEL_FLG='N' AND foracid=?SVAR  AND BANK_ID =?SVAR)  "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.funcCode + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		print(sv_b)
+		IF(sv_b == 0)THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+			print(sv_d)
+			
+			IF(sv_d == 0)THEN
+			#{
+				sv_s = "opacct,schmcode,cifid|"
+				sv_s = sv_s + " select foracid,schm_code,cif_id from tbaadm.gam where bank_id= ?SVAR "
+				sv_s = sv_s + " AND acid in (select OP_ACID from tbaadm.lam where bank_id= ?SVAR "
+				sv_s = sv_s + " AND acid in (select acid from tbaadm.gam "
+				sv_s = sv_s + " WHERE bank_id= ?SVAR AND  foracid= ?SVAR)) "
+				sv_s = sv_s + " AND del_flg='N' "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.funcCode
+				print(BANCS.INPARAM.BINDVARS)
+				sv_e = urhk_dbSelectWithBind(sv_s)
+				IF (sv_e == 0) THEN
+				#{
+					CUST.DATA.opacct = BANCS.OUTPARAM.opacct
+					print(CUST.DATA.opacct)
+					
+					CUST.DATA.schmcode = BANCS.OUTPARAM.schmcode
+					print(CUST.DATA.schmcode)
+					
+					CUST.DATA.cifid = BANCS.OUTPARAM.cifid
+					print(CUST.DATA.cifid)
+					
+					IF ((CUST.DATA.schmcode == "SB113") OR (CUST.DATA.schmcode == "SB114")) THEN
+					#{
+						
+						sv_s = "opacct1|"
+						sv_s = sv_s + " select foracid from tbaadm.gam a,tbaadm.smt b where a.bank_id= ?SVAR "
+						sv_s = sv_s + " AND a.acid= b.acid AND schm_type in ('SBA','CAA') AND schm_code not in ('SB113','SB114') AND cif_id= ?SVAR "
+						sv_s = sv_s + " AND acct_status='A' AND acct_cls_flg='N' AND rownum<2 "
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.cifid
+						print(BANCS.INPARAM.BINDVARS)
+						sv_a = urhk_dbSelectWithBind(sv_s)
+						
+						IF (sv_a == 0) THEN
+						#{
+							
+							CUST.DATA.opacct1 = BANCS.OUTPARAM.opacct1
+							print(CUST.DATA.opacct1)
+							#}
+						ELSE
+							#{
+							GOTO ENDOFSCRIPT
+							
+						#}
+						ENDIF
+						
+						
+					#}
+					ENDIF
+					
+					#}
+				ELSE
+					#{
+					GOTO ENDOFSCRIPT
+					
+				#}
+				ENDIF
+				sv_s = "period,SchmCode1,sanclimit|"
+				sv_s = sv_s + " SELECT rep_perd_mths,schm_code,sanct_lim "
+				sv_s = sv_s + " FROM TBAADM.LAM, TBAADM.GAM "
+				sv_s = sv_s + " WHERE LAM.acid = GAM.acid "
+				sv_s = sv_s + " AND LAM.bank_id = GAM.bank_id "
+				sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+				sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+				sv_s = sv_s + " AND LAM.del_flg = 'N' "
+				sv_s = sv_s + " AND LAM.entity_cre_flg = 'Y' "
+				sv_s = sv_s + " AND GAM.del_flg = 'N' "
+				sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = CUST.DATA.funcCode + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)	
+				IF (sv_d == 0) THEN
+				#{
+					CUST.DATA.period = BANCS.OUTPARAM.period
+					CUST.DATA.schmcode1 = BANCS.OUTPARAM.SchmCode1
+					#}
+				ELSE
+					#{
+					CUST.DATA.resultMsg = "Record Not Found."
+					print("in endofscr")
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				CUST.DATA.Colpcnt="0.01"
+				CUST.DATA.ColFEE1=CDOUBLE(CUST.DATA.userId) *CDOUBLE(CUST.DATA.Colpcnt)* CDOUBLE(CUST.DATA.period)
+				CUST.DATA.ColFEE2=CDOUBLE(CUST.DATA.ColFEE1) / CDOUBLE("12")
+				
+				CUST.DATA.TTLFEE=CDOUBLE(CUST.DATA.ColFEE2)
+				print(CUST.DATA.TTLFEE)
+				
+				IF (CUST.DATA.TTLFEE < 500)  THEN
+				#{
+					CUST.DATA.TTLFEE="500"
+					print(CUST.DATA.TTLFEE)
+				#}
+				ENDIF
+				#--------------------------------------------------------------------------
+				# Initialise the MTT repository
+				#--------------------------------------------------------------------------
+				
+				sv_r = REPEXISTS("MTT")
+				IF (sv_r == 0) THEN
+				#{
+					CREATEREP("MTT")
+				#}
+				ENDIF
+				
+				sv_r = CLASSEXISTS("MTT","TranDetails")
+				IF (sv_r == 0) THEN
+				#{
+					CREATECLASS("MTT","TranDetails",5)
+				#}
+				ENDIF
+				
+				sv_r = REPEXISTS("BANCS")
+				IF (sv_r == 0) THEN
+				#{
+					CREATEREP("BANCS")
+				#}
+				ENDIF
+				
+				sv_r = CLASSEXISTS("BANCS","INPARAM")
+				IF (sv_r == 0) THEN
+				#{
+					CREATECLASS("BANCS","INPARAM",5)
+				#}
+				ENDIF
+				
+				#===================================
+				# STEP 1 : INITIALIZE THE MTT
+				#===================================
+				
+				BANCS.INPARAM.PostTranFlg 		= "Y"
+				BANCS.INPARAM.CommitFlg 		= "Y"
+				BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+				BANCS.INPARAM.ValidationFlag 		= "Y"
+				BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+				BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+				BANCS.INPARAM.CheckExceptions 		= "N"
+				
+				
+				
+				sv_r = urhk_MTTS_Initialize("")
+				print(sv_r)
+				
+				sv_u = urhk_MTTS_PopulateInputDetails("")
+				
+				print(BANCS.STDIN.BODDate)
+				MTT.TranDetails.TranDate= "0"
+				MTT.TranDetails.TranType = "T"
+				MTT.TranDetails.TranSubType = "CI"
+				MTT.TranDetails.IgnoreExcp = "I"
+				MTT.TranDetails.Consolidate = "Y"
+				MTT.TranDetails.Remarks = "COLLATERAL CHARGE"
+				
+				
+				sv_v = "PurchaseComm"
+				print(sv_v)
+				
+				sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+				print(sv_u)
+				
+				#sv_u = urhk_MTTS_PopulateInputDetails("")
+				#--------------------------------------------------
+				# Credit to GL
+				#--------------------------------------------------
+				
+				MTT.PartTranDetails.Account = CUST.DATA.crAct
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.RateCode ="MEAN"
+				MTT.PartTranDetails.Rate = "0"
+				MTT.PartTranDetails.Particulars = "COLLATERAL CHARGE " + CUST.DATA.funcCode
+				MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.TTLFEE)
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = ""
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "PurchaseIncome"
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				print(sv_r)
+				
+				#------------------------------------------------------------------
+				# Debit From BR
+				#------------------------------------------------------------------
+				print (CUST.DATA.schmcode)
+				IF ((CUST.DATA.schmcode == "SB113") OR (CUST.DATA.schmcode == "SB114")) THEN
+				#{
+					MTT.PartTranDetails.Account = CUST.DATA.opacct1
+				#}
+				ELSE
+				#{
+					MTT.PartTranDetails.Account = CUST.DATA.opacct
+				#}
+				ENDIF
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.RateCode ="MEAN"
+				MTT.PartTranDetails.Rate = "0"
+				MTT.PartTranDetails.Particulars = "COLLATERAL CHARGE " + CUST.DATA.funcCode
+				sv_a = cdouble(CUST.DATA.TTLFEE)
+				sv_a = -(sv_a)
+				print(sv_a)
+				MTT.PartTranDetails.RefAmount = sv_a
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = ""
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				
+				MTT.PartTranDetails.TODRefType      = "IN"
+				MTT.PartTranDetails.TodEntityType   = "TODIN"
+				MTT.PartTranDetails.TodEntityId     = CUST.DATA.opacct
+				MTT.PartTranDetails.TodLevIntFlg    = "N"
+				MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+				MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+				MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+				MTT.PartTranDetails.TodRemarks      = "Auto Renewal Charges TOD"
+				
+				
+				sv_h = "D" + CUST.DATA.opacct
+				sv_r = urhk_MTTS_definePartTran(sv_h)
+				IF (sv_r == 1) THEN
+				#{
+					print("Unable to create MTT Part transaction")
+					CUST.DATA.errMsg = "Transaction creation Failed."
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				#############################
+				# Commit the transaction
+				#############################
+				sv_u = urhk_MTTS_EndDefinition("")
+				print(sv_u)
+				
+				sv_r = urhk_MTTS_HandleExceptions("POST")
+				print(sv_r)
+				
+				IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.DATA.MTTTranId = BANCS.OUTPARAM.MTTTranId
+					print(CUST.DATA.MTTTranId)
+				#}
+				ENDIF
+				
+				sv_u = urhk_MTTS_Close("")
+				print(sv_u)
+				
+				IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.DATA.TranId = BANCS.OUTPARAM.MTTTranId
+					print(CUST.DATA.TranId)
+				#}
+				ENDIF
+				
+				IF(sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+					#}
+					ENDIF
+					
+					BANCS.OUTPUT.successOrFailure = "F"
+					CUST.DATA.errMsg = "urhk_MTTS_Close returns FAILURE"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+				#{
+					sv_y = BANCS.OUTPARAM.MTTPostingError
+					print(sv_y)
+					CUST.DATA.resultMsg="CHARGE SUCCESSFUL " + CUST.DATA.TranId + " ENTRY IN ENTER STATUS"
+					GOTO ENDOFSCRIPT
+					EXITSCRIPT
+					#}
+				ELSE
+					#{
+					BANCS.OUTPUT.successOrFailure = "S"
+				#}
+				ENDIF
+				
+				##################################################
+				# If any error tran id will not be created
+				##################################################
+				IF ((sv_u != 0)  OR (CUST.DATA.TranId==""))THEN
+				#{
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					print (MTT.Error.Description)
+					CUST.DATA.ResStatus = "F"
+					CUST.DATA.errMsg = "Transaction creation Failed."
+					BANCS.OUTPUT.successOrFailure = "F"
+					GOTO ENDOFSCRIPT
+				#}
+				ELSE
+				#{
+					CUST.DATA.resultMsg ="CHARGE SUCCESSFUL " + CUST.DATA.TranId
+					
+				#}
+				ENDIF
+				
+				
+			#}
+			ENDIF
+			
+			#}
+		ELSE
+			#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.DATA.resultMsg = "Failed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.DATA.errMsg != "") THEN
+		#{
+			sv_s = "Error_01|ERROR:^"+ CUST.DATA.errMsg +"^"+CUST.DATA.errFld
+			sv_u = urhk_SetOrbOut(sv_s)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#}
+		ELSE
+			#{
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|" + CUST.DATA.resultMsg
+			sv_z = urhk_SetOrbOut(sv_g)
+			print(sv_z)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

@@ -1,0 +1,422 @@
+#IIMT_API_XML.scr
+#Modifications
+#1. James.Irungu 21-09-2022 INC0132158 Addation of RTGS and Local Swift EventID
+# CHG0036759/24092025INFENGFI3 Compte LIBANGA CA284 FI3
+
+<--START
+	# Script body goes here
+
+	TRACE ON
+
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print(sv_r)
+	
+	#==================================================================================================
+	# Repository and Class Creation
+	#==================================================================================================
+	IF (REPEXISTS("CUST")== 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST" , "DATA",5)
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+	#{
+		CREATECLASS("CUST" , "RATE",5)
+	#}
+	ENDIF
+
+BANCS.STDIN.BODDate = mid$(BANCS.STDIN.BODDate,0,10)
+CUST.DATA.CHRG="0"
+CUST.DATA.VAT="16"
+CUST.DATA.RSC ="0.2"
+
+CUST.DATA.chrgacc=BANCS.INPUT.drAccount
+CUST.DATA.IIMT_CODE=BANCS.INPUT.IIMT_CODE
+
+CUST.DATA.eventType ="GCHRG"
+
+CUST.DATA.chrgType= "P"
+CUST.DATA.MSG = " " 
+CUST.DATA.errFlg = "N"
+CUST.DATA.AMTIND = "P"
+
+IF (FIELDEXISTS(BANCS.INPUT.drAccount)) THEN
+
+	sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.chrgacc)
+	PRINT(sv_u)
+
+	IF(sv_u == 0)THEN
+	#{
+
+		CUST.DATA.ownership = BANCS.OUTPARAM.acctOwnerShip
+		
+		IF(CUST.DATA.ownership == "O")THEN
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.MSG = "Office accts Not Allowed"
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+
+		CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+		CUST.DATA.CIF_ID =BANCS.OUTPARAM.custId
+
+		Print  (CUST.DATA.schmCode)
+		Print  (CUST.DATA.chrgacc)
+		Print  (CUST.DATA.CIF_ID)
+		
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.chrgacc)
+		print(sv_u)
+		if(sv_u==0)then
+			CUST.DATA.CIF_ID = BANCS.OUTPARAM.cifId
+			Print  (CUST.DATA.CIF_ID)
+		endif
+
+	
+
+			#check RSC level
+
+			sv_a = " count|select count(*) from  CUSTOM.ACCT_EXEMPTION_TABLE where  EXEMPT_CODE  ='RCC' and foracid = ?SVAR and  bank_id = ?SVAR "
+			print(sv_a)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.chrgacc + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_b = urhk_dbSelectWithBind(sv_a)
+			print(sv_b)
+			IF(sv_b == 0)THEN
+				PRINT(BANCS.OUTPARAM.count)
+				IF(BANCS.OUTPARAM.count > 0) THEN
+					CUST.DATA.RSC ="0"
+				ENDIF
+			ENDIF
+
+			#check VAT level
+
+			sv_s = "count|select count(1) from  tbaadm.fcftt , tbaadm.gam where gam.foracid  = ?SVAR AND FREE_CODE_2='N' AND gam.bank_id=?SVAR AND fcftt.del_flg='N' AND fcftt.ENTITY_CRE_FLG='Y' and gam.acid =fcftt.acid and gam.bank_id  =fcftt.bank_id   "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS=CUST.DATA.chrgacc  + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d == 0) THEN
+				PRINT(BANCS.OUTPARAM.count)
+				IF(BANCS.OUTPARAM.count > 0) THEN
+					CUST.DATA.VAT ="0"
+				ENDIF
+			ENDIF
+
+		
+			
+		IF  (CUST.DATA.IIMT_CODE == "SWIFTLOCAL") THEN
+				
+				CUST.DATA.eventId ="IIMTL"
+				CUST.DATA.CHRG  ="5"
+				CUST.DATA.acct_crncy_code ="USD"
+				CUST.DATA.AMTIND = "A"
+
+
+
+			#check SCHM level		
+
+				#sv_s="CHRG_AMT |SELECT CHRG_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				#sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR  and CHARGE_TYPE ='F' AND  rownum =1"
+				#BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				#PRINT(sv_s)
+				#PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s="CHARGE_TYPE|SELECT CHARGE_TYPE FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+			sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND SRL_NUM = '1' AND rownum =1"
+			BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+				CUST.DATA.chargeType=BANCS.OUTPARAM.CHARGE_TYPE	
+				PRINT(CUST.DATA.chargeType)
+			ELSE
+				CUST.DATA.chargeType = ""
+			ENDIF			
+			
+			IF(CUST.DATA.chargeType == "F")THEN
+			#{
+				sv_s="CHRGAMT,minAmt,maxAmt|SELECT CHRG_AMT, MIN_AMT, MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND SRL_NUM = '1' and CHARGE_TYPE ='F' AND rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRGAMT	
+					PRINT(CUST.DATA.CHRG)
+					CUST.DATA.AMTIND = "A"
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(CUST.DATA.chargeType == "P")THEN
+			#{
+				sv_s="PRCNT,minAmt,maxAmt|SELECT PRCNT,MIN_AMT,MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR and CHARGE_TYPE ='P' AND  BANK_ID=?SVAR AND  rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+			#}
+			ENDIF
+
+			#check CIF level
+				sv_s =" CHRG_AMT | select AMT_VALUE   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and cust_id ='"+CUST.DATA.CIF_ID+"'"
+				#sv_s = sv_s + " and  to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE "
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  PERCENT ='A'	and  rownum=1"
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN				
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF	
+			
+			
+			#check account level
+
+				sv_s =" CHRG_AMT | select AMT_VALUE  from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and foracid ='"+CUST.DATA.chrgacc +"' "
+				#sv_s = sv_s + " and   to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE "
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  PERCENT ='A' and  rownum =1 "
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+	
+
+		ENDIF
+
+		IF  (CUST.DATA.IIMT_CODE == "RTGS") THEN
+				
+				CUST.DATA.eventId ="IIMTR"
+				CUST.DATA.CHRG  ="10500"
+				CUST.DATA.acct_crncy_code ="CDF"
+				CUST.DATA.AMTIND = "A"
+
+			#check SCHM level		
+				##sv_s="CHRG_AMT |SELECT CHRG_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				##sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR  and CHARGE_TYPE ='F' AND  rownum =1"
+				##BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				##PRINT(sv_s)
+				##PRINT(BANCS.INPARAM.BINDVARS)
+				##sv_d=urhk_dbSelectWithBind(sv_s)
+				##IF(sv_d == 0) THEN
+				##	CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+				##	PRINT(CUST.DATA.CHRG)
+				##ENDIF
+			
+			sv_s="CHARGE_TYPE|SELECT CHARGE_TYPE FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+			sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND SRL_NUM = '1' AND rownum =1"
+			BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+				CUST.DATA.chargeType=BANCS.OUTPARAM.CHARGE_TYPE	
+				PRINT(CUST.DATA.chargeType)
+			ELSE
+				CUST.DATA.chargeType = ""
+			ENDIF			
+			
+			IF(CUST.DATA.chargeType == "F")THEN
+			#{
+				sv_s="CHRG_AMT |SELECT CHRG_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR  and CHARGE_TYPE ='F' AND  rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(CUST.DATA.chargeType == "P")THEN
+			#{
+				sv_s="PRCNT,minAmt,maxAmt|SELECT PRCNT,MIN_AMT,MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR and CHARGE_TYPE ='P' AND  BANK_ID=?SVAR AND  rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+			#}
+			ENDIF
+
+
+			#check CIF level
+				sv_s =" CHRG_AMT | select AMT_VALUE   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and cust_id ='"+CUST.DATA.CIF_ID+"'"
+				#sv_s = sv_s + " and   to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE "
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  PERCENT ='A'	and  rownum=1"
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN				
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF	
+			
+			
+			#check account level
+
+				sv_s =" CHRG_AMT | select AMT_VALUE  from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and foracid ='"+CUST.DATA.chrgacc +"' "
+				#sv_s = sv_s + " and   to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE "
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  PERCENT ='A' and  rownum =1 "
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRG_AMT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+	
+
+		ENDIF
+
+		IF  (CUST.DATA.IIMT_CODE == "SWIFT") THEN
+			CUST.DATA.eventId ="IIMT"
+
+			#check SCHM level
+			
+			sv_s="CHARGE_TYPE|SELECT CHARGE_TYPE FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+			sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND SRL_NUM = '1' AND rownum =1"
+			BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+				CUST.DATA.chargeType=BANCS.OUTPARAM.CHARGE_TYPE	
+				PRINT(CUST.DATA.chargeType)
+			ELSE
+				CUST.DATA.chargeType = ""
+			ENDIF			
+			
+			IF(CUST.DATA.chargeType == "F")THEN
+			#{
+				sv_s="CHRGAMT,minAmt,maxAmt|SELECT CHRG_AMT, MIN_AMT, MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND SRL_NUM = '1' and CHARGE_TYPE ='F' AND rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.CHRGAMT	
+					PRINT(CUST.DATA.CHRG)
+					CUST.DATA.AMTIND = "A"
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(CUST.DATA.chargeType == "P")THEN
+			#{
+				sv_s="PRCNT,minAmt,maxAmt|SELECT PRCNT,MIN_AMT,MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+				sv_s = sv_s + " AND SCHM_CODE=?SVAR AND CHARGE_TYPE ='P' AND  BANK_ID=?SVAR AND  rownum =1"
+				BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_d=urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF
+			#}
+			ENDIF
+
+			#check CIF level
+
+				sv_s =" AMTIND, PRCNT,AMT,MIN_AMT,MAX_AMT| select PERCENT,PERCENT_VALUE ,AMT_VALUE,MIN_AMT,MAX_AMT   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and cust_id ='"+CUST.DATA.CIF_ID+"'"
+				#sv_s = sv_s + " and   to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE "
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"'	and  rownum=1"
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN				
+					CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF	
+			
+			
+			#check account level
+
+				sv_s =" AMTIND, PRCNT,AMT,MIN_AMT,MAX_AMT | select PERCENT,PERCENT_VALUE ,AMT_VALUE,MIN_AMT,MAX_AMT   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+				sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+				sv_s = sv_s + " and foracid ='"+CUST.DATA.chrgacc +"'"
+				#sv_s = sv_s + " and   to_date('"+BANCS.STDIN.BODDate+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and   to_date('"+MID$(BANCS.STDIN.BODDate, 0, 10)+"','DD-MM-YYYY') between start_DATE and END_DATE"
+				sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  rownum =1 "
+				print(sv_s)
+				sv_u = urhk_dbselectwithBind(sv_s)
+				print(sv_u)
+				IF (sv_u == 0) THEN
+					CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+					PRINT(CUST.DATA.CHRG)
+				ENDIF				
+		
+		ENDIF
+		
+		IF  ((CUST.DATA.IIMT_CODE == "SWIFTLOCAL") OR  (CUST.DATA.IIMT_CODE == "RTGS")) theN
+			CUST.DATA.RSC  ="0"
+		ENDIF
+
+	ELSE
+		CUST.DATA.errFlg = "Y"
+		CUST.DATA.MSG ="Customer Account Not Valid"
+		GOTO ENDOFSCRIPT
+	ENDIF
+ELSE
+	CUST.DATA.errFlg = "Y"
+	CUST.DATA.MSG = "Customer Account Not Entered"
+	GOTO ENDOFSCRIPT
+
+ENDIF
+
+
+ENDOFSCRIPT:
+        sv_u = urhk_SetOrbOut("errFlg|"+CUST.DATA.errFlg)
+        sv_u = urhk_SetOrbOut("errMsg|"+CUST.DATA.MSG)
+        sv_u = urhk_SetOrbOut("CHRGPRCT|"+CUST.DATA.CHRG)
+        sv_u = urhk_SetOrbOut("VATPRCT|"+CUST.DATA.VAT)
+        sv_u = urhk_SetOrbOut("RSCPRCT|"+CUST.DATA.RSC)
+	sv_u = urhk_SetOrbOut("AMTIND|"+CUST.DATA.AMTIND)
+	EXITSCRIPT
+END-->
+
+

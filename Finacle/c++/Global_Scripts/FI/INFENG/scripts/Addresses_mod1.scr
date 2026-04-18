@@ -1,0 +1,984 @@
+<--START
+CHECKSUM="ac6e6b51645ae42913aabfb481fd4688bbfebfae77c647dade10fd784d03c78f"
+	TRACE ON
+	#by charles ndirangu address update: ops request drc
+	#by Eric.K address update: NEWGEN CR
+
+	####################################################################
+	#section      :creating new repository if required
+	#Description  :Checks for the existence of the repository STDWFS and
+	#               creates a new one by that name if it does not exist 
+	#####################################################################
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	############################################################################
+	#section      :creating new class if required
+	#Desscription :checks for the existence of the class GLBDATA in the
+	#repository
+	#               create a new one if it does not exist
+	##############################################################################
+	
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	############################################
+	#Assigns the values to the variables
+	############################################
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	sv_y=0
+	
+	CUST.DATA.corp_idflg="N"
+	CUST.DATA.ADDRESS_LINE1=""
+	print(CUST.DATA.ADDRESS_LINE1)
+	CUST.DATA.ADDRESS_LINE2=""
+	print(CUST.DATA.ADDRESS_LINE2)
+	CUST.DATA.ADDRESS_LINE3=""
+	print(CUST.DATA.ADDRESS_LINE3)
+	CUST.DATA.PREFERREDADDRESS=""
+	print(CUST.DATA.PREFERREDADDRESS)
+	CUST.DATA.DEFAULTADDRESS=""
+	CUST.DATA.Mailing = "0"
+	CUST.DATA.preferredaddressflg =""
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("Customer_id"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Customer_id"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.Customer_id=BANCS.INPUT.Customer_id
+		print(CUST.DATA.Customer_id)
+		
+		sv_s = "orgkey,corp_id,defaultaddress|SELECT orgkey,corp_id,trim(DEFAULTADDRESSTYPE) FROM crmuser.accounts "
+		sv_s = sv_s + " where orgkey= ?SVAR and BANK_ID = ?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id  + "|"  + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.orgkey = BANCS.OUTPARAM.orgkey
+			print(CUST.DATA.orgkey)
+			CUST.DATA.corp_id = BANCS.OUTPARAM.corp_id
+			print(CUST.DATA.corp_id)
+			#CUST.DATA.DEFAULTADDRESS= BANCS.OUTPARAM.defaultaddress
+
+			#PRINT(CUST.DATA.DEFAULTADDRESS)
+
+			IF (CUST.DATA.orgkey!="") THEN
+				print(CUST.DATA.orgkey)
+			ELSE
+				CUST.DATA.errMsg="Please supply a Valid Customer_id"
+				sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				EXITSCRIPT
+			ENDIF
+			IF (CUST.DATA.corp_id!="") THEN
+				CUST.DATA.corp_idflg="Y"
+			ELSE
+				CUST.DATA.corp_idflg="N"
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.DATA.errMsg="Please supply a Valid Customer_id"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#--check preffered address
+if (BANCS.INPUT.ADDRESSCATEGORY =="Mailing") then
+#{
+		sv_s=""
+		sv_s = "defaultaddress,MAILING|select ADDRESSCATEGORY,count(1)  from crmuser.address  where ADDRESSCATEGORY='Mailing' "
+		sv_s = sv_s + " and  orgkey= ?SVAR and BANK_ID = ?SVAR group by ADDRESSCATEGORY "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id  + "|"  + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.DEFAULTADDRESS= BANCS.OUTPARAM.defaultaddress
+			PRINT(CUST.DATA.DEFAULTADDRESS)
+
+			CUST.DATA.Mailing= BANCS.OUTPARAM.MAILING
+			PRINT(CUST.DATA.Mailing)
+#remove duplicates
+			IF  ( CINT(CUST.DATA.Mailing)> 1  ) THEN			
+				sv_u = urhk_getFileLocation("COM|DuplicateAddress.com")
+				sv_l = BANCS.OUTPARAM.fileLocation
+				sv_t = sv_l + "DuplicateAddress.com" + " " + BANCS.STDIN.contextBankId + " " + CUST.DATA.Customer_id 
+				sv_u = SYSTEM(sv_t)
+				sv_k = 1				
+				sv_r = urhk_b2k_sleep("4")
+			ENDIF
+
+
+
+	    #{
+	    ELSE
+	    #}
+			PRINT("HERE")
+#insert when Mailing does not exist
+                IF  (CUST.DATA.Mailing == "0" )THEN
+                        BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id
+                        sv_a = " insert into crmuser.address (ADDRESSID, BANK_ID, ACCOUNTID,ADDRESSCATEGORY, ADDRESS_LINE1,ADDRESS_LINE2,ADDRESS_LINE3, CITY, STATE,ZIP, COUNTRY, START_DATE,  END_DATE, NAME, CORE_CUST_ID, PREFERREDADDRESS,HOLDMAILFLAG, PREFERREDFORMAT, ORGKEY, SALUTATION,TMDATE) (select crmuser.ADDRESSID.NEXTVAL,BANK_ID,ACCOUNTID,'Mailing',ADDRESS_LINE1,ADDRESS_LINE2,ADDRESS_LINE3,CITY,STATE,ZIP,COUNTRY,STARTDATE,TO_DATE('12/31/2099 00:00:00', 'MM/DD/YYYY HH24:MI:SS'),NAME, CORE_CUST_ID,'N','N','FREE_TEXT_FORMAT',ORGKEY,SALUTATION,TMDATE from crmuser.accounts where orgkey= ?SVAR ) "
+                        sv_b = urhk_dbSQLWithBind(sv_a)
+                        print(sv_b)
+                        IF(sv_b != 0) THEN
+                                CUST.DATA.resultMsg = "Insert Failed"
+                                print(CUST.DATA.resultMsg)
+                        ELSE
+                                CUST.DATA.resultMsg = " Insert of Mailing address  for CIF " + CUST.DATA.Customer_id + " Successful"
+                                sv_d = urhk_dbSqlWithBind("COMMIT")
+                                print(CUST.DATA.resultMsg)
+                                print(sv_d)
+                        ENDIF
+				ENDIF
+
+		#}
+		ENDIF
+
+#}
+ENDIF
+#---end check preferred address
+
+	
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("ADDRESSCATEGORY"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  ADDRESSCATEGORY(Mailing/Work/Swift/Home/Registered/NRERelative/Future/OnSite/Head Office/Alt Lang Add)"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.DATA.ADDRESSCATEGORY=BANCS.INPUT.ADDRESSCATEGORY
+		print(CUST.DATA.ADDRESSCATEGORY)
+
+		IF(TRIM(CUST.DATA.DEFAULTADDRESS) !="") THEN
+			IF(CUST.DATA.DEFAULTADDRESS !=CUST.DATA.ADDRESSCATEGORY) THEN
+				CUST.DATA.ADDRESSCATEGORY = CUST.DATA.DEFAULTADDRESS
+				PRINT(CUST.DATA.DEFAULTADDRESS)
+				PRINT(CUST.DATA.ADDRESSCATEGORY)
+			ELSE
+				PRINT(CUST.DATA.ADDRESSCATEGORY)
+			ENDIF
+		ENDIF
+ 
+		IF ((CUST.DATA.ADDRESSCATEGORY!="Mailing") AND (CUST.DATA.ADDRESSCATEGORY!="Work") AND (CUST.DATA.ADDRESSCATEGORY!="Swift") AND (CUST.DATA.ADDRESSCATEGORY!="Home") AND (CUST.DATA.ADDRESSCATEGORY!="Registered") AND (CUST.DATA.ADDRESSCATEGORY!="NRERelative") AND (CUST.DATA.ADDRESSCATEGORY!="Future") AND (CUST.DATA.ADDRESSCATEGORY!="OnSite") AND (CUST.DATA.ADDRESSCATEGORY!="Head Office") AND (CUST.DATA.ADDRESSCATEGORY!="Alt Lang Add")) THEN
+				CUST.DATA.errMsg="Kindly Supply Valid  ADDRESSCATEGORY(Mailing/Work/Swift/Home/Registered/NRERelative/Future/OnSite/Head Office/Alt Lang Add)"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			EXITSCRIPT
+		ENDIF
+	#}
+	ENDIF
+	#--no update for address line1
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("ADDRESS_LINE1"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  ADDRESS_LINE1"
+		#sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		CUST.DATA.ADDRESS_LINE1=""
+
+		#}
+	ELSE
+		#{
+		CUST.DATA.ADDRESS_LINE1=BANCS.INPUT.ADDRESS_LINE1
+		print(CUST.DATA.ADDRESS_LINE1)
+	#}
+	ENDIF
+	
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("ADDRESS_LINE2"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  ADDRESS_LINE2"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#}
+	ELSE
+		#{
+		CUST.DATA.ADDRESS_LINE2=BANCS.INPUT.ADDRESS_LINE2
+		print(CUST.DATA.ADDRESS_LINE2)
+	#}
+	ENDIF
+	
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("ADDRESS_LINE3"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  ADDRESS_LINE3"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#}
+	ELSE
+		#{
+		CUST.DATA.ADDRESS_LINE3=BANCS.INPUT.ADDRESS_LINE3
+		print(CUST.DATA.ADDRESS_LINE3)
+	#}
+	ENDIF
+
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("PREFERREDADDRESS"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  PREFERREDADDRESS (Y/N)"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#}
+	ELSE
+		#{
+		CUST.DATA.PREFERREDADDRESS=BANCS.INPUT.PREFERREDADDRESS
+		print(CUST.DATA.PREFERREDADDRESS)
+	#}
+	ENDIF
+
+#	CUST.DATA.PREFERREDADDRESS="Y"
+	print(CUST.DATA.PREFERREDADDRESS)
+
+	IF ((CUST.DATA.ADDRESS_LINE1=="") AND (CUST.DATA.ADDRESS_LINE2=="") AND (CUST.DATA.ADDRESS_LINE3=="") AND (CUST.DATA.PREFERREDADDRESS=="")) THEN
+		CUST.DATA.errMsg="Kindly Supply Atleast one for modification: ADDRESS_LINE1, ADDRESS_LINE2,ADDRESS_LINE3 or PREFERREDADDRESS "
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+	ENDIF
+
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("FINACLEUSERID"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  FINACLE_USERID eg:KM00001"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+	#}
+	ELSE
+		#{
+		CUST.DATA.FINACLEUSERID=BANCS.INPUT.FINACLEUSERID
+		print(CUST.DATA.FINACLEUSERID)
+		sv_s = "user_id|SELECT user_id FROM tbaadm.upr "
+		sv_s = sv_s + " where user_id= ?SVAR and HOME_BANK_ID = ?SVAR and del_flg='N' "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.FINACLEUSERID  + "|"  + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.user_id = BANCS.OUTPARAM.user_id
+			print(CUST.DATA.user_id)
+			IF (CUST.DATA.user_id!="") THEN
+				print(CUST.DATA.user_id)
+			ELSE
+				CUST.DATA.errMsg="Kindly Supply a Valid FINACLE_USERID eg:KM00001"
+				sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				EXITSCRIPT
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.DATA.errMsg="Kindly Supply a Valid FINACLE_USERID eg:KM00001"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	################# added start
+#	<CITY>KOLWEZI</CITY>
+#	<REGION>KATANGA</REGION>
+#	<STATE>NDJILI QUARTIER 10</STATE>
+#	<COUNTRY>CD</COUNTRY>
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("CITY"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  CITY eg:...."
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+	#}
+	ELSE
+		#{
+		CUST.DATA.CITY=BANCS.INPUT.CITY
+		print(CUST.DATA.CITY)
+	#}
+	ENDIF
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("REGION"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  REGION eg:..."
+		#sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#EXITSCRIPT
+		CUST.DATA.REGION=""
+	#}
+	ELSE
+		#{
+		CUST.DATA.REGION=BANCS.INPUT.REGION
+		print(CUST.DATA.REGION)
+	#}
+	ENDIF
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("STATE"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  STATE eg:....."
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+	#}
+	ELSE
+		#{
+		CUST.DATA.STATE=BANCS.INPUT.STATE
+		print(CUST.DATA.STATE)
+	#}
+	ENDIF
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("COUNTRY"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Valid  COUNTRY eg:..."
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		EXITSCRIPT
+	#}
+	ELSE
+		#{
+		CUST.DATA.COUNTRY=BANCS.INPUT.COUNTRY
+		print(CUST.DATA.COUNTRY)
+	#}
+	ENDIF
+
+	################## added end
+
+	CUST.DATA.orgkeyold =""
+	print(CUST.DATA.orgkeyold)
+	CUST.DATA.address_line1old =""
+	print(CUST.DATA.address_line1old)
+	CUST.DATA.address_line2old = ""
+	print(CUST.DATA.address_line2old)
+	CUST.DATA.address_line3old = ""
+	print(CUST.DATA.address_line3old)
+	CUST.DATA.addresscategoryold = ""
+	print(CUST.DATA.addresscategoryold)
+	CUST.DATA.preferredaddressold = ""
+	print(CUST.DATA.preferredaddressold)
+	CUST.DATA.addressidold = ""
+	print(CUST.DATA.addressidold)
+	CUST.DATA.cityold = ""
+	print(CUST.DATA.cityold)
+	CUST.DATA.stateold = ""
+	print(CUST.DATA.stateold)
+	CUST.DATA.countryold = ""
+	print(CUST.DATA.countryold)
+	CUST.DATA.regionold = ""
+	print(CUST.DATA.regionold)
+	
+	sv_q="orgkeyold,address_line1old, address_line2old,address_line3old,addresscategoryold,preferredaddressold,addressidold,cityold,stateold,countryold,regionold  |"
+	sv_q = sv_q + " select orgkey,ADDRESS_LINE1, ADDRESS_LINE2,ADDRESS_LINE3,ADDRESSCATEGORY,PREFERREDADDRESS,ADDRESSID,CITY,STATE,COUNTRY,USERFIELD1  "
+	sv_q = sv_q + "  from crmuser.address  where orgkey=?SVAR and bank_id=?SVAR and ADDRESSCATEGORY=?SVAR and rownum<2 "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id  + "|" + BANCS.STDIN.contextBankId  + "|" + CUST.DATA.ADDRESSCATEGORY
+	print(BANCS.INPARAM.BINDVARS)
+	sv_p= urhk_dbSelectWithBind(sv_q)
+	print(sv_p)
+	IF (sv_p==0) THEN
+		CUST.DATA.orgkeyold = BANCS.OUTPARAM.orgkeyold
+		print(CUST.DATA.orgkeyold)
+		CUST.DATA.address_line1old = BANCS.OUTPARAM.address_line1old
+		print(CUST.DATA.address_line1old)
+		CUST.DATA.address_line2old = BANCS.OUTPARAM.address_line2old
+		print(CUST.DATA.address_line2old)
+		CUST.DATA.address_line3old = BANCS.OUTPARAM.address_line3old
+		print(CUST.DATA.address_line3old)
+		CUST.DATA.addresscategoryold = BANCS.OUTPARAM.addresscategoryold
+		print(CUST.DATA.addresscategoryold)
+		CUST.DATA.preferredaddressold = CUST.DATA.preferredaddressold
+		print(CUST.DATA.preferredaddressold)
+
+		CUST.DATA.preferredaddressflg = BANCS.OUTPARAM.preferredaddressold
+		print(CUST.DATA.preferredaddressflg)
+
+		CUST.DATA.addressidold = BANCS.OUTPARAM.addressidold
+		print(CUST.DATA.addressidold)
+		CUST.DATA.cityold = BANCS.OUTPARAM.cityold
+		print(CUST.DATA.cityold)
+		CUST.DATA.stateold = BANCS.OUTPARAM.stateold
+		print(CUST.DATA.stateold)
+		CUST.DATA.countryold = BANCS.OUTPARAM.countryold
+		print(CUST.DATA.countryold)
+		CUST.DATA.regionold = BANCS.OUTPARAM.regionold
+		print(CUST.DATA.regionold)
+
+		CUST.DATA.errMsgadd1=""
+		CUST.DATA.errMsgadd2=""
+		CUST.DATA.errMsgadd3=""
+		CUST.DATA.errMsgpreff=""
+		CUST.DATA.errMsgcity=""
+		CUST.DATA.errMsgstate=""
+		CUST.DATA.errMsgregion=""
+		CUST.DATA.errMsgcountry=""
+
+		##################
+		sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+		print(sv_h)
+		sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+		BANCS.INPARAM.BINDVARS =  sv_h
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+			print(BANCS.OUTPARAM.getboddate)
+			CUST.DATA.getboddate = BANCS.OUTPARAM.getboddate
+			print(CUST.DATA.getboddate)
+			
+			
+		#	IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE1) == 1) THEN
+		#	IF (CUST.DATA.ADDRESS_LINE1!="") THEN
+		#	sv_s = "update  crmuser.address  set ADDRESS_LINE1=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+		#	print(sv_s)
+		#	BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+		#	print(BANCS.INPARAM.BINDVARS)
+		#	sv_d = urhk_dbSQLWithBind(sv_s)
+		#	IF (sv_d == 0) THEN
+		#		sv_c = urhk_dbSQLWithBind("commit")
+		#		print(sv_c)
+		#		IF (sv_c==0) THEN
+		#			#####
+		#			BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+		#			print(BANCS.INPARAM.BINDVARS)
+		#			sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+		#			sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR ,?SVAR,?SVAR,?SVAR,?SVAR) "
+		#			print(sv_j)
+		#			sv_w = urhk_dbSQLWithBind(sv_j)
+		#			sv_w = urhk_dbSQLWithBind("COMMIT")
+		#			print(sv_j)
+		#			#####
+		#			CUST.DATA.errMsgadd1="Success in updating ADDRESS_LINE1"
+		#		ELSE
+		#			CUST.DATA.errMsgadd1="Error in updating ADDRESS_LINE1"
+		#		ENDIF
+		#	ENDIF
+		#	ENDIF
+		#	ENDIF
+
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE2) == 1) THEN
+			IF (CUST.DATA.ADDRESS_LINE2!="") THEN
+			sv_s = "update  crmuser.address set ADDRESS_LINE2=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd2="Success in updating ADDRESS_LINE2"
+				ELSE
+					CUST.DATA.errMsgadd2="Error in updating ADDRESS_LINE2"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE3) == 1) THEN
+			IF (CUST.DATA.ADDRESS_LINE3!="") THEN
+			sv_s = "update  crmuser.address set ADDRESS_LINE3=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd3="Success in updating ADDRESS_LINE3"
+				ELSE
+					CUST.DATA.errMsgadd3="Error in updating ADDRESS_LINE3"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+
+		#IF (FIELDEXISTS(CUST.DATA.PREFERREDADDRESS) == 1) THEN
+		#IF (CUST.DATA.PREFERREDADDRESS!="") THEN
+		#sv_s = "update  crmuser.address set PREFERREDADDRESS=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+		#print(sv_s)
+		#BANCS.INPARAM.BINDVARS = CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+		#print(BANCS.INPARAM.BINDVARS)
+		#sv_d = urhk_dbSQLWithBind(sv_s)
+		#IF (sv_d == 0) THEN
+		#	sv_c = urhk_dbSQLWithBind("commit")
+		#	print(sv_c)
+		#	IF (sv_c==0) THEN
+		#		#####
+		#		BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+		#		print(BANCS.INPARAM.BINDVARS)
+		#		sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+		#		sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+		#		print(sv_j)
+		#		sv_w = urhk_dbSQLWithBind(sv_j)
+		#		sv_w = urhk_dbSQLWithBind("COMMIT")
+		#		print(sv_j)
+		#		#####
+		#		CUST.DATA.PREFERREDADDRESS_N="N"
+		#		print(CUST.DATA.PREFERREDADDRESS_N)
+		#		sv_s = "update  crmuser.address set PREFERREDADDRESS=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid!=?SVAR "
+		#		print(sv_s)
+		#		BANCS.INPARAM.BINDVARS = CUST.DATA.PREFERREDADDRESS_N + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+		#		print(BANCS.INPARAM.BINDVARS)
+		#		sv_d = urhk_dbSQLWithBind(sv_s)
+		#		IF (sv_d == 0) THEN
+		#			sv_c = urhk_dbSQLWithBind("commit")
+		#			print(sv_c)
+		#			IF (sv_c==0) THEN
+		#				print("set to not preffered")
+		#			ENDIF
+		#		ENDIF
+		#		#####
+		#		CUST.DATA.errMsgpreff="Success in updating PREFERREDADDRESS"
+		#	ELSE
+		#		CUST.DATA.errMsgpreff="Error in updating PREFERREDADDRESS"
+		#	ENDIF
+		#ENDIF
+		#ENDIF
+		#ENDIF
+			################################
+			IF (FIELDEXISTS(CUST.DATA.CITY) == 1) THEN
+			IF (CUST.DATA.CITY!="") THEN
+			sv_s = "update  crmuser.address set CITY=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.CITY + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgcity="Success in updating CITY"
+				ELSE
+					CUST.DATA.errMsgcity="Error in updating CITY"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			
+		#	IF (FIELDEXISTS(CUST.DATA.REGION) == 1) THEN
+		#	IF (CUST.DATA.REGION!="") THEN
+		#	sv_s = "update  crmuser.address set USERFIELD1=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+		#	print(sv_s)
+		#	BANCS.INPARAM.BINDVARS = CUST.DATA.REGION + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+		#	print(BANCS.INPARAM.BINDVARS)
+		#	sv_d = urhk_dbSQLWithBind(sv_s)
+		#	IF (sv_d == 0) THEN
+		#		sv_c = urhk_dbSQLWithBind("commit")
+		#		print(sv_c)
+		#		IF (sv_c==0) THEN
+		#			#####
+		#			BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+		#			print(BANCS.INPARAM.BINDVARS)
+		#			sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+		#			sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+		#			print(sv_j)
+		#			sv_w = urhk_dbSQLWithBind(sv_j)
+		#			sv_w = urhk_dbSQLWithBind("COMMIT")
+		#			print(sv_j)
+		#			#####
+		#			CUST.DATA.errMsgregion="Success in updating REGION"
+		#		ELSE
+		#			CUST.DATA.errMsgregion="Error in updating REGION"
+		#		ENDIF
+		#	ENDIF
+		#	ENDIF
+		#	ENDIF
+			
+			IF (FIELDEXISTS(CUST.DATA.STATE) == 1) THEN
+			IF (CUST.DATA.STATE!="") THEN
+			sv_s = "update  crmuser.address set STATE=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.STATE + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgstate="Success in updating STATE"
+				ELSE
+					CUST.DATA.errMsgstate="Error in updating STATE"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			IF (FIELDEXISTS(CUST.DATA.COUNTRY) == 1) THEN
+			IF (CUST.DATA.COUNTRY!="") THEN
+			sv_s = "update  crmuser.address set COUNTRY=?SVAR where orgkey=?SVAR and bank_id=?SVAR and addressid=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.COUNTRY + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.addressidold
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgcountry="Success in updating COUNTRY"
+				ELSE
+					CUST.DATA.errMsgcountry="Error in updating COUNTRY"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			################################
+			CUST.DATA.errMsg = CUST.DATA.errMsgadd1 + "," + CUST.DATA.errMsgadd2 + "," + CUST.DATA.errMsgadd3 + "," + CUST.DATA.errMsgpreff + "," + CUST.DATA.errMsgcity + "," + CUST.DATA.errMsgstate + "," + CUST.DATA.errMsgregion + "," + CUST.DATA.errMsgcountry
+			print(CUST.DATA.errMsg)
+			CUST.DATA.errMsgpart1 = CUST.DATA.errMsg
+			print(CUST.DATA.errMsgpart1)
+			sv_e=urhk_SetOrbOut("Status|"+CUST.DATA.errMsgpart1)
+		ENDIF
+	ENDIF
+
+	
+IF (CUST.DATA.corp_idflg=="N") THEN 
+	#### accountsstarts
+	CUST.DATA.orgkeyold =""
+	print(CUST.DATA.orgkeyold)
+	CUST.DATA.address_line1old =""
+	print(CUST.DATA.address_line1old)
+	CUST.DATA.address_line2old = ""
+	print(CUST.DATA.address_line2old)
+	CUST.DATA.address_line3old = ""
+	print(CUST.DATA.address_line3old)
+	CUST.DATA.addresscategoryold = ""
+	print(CUST.DATA.addresscategoryold)
+	CUST.DATA.preferredaddressold = "X"
+	print(CUST.DATA.preferredaddressold)
+	CUST.DATA.addressidold = CUST.DATA.addressidold
+	print(CUST.DATA.addressidold)
+	
+	sv_q="orgkeyold,address_line1old, address_line2old,address_line3old,addresscategoryold |"
+	sv_q = sv_q + " select orgkey,ADDRESS_LINE1, ADDRESS_LINE2,ADDRESS_LINE3,DEFAULTADDRESSTYPE "
+	sv_q = sv_q + "  from crmuser.accounts  where orgkey=?SVAR and bank_id=?SVAR  and rownum<2 "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id  + "|" + BANCS.STDIN.contextBankId  
+	print(BANCS.INPARAM.BINDVARS)
+	sv_p= urhk_dbSelectWithBind(sv_q)
+	print(sv_p)
+	IF (sv_p==0) THEN
+		CUST.DATA.orgkeyold = BANCS.OUTPARAM.orgkeyold
+		print(CUST.DATA.orgkeyold)
+		CUST.DATA.address_line1old = BANCS.OUTPARAM.address_line1old
+		print(CUST.DATA.address_line1old)
+		CUST.DATA.address_line2old = BANCS.OUTPARAM.address_line2old
+		print(CUST.DATA.address_line2old)
+		CUST.DATA.address_line3old = BANCS.OUTPARAM.address_line3old
+		print(CUST.DATA.address_line3old)
+		CUST.DATA.addresscategoryold = BANCS.OUTPARAM.addresscategoryold
+		print(CUST.DATA.addresscategoryold)
+
+		CUST.DATA.errMsgadd1=""
+		CUST.DATA.errMsgadd2=""
+		CUST.DATA.errMsgadd3=""
+		CUST.DATA.errMsgpreff=""
+
+		CUST.DATA.addressidoldflg="ACCT:"
+		CUST.DATA.addressidold=CUST.DATA.addressidoldflg +""+ CUST.DATA.addressidold
+		print(CUST.DATA.addressidold)
+
+		##################
+		sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+		print(sv_h)
+		sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+		BANCS.INPARAM.BINDVARS =  sv_h
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+			print(BANCS.OUTPARAM.getboddate)
+			CUST.DATA.getboddate = BANCS.OUTPARAM.getboddate
+			print(CUST.DATA.getboddate)
+#		    IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE1) == 1) THEN
+#		     IF ((CUST.DATA.ADDRESS_LINE1!="") and (CUST.DATA.preferredaddressflg=="Y")) THEN
+#			sv_s = "update  crmuser.accounts  set ADDRESS_LINE1=?SVAR where orgkey=?SVAR and bank_id=?SVAR  "
+#			print(sv_s)
+#			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId 
+#			print(BANCS.INPARAM.BINDVARS)
+#			sv_d = urhk_dbSQLWithBind(sv_s)
+#			IF (sv_d == 0) THEN
+#				sv_c = urhk_dbSQLWithBind("commit")
+#				print(sv_c)
+#				IF (sv_c==0) THEN
+#					#####
+#					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+#					print(BANCS.INPARAM.BINDVARS)
+#					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+#					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+#					print(sv_j)
+#					sv_w = urhk_dbSQLWithBind(sv_j)
+#					sv_w = urhk_dbSQLWithBind("COMMIT")
+#					print(sv_j)
+#					#####
+#					CUST.DATA.errMsgadd1="Success in updating ADDRESS_LINE1 ACCTS"
+#				ELSE
+#					CUST.DATA.errMsgadd1="Error in updating ADDRESS_LINE1 ACCTS"
+#				ENDIF
+#			ENDIF
+#		    ENDIF
+#	           ENDIF
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE2) == 1) THEN
+			IF ((CUST.DATA.ADDRESS_LINE2!="") and (CUST.DATA.preferredaddressflg=="Y")) THEN
+			sv_s = "update  crmuser.accounts set ADDRESS_LINE2=?SVAR where orgkey=?SVAR and bank_id=?SVAR  "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd2="Success in updating ADDRESS_LINE2 ACCTS"
+				ELSE
+					CUST.DATA.errMsgadd2="Error in updating ADDRESS_LINE2 ACCTS"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE3) == 1) THEN
+			IF ((CUST.DATA.ADDRESS_LINE3!="") and (CUST.DATA.preferredaddressflg =="Y")) THEN
+			sv_s = "update  crmuser.accounts set ADDRESS_LINE3=?SVAR where orgkey=?SVAR and bank_id=?SVAR  "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.orgkeyold + "|" + BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.orgkeyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd3="Success in updating ADDRESS_LINE3 ACCTS"
+				ELSE
+					CUST.DATA.errMsgadd3="Error in updating ADDRESS_LINE3 ACCTS"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			CUST.DATA.errMsgpart2 = CUST.DATA.errMsgadd1 + "," + CUST.DATA.errMsgadd2 + "," + CUST.DATA.errMsgadd3 
+			print(CUST.DATA.errMsgpart2)
+			CUST.DATA.errMsgpart2 =  CUST.DATA.errMsgpart1 + ""+ CUST.DATA.errMsgpart2
+			print(CUST.DATA.errMsgpart2)
+			sv_e=urhk_SetOrbOut("Status|"+CUST.DATA.errMsgpart2)
+		ENDIF
+	ENDIF
+	#### accountsendssss
+ELSE
+	#### corportatestarts
+	CUST.DATA.corp_keyold =""
+	print(CUST.DATA.corp_keyold)
+	CUST.DATA.address_line1old =""
+	print(CUST.DATA.address_line1old)
+	CUST.DATA.address_line2old = ""
+	print(CUST.DATA.address_line2old)
+	CUST.DATA.address_line3old = ""
+	print(CUST.DATA.address_line3old)
+	CUST.DATA.addresscategoryold = ""
+	print(CUST.DATA.addresscategoryold)
+	CUST.DATA.preferredaddressold = "X"
+	print(CUST.DATA.preferredaddressold)
+	CUST.DATA.addressidold = CUST.DATA.addressidold
+	print(CUST.DATA.addressidold)
+	
+	sv_q="corp_keyold,address_line1old, address_line2old,address_line3old,addresscategoryold |"
+	sv_q = sv_q + " select corp_key,ADDRESS_LINE1, ADDRESS_LINE2,ADDRESS_LINE3,DEFAULTADDRESSTYPE "
+	sv_q = sv_q + "  from crmuser.corporate  where corp_key=?SVAR and bank_id=?SVAR  and rownum<2 "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.Customer_id  + "|" + BANCS.STDIN.contextBankId  
+	print(BANCS.INPARAM.BINDVARS)
+	sv_p= urhk_dbSelectWithBind(sv_q)
+	print(sv_p)
+	IF (sv_p==0) THEN
+		CUST.DATA.corp_keyold = BANCS.OUTPARAM.corp_keyold
+		print(CUST.DATA.corp_keyold)
+		CUST.DATA.address_line1old = BANCS.OUTPARAM.address_line1old
+		print(CUST.DATA.address_line1old)
+		CUST.DATA.address_line2old = BANCS.OUTPARAM.address_line2old
+		print(CUST.DATA.address_line2old)
+		CUST.DATA.address_line3old = BANCS.OUTPARAM.address_line3old
+		print(CUST.DATA.address_line3old)
+		CUST.DATA.addresscategoryold = BANCS.OUTPARAM.addresscategoryold
+		print(CUST.DATA.addresscategoryold)
+
+		CUST.DATA.errMsgadd1=""
+		CUST.DATA.errMsgadd2=""
+		CUST.DATA.errMsgadd3=""
+		CUST.DATA.errMsgpreff=""
+
+		CUST.DATA.addressidoldflg="CORP:"
+		CUST.DATA.addressidold=CUST.DATA.addressidoldflg +""+ CUST.DATA.addressidold
+		print(CUST.DATA.addressidold)
+
+		##################
+		sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+		print(sv_h)
+		sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+		BANCS.INPARAM.BINDVARS =  sv_h
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+			print(BANCS.OUTPARAM.getboddate)
+			CUST.DATA.getboddate = BANCS.OUTPARAM.getboddate
+			print(CUST.DATA.getboddate)
+			
+			#IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE1) == 1) THEN
+			#IF (CUST.DATA.ADDRESS_LINE1!="") THEN
+			#sv_s = "update  crmuser.corporate  set ADDRESS_LINE1=?SVAR where corp_key=?SVAR and bank_id=?SVAR  "
+			#print(sv_s)
+			#BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.corp_keyold + "|" + BANCS.STDIN.contextBankId 
+			#print(BANCS.INPARAM.BINDVARS)
+			#sv_d = urhk_dbSQLWithBind(sv_s)
+			#IF (sv_d == 0) THEN
+			#	sv_c = urhk_dbSQLWithBind("commit")
+			#	print(sv_c)
+			#	IF (sv_c==0) THEN
+			#		#####
+			#		BANCS.INPARAM.BINDVARS =  CUST.DATA.corp_keyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+			#		print(BANCS.INPARAM.BINDVARS)
+			#		sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+			#		sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+			#		print(sv_j)
+			#		sv_w = urhk_dbSQLWithBind(sv_j)
+			#		sv_w = urhk_dbSQLWithBind("COMMIT")
+			#		print(sv_j)
+			#		#####
+			#		CUST.DATA.errMsgadd1="Success in updating ADDRESS_LINE1 CORP"
+			#	ELSE
+			#		CUST.DATA.errMsgadd1="Error in updating ADDRESS_LINE1 CORP"
+			#	ENDIF
+			#ENDIF
+			#ENDIF
+			#ENDIF
+
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE2) == 1) THEN
+			IF ((CUST.DATA.ADDRESS_LINE2!="") and (CUST.DATA.preferredaddressflg =="Y")) THEN
+			sv_s = "update  crmuser.corporate set ADDRESS_LINE2=?SVAR where corp_key=?SVAR and bank_id=?SVAR  "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.corp_keyold + "|" + BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.corp_keyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd2="Success in updating ADDRESS_LINE2 CORP"
+				ELSE
+					CUST.DATA.errMsgadd2="Error in updating ADDRESS_LINE2 CORP"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			
+			IF (FIELDEXISTS(CUST.DATA.ADDRESS_LINE3) == 1) THEN
+			IF ((CUST.DATA.ADDRESS_LINE3!="") and (CUST.DATA.preferredaddressflg =="Y")) THEN
+			sv_s = "update  crmuser.corporate set ADDRESS_LINE3=?SVAR where corp_key=?SVAR and bank_id=?SVAR  "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.corp_keyold + "|" + BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+					#####
+					BANCS.INPARAM.BINDVARS =  CUST.DATA.corp_keyold + "|" + CUST.DATA.addresscategoryold + "|" + CUST.DATA.address_line1old + "|" + CUST.DATA.address_line2old + "|" + CUST.DATA.address_line3old + "|" + CUST.DATA.preferredaddressold + "|" + CUST.DATA.user_id  + "|" + CUST.DATA.ADDRESS_LINE1 + "|" + CUST.DATA.ADDRESS_LINE2 + "|" + CUST.DATA.ADDRESS_LINE3 + "|" + CUST.DATA.PREFERREDADDRESS + "|" + CUST.DATA.addressidold + "|" + CUST.DATA.cityold + "|" + CUST.DATA.stateold + "|" + CUST.DATA.countryold + "|" + CUST.DATA.regionold
+					print(BANCS.INPARAM.BINDVARS)
+					sv_j = " Insert into CUSTOM.ADDRESS_DRC_MOD  (CUSTOMER_ID, ADDRESSCATEGORY, ADDRESS_LINE1_OLD, ADDRESS_LINE2_OLD, ADDRESS_LINE3_OLD, PREFERREDADDRESS_OLD, FINACLEUSERID, ADDRESS_LINE1_NEW, ADDRESS_LINE2_NEW, ADDRESS_LINE3_NEW, PREFERREDADDRESS_NEW, ENTRY_DATE,ADDRESSID,CITY,STATE,COUNTRY,REGION) Values "
+					sv_j = sv_j + " (?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR,?SVAR, sysdate,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR) "
+					print(sv_j)
+					sv_w = urhk_dbSQLWithBind(sv_j)
+					sv_w = urhk_dbSQLWithBind("COMMIT")
+					print(sv_j)
+					#####
+					CUST.DATA.errMsgadd3="Success in updating ADDRESS_LINE3 CORP"
+				ELSE
+					CUST.DATA.errMsgadd3="Error in updating ADDRESS_LINE3 CORP"
+				ENDIF
+			ENDIF
+			ENDIF
+			ENDIF
+			CUST.DATA.errMsgpart3 = CUST.DATA.errMsgadd1 + "," + CUST.DATA.errMsgadd2 + "," + CUST.DATA.errMsgadd3 
+			print(CUST.DATA.errMsgpart3)
+			CUST.DATA.errMsgpart4 =  CUST.DATA.errMsgpart1 + ""+ CUST.DATA.errMsgpart3
+			print(CUST.DATA.errMsgpart4)
+			sv_e=urhk_SetOrbOut("Status|"+CUST.DATA.errMsgpart4)
+		ENDIF
+	ENDIF
+	#### accountsendssss
+ENDIF
+End:
+		EXITSCRIPT
+		##TRACE OFF
+END-->

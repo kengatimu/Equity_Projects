@@ -1,0 +1,162 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodadp012.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to collect charge for TOD availment.
+# Input                 :       Account Id, ChargeEventID, ChargingAcctSol, ChargingAcctCrncy
+# Output                :       None
+# Called Script         :       None
+# Calling Script        :       ctodadp007.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           26-04-2013         Nitin Prabhakar   original Version          1.0
+#   2		21-08-2013	Priya K		  Modified for TO:367198	2.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="9d918cb1894d759e5fcee5f4c6f7f70d1fd3051898bd969cc187957d6cb11fda"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "CTODA") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CTODA", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST", "GCHRG", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+	#{
+		CREATECLASS("CUST", "INTERFACE", 5)
+	#}
+	ENDIF
+	
+	
+	print(CUST.CTODA.accNum)
+	print(CUST.CTODA.accCCY)
+	print(CUST.CTODA.solId)
+	print(CUST.INTERFACE.ChargeEventID)
+	print(CUST.CTODA.availReqId)
+	CUST.INTERFACE.ChargeTranId = ""
+	CUST.CTODA.ChargeTranId=""
+	CUST.CTODA.charges=""
+	
+	
+	#-----------------------------------------------------------------------
+	#Code added as a part of TO: 357446
+	#Logic: checking if the charges for the given contract is zero and
+	#	   if so skipping the posting of transaction
+	#-------------------------------------------------------------------------
+	
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum +"|"+CUST.CTODA.availReqId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+"|"+ BANCS.STDIN.contextBankId+"|"+'N'
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = " charges,req_amt|SELECT  CHARGE_AMT,REQ_AMT FROM  CUSTOM.C_TODA "
+	sv_s = sv_s + " WHERE  ACCT_NUM=?SVAR  "
+	sv_s = sv_s + " AND REQUEST_ID= ?SVAR  "
+	sv_s = sv_s + " AND BANK_ID=?SVAR "
+	sv_s = sv_s + " AND IS_DELETED = ?SVAR "
+	PRINT(sv_s)
+	sv_d= urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF(sv_d!=0) THEN
+	#{
+		
+		CUST.INTERFACE.errorCode="ACCM_ERR_012"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			CUST.CTODA.errorMsg = "Could not fetch CPARAM value for " +  CUST.INTERFACE.errorCode
+			sv_z = "Error_0|ERROR^" + CUST.CTODA.errorMsg + "^contrctAmt"
+			sv_u = urhk_SetOrbOut(sv_z)
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CTODA.charges=BANCS.OUTPARAM.charges
+		CUST.CTODA.req_amt = BANCS.OUTPARAM.req_amt
+		IF (CUST.CTODA.charges==0) THEN
+		#{
+			CUST.CTODA.todAmt=0
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	# TO 362785 - changed MTT to charge script.
+	BANCS.INPUT.acctId = CUST.CTODA.accNum
+	BANCS.INPUT.inputCrncy = CUST.CTODA.accCCY
+	BANCS.INPUT.inputAvailAmount = CUST.CTODA.req_amt
+	
+	CUST.GCHRG.drAcctId                     = CUST.CTODA.accNum
+	CUST.GCHRG.acctCrncyCode        		= CUST.CTODA.accCCY
+	CUST.GCHRG.eventId                      = CUST.INTERFACE.ChargeEventID
+	CUST.GCHRG.chrgAmt                      = CUST.CTODA.availAmt + "|" +CUST.CTODA.accCCY
+	CUST.GCHRG.tranType                     = "T"
+	CUST.GCHRG.tranSubType         	 		= "BI"
+	
+	###Modification done for TO:367198
+	CUST.CTODA.todAmt=0
+	print(CUST.CTODA.charges)
+	print(CUST.CTODA.availableAmt)
+	
+	
+	IF(CDOUBLE(CUST.CTODA.availableAmt) <= 0) THEN
+	#{
+		IF(CDOUBLE(CUST.CTODA.availableAmt) < CDOUBLE(CUST.CTODA.charges) ) THEN
+		#{
+			
+			CUST.CTODA.todAmt = CDOUBLE(CUST.CTODA.charges)
+		#}
+		ENDIF
+		CUST.CTODA.todAmt = FORMAT$(CDOUBLE(CUST.CTODA.todAmt),"%.2f")
+		print(CUST.CTODA.todAmt)
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.CTODA.availableAmt) > 0) THEN
+	#{
+		IF(CDOUBLE(CUST.CTODA.availableAmt) < CDOUBLE(CUST.CTODA.charges) ) THEN
+		#{
+			
+			CUST.CTODA.todAmt = CDOUBLE(CUST.CTODA.charges) - CDOUBLE(CUST.CTODA.availableAmt)
+		#}
+		ENDIF
+		CUST.CTODA.todAmt = FORMAT$(CDOUBLE(CUST.CTODA.todAmt),"%.2f")
+		print(CUST.CTODA.todAmt)
+	#}
+	ENDIF
+	CUST.CTODA.todAmt = FORMAT$(CDOUBLE(CUST.CTODA.todAmt),"%.2f")
+	print(CUST.CTODA.todAmt)
+	
+	CALL("gchrgcommon.scr")
+	IF(CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		print(CUST.GCHRG.tranId)
+		CUST.INTERFACE.ChargeTranId = CUST.GCHRG.tranId
+		#}
+	ELSE
+		#{
+		CUST.CTODA.errMsg = CUST.GCHRG.gchrgErrMsg
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

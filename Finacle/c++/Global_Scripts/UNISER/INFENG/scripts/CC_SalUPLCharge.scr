@@ -1,0 +1,261 @@
+#=======================================================================
+# Name                   : CC_SalUPLCharge.scr
+# Date                   : 25-10-2024
+# Description            : posting balance certificate NOPGS
+# MenuOption             : FI
+# Author                 : Kelvin Musyoka   
+# Called Script          : NA
+# Calling Script         : NA
+# Reference Document     : NA
+# Modification History
+# S.No.  Date          Name                 Description
+# -----  ----------    ----------------     -----------------------------
+#  1.0   25-10-2024   Kelvin Musyoka      Original Version
+#========================================================================
+
+
+<--START
+TRACE ON
+        #------------------------------------#
+        #-- Repository And Class Creation  --#
+        #------------------------------------#
+
+
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST", "ATM") == 0) THEN
+	#{
+		CREATECLASS("CUST", "ATM", 5)
+	#}
+	ENDIF	
+
+
+        CUST.ATM.DebitacctNum = CUST.ATM.TranFeeCustAcct1
+        CUST.ATM.feeAmt = CUST.ATM.feeAmt
+        CUST.ATM.contraAcct = CUST.ATM.TranFeeContraAcct1
+        CUST.ATM.narrDrFee = CUST.ATM.narrDrFee
+        CUST.ATM.narrCrFee = CUST.ATM.narrCrFee
+
+		##CHECKING IS IF SIMILAR TRANSACTION exists
+		sv_z ="count|select count(*) from tbaadm.dtd where acid in (select acid from tbaadm.gam where foracid= ?SVAR) "
+		sv_z =sv_z + "and tran_amt= ?SVAR and pstd_user_id=?SVAR and del_flg='N' and pstd_flg='Y' and bank_id= ?SVAR "
+		sv_z =sv_z + "and tran_date =to_date(?SVAR, 'dd-mm-yyyy HH24:MI:SS') "
+		print(sv_z)
+		BANCS.INPARAM.BINDVARS = CUST.ATM.DebitacctNum + "|" + CUST.ATM.feeAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.BODDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_z)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+			CUST.ATM.count = BANCS.OUTPARAM.count
+			print(CUST.ATM.count)
+			IF (CUST.ATM.count>0) THEN
+				CUST.ATM.errorFlg="Y"
+				CUST.ATM.errorMsg= "TRANSACTION ALREADY PROCESSED"
+				PRINT(CUST.ATM.errorMsg)
+				EXITSCRIPT
+			ENDIF
+		ELSE
+			CUST.ATM.count = "0"
+		ENDIF
+
+	    #---------------------------------
+        #  Closing of MTT if it is opened
+        #-----------------------------------
+
+		sv_g = urhk_MTTS_Close("")
+		print(sv_g)
+	
+		IF (sv_g != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+        #-----------------------------
+        #--- Initialize MTT details
+        #-----------------------------
+
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		sv_o = urhk_MTTS_Initialize("")
+		PRINT(sv_o)
+		
+		IF(sv_o != 0)THEN
+		#{
+			sv_o = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+        #-------------------------------
+        # Define the transaction
+        #-------------------------------
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+
+		sv_r = urhk_MTTS_DefineTransaction("DATA/CRG_TranDetails")
+		print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#------------------------------------
+		# DR/CR
+		#--------------------------------------
+
+		#-----------------------------------------------------------------------
+		#Debit customer customer
+		#-----------------------------------------------------------------------
+
+		IF (CUST.ATM.TranFeeCustCrncy != CUST.ATM.chrgCrncyCode ) THEN
+			MTT.PartTranDetails.RateCode = CUST.ATM.CDCIRateCode
+			print(MTT.PartTranDetails.RateCode)
+		ENDIF
+		MTT.PartTranDetails.Account = CUST.ATM.DebitacctNum
+		MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.ATM.feeAmt)*-1
+		MTT.PartTranDetails.RefCurrency = CUST.ATM.chrgCrncyCode
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.ATM.narrDrFee
+		MTT.PartTranDetails.Remarks        = ""
+		MTT.PartTranDetails.TranIdentifier = "DATA/CRG_TranDetails"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.ATM.refNum
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+		
+		sv_i = urhk_MTTS_DefinePartTran("DR_TEMP")
+		PRINT(sv_i)
+		
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#----------------------------------------------------------------------				
+		#Credit statment charges NOPGS to the respective GL
+		#----------------------------------------------------------------------
+
+		MTT.PartTranDetails.Account        = CUST.ATM.contraAcct
+		MTT.PartTranDetails.RefAmount      = CUST.ATM.feeAmt
+		MTT.PartTranDetails.RefCurrency    = CUST.ATM.chrgCrncyCode
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.ATM.narrCrFee
+
+		MTT.PartTranDetails.Remarks        = ""
+		MTT.PartTranDetails.TranIdentifier = "DATA/CRG_TranDetails"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.ATM.refNum
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+		
+		sv_i = urhk_MTTS_DefinePartTran("CR_TEMP")
+		PRINT(sv_i)
+		
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#--------------------------------------------------------------
+		# MTT ending definition to create transaction
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(sv_r != 0)THEN
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.ATM.errMsg = MTT.Error.Description
+				PRINT(CUST.ATM.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.ATM.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.ATM.tranId)
+		#}
+		ENDIF
+
+		#--------------------------------------------------------------
+        # MTT Closing an initialized MTT
+        #--------------------------------------------------------------
+	
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+
+		IF(sv_r != 0)THEN
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.ATM.errMsg = MTT.Error.Description
+				PRINT(CUST.ATM.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		ENDIF
+
+		#--------------------------------------------------------------
+        # SENDING RESPONSE
+        #--------------------------------------------------------------
+
+		IF(CUST.ATM.tranId != "")THEN
+		#{
+			sv_t = "TRAN_ID| " + CUST.ATM.tranId
+			sv_u = urhk_SetOrbOut(sv_t)
+			sv_t = "TRAN_DATE| " + BANCS.STDIN.sysDate
+			sv_u = urhk_SetOrbOut(sv_t)
+		#}
+		ENDIF
+
+
+	ENDOFSCRIPT:
+		IF(CUST.ATM.errMsg !="")THEN
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+			BANCS.OUTPUT.successOrFailure="F"
+		ENDIF 
+		EXITSCRIPT
+
+
+TRACE OFF
+END-->

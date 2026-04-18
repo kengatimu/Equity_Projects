@@ -1,0 +1,184 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: laadisbmn001.scr
+#   Description		: Additional Validations for loan disbursement are handled in this script.
+#   Date			: 31-03-2013
+#   Author			: Sateesh
+#   Input			: NA
+#   Output			: NA
+#   Called Script	:
+#   Calling Script	: getcparamvalue.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             27-02-2013      Sateesh				Original Version
+#   2.0             31-03-2013      Samrat				Cparam setup is exculded and common script is used
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="03cda314562765570866e4c04d5677bc87ad321ccbdf2971a3677b557e6f996e"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-------------------------------------------------------------------------------
+	CUST.LADISB.errMsg 	= ""
+	CUST.LADISB.loanType = ""
+	sv_u = urhk_Setorbout("Error|dummy")
+	sv_u = urhk_Setorbout("tranType|dummy")
+	sv_u = urhk_Setorbout("grossNetDisb|dummy")
+	sv_u = urhk_Setorbout("tranTypeAttr|dummy")
+	
+	#------------------------------------------------------------------------------
+	# Getting acctId code from front end
+	#------------------------------------------------------------------------------
+	CUST.LADISB.loanAcctId 		= TOUPPER(BANCS.INPUT.loanAcctId)
+	CUST.LADISB.loanAcctId 		= TRIM(CUST.LADISB.loanAcctId)
+	CUST.LADISB.amtAvailForDisb = BANCS.INPUT.avlForDisb
+	CUST.LADISB.loanAmt 		= BANCS.INPUT.loanAmt
+	CUST.LADISB.disbAmt 		= BANCS.INPUT.disbAmt
+	
+	print(CUST.LADISB.amtAvailForDisb)
+	print(CUST.LADISB.loanAmt)
+	print(CUST.LADISB.disbAmt)
+	
+	#------------------------------------------------------------------------------
+	# Calling common script for common values
+	#------------------------------------------------------------------------------
+	print(CUST.LADISB.loanAcctId)
+	CALL("laadisbdp004.scr")
+	IF (CUST.LADISB.errMsg != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------
+	#-- To Stop already disbursed loans
+	#-----------------------------------------------------------------------------
+	IF ((CUST.LADISB.rcreUserId == CUST.CPARAM.rcreUserId) AND (BANCS.STDIN.userWorkClass < CINT(CUST.CPARAM.usrWrkCls1))) THEN
+	#{
+		CUST.LADISB.errMsg = "Insufficient Work Class .."
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		sv_s= "acctCount|"
+		sv_s = sv_s + " SELECT  COUNT(1)"
+		sv_s = sv_s + " FROM  TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.cif_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.schm_code = ?SVAR"
+		sv_s = sv_s + " AND GAM.acct_opn_date = to_date(?SVAR,'dd-mm-yyyy')"
+		sv_s = sv_s + " AND GAM.sanct_lim = ?SVAR"
+		sv_s = sv_s + " AND GAM.rcre_user_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.clr_bal_amt != 0"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.LADISB.laCifId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.laSchmCode 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.laAcctOpnDate + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAmt 		+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.rcreUserId 	+ "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d != 0) THEN
+		#{
+			CUST.LADISB.errMsg = "Error in getting row count from Gam table"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.acctCount =BANCS.OUTPARAM.acctCount
+			print(CUST.LADISB.acctCount)
+			IF (CINT(CUST.LADISB.acctCount) >= 1) THEN
+			#{
+				CUST.LADISB.errMsg = "Customer same/another Facility..."
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------------
+	# To Stop Inter Sol Disbursal
+	#--------------------------------------------------------------------------------
+	print(CUST.LADISB.laAcctSolId)
+	IF (CUST.LADISB.laAcctSolId != BANCS.STDIN.mySolId) THEN
+	#{
+		CUST.LADISB.errMsg = "Loan can only be disbursed from Sol of Origin"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	print(CUST.LADISB.loanType)
+	#-----------------------------------------------------------------
+	#--Available Disbursment amount Cannot be zero
+	#---------------------------------------------------------------
+	IF ((CUST.LADISB.loanType == "S")) THEN
+	#{
+		IF (CDOUBLE(CUST.LADISB.amtAvailForDisb) <= 0) THEN
+		#{
+			CUST.LADISB.errMsg = "Available Disbursment amount Cannot be zero"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		IF (CUST.LADISB.operAcctFlg == "N" ) THEN
+		#{
+			CUST.LADISB.errMsg = "No Operative account Linked to Loan account"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#################################################################################
+	# Inclusion for Stima Loan (loanType S-SmitaLoan)
+	#################################################################################
+	IF (CUST.LADISB.loanType == "S") THEN
+	#{
+		IF (CDOUBLE(CUST.LADISB.fees) > CDOUBLE(CUST.LADISB.operAcctEffBal)) THEN
+		#{
+			CUST.LADISB.errMsg = "Insufficent Funds in Operative account..Total Fees+Contribution:  " + CUST.LADISB.fees
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_u = urhk_Setorbout("tranType|T")
+		sv_u = urhk_Setorbout("grossNetDisb|G")
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			sv_u = urhk_Setorbout("Error|"+CUST.LADISB.errMsg)
+			print(CUST.LADISB.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

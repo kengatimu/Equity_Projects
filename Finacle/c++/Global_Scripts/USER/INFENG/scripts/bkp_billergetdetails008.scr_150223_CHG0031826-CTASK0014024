@@ -1,0 +1,439 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# product: Finacle Core
+# category: User Defined
+# script: ubpdp008.scr
+# type: NA|default
+# description: These types of scripts do not belong to any particular category and are standalone scripts with no script specific repositories or fields.
+#============================================================
+
+<--START
+CHECKSUM="f91e24755fb4da73673089d11cd685914e9eef69ee2eb7b1765b50e6565452e0"
+	# Script body goes here
+	#----------------------------------------------------------------------------------------------------------
+	# Filename              :       ubpdp008.scr
+	# Author                :       Swati Ganjoo
+	# Description           :       This script gets called for transaction creation(within currency/cross-currency-->within entity)
+	# Called Script         :		ubpdp009.scr,billergetdetails007.scr
+	# Calling Script        :		ubpdp005.scr
+	# Modification History
+	# Sl. #           Date             Author             Modification           Version
+	# -----           -----           --------          ----------------        ---------
+	#  1           16-04-2013         Swati Ganjoo      Original Version          1.0
+	#-----------------------------------------------------------------------------------------------------------
+	TRACE ON
+	CUST.UBP.srvcallmode=TRIM(BANCS.INPUT.srvcallmode)
+	PRINT(CUST.UBP.srvcallmode)
+	CUST.UBP.srvSuccess="Y"
+	CUST.UBP.tranSubType="CI"
+	
+	#=====================================================
+	# Transfer charge amount from CPARAM
+	#=====================================================
+	
+	BANCS.INPUT.parameterId = "UBPTFCHRG"
+	BANCS.INPUT.moduleName = "UBP"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.UBP.tfee = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.UBP.tfee)
+		#}
+	ELSE
+		#{
+		CUST.UBP.errMsg = "Transfer charge amt setup not done CPARAM"
+		print(CUST.UBP.errMsg)
+		GOTO ENDOFSCRIPT1
+	#}
+	ENDIF
+	
+	sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+	sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+	BANCS.INPARAM.BINDVARS =  sv_h
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	##print(sv_d)
+	IF (sv_d =="0") THEN
+	#{
+		CUST.UBP.getboddate = BANCS.OUTPARAM.getboddate
+		print(CUST.UBP.getboddate)
+	#}
+	ENDIF
+	
+	#=====================================================
+	# Setting input for the service
+	#=====================================================
+	#########################
+	
+	#abc
+	
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT.
+	#===================================
+	
+	BANCS.INPARAM.PostTranFlg 		= "X"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "N"
+	BANCS.INPARAM.ValidationFlag 		= "N"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "Y"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	print (sv_u)
+	
+	IF (sv_u != 0) THEN
+	#{
+		sv_c = "Initialisation of MTT Failed"
+		MTT.Error.Description = sv_c
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+		GOTO END_OF_SCRIPT
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	print(sv_r)
+	IF(sv_r != 0) THEN
+	#{
+		MTT.Error.Description="Error in Populating Input details for MTT"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		exitscript
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------#
+	#####   Defining the Transaction
+	#-----------------------------------------------------------------------------------------------#
+	
+	#--------------------------
+	# To get the tran Id
+	#--------------------------
+	MTT.TranDetails.TranDate	        = "0"
+	MTT.TranDetails.PostFlag 		= "X"
+	MTT.TranDetails.TranType 		= "T"
+	MTT.TranDetails.TranSubType 		= "BI"
+	MTT.TranDetails.Remarks 		= "Bill Payment"
+	MTT.TranDetails.IgnoreExcp		="Y"
+	MTT.TranDetails.Consolidate         	= "N"
+	MTT.TranDetails.ReversalFlg         	= "N"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.ValidationFlag          = "N"
+	#MTT.TranDetails.RestrictModifyInd   	= "FIRST_GROUP"
+	
+	sv_v = urhk_MTTS_DefineTransaction("DFCU")
+	print(sv_v)
+	
+	IF(sv_v != 0) THEN
+	#{
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print(MTT.Error.Description)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#---------------------------------------------------------------------------
+	#For Testing Vasanth account is debited (10 INR)
+	#--------------------------------------------------------------------------
+	MTT.PartTranDetails.Account= CUST.UBP.dbForacid
+	MTT.PartTranDetails.RefAmount= -1 * CDOUBLE(CUST.UBP.billAmt)
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.dbCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart
+	MTT.PartTranDetails.Remarks = CUST.UBP.tranRem
+	MTT.PartTranDetails.RefNum = CUST.UBP.billRefNum
+	
+	MTT.PartTranDetails.TODRefType      = "IN"
+	MTT.PartTranDetails.TodEntityType   = "TODIN"
+	MTT.PartTranDetails.TodEntityId     = CUST.UBP.dbForacid
+	MTT.PartTranDetails.TodLevIntFlg    = "N"
+	MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+	MTT.PartTranDetails.TodRemarks      = "Charges TOD"
+	
+	sv_q = urhk_MTTS_DefinePartTran("DFCU1")
+	print(sv_q)
+	
+	IF (sv_q == 1) THEN
+	#{
+		#print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#For Testing Prasanna Account is Credited (1 INR)
+	#---------------------------------------------------------------------------
+	print(CUST.UBP.crForacid)
+	MTT.PartTranDetails.Account= CUST.UBP.crForacid
+	print(CUST.UBP.billAmt)
+	MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.UBP.billAmt)
+	print(CUST.UBP.crCrncyCode)
+	MTT.PartTranDetails.RefCurrency= CUST.UBP.crCrncyCode
+	MTT.PartTranDetails.RateCode= "MEAN"
+	MTT.PartTranDetails.Rate= "0"
+	MTT.PartTranDetails.ValueDate = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Particulars = CUST.UBP.tranPart
+	MTT.PartTranDetails.Remarks = CUST.UBP.tranRem
+	MTT.PartTranDetails.RefNum = CUST.UBP.billRefNum
+	sv_v = urhk_MTTS_DefinePartTran("DFCU2")
+	print(sv_v)
+	
+	IF (sv_v == 1) THEN
+	#{
+		print(MTT.Error.Description)
+		print("Error WHILE defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------
+	#End of MTT Definition
+	#-----------------------------------------------------------------------------
+	sv_v = urhk_MTTS_EndDefinition("")
+	print(sv_v)
+	IF (sv_v == 1) THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print (MTT.Error.Description)
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		#sv_a = urhk_B2k_PrintRepos("BANCS")
+		IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			BANCS.OUTPARAM.MTTTranId = BANCS.OUTPARAM.MTTTranId
+			print(BANCS.OUTPARAM.MTTTranId)
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_HandleExceptions("POST")
+	print(sv_r)
+	
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	
+	IF(sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+		
+		BANCS.OUTPUT.successOrFailure = "F"
+		CUST.UBP.Response = "urhk_MTTS_Close returns FAILURE"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		print(BANCS.OUTPARAM.MTTTranId)
+		sv_t = BANCS.OUTPARAM.MTTTranId
+		print(sv_t)
+	#}
+	ENDIF
+	
+	IF (FIELDEXISTS(BANCS.OUTPARAM.MTTPostingStatus)) THEN
+	#{
+		IF (BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+		#{
+			sv_h = BANCS.OUTPARAM.MTTPostingError
+			print(sv_h)
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "S"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#xyz
+	
+	#############################
+	
+	sv_c = BANCS.OUTPUT.successOrFailure
+	PRINT(sv_c)
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CALL("billergetdetails007.scr")
+		#CUST.UBP.srvError="Y"
+		IF(CUST.UBP.srvError == "Y")THEN
+		#{
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+			CUST.UBP.srvSuccess="N"
+			GOTO ENDOFSCRIPT1
+		#}
+		ENDIF
+		
+		#}
+	ELSE
+		#{
+		IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId) == 1) THEN
+		#{
+			CUST.UBP.tranId1 = BANCS.OUTPARAM.MTTTranId
+			PRINT(CUST.UBP.tranId1)
+			CUST.UBP.tranDate1=BANCS.STDIN.BODDate
+			PRINT(CUST.UBP.tranDate1)
+			#print(BANCS.OUTPARAM.pstdflg)
+			CUST.UBP.tranidubp = CUST.UBP.tranId1
+			print(CUST.UBP.tranidubp)
+			
+			CUST.UBP.tranidubp = trim(CUST.UBP.tranidubp)
+			print(CUST.UBP.tranidubp)
+			sv_s = "UPDATE TBAADM.DTD SET REF_NUM = ?SVAR WHERE TRAN_ID = LPAD(?SVAR,9)"
+			sv_s = sv_s + " AND TRAN_DATE = ?SVAR "
+			sv_s = sv_s + " AND BANK_ID = ?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.UBP.billRefNum + "|" + CUST.UBP.tranidubp + "|" + CUST.UBP.getboddate
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w = urhk_dbSQLWithBind(sv_s)
+			print(sv_w)
+			sv_w = urhk_dbSQLWithBind("COMMIT")
+			IF(sv_w == 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				print(sv_d)
+			#}
+			ENDIF
+			
+			IF ((CUST.UBP.payAcctIdschmType =="SBA") OR (CUST.UBP.payAcctIdschmType == "CAA")) THEN
+			#{
+				#=====================================================
+				# Transfer charge amount from CPARAM
+				#=====================================================
+				
+				print(CUST.UBP.tfee)
+				
+				CUST.UBP.negat ="-1"
+				CUST.UBP.Tot_Amt = cdouble(CUST.UBP.tfee)* cdouble(CUST.UBP.negat)
+				CUST.UBP.with_amt = CUST.UBP.tfee
+				
+				print (CUST.UBP.Tot_Amt)
+				print (CUST.UBP.with_amt)
+				print (CUST.UBP.payAcctId)
+				print (CUST.UBP.payRefCrncy)
+				
+				sv_r = CLASSEXISTS("CUST","GCHRG")
+				print(sv_r)
+				IF(sv_r == 0) THEN
+				#{
+					CREATECLASS ("CUST","GCHRG",5)
+				#}
+				ENDIF
+				
+				IF (CUST.UBP.payAcctId=="0180294793513") THEN
+				#{
+					print (CUST.UBP.payAcctId)
+					
+					CUST.GCHRG.tranType = "T"
+					print(CUST.GCHRG.tranType)
+					CUST.GCHRG.tranSubType = "BI"
+					print(CUST.GCHRG.tranSubType)
+					CUST.GCHRG.drAcctId = CUST.UBP.payAcctId
+					print(CUST.GCHRG.drAcctId)
+					CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+					print(CUST.GCHRG.acctCrncyCode)
+					CUST.GCHRG.chrgAmt = ""
+					CUST.GCHRG.eventId = "TMTRF2"
+					#}
+				ELSE
+					#{
+					CUST.GCHRG.tranType = "T"
+					CUST.GCHRG.tranSubType = "BI"
+					CUST.GCHRG.drAcctId = CUST.UBP.payAcctId
+					CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+					CUST.GCHRG.chrgAmt = CUST.UBP.with_amt + "|" + BANCS.STDIN.homeCrncyCode
+					CUST.GCHRG.eventId = "TMTRF2"
+				#}
+				ENDIF
+
+#-----------------------------------------------------------------------------------------------------------------------------Edwin.zico
+# EAZY BIZ CHARGE WAIVE START Incident - IM320530
+#-----------------------------------------------------------------------------------------------------------------------------
+				sv_a = urhk_GetChannelInfo("")
+				print(sv_a)
+
+				IF (sv_a==0) THEN
+				#{
+					CUST.UBP.DccId = BANCS.OUTPARAM.DccId
+					print(CUST.UBP.DccId)
+				#}
+				ENDIF
+
+				IF (CUST.UBP.DccId =="POL")THEN
+				#{				
+					IF (BANCS.STDIN.contextBankId =="56") THEN
+					#{
+						print (CUST.UBP.payAcctId)
+
+						IF ((CUST.UBP.payAcctId =="1003200722911") OR (CUST.UBP.payAcctId =="1003200715777") OR (CUST.UBP.payAcctId =="1003200715776")) THEN
+						#{
+							GOTO ENDOFSCRIPT1				
+						#}
+						ELSE
+						#{
+							CUST.GCHRG.tranType = "T"
+							CUST.GCHRG.tranSubType = "BI"
+							CUST.GCHRG.drAcctId = CUST.UBP.payAcctId
+							CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+							CUST.GCHRG.chrgAmt = CUST.UBP.with_amt + "|" + BANCS.STDIN.homeCrncyCode
+							CUST.GCHRG.eventId = "TMTRF2"
+						#}
+						ENDIF
+				
+					#}
+					ENDIF
+				#}
+				ENDIF
+#-----------------------------------------------------------------------------------------------------------------------------Edwin.zico
+# EAZY BIZ CHARGE WAIVE START
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
+				CALL("gchrgcommon.scr")
+				
+				IF (CUST.GCHRG.successOrFailure == "S") THEN
+				#{
+					PRINT("Charge collected")
+					print(CUST.GCHRG.chargeTranId)
+					CUST.UBP.trfChrgId = CUST.GCHRG.chargeTranId
+					print(CUST.UBP.trfChrgId)
+					#}
+				ELSE
+					#{
+					PRINT("Failure")
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT1 :
+END-->

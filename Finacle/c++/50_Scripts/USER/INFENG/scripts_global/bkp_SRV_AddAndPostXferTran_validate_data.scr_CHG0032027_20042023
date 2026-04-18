@@ -1,0 +1,192 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: SRV_AddAndPostXferTran_validate_data.scr
+# Type: NA|default
+# Description: SRV_AddAndPostXferTran_validate_data.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#-------------------------------------------------------------------------------------
+# Script name           : SRV_AddAndPostXferTran_validate_data.scr
+# Date                  : 25-JAN-2013
+# Description           : Call the validation script.
+# Author                : GOKULKRISHNA
+# Calling Script                : none
+# Called Scripts        : s_tranvaldp001.scr, s_chqopndp002.scr
+# Menu Option                   : HTM
+# Srl. No               Date                    Author                  Description.
+# -------               ----                    ------                  ----------------
+# 1.0       25-JAN-2013     GOKULKRISHNA  	Original Version
+# 2.0       15-04-2013   	Divya       	Added script
+# 3.0      	24-10-2013  	Bharath        	Biller validation script added
+# 4.0     	09-12-2022      ManiKuttin    	Basic negotiate rate/OMN  CHG0031393
+# 5.0		06-04-2023      Harrison    	Basic negotiate rate   CTASK0014513		Rate Poluation Changes
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="1694142e6b12d675e150265043e14910f05bb593a873be4cf504e1f83abaa2f1"
+        #TRACE ON
+
+
+        #sv_r = urhk_B2k_PrintRepos("BANCS")
+        #PRINT(sv_r)
+
+        IF(FIELDEXISTS(BANCS.STDIN.menuId))THEN
+        #{
+                IF(BANCS.STDIN.menuId == "CIETXN")THEN
+                #{
+                        EXITSCRIPT
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        IF((BANCS.STDIN.onlineOrBatch == "O") OR (BANCS.STDIN.onlineOrBatch == "B")) THEN
+        #{
+
+                #IF((BANCS.STDIN.menuId == "HTM") OR (BANCS.STDIN.menuId == "HCASHWD") OR (BANCS.STDIN.menuId == "HXFER"))THEN
+                #{
+                #       CALL("bioValExcp.scr")
+                #}
+                #ENDIF
+                if(BANCS.STDIN.contextBankId=="54")then
+                #{
+                        if(fieldexists(BANCS.STDIN.menuId)==1)then
+                        if ((BANCS.STDIN.menuId == "HTM") or (BANCS.STDIN.menuId == "HCASHDEP") or (BANCS.STDIN.menuId == "HCASHWD") or (BANCS.STDIN.menuId == "HXFER"))then
+                        #{
+                                if(BANCS.STDIN.moduleIdentity!="FI")then
+                                        callscriptifexist("ebTmValOdLoan.scr")
+                                endif
+                                #callscriptifexist("ebtmReferral.scr")
+                                #callscriptifexist("ebtmUNSCRef.scr")
+                        #}
+                        endif
+                        endif
+                #}
+                endif
+                CALL("s_tranvaldp001.scr")
+                CALL("s_chqopndp002.scr")
+                CALL("s_billervalmn001.scr")
+        #}
+        ENDIF
+
+        IF (BANCS.STDIN.moduleIdentity == "FI") THEN
+        #{
+                ###########################################
+                # Getting Channel Information
+                ###########################################
+                lv_a = urhk_GetChannelInfo("")
+                IF (FIELDEXISTS(BANCS.OUTPARAM.DccId)) THEN
+                #{
+                        BANCS.INPUT.reqChannelId = BANCS.OUTPARAM.DccId
+                        PRINT(BANCS.INPUT.reqChannelId )
+                #}
+                ENDIF
+                if(BANCS.INPUT.reqChannelId=="RTD")then
+                        callscriptifexist("vptmRTDVal.scr")
+                endif
+                if(BANCS.INPUT.reqChannelId=="VER")then
+                        callscriptifexist("ebTmValVer.scr")
+                endif
+                if(BANCS.STDIN.contextBankId=="54")then
+                        if(BANCS.INPUT.reqChannelId!="")then
+                                ######callscriptifexist("ebTmValOdLoan.scr")
+                        endif
+                endif
+                ###########################################
+                # Set Channel ID
+                ###########################################
+                IF(FIELDEXISTS(BANCS.INPUT.reqChannelId)) THEN
+                #{
+                        sv_a = urhk_SRV_SetVal("tranDtl.deliveryChannelId|" + BANCS.INPUT.reqChannelId)
+                        PRINT(sv_a)
+                #}
+                ENDIF
+                if(BANCS.INPUT.reqChannelId!="CRS")then
+                CALL("FI_validation.scr")
+                endif
+                CALL("FI_ChangeContextSol.scr")
+                print(BANCS.INPUT.reqChannelId)
+				
+			## CHG0031393 mani Kuttin Start
+				IF((BANCS.INPUT.reqChannelId =="OMN") and (BANCS.STDIN.contextBankId=="54"))THEN
+				#{
+					IF (REPEXISTS("CUST") == 0) THEN
+					#{
+									CREATEREP("CUST")
+					#}
+					ENDIF
+					IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+					#{
+									CREATECLASS("CUST","DATA",5)
+					#}
+					ENDIF
+					sv_q = urhk_B2k_PrintRepos("BANCS")
+					print(sv_q)
+
+					sv_u = urhk_SRV_NumOfRecs("tranDtl.partTranDetailLL")
+					PRINT(sv_u)
+					IF (sv_u == 0) THEN
+					#{
+									CUST.DATA.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+									PRINT(CUST.DATA.noOfRecords)
+									#}
+					ELSE
+									#{
+									sv_u = urhk_SRV_SetErr("Error:urhk_SRV_NumOfRecs failed")
+									BANCS.OUTPUT.successOrFailure = "F"
+									GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+
+						sv_l = 0
+						CUST.DATA.treaRate = "0"
+						WHILE(sv_l < CUST.DATA.noOfRecords)
+						#{
+								sv_v = Format$(sv_l,"%d")
+								sv_r = "<rec_"+sv_v+">"
+
+								sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".treaRate")
+								PRINT(sv_u)
+								IF (sv_u == 0) THEN
+								#{
+										lv_m = BANCS.OUTPARAM.srvValue
+
+										IF(CDOUBLE(lv_m)>0)THEN
+										#{
+												CUST.DATA.treaRate = lv_m
+												PRINT(CUST.DATA.treaRate)
+										#}
+										ENDIF
+
+										sv_a = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ">.partTranType.code")
+										sv_c =BANCS.OUTPARAM.srvValue
+										IF(sv_c=="C")THEN
+										#{
+										#sv_u = urhk_SRV_SetVal("tranDtl.partTranDetailLL." +sv_r+ ".rate| " + CUST.DATA.treaRate)
+										sv_u = urhk_SRV_SetVal("tranDtl.partTranDetailLL." +sv_r+ ".treaRate| " + CUST.DATA.treaRate)
+										print(sv_u)
+
+										#}
+										ENDIF
+								#}
+								ENDIF
+
+
+						sv_l = sv_l + 1
+						PRINT(sv_l)
+						#}
+						DO
+						#}
+				ENDIF
+			## CHG0031393 mani Kuttin END
+
+        #}
+        ENDIF
+
+
+        TRACE OFF
+END-->

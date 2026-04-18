@@ -1,0 +1,512 @@
+<--START
+	# Script body goes here
+	TRACE ON
+	LIBNAME CUSTOMSO
+	
+	############################################################################
+	# Create repository and class
+	############################################################################
+	
+	IF(REPEXISTS("CUST")==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","DATA")==0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	sv_u = urhk_B2k_PrintRepos("BANCS")
+	PRINT(CUST.DATA.fileName)
+	#CUST.DATA.fileName="input.txt"
+	CUST.DATA.bankId 			= BANCS.STDIN.contextBankId
+	CUST.DATA.BODDate		= MID$(BANCS.STDIN.BODDate,0,10)
+	CUST.DATA.funcCode		= BANCS.INPUT.funcCode
+	print(CUST.DATA.funcCode)
+	CUST.DATA.fileformat = RIGHT$(CUST.DATA.fileName,3)
+	PRINT(CUST.DATA.fileformat)
+	CUST.DATA.upldStatus="Success"
+	CUST.DATA.Status = ""
+	
+	#############################################
+	#VALIDATING UPLOAD FILE
+	#############################################
+	
+	sv_a = "count |SELECT COUNT(*) FROM CUSTOM.C_ACLHMUPLD"
+	sv_a = sv_a  + " WHERE FILE_NAME = ?SVAR "
+	PRINT(sv_a)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.fileName
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_a = urhk_dbSelectWithBind(sv_a)
+	PRINT(sv_a)
+	IF (sv_a == 1) THEN
+	#{
+		sv_a = "Error in validating filename in table(CUSTOM.C_ACLHMUPLD).Upload Falied ."
+		sv_r =urhk_SetOrbOut("SuccessOrFailure|N")
+		sv_r = urhk_SetOrbErr(sv_a)
+		EXITSCRIPT
+		#}
+	ELSE
+		#{
+		PRINT(BANCS.OUTPARAM.count)
+		IF(BANCS.OUTPARAM.count != 0) THEN
+		#{
+			sv_a = "Duplicate File name.Please upload new file"
+			sv_r =urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_r = urhk_SetOrbErr(sv_a)
+			EXITSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+		
+	
+	############################################################################
+	# Report Initialization
+	############################################################################
+	
+	
+	############################################################################
+	# Generating time stamp
+	############################################################################
+	
+	sv_v = ""
+	sv_v = sv_v + "tstamp|"
+	sv_v = sv_v + "SELECT TO_CHAR(sysdate,'DDMMYYHH24MISS') FROM DUAL"
+	PRINT(sv_v)
+	sv_w = urhk_dbSelectWithBind(sv_v)
+	PRINT(sv_w)
+	
+	IF(sv_w == 0)THEN
+	#{
+		CUST.DATA.timeStamp=BANCS.OUTPARAM.tstamp
+	#}
+	ENDIF
+	PRINT(CUST.DATA.timeStamp)
+	
+	CUST.DATA.rptFileName	= "CACLHMUPLD_REPORT_INSERT_"+MID$(CUST.DATA.fileName,0,STRLEN(CUST.DATA.fileName) - 4)+"_"+CUST.DATA.timeStamp+".TXT"
+	PRINT(CUST.DATA.rptFileName)
+	
+	CUST.DATA.rpDesc		= "Custom ACLHM Upload Report"
+	PRINT(CUST.DATA.rpDesc)
+	
+	sv_s = SYSTEM("echo ' ' >" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo '=========================================================================================================================================================================' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo '                                                                         Custom CACLHM Upload Report                                                                        ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo '=========================================================================================================================================================================' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo 'Upload FileName:    "+CUST.DATA.fileName+"' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo 'Upload Date 	:    "+CUST.DATA.BODDate+"' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo 'Upload Sol 	:    "+BANCS.STDIN.mySolId+"' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo 'Uploaded By 	:    "+BANCS.STDIN.userId+"' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	
+	sv_s = SYSTEM("echo '-------------------------------------------------------------------------------------------------------------------------------------------------------------------------' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo '| Record No |      Foracid       | Upload Status |                  Upload Remarks                  | Process Status |                 Process Remarks                  |' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo '-------------------------------------------------------------------------------------------------------------------------------------------------------------------------' >>" + CUST.DATA.rptFileName)
+	sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+	
+	############################################################################
+	# Validating File Extension
+	############################################################################
+	
+	IF((TOUPPER(CUST.DATA.fileformat) != "CSV") AND (TOUPPER(CUST.DATA.fileformat) != "TXT"))THEN
+	#{
+		
+		CUST.DATA.upldStatus = "Failed"
+		CUST.DATA.Status = "F"
+		CUST.DATA.upldError  = "Only CSV / TXT file is Supported"
+		sv_s = SYSTEM("echo 'Upload Failed		:    "+CUST.DATA.upldError+"' >>" + CUST.DATA.rptFileName)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	############################################################################
+	# Duplicate File Validation
+	############################################################################
+	
+	sv_a = "count|"
+	sv_a = sv_a + " SELECT COUNT(1)"
+	sv_a = sv_a + " FROM CUSTOM.C_ACLHMUPLD"
+	sv_a = sv_a + " WHERE FILE_NAME = ?SVAR AND UPLOAD_DATE=to_date(?SVAR,'dd-mm-yyyy') AND bank_id=?SVAR"
+	PRINT(sv_a)
+	
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = CUST.DATA.fileName+ "|" +CUST.DATA.BODDate + "|" + CUST.DATA.bankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbSelectWithBind(sv_a)
+	PRINT(sv_r)
+	
+	IF(sv_r == 0)THEN
+	#{
+		IF(BANCS.OUTPARAM.count != 0)THEN
+		#{
+			
+			CUST.DATA.upldStatus = "Failed"
+			CUST.DATA.Status = "F"
+			CUST.DATA.upldError  = "Duplicate File Name, Same File has been already Uploaded today"
+			sv_s = SYSTEM("echo 'Upload Failed		:    "+CUST.DATA.upldError+"' >>" + CUST.DATA.rptFileName)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	############permission#####################################################
+	
+	PRINT(CUST.DATA.fileName)
+	sv_a = "chmod 777 "+CUST.DATA.fileName
+	PRINT(sv_a)
+	
+	sv_b = SYSTEM(sv_a)
+	PRINT(sv_b)
+	
+	
+	############################################################################
+	# Validating File permission to Process
+	############################################################################
+	
+	sv_t = urtn_fileAccess(CUST.DATA.fileName)
+	PRINT(sv_t)
+	
+	IF (sv_t != 0) THEN
+	#{
+		
+		CUST.DATA.upldStatus = "Failed"
+		CUST.DATA.Status = "F"
+		CUST.DATA.upldError  = "Upload File not found / File has No Records / File having no access permissions"
+		sv_s = SYSTEM("echo 'Upload Failed		:    "+CUST.DATA.upldError+"' >>" + CUST.DATA.rptFileName)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	############################################################################
+	# Opening File in Read Mode
+	############################################################################
+	
+	sv_u = urtn_fileOpen(CUST.DATA.fileName + "|r")
+	PRINT(sv_u)
+	
+	IF(sv_u < 0)THEN
+	#{
+		
+		CUST.DATA.upldStatus = "Failed"
+		CUST.DATA.Status = "F"
+		CUST.DATA.upldError  = "Upload File not found / File having no access permissions"
+		sv_s = SYSTEM("echo 'Upload Failed		:    "+CUST.DATA.upldError+"' >>" + CUST.DATA.rptFileName)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.DATA.tempRead = sv_u
+	#}
+	ENDIF
+	
+	############################################################################
+	# Field Initialization
+	############################################################################
+	
+	CUST.DATA.recordNum		= 0
+	
+	
+	
+	############################################################################
+	# Looping Records and Inserting into custom table
+	############################################################################
+	
+	sv_u = urtn_fileRead(CUST.DATA.tempRead + "|CUST.DATA.record")
+	PRINT(sv_u)
+	
+	WHILE(sv_u == 0)
+	#{
+		CUST.DATA.rcdStatus = "Success"
+		CUST.DATA.errReason = "Uploaded Successfully"
+		CUST.DATA.procRmks="Not Processed"
+		CUST.DATA.procStatus=""
+		CUST.DATA.Status = "S"
+		
+		CUST.DATA.recordNum = CINT(CUST.DATA.recordNum) + 1
+		PRINT(CUST.DATA.recordNum)
+
+		CUST.DATA.proccessRecord = CUST.DATA.record
+		print(CUST.DATA.proccessRecord)
+
+		sv_a = "count|"
+		sv_a = sv_a + " SELECT REGEXP_COUNT(?SVAR,',') FROM DUAL"
+		PRINT(sv_a)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.proccessRecord
+		
+		sv_r = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_r)
+		
+		IF(sv_r == 0)THEN
+		#{
+			PRINT(BANCS.OUTPARAM.count)
+			IF(CINT(TRIM(BANCS.OUTPARAM.count)) != CINT("2")) THEN
+			#{
+				CUST.DATA.rcdStatus 	= "F"
+				CUST.DATA.errReason 	= "Invalid no of inputs passed"
+				GOTO INSERTDB
+			#}
+			ENDIF
+		#}
+		ENDIF
+		############################################################################
+		# Account Number
+		############################################################################
+		
+		sv_l = STRLEN(CUST.DATA.proccessRecord)
+		PRINT(sv_l)
+		
+		sv_p = GETPOSITION(CUST.DATA.proccessRecord,",")
+		PRINT(sv_p)
+		
+		CUST.DATA.foracid = MID$(CUST.DATA.proccessRecord,0,sv_p - 1)
+		PRINT(CUST.DATA.foracid)
+		
+		sv_m = sv_l - sv_p
+		PRINT(sv_m)
+		############################################################################
+		# Freeze Code
+		############################################################################
+		
+		CUST.DATA.proccessRecord=MID$(CUST.DATA.proccessRecord,sv_p,sv_m)
+		PRINT(CUST.DATA.proccessRecord)
+		
+		sv_l = STRLEN(CUST.DATA.proccessRecord)
+		PRINT(sv_l)
+		
+		sv_p = GETPOSITION(CUST.DATA.proccessRecord,",")
+		PRINT(sv_p)
+		
+		CUST.DATA.limit = MID$(CUST.DATA.proccessRecord,0,sv_p - 1)
+		PRINT(CUST.DATA.limit)
+		
+		sv_m = sv_l - sv_p
+		PRINT(sv_m)
+
+
+		############################################################################
+		# Freeze Remarks
+		############################################################################
+		
+		CUST.DATA.proccessRecord=MID$(CUST.DATA.proccessRecord,sv_p,sv_m)
+		PRINT(CUST.DATA.proccessRecord)
+		
+		sv_l = STRLEN(CUST.DATA.proccessRecord)
+		PRINT(sv_l)
+		
+		CUST.DATA.expDate = MID$(CUST.DATA.proccessRecord,0,10)
+		PRINT(CUST.DATA.expDate)
+		
+		print(CUST.DATA.foracid)
+		print(CUST.DATA.limit)
+		print(CUST.DATA.expDate)
+		
+		############################################################################
+		# Validating Account Id
+		############################################################################
+		
+		sv_a = urhk_getAcctDetailsInRepository(CUST.DATA.foracid)
+		IF(sv_a != 0 )THEN
+		#{
+				CUST.DATA.rcdStatus = "Failed"
+				CUST.DATA.errReason  = "Invalid Account"
+				CUST.DATA.Status = "F"
+		#}
+		ELSE
+		#{
+				CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+				print(CUST.DATA.schmCode)
+				CUST.DATA.sanctionLimit = BANCS.OUTPARAM.sanctionLimit
+				print(CUST.DATA.sanctionLimit)
+				CUST.DATA.acctCloseflg = BANCS.OUTPARAM.acctCloseflg
+				print(CUST.DATA.acctCloseflg)
+				IF(CUST.DATA.schmCode != "OD541") THEN
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Only Agent Accounts Allowed"
+					CUST.DATA.Status = "F"
+					GOTO INSERTDB
+				ENDIF
+				IF(cdouble(CUST.DATA.limit) > cdouble(CUST.DATA.sanctionLimit)) THEN
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Limit Greater than Existing Limit"
+					CUST.DATA.Status = "F"
+					GOTO INSERTDB
+				ENDIF
+				IF(CUST.DATA.acctCloseflg == "Y") THEN
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Account is Closed"
+					CUST.DATA.Status = "F"
+					GOTO INSERTDB
+				ENDIF	
+		#}
+		ENDIF
+
+		############################################################################
+		# Validating Expiry Date
+		############################################################################
+		IF(CUST.DATA.expDate == "") then
+		#{
+			CUST.DATA.rcdStatus = "Failed"
+			CUST.DATA.errReason  = "Expiry date is null"
+			CUST.DATA.Status = "F"
+			GOTO INSERTDB
+		#}
+		ENDIF
+		sv_a = "yearDiff|SELECT ADD_MONTHS(TO_DATE(?SVAR, 'DD-MM-YYYY'), 12) - TO_DATE(?SVAR, 'DD-MM-YYYY') FROM DUAL "
+		BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10) + "|" + CUST.DATA.expDate
+		print(BANCS.INPARAM.BINDVARS)
+		lv_a = urhk_dbSelectWithBind(sv_a)
+		if(lv_a == 0) then
+		#}
+			CUST.DATA.yearDiff = BANCS.OUTPARAM.yearDiff
+			print(CUST.DATA.yearDiff)
+			IF(cdouble(CUST.DATA.yearDiff) < 0) then
+			#{
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Expiry Greater than a year"
+					CUST.DATA.Status = "F"
+			#}
+			ENDIF
+			IF(CUST.DATA.yearDiff == "") then
+			#{
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Unable to arrive at Expiry date"
+					CUST.DATA.Status = "F"
+			#}
+			ENDIF
+		#{		
+		else
+		#}
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Unable to arrive at Expiry date"
+					CUST.DATA.Status = "F"
+		#}
+		ENDIF
+		sv_a = "pastDate|SELECT TO_DATE(?SVAR, 'DD-MM-YYYY') - TO_DATE(?SVAR, 'DD-MM-YYYY') FROM DUAL "
+		BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10) + "|" + CUST.DATA.expDate
+		print(BANCS.INPARAM.BINDVARS)
+		lv_a = urhk_dbSelectWithBind(sv_a)
+		if(lv_a == 0) then
+		#}
+			CUST.DATA.pastDate = BANCS.OUTPARAM.pastDate
+			print(CUST.DATA.pastDate)
+			IF(cdouble(CUST.DATA.pastDate) > 0) then
+			#{
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Date is less than BOD Date"
+					CUST.DATA.Status = "F"
+			#}
+			ENDIF
+		#{		
+		else
+		#}
+					CUST.DATA.rcdStatus = "Failed"
+					CUST.DATA.errReason  = "Unable to arrive at Expiry date"
+					CUST.DATA.Status = "F"
+		#}
+		ENDIF
+		INSERTDB:
+		############################################################################
+		# Inserting Records into custom table
+		############################################################################
+		
+		sv_s = "INSERT INTO CUSTOM.C_ACLHMUPLD("
+		sv_s = sv_s + " FILE_NAME,"
+		sv_s = sv_s + " UPLOAD_DATE,"
+		sv_s = sv_s + " RECORD_NO,"
+		sv_s = sv_s + " FORACID,"
+		sv_s = sv_s + " UPLD_USER_ID,"
+		sv_s = sv_s + " UPLD_STATUS,"
+		sv_s = sv_s + " UPLD_REMARKS,"
+		sv_s = sv_s + " PROCESS_STATUS,"
+		sv_s = sv_s + " PROCESS_REMARKS,"
+		sv_s = sv_s + " SOL_ID, "
+		sv_s = sv_s + " LIMIT, "
+		sv_s = sv_s + " EXPIRY_DATE, "
+		sv_s = sv_s + " ENTITY_CRE_FLG, "
+		sv_s = sv_s + " STATUS, "
+		sv_s = sv_s + " DEL_FLG, "
+		sv_s = sv_s + " LCHG_USER_ID, "
+		sv_s = sv_s + " BANK_ID "
+		sv_s = sv_s + " ) "
+		sv_s = sv_s + " VALUES "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + " '" + CUST.DATA.fileName + "',"
+		sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy'),"
+		sv_s = sv_s + " '" + CUST.DATA.recordNum + "',"
+		sv_s = sv_s + " '" + CUST.DATA.foracid + "',"
+		sv_s = sv_s + " '" + BANCS.STDIN.userId + "',"
+		sv_s = sv_s + " '" + CUST.DATA.rcdStatus + "',"
+		sv_s = sv_s + " '" + CUST.DATA.errReason + "',"
+		sv_s = sv_s + " '" + CUST.DATA.procStatus + "',"
+		sv_s = sv_s + " '" + CUST.DATA.procRmks + "',"
+		sv_s = sv_s + " '" + BANCS.STDIN.mySolId  + "',"
+		sv_s = sv_s + " '" + CUST.DATA.limit  + "',"
+		sv_s = sv_s + "to_date(?SVAR,'dd-mm-yyyy'),"
+		sv_s = sv_s + " 'N',"
+		sv_s = sv_s + " '" + CUST.DATA.Status  + "',"
+		sv_s = sv_s + " 'N',"
+		sv_s = sv_s + " '" + BANCS.STDIN.userId  + "',"
+		sv_s = sv_s + " '" + CUST.DATA.bankId + "'"
+		sv_s = sv_s + " )"
+		PRINT(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS =CUST.DATA.BODDate + "|" + CUST.DATA.expDate
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		PRINT(sv_d)
+		
+		IF(sv_d != 0)THEN
+		#{
+			CUST.DATA.rcdStatus = "Failed"
+			CUST.DATA.rcdError  = "Custom Table Insert Failed for record"
+			CUST.DATA.concat = ""
+			CUST.DATA.concat = LPAD(CUST.DATA.recordNum,11,' ')  + "|" + LPAD(CUST.DATA.foracid,20,' ')+ "|" + LPAD(CUST.DATA.rcdStatus,15,' ') + "|" + LPAD(CUST.DATA.errReason,50,' ') + "|" + LPAD(CUST.DATA.procStatus,16,' ') + "|" + LPAD(CUST.DATA.procRmks,50,' ')
+			sv_s = SYSTEM("echo '"+CUST.DATA.concat+" ' >>" + CUST.DATA.rptFileName)
+			sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+			#}
+		ELSE
+			#{
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			PRINT(sv_d)
+			#CUST.DATA.rcdStatus = "Success"
+			CUST.DATA.rcdError  = "Record Inserted Successfully"
+			CUST.DATA.concat = ""
+			CUST.DATA.concat = LPAD(CUST.DATA.recordNum,11,' ')  + "|" + LPAD(CUST.DATA.foracid,20,' ')+ "|" + LPAD(CUST.DATA.rcdStatus,15,' ') + "|" + LPAD(CUST.DATA.errReason,50,' ') + "|" + LPAD(CUST.DATA.procStatus,16,' ') + "|" + LPAD(CUST.DATA.procRmks,50,' ')
+			sv_s = SYSTEM("echo '"+CUST.DATA.concat+" ' >>" + CUST.DATA.rptFileName)
+			sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+		#}
+		ENDIF
+		
+		NEXTREC:
+			sv_u = urtn_fileRead(CUST.DATA.tempRead + "|CUST.DATA.record")
+			PRINT(sv_u)
+		#}
+		DO
+				
+	ENDOFSCRIPT:
+		sv_s = SYSTEM("echo ' ' >>" + CUST.DATA.rptFileName)
+		sv_s = SYSTEM("echo '=========================================================================================================================================================' >>" + CUST.DATA.rptFileName)
+		
+		sv_q = "exebatch babx4040 $B2K_SESSION_ID " + " "+ CUST.DATA.rptFileName +" Custom_CACLHM_Upload  MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		PRINT(sv_r)
+		
+		
+END-->

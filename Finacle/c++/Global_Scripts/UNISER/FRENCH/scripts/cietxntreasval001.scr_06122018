@@ -1,0 +1,280 @@
+<--START
+
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CIETXN Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CIETXN")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CIETXN",5)
+	#}
+	ENDIF
+	sv_u = urhk_b2k_printrepos("BANCS")
+	PRINT(sv_u)
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	CUST.CIETXN.crAcctNum =" "
+	CUST.CIETXN.drAcctNum =" "
+	CUST.CIETXN.refCrncy=" "
+	CUST.CIETXN.rateCode =" "
+	CUST.CIETXN.rate=" "
+	CUST.CIETXN.treaRate=" "
+	CUST.CIETXN.errorFlg="N"
+	CUST.CIETXN.errorMsg =" "
+	CUST.CIETXN.rate1=" "
+	CUST.CIETXN.treaRate1=" "
+	CUST.CIETXN.treaRefNum=" "
+	CUST.CIETXN.tranType=" "
+	
+	CUST.CIETXN.treaRefNum = BANCS.INPUT.treaRefNum
+	PRINT(CUST.CIETXN.treaRefNum)
+
+	CUST.CIETXN.refCrncy = TOUPPER(BANCS.INPUT.refCrncy)
+	PRINT(CUST.CIETXN.refCrncy)
+
+	CUST.CIETXN.rateCode1 = BANCS.INPUT.rateCode
+	PRINT(CUST.CIETXN.rateCode1)
+
+	CUST.CIETXN.rate1 = CDOUBLE(BANCS.INPUT.rate)
+	PRINT(CUST.CIETXN.rate1)
+
+	CUST.CIETXN.treaRate1 = CDOUBLE(BANCS.INPUT.treaRate)
+	PRINT(CUST.CIETXN.treaRate1)
+
+	CUST.CIETXN.tranType = TOUPPER(BANCS.INPUT.tranType)
+	PRINT(CUST.CIETXN.tranType)
+
+	CUST.CIETXN.crAcctNum = TOUPPER(BANCS.INPUT.crAcctNum)
+	PRINT(CUST.CIETXN.crAcctNum)
+
+	CUST.CIETXN.drAcctNum = TOUPPER(BANCS.INPUT.drAcctNum)
+	PRINT(CUST.CIETXN.drAcctNum)
+        CUST.CIETXN.acctCrncy = " "
+        CUST.CIETXN.dracctCrncy = " "
+
+	IF(CUST.CIETXN.crAcctNum != "")THEN
+	#{
+        sv_s = "acctCrncy|SELECT  acct_crncy_code from tbaadm.gam "
+        sv_s = sv_s + " where ENTITY_CRE_FLG = 'Y' "
+        sv_s = sv_s + " AND Foracid = ?SVAR AND rownum<2 "
+        PRINT(sv_s)
+        BANCS.INPARAM.BINDVARS = CUST.CIETXN.crAcctNum
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+        IF(sv_d != 0)THEN
+        #{
+       		CUST.CIETXN.errorFlg = "Y"
+                CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Invalid Account Credit Number ;"
+                GOTO ENDOFSCRIPT
+        #}
+        ELSE
+        #{
+                CUST.CIETXN.acctCrncy = BANCS.OUTPARAM.acctCrncy
+                PRINT(CUST.CIETXN.acctCrncy)
+        #}
+        ENDIF
+	#}
+	ENDIF
+
+	IF(CUST.CIETXN.drAcctNum != "")THEN
+	#{
+        sv_s = "dracctCrncy|SELECT  acct_crncy_code from tbaadm.gam "
+        sv_s = sv_s + " where ENTITY_CRE_FLG = 'Y' "
+        sv_s = sv_s + " AND Foracid = ?SVAR AND rownum<2 "
+        PRINT(sv_s)
+        BANCS.INPARAM.BINDVARS = CUST.CIETXN.drAcctNum
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+        IF(sv_d != 0)THEN
+        #{
+                CUST.CIETXN.errorFlg = "Y"
+                CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Invalid Account Debit Number ;"
+                GOTO ENDOFSCRIPT
+        #}
+        ELSE
+       #{
+                CUST.CIETXN.dracctCrncy = BANCS.OUTPARAM.dracctCrncy
+                PRINT(CUST.CIETXN.dracctCrncy)
+        #}
+        ENDIF
+	#}
+	ENDIF
+
+	IF((CUST.CIETXN.acctCrncy != "") AND (CUST.CIETXN.refCrncy != "")) THEN
+	#{
+		###########################################################################################
+		# Fetching RATECODE from custom table
+		###########################################################################################
+
+		IF(CUST.CIETXN.acctCrncy != CUST.CIETXN.refCrncy) THEN
+		#{
+			sv_s = "recCount|"
+			sv_s = sv_s + " SELECT 1 FROM DUAL WHERE EXISTS("
+			sv_s = sv_s + " SELECT 1 FROM TBAADM.CNC"
+			sv_s = sv_s + " WHERE CRNCY_CODE = ?SVAR"
+			sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y'"
+			sv_s = sv_s + " AND DEL_FLG != 'Y'"
+			sv_s = sv_s + " AND BANK_ID = ?SVAR)"
+			PRINT(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.refCrncy + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d != 0)THEN
+			#{
+				CUST.CIETXN.errorFlg = "Y"
+				CUST.CIETXN.errorMsg = "Invalid Ref. CCY"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+			IF(CUST.CIETXN.tranType == "C") THEN
+			#{
+				sv_s = "rateCode| select ratecode_cash from custom.c_ratecode where from_currency = ?SVAR AND to_currency=?SVAR AND bank_id =?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CIETXN.refCrncy + "|" + CUST.CIETXN.acctCrncy + "|" + BANCS.STDIN.contextBankId
+			#}
+			ELSE
+			#{
+				sv_s = "rateCode| select ratecode_tran from custom.c_ratecode where from_currency = ?SVAR AND to_currency=?SVAR AND bank_id =?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CIETXN.refCrncy + "|" + CUST.CIETXN.acctCrncy + "|" + BANCS.STDIN.contextBankId
+			#}
+			ENDIF
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d ==0) THEN
+			#{
+				CUST.CIETXN.rateCode = BANCS.OUTPARAM.rateCode
+				PRINT(CUST.CIETXN.rateCode)
+
+			#}
+			ELSE
+			#{
+				#CUST.CIETXN.errorFlg="Y"
+				#CUST.CIETXN.errorMsg ="enter the values manually"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		IF((CUST.CIETXN.dracctCrncy != CUST.CIETXN.refCrncy) AND (CUST.CIETXN.tranType == "T"))THEN
+		#{
+			sv_s = "recCount|"
+			sv_s = sv_s + " SELECT 1 FROM DUAL WHERE EXISTS("
+			sv_s = sv_s + " SELECT 1 FROM TBAADM.CNC"
+			sv_s = sv_s + " WHERE CRNCY_CODE = ?SVAR"
+			sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y'"
+			sv_s = sv_s + " AND DEL_FLG != 'Y'"
+			sv_s = sv_s + " AND BANK_ID = ?SVAR)"
+			PRINT(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.refCrncy + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d != 0)THEN
+			#{
+				CUST.CIETXN.errorFlg = "Y"
+				CUST.CIETXN.errorMsg = "Invalid Ref. CCY"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			sv_s = "rateCode| select ratecode_tran from custom.c_ratecode where from_currency = ?SVAR AND to_currency=?SVAR AND bank_id =?SVAR"
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.dracctCrncy + "|" + CUST.CIETXN.refCrncy + "|" + BANCS.STDIN.contextBankId
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d ==0) THEN
+			#{
+				CUST.CIETXN.rateCode = BANCS.OUTPARAM.rateCode
+				PRINT(CUST.CIETXN.rateCode)
+
+			#}
+			ELSE
+			#{
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(CUST.CIETXN.rateCode1 != CUST.CIETXN.rateCode)THEN
+	#{
+		CUST.CIETXN.errorFlg="Y"
+		CUST.CIETXN.errorMsg="Treasury reference ratecode and defaulted ratecode differs"
+		sv_u=urhk_SetOrbOut("errorFlg|"+CUST.CIETXN.errorFlg)
+		sv_u=urhk_SetOrbOut("errorMsg|"+CUST.CIETXN.errorMsg)
+		PRINT(sv_u)	
+		GOTO ENDOFSCRIPT
+	#}	
+	ENDIF
+
+	sv_s="rate,tresrate|SELECT CUST_RATE,TREASURY_RATE FROM TBAADM.FTRT WHERE TR_REF_NUM=?SVAR AND BANK_ID=?SVAR"
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.treaRefNum + "|" + BANCS.STDIN.contextBankId
+
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+        IF(sv_d ==0) THEN
+        #{
+                 CUST.CIETXN.rate = CDOUBLE(BANCS.OUTPARAM.rate)
+                 PRINT(CUST.CIETXN.rate)
+                 CUST.CIETXN.treaRate = CDOUBLE(BANCS.OUTPARAM.tresrate)
+                 PRINT(CUST.CIETXN.treaRate)
+
+        #}
+	ELSE
+	#{
+		CUST.CIETXN.errorFlg="Y"
+		CUST.CIETXN.errorMsg="Invalid Treasury reference Number"
+		sv_u=urhk_SetOrbOut("errorFlg|"+CUST.CIETXN.errorFlg)
+		sv_u=urhk_SetOrbOut("errorMsg|"+CUST.CIETXN.errorMsg)
+		PRINT(sv_u)	
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF((CUST.CIETXN.rate1 != CUST.CIETXN.rate) OR (CUST.CIETXN.treaRate1 != CUST.CIETXN.treaRate))THEN
+	#{
+		CUST.CIETXN.errorFlg="Y"
+		CUST.CIETXN.errorMsg="Defaulted rate values are not equal to special rate values ,Can't Proceed"
+		sv_u=urhk_SetOrbOut("errorFlg|"+CUST.CIETXN.errorFlg)
+		sv_u=urhk_SetOrbOut("errorMsg|"+CUST.CIETXN.errorMsg)
+		PRINT(sv_u)	
+	#}	
+	ENDIF
+	
+	ENDOFSCRIPT:
+
+TRACE OFF
+				
+END-->
+

@@ -1,0 +1,27 @@
+/
+update  custom.trans_status  set STATUS='Y' where bank_id='54'; 
+/
+commit;
+/
+ insert into  CUSTOM.MOBEE_PUSH_SMS (REF_NO, LANGUAGE, INSTITUTION_CODE, MOBILE_NUMBER, MESSAGE_ARRIEVED_DATE, MESSAGE_PRIORITY,
+                    MESSAGE_STATUS, MESSAGE_VALIDITY_PERIOD, DEPARTMENT, MESSAGE_TEXT,retry_count, BANK_ID ) values (
+                     CUSTOM.MOBEE_PUSH_SMS_SEQUENCE.nextval,'EN','068', '254722395534' ,sysdate,'4','0','86400000','FinacleHTM', 'HTM Status Closed '||TO_CHAR(SYSDATE,'DD-MON-RRRR HH24:MI:SS') ,0,'54');
+/
+commit;
+/
+ insert into  CUSTOM.MOBEE_PUSH_SMS (REF_NO, LANGUAGE, INSTITUTION_CODE, MOBILE_NUMBER, MESSAGE_ARRIEVED_DATE, MESSAGE_PRIORITY,
+                    MESSAGE_STATUS, MESSAGE_VALIDITY_PERIOD, DEPARTMENT, MESSAGE_TEXT,retry_count, BANK_ID ) values (
+                     CUSTOM.MOBEE_PUSH_SMS_SEQUENCE.nextval,'EN','068', '254763630697' ,sysdate,'4','0','86400000','FinacleHTM', 'HTM Status Closed '||TO_CHAR(SYSDATE,'DD-MON-RRRR HH24:MI:SS') ,0,'54');
+/
+commit;
+/
+ insert into  CUSTOM.MOBEE_PUSH_SMS (REF_NO, LANGUAGE, INSTITUTION_CODE, MOBILE_NUMBER, MESSAGE_ARRIEVED_DATE, MESSAGE_PRIORITY,
+                    MESSAGE_STATUS, MESSAGE_VALIDITY_PERIOD, DEPARTMENT, MESSAGE_TEXT,retry_count, BANK_ID ) values (
+                     CUSTOM.MOBEE_PUSH_SMS_SEQUENCE.nextval,'EN','068', '254763626695' ,sysdate,'4','0','86400000','FinacleHTM', 'HTM Status Closed '||TO_CHAR(SYSDATE,'DD-MON-RRRR HH24:MI:SS') ,0,'54');
+/
+commit;
+/
+commit;
+/
+exit
+/

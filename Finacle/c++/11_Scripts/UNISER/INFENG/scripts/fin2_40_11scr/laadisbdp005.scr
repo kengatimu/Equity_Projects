@@ -1,0 +1,209 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: laadisbdp005.scr
+#   Description		: This script is validates credit account and gives popup screen
+#   Date			: 31-03-2013
+#   Author			: Sateesh
+#   Input			: NA
+#   Output			: NA
+#   Called Script	: None
+#   Calling Script	: laadisbdp008.scr, laadisbdp006.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             31-03-2013      Sateesh				Original Version
+#   2.0             07-08-2013      Bharath				Added different cif id validation
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="3f1027e8667230a59d92fb1c1e67ef969b63a35af371acd11e04fad7273ed830"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	CUST.LADISB.loanAcctId	= TRIM(BANCS.INPUT.loanAcctId)
+	CUST.LADISB.disbAmt		= BANCS.INPUT.disbAmt
+	CUST.LADISB.refNum		= TRIM(BANCS.INPUT.refNum)
+	CUST.LADISB.crAcctId	= TRIM(BANCS.INPUT.crAcctId)
+	
+	IF (CUST.LADISB.crAcctId == "" ) THEN
+	#{
+		CUST.LADISB.errMsg = "Error in getting Credit Account No"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.LADISB.loanAcctId)
+	PRINT(CUST.LADISB.disbAmt)
+	PRINT(CUST.LADISB.refNum)
+	print(CUST.LADISB.crAcctId)
+	
+	#################################################################################
+	# Initializing required variables
+	#################################################################################
+	CUST.LADISB.errMsg			= ""
+	sv_u = urhk_Setorbout("Error|dummy")
+	sv_u = urhk_Setorbout("crAcctId|dummy")
+	sv_u = urhk_Setorbout("popUp|dummy")
+	
+	#################################################################################
+	# Getting values from cparam by calling common script
+	#################################################################################
+	PRINT(CUST.LADISB.loanAcctId)
+	CALL("laadisbdp004.scr")
+	IF (CUST.LADISB.errMsg != "" ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.LADISB.stepVal	="5"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "" ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.LADISB.stepVal	="7"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "" ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.LADISB.laSchmCode == CUST.CPARAM.spSchmCode) THEN
+	#{
+		IF (CUST.LADISB.crAcctId != CUST.LADISB.scipCrAcctId) THEN
+		#{
+			CUST.LADISB.errMsg = "Disburment only allowed to IPO A/C " + CUST.LADISB.scipCrAcctId
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_u = urhk_getAcctDetailsInRepository (CUST.LADISB.crAcctId)
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.LADISB.errMsg = "Credit Account number is invalid "
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.crBacid = BANCS.OUTPARAM.acctPlaceHolder
+		print(CUST.LADISB.crBacid)
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#---Getting the credit account's cif id
+	#---------------------------------------------------------------------
+	sv_s=""
+	sv_s = sv_s + " crAcctCifId|"
+	sv_s = sv_s + " SELECT gam.cif_id"
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.foracid = ?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.crAcctId 	+ "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	IF ( sv_d != 0 ) THEN
+	#{
+		CUST.LADISB.errMsg = "Error in finding cifid of credit account"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.crAcctCifId	 = BANCS.OUTPARAM.crAcctCifId
+		print(CUST.LADISB.crAcctCifId)
+	#}
+	ENDIF
+	
+	#################################################################################
+	# To Stop different Cust Id Disbursal
+	#################################################################################
+	print(CUST.LADISB.laCifId)
+	IF (CUST.LADISB.crAcctCifId != CUST.LADISB.laCifId) THEN
+	#{
+		CUST.LADISB.errMsg = "Different Cust IDs...cannot proceed"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.LADISB.crBacid == CUST.CPARAM.bacid) THEN
+	#{
+		sv_u = urhk_Setorbout("popUp|Y")
+		print("Safaricom IPO")
+		IF ( CUST.LADISB.operAcctFlg != "Y" ) THEN
+		#{
+			CUST.LADISB.errMsg = "No Operative account Linked to Loan account"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CALL("laadisbdp006.scr")
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		print(CUST.LADISB.insuAmt)
+		
+		IF (CUST.LADISB.laSchmCode == CUST.CPARAM.schmCode) THEN
+		#{
+			CUST.LADISB.laceAmt = CUST.CPARAM.amt
+			CUST.LADISB.lienAmt = CUST.CPARAM.amt
+			CUST.LADISB.cdsAppliction = CUST.CPARAM.cdsApp
+			#}
+		ELSE
+			#{
+			CUST.LADISB.laceAmt = (CDOUBLE(CUST.LADISB.disbAmt)*CDOUBLE(CUST.CPARAM.mul))/100
+			CUST.LADISB.lienAmt = CUST.CPARAM.lienAmt
+			CUST.LADISB.cdsAppliction = CUST.CPARAM.cdsApp
+		#}
+		ENDIF
+		
+		CUST.LADISB.fees = CDOUBLE(CUST.LADISB.laceAmt)+CDOUBLE(CUST.LADISB.lienAmt)+CDOUBLE(CUST.LADISB.cdsAppliction)+CDOUBLE(CUST.LADISB.insuAmt)
+		print(CUST.LADISB.fees)
+		IF (CDOUBLE(CUST.LADISB.fees) > CDOUBLE(CUST.LADISB.operAcctEffBal)) THEN
+		#{
+			CUST.LADISB.errMsg = "Insufficent Funds in Operative account..Total Fees:  " + CUST.LADISB.fees
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.LADISB.errMsg != "" ) THEN
+		#{
+			sv_u = urhk_Setorbout("Error|"+CUST.LADISB.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

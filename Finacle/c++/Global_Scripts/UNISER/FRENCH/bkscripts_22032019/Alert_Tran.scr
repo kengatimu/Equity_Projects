@@ -1,0 +1,452 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: Script Name Based
+# Script: Alert_Tran.sscr
+# Type: Alert_Tran|NA
+# Description: Not Available
+#============================================================
+
+#################################################################################
+# script Name   : Alert_Tran.scr
+# Author        : Rashmi C
+# Date          : 23-01-2009
+# Input         : acctOwnership,AcctNum,TranId,PartTranSrlNum,TranDate,TranAmt,
+#                 RefCurrency,TranType,TranSubType,PstdFlg,acctBal,lchgTime,
+#                 partTranType,glDate,acctName,moduleId,acctCrncyCode,
+#				  tranParticular,tranCrncyCode
+# Output        : None
+# Description   : Invoked in the event of Any Transaction for alerts.
+#################################################################################
+<--START
+TRACE ON
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print(sv_a)
+
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+    CREATEREP("CUST")
+#}
+ENDIF
+IF (CLASSEXISTS("CUST","ALERTS") == 0) THEN
+#{
+    CREATECLASS("CUST","ALERTS",5)
+#}
+ENDIF
+
+CUST.ALERTS.DeliveryChnlIdflg = "Y"
+print(CUST.ALERTS.DeliveryChnlIdflg)
+IF (FIELDEXISTS(BANCS.INPUT.TranId) == 1) THEN
+	print(BANCS.INPUT.TranId)
+	IF ((BANCS.STDIN.contextBankId=="54") OR (BANCS.STDIN.contextBankId=="11") OR (BANCS.STDIN.contextBankId=="55")) THEN
+		CUST.ALERTS.DeliveryChnlIdflg = "N"
+		print(CUST.ALERTS.DeliveryChnlIdflg)
+	ELSE
+		print("others")
+		CUST.ALERTS.DeliveryChnlIdflg = "Y"
+		print(CUST.ALERTS.DeliveryChnlIdflg)
+		GOTO ENDOFSCRIPT
+	ENDIF
+ENDIF
+
+####noramal start
+IF ((FIELDEXISTS(BANCS.INPUT.AcctNum) == 1) AND (CUST.ALERTS.DeliveryChnlIdflg == "N")) THEN
+	CUST.ALERTS.sendnow = "N"
+	CUST.ALERTS.account = BANCS.INPUT.AcctNum
+	print(CUST.ALERTS.account)
+	###
+	sv_h="1"
+	sv_h = urhk_getAcctDetailsInRepository(CUST.ALERTS.account)
+	print(sv_h)
+	IF (sv_h==0) THEN
+		CUST.ALERTS.solidsh = BANCS.OUTPARAM.acctSolId
+		print(CUST.ALERTS.solidsh)
+		CUST.ALERTS.schmcodesh = BANCS.OUTPARAM.schmCode
+		print(CUST.ALERTS.schmcodesh)
+		CUST.ALERTS.schmType = BANCS.OUTPARAM.schmType
+		print(CUST.ALERTS.schmType)
+		CUST.ALERTS.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.ALERTS.EffAvailableAmttr)
+		CUST.ALERTS.lienAmt = BANCS.OUTPARAM.lienAmt
+		print(CUST.ALERTS.lienAmt)
+	ENDIF
+	###
+	IF(sv_h == 0) THEN
+	#{
+		PRINT(CUST.ALERTS.schmcodesh)
+		IF ((CUST.ALERTS.schmType=="SBA") OR (CUST.ALERTS.schmType=="CAA")) THEN
+		#{
+			CUST.ALERTS.sendnow = "N"
+			CUST.ALERTS.FreeCode8="XXX"
+			sv_u = urhk_getAdvanceDetailsForAccount(CUST.ALERTS.account)
+			print(sv_u)
+			if(sv_u==0)then
+				print(BANCS.OUTPARAM.FreeCode8)
+				CUST.ALERTS.FreeCode8 = BANCS.OUTPARAM.FreeCode8
+				print(CUST.ALERTS.FreeCode8)
+			endif
+			IF ((CUST.ALERTS.FreeCode8=="") OR (CUST.ALERTS.FreeCode8=="ANY") OR (CUST.ALERTS.FreeCode8=="ALL")) THEN
+				CUST.ALERTS.sendnow = "N"
+				CUST.ALERTS.sendnowemail = "N"
+				IF (FIELDEXISTS(BANCS.INPUT.partTranType) == 1) THEN
+					IF (BANCS.INPUT.partTranType=="D") THEN
+						IF (CINT(BANCS.INPUT.TranAmt) > 49999) THEN
+							CUST.ALERTS.sendnow = "Y"
+							print(CUST.ALERTS.sendnow)
+						ENDIF
+					ENDIF
+					IF ((CUST.ALERTS.FreeCode8=="ANY") OR (CUST.ALERTS.FreeCode8=="ALL")) THEN
+						IF (CINT(BANCS.INPUT.TranAmt) > 150) THEN
+							CUST.ALERTS.sendnow = "Y"
+							print(CUST.ALERTS.sendnow)
+							IF (CUST.ALERTS.FreeCode8=="ALL") THEN
+								CUST.ALERTS.sendnowemail = "Y"
+								print(CUST.ALERTS.sendnowemail)
+							ENDIF
+						ENDIF
+					ENDIF
+				ENDIF
+			ELSE
+				CUST.ALERTS.sendnow = "N"
+				print(CUST.ALERTS.sendnow)
+			ENDIF
+			##### Enable TZ sms start
+				IF (BANCS.STDIN.contextBankId=="55") THEN
+					IF ((CUST.ALERTS.schmcodesh != "SB126") AND (CUST.ALERTS.schmcodesh != "CA207")) THEN
+						IF (CINT(BANCS.INPUT.TranAmt) > 999) THEN
+							CUST.ALERTS.sendnow = "Y"
+							print(CUST.ALERTS.sendnow)
+						ENDIF
+					ENDIF
+				ENDIF
+			##### Enable TZ sms end
+		#}
+		ELSE
+		#{
+			CUST.ALERTS.sendnow = "N"
+		#}
+		ENDIF
+		IF (CUST.ALERTS.sendnow == "Y")  THEN
+		#{
+			sv_s = "PHONENO,trandate,ACCT_NAME,transacAccount,acctownership| select substr(PHONENO,-9) as PHONENO ,(select TO_CHAR(db_stat_date, 'DD-Mon-RRRR') from tbaadm.gct where bank_id= ?SVAR) as TRAN_DATE,(SUBSTR (LTRIM (GAM.ACCT_NAME),1,INSTR (LTRIM (GAM.ACCT_NAME), ' ') - 1)) as ACCT_NAME,gam.foracid as transacAccount,ACCT_OWNERSHIP from crmuser.phoneemail p ,tbaadm.gam  "
+			sv_s = sv_s + " where PHONEOREMAIL='PHONE' and gam.bank_id=p.bank_id and p.ORGKEY=gam.cif_id "
+			sv_s = sv_s + " and PREFERREDFLAG='Y' and gam.foracid= ?SVAR and gam.bank_id= ?SVAR and p.bank_id= ?SVAR and rownum<2 "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ALERTS.account + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_u =  urhk_dbSelectWithBind(sv_s)
+			IF(sv_u == 0) THEN
+				CUST.ALERTS.phoneno = BANCS.OUTPARAM.PHONENO
+				PRINT(CUST.ALERTS.phoneno)
+				CUST.ALERTS.phonenoprefx ="254"
+				print(CUST.ALERTS.phonenoprefx)
+				IF (BANCS.STDIN.contextBankId=="11") THEN
+					CUST.ALERTS.phonenoprefx ="211"
+					print(CUST.ALERTS.phonenoprefx)
+				ENDIF
+				IF (BANCS.STDIN.contextBankId=="55") THEN
+					CUST.ALERTS.phonenoprefx ="255"
+					print(CUST.ALERTS.phonenoprefx)
+				ENDIF
+				CUST.ALERTS.phoneno = CUST.ALERTS.phonenoprefx + CUST.ALERTS.phoneno
+				PRINT(CUST.ALERTS.phoneno)
+				PRINT(BANCS.OUTPARAM.ACCT_NAME)
+				PRINT(BANCS.OUTPARAM.trandate)
+				CUST.ALERTS.trandate = BANCS.OUTPARAM.trandate
+				PRINT(CUST.ALERTS.trandate)
+				PRINT(BANCS.OUTPARAM.transacAccount)
+				#### Dear CHARLES a debit of 44995.35 has been drawn from your account 0020XXXXX0236 On: 24-Aug-18 06:58:06. Customer Care 0763063000/0763026000
+				CUST.ALERTS.Dear="Dear "
+				print(CUST.ALERTS.Dear)
+				CUST.ALERTS.name = BANCS.OUTPARAM.ACCT_NAME
+				print(CUST.ALERTS.name)
+				CUST.ALERTS.acctownership = BANCS.OUTPARAM.acctownership
+				print(CUST.ALERTS.acctownership)
+				
+				CUST.ALERTS.transactiontype=""
+				IF (FIELDEXISTS(BANCS.INPUT.partTranType) == 1) THEN
+					IF (BANCS.INPUT.partTranType=="D") THEN
+						CUST.ALERTS.transactiontype = BANCS.INPUT.tranCrncyCode
+						print(CUST.ALERTS.transactiontype)
+					ELSE
+						CUST.ALERTS.transactiontype = BANCS.INPUT.tranCrncyCode
+						print(CUST.ALERTS.transactiontype)
+					ENDIF
+				ENDIF
+				CUST.ALERTS.transactionAmount = trim(BANCS.INPUT.TranAmt)
+				print(CUST.ALERTS.transactionAmount)
+				CUST.ALERTS.narraction1=""
+				IF (FIELDEXISTS(BANCS.INPUT.partTranType) == 1) THEN
+					IF (BANCS.INPUT.partTranType=="D") THEN
+						CUST.ALERTS.narraction1 = " has been drawn from your account "
+						print(CUST.ALERTS.narraction1)
+					ELSE
+						CUST.ALERTS.narraction1 = " has been credited to your account "
+						print(CUST.ALERTS.narraction1)
+					ENDIF
+				ENDIF
+				CUST.ALERTS.transacAccount = BANCS.OUTPARAM.transacAccount
+				CUST.ALERTS.mailAccount = BANCS.OUTPARAM.transacAccount 
+				PRINT(CUST.ALERTS.transacAccount)
+				CUST.ALERTS.xxxx="......"
+				print(CUST.ALERTS.xxxx)
+				##substr(gam.foracid,1,4)|| 'XXXXX'||substr(gam.foracid,10,4)
+				CUST.ALERTS.parta=MID$(CUST.ALERTS.transacAccount,1,4)
+				print(CUST.ALERTS.parta)
+				CUST.ALERTS.partb=MID$(CUST.ALERTS.transacAccount,10,4)
+				print(CUST.ALERTS.partb)
+				CUST.ALERTS.transacAccount = CUST.ALERTS.parta + CUST.ALERTS.xxxx + CUST.ALERTS.partb
+				PRINT(CUST.ALERTS.transacAccount)
+				CUST.ALERTS.narraction2 = " on "
+				print(CUST.ALERTS.narraction2)
+				CUST.ALERTS.narractionreff = " Ref:"
+				print(CUST.ALERTS.narractionreff)
+				IF (BANCS.INPUT.TranId!="") THEN 
+					CUST.ALERTS.narractionreff = CUST.ALERTS.narractionreff + trim(BANCS.INPUT.TranId)
+					print(CUST.ALERTS.narractionreff)
+				ENDIF
+				CUST.ALERTS.sysDate = MID$(BANCS.STDIN.sysDate,0,10)
+				print(CUST.ALERTS.sysDate)
+					sv_s = "sysDatesys|"
+					sv_s = sv_s + " SELECT TO_CHAR(SYSDATE,'DD-MON-RRRR HH24:MI:SS AM') as SYSDATESYS  "
+					sv_s = sv_s + " FROM DUAL"
+					PRINT(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					PRINT(sv_d)
+					IF(sv_d!=0)THEN
+						CUST.ALERTS.scriptSuccess = "N"
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						print(sv_u)
+						sv_u = urhk_SetOrbOut("Error_1|Error^Query Failed^prodCode")
+						print(sv_u)
+						GOTO ENDOFSCRIPT
+					ELSE
+						CUST.ALERTS.sysDatesys = BANCS.OUTPARAM.sysDatesys
+						PRINT(CUST.ALERTS.sysDatesys)
+					ENDIF
+				CUST.ALERTS.narraction3 = ". For any queries, contact 0763063000"
+				print(CUST.ALERTS.narraction3)
+				IF (BANCS.STDIN.contextBankId=="11") THEN
+					CUST.ALERTS.narraction3 = ". For any queries, contact 0916986000"
+					print(CUST.ALERTS.narraction3)
+				ENDIF
+				IF (BANCS.STDIN.contextBankId=="55") THEN
+					CUST.ALERTS.narraction3 = ". For any queries, contact 0768985500"
+					print(CUST.ALERTS.narraction3)
+				ENDIF
+				
+				CUST.ALERTS.massage= CUST.ALERTS.Dear + CUST.ALERTS.name + " "+ CUST.ALERTS.transactiontype + " " + CUST.ALERTS.transactionAmount + CUST.ALERTS.narraction1 + CUST.ALERTS.transacAccount +" "+ CUST.ALERTS.narractionreff + CUST.ALERTS.narraction2 + CUST.ALERTS.sysDatesys + CUST.ALERTS.narraction3
+				print(CUST.ALERTS.massage)
+
+				###################################################################################################
+				# Insert into CUSTOM.MOBEE_PUSH_SMS TABLE
+				###################################################################################################
+				
+				IF ((CUST.ALERTS.phoneno!="") AND (CUST.ALERTS.acctownership!="O")) THEN
+				#{ 
+					CALL("smspushothers.scr")
+					IF (CUST.ALERTS.FreeCode8=="ALL") THEN
+						IF  (CUST.ALERTS.sendnowemail == "Y") THEN
+							print(CUST.ALERTS.sendnowemail)
+							if (CUST.ALERTS.massage!="") then
+								call("eqmail.scr")
+								GOTO ENDOFSCRIPT
+							endif
+						ENDIF
+					ENDIF
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			ENDIF
+		#}
+		ENDIF
+	ENDIF
+ENDIF
+####noramal end
+
+IF (FIELDEXISTS(BANCS.INPUT.AcctNum) == 1) THEN
+	CUST.ALERTS.sendnow = "N"
+	IF (FIELDEXISTS(BANCS.INPUT.DeliveryChnlId) == 1) THEN
+		IF ((BANCS.INPUT.DeliveryChnlId=="EAZ") AND (BANCS.STDIN.contextBankId=="54")) THEN
+			IF (FIELDEXISTS(BANCS.INPUT.tranParticular2) == 1) THEN
+				####
+				sv_s = BANCS.INPUT.tranParticular2
+				print(sv_s)
+				sv_u = "statusbill,EslipDetails1|select substr(?SVAR,1,instr(?SVAR,'/') - 1) ,substr(?SVAR,instr(?SVAR,'/') + 1) from dual "
+				print(sv_u)
+				BANCS.INPARAM.BINDVARS=sv_s +"|"+sv_s +"|"+sv_s +"|"+sv_s 
+				sv_w=urhk_dbSelectWithBind(sv_u)
+				print(sv_w)
+				CUST.ALERTS.statusbill = BANCS.OUTPARAM.statusbill
+				print(CUST.ALERTS.statusbill)
+				CUST.ALERTS.EslipDetails1 = BANCS.OUTPARAM.EslipDetails1
+				print(CUST.ALERTS.EslipDetails1)
+					###2
+					sv_s = CUST.ALERTS.EslipDetails1
+					print(sv_s)
+					sv_u = "statusbill2,EslipDetails12|select substr(?SVAR,1,instr(?SVAR,'/') - 1) ,substr(?SVAR,instr(?SVAR,'/') + 1) from dual "
+					print(sv_u)
+					BANCS.INPARAM.BINDVARS=sv_s +"|"+sv_s +"|"+sv_s +"|"+sv_s 
+					sv_w=urhk_dbSelectWithBind(sv_u)
+					print(sv_w)
+					CUST.ALERTS.statusbill2 = BANCS.OUTPARAM.statusbill2
+					print(CUST.ALERTS.statusbill2)
+					CUST.ALERTS.EslipDetails12 = BANCS.OUTPARAM.EslipDetails12
+					print(CUST.ALERTS.EslipDetails12)
+					###2
+						###3
+						sv_s = CUST.ALERTS.EslipDetails12
+						print(sv_s)
+						sv_u = "statusbill3,EslipDetails13|select substr(?SVAR,1,instr(?SVAR,'/') - 1) ,substr(?SVAR,instr(?SVAR,'/') + 1) from dual "
+						print(sv_u)
+						BANCS.INPARAM.BINDVARS=sv_s +"|"+sv_s +"|"+sv_s +"|"+sv_s 
+						sv_w=urhk_dbSelectWithBind(sv_u)
+						print(sv_w)
+						CUST.ALERTS.statusbill3 = BANCS.OUTPARAM.statusbill3
+						print(CUST.ALERTS.statusbill3)
+						CUST.ALERTS.EslipDetails13 = BANCS.OUTPARAM.EslipDetails13
+						print(CUST.ALERTS.EslipDetails13)
+						###3
+				####
+				IF ((CUST.ALERTS.statusbill=="P2PIntra") OR (CUST.ALERTS.statusbill3 =="UNBLOCK")) THEN
+					CUST.ALERTS.account = BANCS.INPUT.AcctNum
+					print(CUST.ALERTS.account)
+					#IF (BANCS.INPUT.tranRemarks=="254763626695") THEN
+						sv_s = "PHONENO,trandate,ACCT_NAME,transacAccount,acctownership| select FORACID,(select TO_CHAR(db_stat_date, 'DD-Mon-RRRR') from tbaadm.gct where bank_id= ?SVAR) as TRAN_DATE,(SUBSTR (LTRIM (GAM.ACCT_NAME),1,INSTR (LTRIM (GAM.ACCT_NAME), ' ') - 1)) as ACCT_NAME,gam.foracid as transacAccount,ACCT_OWNERSHIP from tbaadm.gam  "
+						sv_s = sv_s + " where  "
+						sv_s = sv_s + " gam.foracid= ?SVAR and gam.bank_id= ?SVAR  "
+						PRINT(sv_s)
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  CUST.ALERTS.account + "|" + BANCS.STDIN.contextBankId
+						PRINT(BANCS.INPARAM.BINDVARS)
+						sv_u =  urhk_dbSelectWithBind(sv_s)
+						IF(sv_u == 0) THEN
+							CUST.ALERTS.phoneno = BANCS.OUTPARAM.PHONENO
+							PRINT(CUST.ALERTS.phoneno)
+							IF (CUST.ALERTS.statusbill=="P2PIntra") THEN
+								CUST.ALERTS.phoneno = BANCS.INPUT.tranRemarks
+								PRINT(CUST.ALERTS.phoneno)
+							ENDIF
+							IF (CUST.ALERTS.statusbill3 =="UNBLOCK") THEN
+								IF (BANCS.INPUT.partTranType=="D") THEN
+									CUST.ALERTS.phoneno = CUST.ALERTS.statusbill
+									PRINT(CUST.ALERTS.phoneno)
+								ELSE
+									CUST.ALERTS.phoneno = CUST.ALERTS.statusbill2
+									PRINT(CUST.ALERTS.phoneno)
+								ENDIF
+							ENDIF
+							PRINT(BANCS.OUTPARAM.ACCT_NAME)
+							PRINT(BANCS.OUTPARAM.trandate)
+							CUST.ALERTS.trandate = BANCS.OUTPARAM.trandate
+							PRINT(CUST.ALERTS.trandate)
+							PRINT(BANCS.OUTPARAM.transacAccount)
+							#### Dear CHARLES a debit of 44995.35 has been drawn from your account 0020XXXXX0236 On: 24-Aug-18 06:58:06. Customer Care 0763063000/0763026000
+							CUST.ALERTS.Dear="Dear "
+							print(CUST.ALERTS.Dear)
+							CUST.ALERTS.name = BANCS.OUTPARAM.ACCT_NAME
+							print(CUST.ALERTS.name)
+							CUST.ALERTS.acctownership = BANCS.OUTPARAM.acctownership
+							print(CUST.ALERTS.acctownership)
+							
+							CUST.ALERTS.transactiontype=""
+							IF (FIELDEXISTS(BANCS.INPUT.partTranType) == 1) THEN
+								IF (BANCS.INPUT.partTranType=="D") THEN
+									CUST.ALERTS.transactiontype = BANCS.INPUT.tranCrncyCode
+									print(CUST.ALERTS.transactiontype)
+								ELSE
+									CUST.ALERTS.transactiontype = BANCS.INPUT.tranCrncyCode
+									print(CUST.ALERTS.transactiontype)
+								ENDIF
+							ENDIF
+							CUST.ALERTS.transactionAmount = trim(BANCS.INPUT.TranAmt)
+							print(CUST.ALERTS.transactionAmount)
+							CUST.ALERTS.narraction1=""
+							IF (FIELDEXISTS(BANCS.INPUT.partTranType) == 1) THEN
+								IF (BANCS.INPUT.partTranType=="D") THEN
+									CUST.ALERTS.narraction1 = " has been drawn from your account "
+									print(CUST.ALERTS.narraction1)
+								ELSE
+									CUST.ALERTS.narraction1 = " has been credited to your account "
+									print(CUST.ALERTS.narraction1)
+								ENDIF
+							ENDIF
+							CUST.ALERTS.transacAccount = BANCS.OUTPARAM.transacAccount
+							PRINT(CUST.ALERTS.transacAccount)
+							CUST.ALERTS.xxxx="......"
+							print(CUST.ALERTS.xxxx)
+							##substr(gam.foracid,1,4)|| 'XXXXX'||substr(gam.foracid,10,4)
+							CUST.ALERTS.parta=MID$(CUST.ALERTS.transacAccount,1,4)
+							print(CUST.ALERTS.parta)
+							CUST.ALERTS.partb=MID$(CUST.ALERTS.transacAccount,10,4)
+							print(CUST.ALERTS.partb)
+							CUST.ALERTS.transacAccount = CUST.ALERTS.parta + CUST.ALERTS.xxxx + CUST.ALERTS.partb
+							PRINT(CUST.ALERTS.transacAccount)
+							CUST.ALERTS.narraction2 = " on "
+							print(CUST.ALERTS.narraction2)
+							CUST.ALERTS.narractionreff = " Ref:"
+							print(CUST.ALERTS.narractionreff)
+							IF (CUST.ALERTS.statusbill=="P2PIntra") THEN 
+								CUST.ALERTS.narractionreff = CUST.ALERTS.narractionreff + CUST.ALERTS.EslipDetails1
+								print(CUST.ALERTS.narractionreff)
+							ENDIF
+							IF (CUST.ALERTS.statusbill3 =="UNBLOCK") THEN
+								CUST.ALERTS.narractionreff = CUST.ALERTS.narractionreff + CUST.ALERTS.EslipDetails13
+								print(CUST.ALERTS.narractionreff)
+							ENDIF
+							CUST.ALERTS.sysDate = MID$(BANCS.STDIN.sysDate,0,10)
+							print(CUST.ALERTS.sysDate)
+								sv_s = "sysDatesys|"
+								sv_s = sv_s + " SELECT TO_CHAR(SYSDATE,'DD-MON-RRRR HH24:MI:SS AM') as SYSDATESYS  "
+								sv_s = sv_s + " FROM DUAL"
+								PRINT(sv_s)
+								sv_d = urhk_dbSelectWithBind(sv_s)
+								PRINT(sv_d)
+								IF(sv_d!=0)THEN
+									CUST.ALERTS.scriptSuccess = "N"
+									sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+									print(sv_u)
+									sv_u = urhk_SetOrbOut("Error_1|Error^Query Failed^prodCode")
+									print(sv_u)
+									GOTO ENDOFSCRIPT
+								ELSE
+									CUST.ALERTS.sysDatesys = BANCS.OUTPARAM.sysDatesys
+									PRINT(CUST.ALERTS.sysDatesys)
+								ENDIF
+							CUST.ALERTS.narraction3 = ". For any queries, contact 0763063000"
+							print(CUST.ALERTS.narraction3)
+							
+							CUST.ALERTS.massage= CUST.ALERTS.Dear + CUST.ALERTS.name + " "+ CUST.ALERTS.transactiontype + " " + CUST.ALERTS.transactionAmount + CUST.ALERTS.narraction1 + CUST.ALERTS.transacAccount +" "+ CUST.ALERTS.narractionreff + CUST.ALERTS.narraction2 + CUST.ALERTS.sysDatesys + CUST.ALERTS.narraction3
+							print(CUST.ALERTS.massage)
+							
+							###################################################################################################
+							# Insert into CUSTOM.MOBEE_PUSH_SMS TABLE
+							###################################################################################################
+							
+							IF ((CUST.ALERTS.phoneno!="") AND (CUST.ALERTS.acctownership!="O")) THEN
+							#{
+								IF (CUST.ALERTS.statusbill=="P2PIntra") THEN
+									IF (BANCS.INPUT.partTranType=="D") THEN
+										if (CINT(BANCS.INPUT.TranAmt) > 150) then 
+											CALL("smspushothers.scr")
+										 endif
+									ENDIF
+								ENDIF
+								IF (CUST.ALERTS.statusbill3 =="UNBLOCK") THEN
+									if (CINT(BANCS.INPUT.TranAmt) > 150) then 
+										CALL("smspushothers.scr")
+									endif
+								ENDIF
+							#}
+							ENDIF
+						ENDIF
+					#ENDIF
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+ENDOFSCRIPT:
+exitscript
+TRACE OFF
+END-->
+

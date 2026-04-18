@@ -1,0 +1,347 @@
+#=================================================
+# script: GetAcctNum.scr
+# event: NA
+# description: To get account number during
+#                               account opening.
+#Input Value:
+#BANCS.INPUT.acctPrefixNum
+#BANCS.INPUT.schmCode
+#BANCS.INPUT.schmType
+#BANCS.INPUT.glSubHeadCode
+#BANCS.INPUT.crncyCode
+#BANCS.INPUT.cifId
+#BANCS.INPUT.solId
+#BANCS.INPUT.solAlias
+#BANCS.INPUT.dcAlias
+#BANCS.INPUT.acctType
+#BANCS.INPUT.crncyAlias
+#BANCS.INPUT.noOfAccts
+#BANCS.INPUT.acctOwnership
+#
+#Output value:
+#BANCS.OUTPUT.newForacid
+# Changes done by Ankit Raj on 07-04-2018
+#
+#=================================================
+
+<--start
+trace on 
+#==================================================
+# Creation of Custom Repository
+#==================================================
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+#{
+        CREATECLASS("CUST", "DATA", 5)
+#}
+ENDIF
+
+sv_a = urhk_B2k_PrintRepos("BANCS")
+
+#If the foracid is passed as NULL, the existing logic of forming the account number from NNT will continue.
+#The custom logic for account number needs to be put here.
+#Account number should be unique for every execution.
+
+
+PRINT(BANCS.INPUT.schmCode)
+PRINT(BANCS.STDIN.contextBankId)
+BANCS.OUTPUT.newForacid = ""
+#this DB sequence logic only for scheme code LA527 and only for entity 54 
+IF(BANCS.INPUT.schmCode == "LA527") THEN
+#{
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.schmCode
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_a = "nextNum|SELECT DECODE(NEXT_ACCT_NUM_PREFIX,'EQBCA',LPAD(CUSTOM.FORACID_SEQ_EQABC_54.NEXTVAL,8,'0'),'') FROM TBAADM.GSP WHERE SCHM_CODE= ?SVAR AND BANK_ID= '54'"
+
+	sv_b = urhk_dbSelectWithBind(sv_a)
+	IF (sv_b == 0) THEN
+	#{
+        	CUST.DATA.nextNum = BANCS.OUTPARAM.nextNum
+        	print(CUST.DATA.nextNum)
+	#}
+	ENDIF
+
+	IF(CUST.DATA.nextNum != "") THEN
+	#{
+		BANCS.OUTPUT.newForacid = BANCS.INPUT.solId + "" + BANCS.INPUT.acctType + "" + CUST.DATA.nextNum
+		PRINT(BANCS.OUTPUT.newForacid)
+	#}
+	ENDIF
+#}
+ENDIF
+
+sv_a = "schm_type|SELECT schm_type FROM TBAADM.GSP WHERE SCHM_CODE= ?SVAR AND BANK_ID= '54' and rownum=1"
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.schmCode
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_b = urhk_dbSelectWithBind(sv_a)
+IF (sv_b == 0) THEN
+#{
+	CUST.DATA.schmtype= BANCS.OUTPARAM.schm_type
+	print(CUST.DATA.schmtype)
+	BANCS.INPUT.schmType =CUST.DATA.schmtype
+#}
+ENDIF	
+
+IF(BANCS.INPUT.schmType == "ODA") THEN
+	
+
+	print(BANCS.INPUT.solId)
+
+	
+	BANCS.INPUT.seq =cint(BANCS.INPUT.noOfAccts) +1
+	print(BANCS.INPUT.seq)
+	
+	
+		
+	##LOOP
+
+	CUST.DATA.LOOP = "0"
+	
+	while(CUST.DATA.LOOP == "0")		
+		
+			CUST.DATA.SeqA = "CUSTOM.FORACID_"+ BANCS.INPUT.solId +"_SEQ_ODA_54" 
+			PRINT(CUST.DATA.SeqA)
+			CUST.DATA.Seq2A = "FORACID_"+ BANCS.INPUT.solId+"_SEQ_ODA_54" 
+			PRINT(CUST.DATA.Seq2A)
+			CUST.DATA.Seq3A = "CUSTOM.FORACID_"+ BANCS.INPUT.solId+"_SEQ_ODA_54.NEXTVAL" 
+			PRINT(CUST.DATA.Seq3A)
+			sv_s="tbcount| SELECT COUNT(*) FROM ALL_SEQUENCES  where  SEQUENCE_OWNER ='CUSTOM'  AND SEQUENCE_NAME  = ?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.DATA.Seq2A
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)			
+			IF (sv_d == 0) THEN
+				PRINT(BANCS.OUTPARAM.tbcount)
+				IF (CINT(BANCS.OUTPARAM.tbcount)> 0 ) THEN 
+					CUST.DATA.resultMsg = "Sequence already Exist"
+					PRINT(CUST.DATA.resultMsg)				
+				ELSE
+					sv_u = urhk_getFileLocation("COM|ODA54seq.com")
+					sv_l = BANCS.OUTPARAM.fileLocation
+					sv_t = sv_l + "ODA54seq.com" + " " + CUST.DATA.Seq2A
+					sv_u = SYSTEM(sv_t)
+					sv_k = 1
+					CUST.DATA.resultMsg = " Sequence " + CUST.DATA.Seq2A + " Created "
+					PRINT(CUST.DATA.resultMsg)
+				ENDIF
+			ENDIF
+
+			CUST.DATA.Query = "nextNum|SELECT "+ CUST.DATA.Seq3A +" FROM DUAL"
+			print (CUST.DATA.Query)
+			sv_a = CUST.DATA.Query
+			print (sv_a)
+			sv_b = urhk_dbSelectWithBind(sv_a)
+			IF (sv_b == 0) THEN
+				BANCS.INPUT.seq = BANCS.OUTPARAM.nextNum
+				print(BANCS.INPUT.seq)
+			ENDIF
+			CUST.DATA.AcctType ="OD"
+			
+			if(BANCS.INPUT.schmCode=="ML001") then
+				CUST.DATA.AcctType ="ML"
+			endif
+			if(BANCS.INPUT.schmCode=="DL002") then
+				CUST.DATA.AcctType ="DL"
+			endif
+			if(BANCS.INPUT.schmCode=="OD549") then
+				CUST.DATA.AcctType ="EL"
+			endif
+			if(BANCS.INPUT.schmCode=="OD552") then
+				CUST.DATA.AcctType ="SM"
+			endif
+			if(BANCS.INPUT.schmCode=="TBL00") then
+				CUST.DATA.AcctType ="TB"
+			endif
+			if ((BANCS.INPUT.schmCode=="OD550") OR(BANCS.INPUT.schmCode=="OD551")) then
+				CUST.DATA.AcctType ="BP"
+			endif	
+	
+
+			BANCS.INPUT.seq = LPAD(BANCS.INPUT.seq, 8, '0')
+			PRINT(BANCS.INPUT.seq)
+			BANCS.INPUT.nextNum=BANCS.INPUT.seq
+
+
+			BANCS.INPUT.NewacctNum= BANCS.INPUT.solId  + "" + CUST.DATA.AcctType + "" + BANCS.INPUT.seq
+			print(BANCS.INPUT.NewacctNum)
+
+			BANCS.OUTPUT.newForacid = BANCS.INPUT.NewacctNum
+
+
+			sv_u = urhk_getAcctDetailsInRepository(BANCS.OUTPUT.newForacid)
+			IF (sv_u == 0) THEN
+				CUST.DATA.MGS  = "FORACID EXIST"
+				print(CUST.DATA.MGS)
+				CUST.DATA.LOOP = "0"
+			ELSE
+				CUST.DATA.LOOP = "1"
+			ENDIF
+	DO
+	##LOOP
+
+Print (BANCS.OUTPUT.newForacid)
+	
+
+ENDIF
+
+#+++++LAA
+IF(BANCS.INPUT.schmCode == "LA511") THEN
+	
+
+	print(BANCS.INPUT.solId)
+
+	
+	BANCS.INPUT.seq =cint(BANCS.INPUT.noOfAccts) +1
+	print(BANCS.INPUT.seq)
+	
+	
+		
+	##LOOP
+
+	CUST.DATA.LOOP = "0"
+	
+	while(CUST.DATA.LOOP == "0")		
+		
+			CUST.DATA.SeqA = "CUSTOM.FORACID_"+ BANCS.INPUT.solId +"_SEQ_LAA_54" 
+			PRINT(CUST.DATA.SeqA)
+			CUST.DATA.Seq2A = "FORACID_"+ BANCS.INPUT.solId+"_SEQ_LAA_54" 
+			PRINT(CUST.DATA.Seq2A)
+			CUST.DATA.Seq3A = "CUSTOM.FORACID_"+ BANCS.INPUT.solId+"_SEQ_LAA_54.NEXTVAL" 
+			PRINT(CUST.DATA.Seq3A)
+			sv_s="tbcount| SELECT COUNT(*) FROM ALL_SEQUENCES  where  SEQUENCE_OWNER ='CUSTOM'  AND SEQUENCE_NAME  = ?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.DATA.Seq2A
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)			
+			IF (sv_d == 0) THEN
+				PRINT(BANCS.OUTPARAM.tbcount)
+				IF (CINT(BANCS.OUTPARAM.tbcount)> 0 ) THEN 
+					CUST.DATA.resultMsg = "Sequence already Exist"
+					PRINT(CUST.DATA.resultMsg)				
+				ELSE
+					sv_u = urhk_getFileLocation("COM|ODA54seq.com")
+					sv_l = BANCS.OUTPARAM.fileLocation
+					sv_t = sv_l + "ODA54seq.com" + " " + CUST.DATA.Seq2A
+					sv_u = SYSTEM(sv_t)
+					sv_k = 1
+					CUST.DATA.resultMsg = " Sequence " + CUST.DATA.Seq2A + " Created "
+					PRINT(CUST.DATA.resultMsg)
+				ENDIF
+			ENDIF
+
+			CUST.DATA.Query = "nextNum|SELECT "+ CUST.DATA.Seq3A +" FROM DUAL"
+			print (CUST.DATA.Query)
+			sv_a = CUST.DATA.Query
+			print (sv_a)
+			sv_b = urhk_dbSelectWithBind(sv_a)
+			IF (sv_b == 0) THEN
+				BANCS.INPUT.seq = BANCS.OUTPARAM.nextNum
+				print(BANCS.INPUT.seq)
+			ENDIF
+			CUST.DATA.AcctType ="05"		
+			
+
+			BANCS.INPUT.seq = LPAD(BANCS.INPUT.seq, 8, '0')
+			PRINT(BANCS.INPUT.seq)
+			BANCS.INPUT.nextNum=BANCS.INPUT.seq
+
+
+			BANCS.INPUT.NewacctNum= BANCS.INPUT.solId  + "" + CUST.DATA.AcctType + "" + BANCS.INPUT.seq
+			print(BANCS.INPUT.NewacctNum)
+
+			BANCS.OUTPUT.newForacid = BANCS.INPUT.NewacctNum
+
+
+			sv_u = urhk_getAcctDetailsInRepository(BANCS.OUTPUT.newForacid)
+			IF (sv_u == 0) THEN
+				CUST.DATA.MGS  = "FORACID EXIST"
+				print(CUST.DATA.MGS)
+				CUST.DATA.LOOP = "0"
+			ELSE
+				CUST.DATA.LOOP = "1"
+			ENDIF
+	DO
+	##LOOP
+
+Print (BANCS.OUTPUT.newForacid)
+	
+
+ENDIF
+
+
+#+++++LAA
+
+IF ( ((BANCS.INPUT.schmCode == "SB145") OR  (BANCS.INPUT.schmCode == "SB146")  OR (BANCS.INPUT.schmCode == "SB137")) and ((BANCS.STDIN.userId == "SK04908") or(BANCS.STDIN.userId == "BJMS54")) ) THEN
+	CUST.DATA.Seq = "CUSTOM.FORACID_"+ BANCS.INPUT.solId +"_SEQ_SPJ_54"
+	PRINT(CUST.DATA.Seq)
+	CUST.DATA.Seq2 = "FORACID_"+ BANCS.INPUT.solId+"_SEQ_SPJ_54"
+	PRINT(CUST.DATA.Seq2)
+	CUST.DATA.Seq3 = "CUSTOM.FORACID_"+ BANCS.INPUT.solId+"_SEQ_SPJ_54.NEXTVAL"
+	PRINT(CUST.DATA.Seq3)
+
+	sv_s="tbcount| SELECT COUNT(*) FROM ALL_SEQUENCES  where  SEQUENCE_OWNER ='CUSTOM'  AND SEQUENCE_NAME  = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.DATA.Seq2
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+
+	IF (sv_d == 0) THEN
+		PRINT(BANCS.OUTPARAM.tbcount)
+		IF (CINT(BANCS.OUTPARAM.tbcount)> 0 ) THEN
+		CUST.DATA.resultMsg = "Sequence already Exist"
+		PRINT(CUST.DATA.resultMsg)
+	ELSE
+		sv_u = urhk_getFileLocation("COM|SPJseq.com")
+		sv_l = BANCS.OUTPARAM.fileLocation
+		sv_t = sv_l + "SPJseq.com" + " " + CUST.DATA.Seq2
+		sv_u = SYSTEM(sv_t)
+		sv_k = 1
+		CUST.DATA.resultMsg = " Sequence " + CUST.DATA.Seq2 + " Created "
+		PRINT(CUST.DATA.resultMsg)
+	ENDIF
+
+	CUST.DATA.Query = "nextNum|SELECT "+ CUST.DATA.Seq3 +" FROM DUAL"
+	print (CUST.DATA.Query)
+
+	sv_a = CUST.DATA.Query
+	print (sv_a)
+	sv_b = urhk_dbSelectWithBind(sv_a)
+	IF (sv_b == 0) THEN
+	#{
+		BANCS.INPUT.seq = BANCS.OUTPARAM.nextNum
+		print(BANCS.INPUT.seq)
+	#}
+	ENDIF
+
+	
+	BANCS.INPUT.seq = LPAD(BANCS.INPUT.seq, 8, '0')
+
+	BANCS.OUTPUT.newForacid = BANCS.INPUT.solId + "11" + BANCS.INPUT.seq
+	Print (BANCS.OUTPUT.newForacid)
+
+ENDIF
+
+
+#=======================================================================
+#REPOSITORY DELETION
+#=======================================================================
+
+IF (REPEXISTS("CUST") != 0) THEN
+#{
+        DELETEREP("CUST")
+#}
+ENDIF
+
+exitScript
+trace off
+end-->
+

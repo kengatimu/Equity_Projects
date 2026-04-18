@@ -1,0 +1,328 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : s_laapaymn001.scr
+#   Description     : This script is called from "SRV_ScheduleLaPmt_validate_data.scr" for Scheme Code validation
+#   Date            : 02-02-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : SRV_ScheduleLaPmt_validate_data.scr
+#   Calling Script  : getcparamvalue.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          Description.
+#   -------         ------          ------          ------------
+#   1.0             02-02-2013      Sateesh     Original Version
+#   2.0             10-09-2013      Bharath			Modified for new porting items
+#-----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="cc5a7498cea1fcd3a02ae6648419932af99b6c07325972e1b7f094a0f55e173c"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","PAYMNT") == 0) THEN
+	#{
+		CREATECLASS("CUST","PAYMNT",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_GetChannelInfo("")
+	print(sv_a)
+	CUST.PAYMNT.DccId =BANCS.OUTPARAM.DccId
+	print(CUST.PAYMNT.DccId)
+	
+	CUST.PAYMNT.errMsg = ""
+	IF (BANCS.STDIN.onlineOrBatch == "B") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#-----------------------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-----------------------------------------------------------------------------------------------
+	CUST.PAYMNT.errMsg = ""
+	
+	#-----------------------------------------------------------------------------------------------
+	#Finding total no of records
+	#-----------------------------------------------------------------------------------------------
+	sv_u = urhk_SRV_NumOfRecs("laPayDtlLL")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.PAYMNT.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+		print(CUST.PAYMNT.noOfRecords)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_SetErr("Error:urhk_SRV_NumOfRecs failed")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.PAYMNT.recNo = "0"
+	WHILE (CINT(CUST.PAYMNT.recNo) < CINT(CUST.PAYMNT.noOfRecords) )
+	#{
+		#--------------------------------------------------------------------
+		#Getting loan account ID
+		#--------------------------------------------------------------------
+		sv_s = "laPayDtlLL.<rec_"+ CUST.PAYMNT.recNo +">.laAcct.foracid"
+		print(sv_s)
+		sv_a=urhk_SRV_GetVal(sv_s)
+		CUST.PAYMNT.loanAcctId = trim(BANCS.OUTPARAM.srvValue)
+		print(CUST.PAYMNT.loanAcctId)
+		
+		#--------------------------------------------------------------------
+		#Getting source account ID
+		#--------------------------------------------------------------------
+		sv_s = "laPayDtlLL.<rec_"+ CUST.PAYMNT.recNo +">.srcAcct.foracid"
+		print(sv_s)
+		sv_a=urhk_SRV_GetVal(sv_s)
+		CUST.PAYMNT.sourceAcctId = trim(BANCS.OUTPARAM.srvValue)
+		print(CUST.PAYMNT.sourceAcctId)
+		print(BANCS.STDIN.userWorkClass)
+		IF (CUST.PAYMNT.sourceAcctId == "") THEN
+		#{
+			CUST.PAYMNT.errMsg = "Error in getting for source account "
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		#Finding scheme code for source account
+		#-----------------------------------------------------------------------------------------------
+		sv_s = " schmCode|SELECT schm_code FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.foracid = ?SVAR  AND GAM.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.PAYMNT.sourceAcctId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.PAYMNT.sourceSchmCode =BANCS.OUTPARAM.schmCode
+			print(CUST.PAYMNT.sourceSchmCode)
+			#}
+		ELSE
+			#{
+			CUST.PAYMNT.errMsg = "Error in getting schm code for given source account " +CUST.PAYMNT.sourceAcctId
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		#Getting scheme code1 from CPARAM values
+		#-----------------------------------------------------------------------------------------------
+		BANCS.INPUT.moduleName = "LAAPAYMNT"
+		BANCS.INPUT.parameterId = "SCHM_CODE1"
+		CALL ("getcparamvalue.scr")
+		CUST.CPARAM.schmCode1 = BANCS.OUTPUT.parameterVal
+		print(CUST.CPARAM.schmCode1)
+		
+		#-----------------------------------------------------------------------------------------------
+		#Compare CPARAM scheme code with source account scheme code and set SRV Error
+		#-----------------------------------------------------------------------------------------------
+		IF (CUST.PAYMNT.sourceSchmCode==CUST.CPARAM.schmCode1) THEN
+		#{
+			CUST.PAYMNT.recVal = CINT(CUST.PAYMNT.recNo) + 1
+			sv_a = urhk_SRV_SetErr("You Cannot use Group Saving A/c Here for "+CUST.PAYMNT.loanAcctId+".Rec No."+CUST.PAYMNT.recVal+" ... contact Admin...")
+			print(sv_a)
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		#----------------------------------------------------------------------------------------------
+		#Finding schemecode and custid for both loan account and source account
+		#-----------------------------------------------------------------------------------------------
+		IF ((CUST.PAYMNT.loanAcctId != "") AND (CUST.PAYMNT.sourceAcctId != "")) THEN
+		#{
+			sv_u=urhk_getAcctDetailsInRepository(CUST.PAYMNT.sourceAcctId)
+			print(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				CUST.PAYMNT.sourceSchmCode =BANCS.OUTPARAM.schmCode
+				CUST.PAYMNT.sourceCustId =trim(BANCS.OUTPARAM.custId)
+				print(CUST.PAYMNT.sourceSchmCode)
+				print(CUST.PAYMNT.sourceCustId)
+				#}
+			ELSE
+				#{
+				CUST.PAYMNT.errMsg = "Error in getting schm code AND custId for given source account " +CUST.PAYMNT.sourceAcctId
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			sv_u=urhk_getAcctDetailsInRepository(CUST.PAYMNT.loanAcctId)
+			print(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				CUST.PAYMNT.loanSchmCode =BANCS.OUTPARAM.schmCode
+				CUST.PAYMNT.loanCustId =trim(BANCS.OUTPARAM.custId)
+				print(CUST.PAYMNT.loanSchmCode)
+				print(CUST.PAYMNT.loanCustId)
+				#}
+			ELSE
+				#{
+				CUST.PAYMNT.errMsg = "Error in getting schm code AND custId for given loan account " +CUST.PAYMNT.acctId
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			#-----------------------------------------------------------------------------------------------
+			#Getting userworkclass from CPARAM values
+			#-----------------------------------------------------------------------------------------------
+			BANCS.INPUT.moduleName = "LAAPAYMNT"
+			BANCS.INPUT.parameterId = "SCHM_CODE2"
+			CALL ("getcparamvalue.scr")
+			CUST.CPARAM.schmCode2 = BANCS.OUTPUT.parameterVal
+			print(CUST.CPARAM.schmCode2)
+			
+			#new porting changes
+			#-----------------------------------------------------------------------------------------------
+			#Finding loan account cif id
+			#-----------------------------------------------------------------------------------------------
+			sv_s = "laaCifId|"
+			sv_s = sv_s + "SELECT cif_id "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE foracid = ?SVAR "
+			sv_s = sv_s + "AND del_flg = 'N' "
+			sv_s = sv_s + "AND bank_id = ?SVAR"
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.PAYMNT.loanAcctId + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF (sv_d == 0) THEN
+			#{
+				CUST.PAYMNT.laaCifId = BANCS.OUTPARAM.laaCifId
+				PRINT(CUST.PAYMNT.laaCifId)
+				#}
+			ELSE
+				#{
+				CUST.PAYMNT.recVal = CINT(CUST.PAYMNT.recNo) + 1
+				sv_a = urhk_SRV_SetErr("Error in finding cif id for "+CUST.PAYMNT.loanAcctId+".Rec No."+CUST.PAYMNT.recVal)
+				print(sv_a)
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ENDIF
+			
+			#-----------------------------------------------------------------------------------------------
+			#Finding source account cif id
+			#-----------------------------------------------------------------------------------------------
+			sv_s = "srcCifId|"
+			sv_s = sv_s + "SELECT cif_id "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE foracid = ?SVAR "
+			sv_s = sv_s + "AND del_flg = 'N' "
+			sv_s = sv_s + "AND bank_id = ?SVAR"
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.PAYMNT.sourceAcctId + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF (sv_d == 0) THEN
+			#{
+				CUST.PAYMNT.srcCifId = BANCS.OUTPARAM.srcCifId
+				PRINT(CUST.PAYMNT.srcCifId)
+				#}
+			ELSE
+				#{
+				CUST.PAYMNT.recVal = CINT(CUST.PAYMNT.recNo) + 1
+				sv_a = urhk_SRV_SetErr("Error in finding cif id for " + CUST.PAYMNT.sourceAcctId + ".Rec No."+CUST.PAYMNT.recVal)
+				print(sv_a)
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ENDIF
+			
+			#-----------------------------------------------------------------------------------------------
+			#Compare CPARAM scheme code with operativec account scheme code and set SRV Error
+			#-----------------------------------------------------------------------------------------------
+			IF (CUST.PAYMNT.sourceSchmCode==CUST.CPARAM.schmCode2) THEN
+			#{
+				print(BANCS.STDIN.userWorkClass)
+				#-----------------------------------------------------------------------------------------------
+				#Getting scheme code2 from CPARAM values
+				#-----------------------------------------------------------------------------------------------
+				BANCS.INPUT.moduleName = "LAAPAYMNT"
+				BANCS.INPUT.parameterId = "WORK_CLASS"
+				CALL ("getcparamvalue.scr")
+				CUST.CPARAM.workClass = BANCS.OUTPUT.parameterVal
+				print(CUST.CPARAM.workClass)
+				CUST.PAYMNT.recVal = CINT(CUST.PAYMNT.recNo) + 1
+				
+				IF (BANCS.STDIN.userWorkClass != CUST.CPARAM.workClass) THEN
+				#{
+					IF (CUST.PAYMNT.laaCifId != CUST.PAYMNT.srcCifId) THEN
+					#{
+						IF  ((CUST.PAYMNT.sourceAcctId != "0180291028202") AND (CUST.PAYMNT.sourceAcctId != "0180294058928")) THEN
+						#{
+							IF (CUST.PAYMNT.DccId !="EMP") THEN
+							#{
+								sv_a = urhk_SRV_SetErr("Source Account has to Belong to Loan Account Onwer for a/c "+CUST.PAYMNT.loanAcctId+".Rec No."+CUST.PAYMNT.recVal)
+								print(sv_a)
+								BANCS.OUTPUT.successOrFailure="F"
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			#-----------------------------------------------------------------------------------------------
+			#Validating loan account cif id and source account cid id
+			#-----------------------------------------------------------------------------------------------
+			IF (CUST.PAYMNT.laaCifId != CUST.PAYMNT.srcCifId) THEN
+			#{
+				BANCS.INPUT.srcAcctId = CUST.PAYMNT.sourceAcctId
+				CALL("s_laapaydp001.scr")
+				print(BANCS.OUTPUT.skipVal)
+				#IF ( BANCS.STDIN.userWorkClass != "310" ) THEN
+				IF(BANCS.OUTPUT.skipVal == "N") THEN
+				#{
+					IF ((CUST.PAYMNT.sourceAcctId != "0180291028202") AND (CUST.PAYMNT.sourceAcctId != "0180294058928")) THEN
+					#{
+						IF (CUST.PAYMNT.DccId !="EMP") THEN
+						#{
+							CUST.PAYMNT.recVal = CINT(CUST.PAYMNT.recNo) + 1
+							sv_a = urhk_SRV_SetErr("Source Account has to Belong to Loan Account Onwer for "+CUST.PAYMNT.loanAcctId+".Rec No."+CUST.PAYMNT.recVal)
+							print(sv_a)
+							BANCS.OUTPUT.successOrFailure="F"
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#end of new porting changes
+		#}
+		ENDIF
+		
+		CUST.PAYMNT.recNo = CINT(CUST.PAYMNT.recNo) + 1
+		print(CUST.PAYMNT.recNo)
+	#}
+	DO
+	
+	ENDOFSCRIPT:
+		IF (CUST.PAYMNT.errMsg != "") THEN
+		#{
+			sv_u = system("echo '"+CUST.PAYMNT.errMsg+"' >>LAAPAYMNT.log")
+			sv_a = urhk_SRV_SetErr(CUST.PAYMNT.errMsg)
+		#}
+		ENDIF
+		TRACE OFF
+END-->

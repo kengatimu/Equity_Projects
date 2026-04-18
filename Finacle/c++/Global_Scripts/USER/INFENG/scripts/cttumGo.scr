@@ -1,0 +1,260 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       cttumGo.scr
+# Author                :       Mani Kutti
+# Description           :       This is the script called by CTTUM 
+# Called Script         :       None
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           24-oct-2022         Mani Kutti          original Version		1.0
+#  2           28-oct-2022         Irungu James        Include sleep and Update Avoid duplicate		1.1
+#  3           29-Jul-2024         Irungu James        Maker Checker 1.2
+#-----------------------------------------------------------------------------------------------------------
+<--start
+trace on
+if(repexists("CUST")==0)then
+#{
+	createrep("CUST")
+#}
+endif
+
+if(classexists("CUST","DATA")==0)then
+#{
+    createclass("CUST","DATA",5)
+#}
+endif
+
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+
+	CUST.DATA.funcCode	= BANCS.INPUT.funcCode
+	print(CUST.DATA.funcCode)
+	CUST.DATA.fileName = BANCS.INPUT.fileName
+	print(BANCS.INPUT.fileName)
+CUST.DATA.BatchID      = BANCS.INPUT.batchId
+print(BANCS.INPUT.batchId)
+
+	if(CUST.DATA.funcCode == "V")then
+
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CTTUM_AUTO_POST_PROCESS where BANK_ID ='"+BANCS.STDIN.contextBankId+"' and BATCHID ='"+CUST.DATA.BatchID+"'" )
+		CUST.DATA.count               =       BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Bacth ID Doesn't Exists"
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+			GOTO ENDOFSCRIPT
+		ENDIF
+		
+		sv_s = "  update custom.CTTUM_AUTO_POST_PROCESS set LCHG_USER_ID = ?SVAR , ENTITY_CRE_FLG ='N', PROCESSED_FLG = 'N' , LCHG_TIME=  sysdate where BATCHID = ?SVAR  and BANK_ID =?SVAR  and ENTITY_CRE_FLG= 'M' and PROCESSED_FLG ='M'   "
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.userId  +"|"+  CUST.DATA.BatchID + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d=urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0)  THEN
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Success Verifications of Pending records"
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+			
+			CUST.DATA.FilePath = CUST.DATA.BatchID
+			CUST.DATA.filename = "V"
+
+			sv_u = urhk_getFileLocation("COM|vpcttumupl.com")
+			print(sv_u)
+			print(BANCS.OUTPARAM.fileLocation)
+			if(sv_u == 0)then
+				sv_a = "stuserId|" + CUST.DATA.BatchID 
+				sv_u = urhk_putEnvForCallShellScript(sv_a)
+				print(sv_u)
+				sv_a = "funcCode|" + CUST.DATA.funcCode
+				sv_u = urhk_putEnvForCallShellScript(sv_a)
+				print(sv_u)
+				sv_a = "EventType|MTTRUN"
+				sv_u = urhk_putEnvForCallShellScript(sv_a)
+				print(sv_u)
+				sv_a = "dfilpth|" + CUST.DATA.FilePath 
+				sv_u = urhk_putEnvForCallShellScript(sv_a)
+				print(sv_u)
+				sv_a = "dfilname|" + CUST.DATA.filename 
+				sv_u = urhk_putEnvForCallShellScript(sv_a)
+				print(sv_u)
+				BANCS.INPARAM.scriptName = "vpcttumupl.com"
+				BANCS.INPARAM.arguments = ""
+				sv_u = urhk_CallShellScript("b")
+				print(sv_u)
+				if(sv_u != 0)then
+					print("failed")
+				else
+					print("success")
+				endif
+			endif		
+		ELSE
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Verification of Pending records Failed or No pending records for verification."
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ENDIF
+
+
+	if(CUST.DATA.funcCode == "I")then
+		sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.CTTUM_AUTO_POST_PROCESS where BANK_ID ='"+BANCS.STDIN.contextBankId+"' and BATCHID ='"+CUST.DATA.BatchID+"'" )
+		CUST.DATA.count = BANCS.OUTPARAM.count
+		IF(CUST.DATA.count<1)THEN
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Bacth ID Doesn't Exists"
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+		lv_d = urhk_B2k_PID("")
+		IF (lv_d == 0) THEN
+			CUST.DATA.pid = BANCS.OUTPARAM.PID
+			PRINT(CUST.DATA.pid)
+		ENDIF
+
+		#-----------------------------------------------------------------------------------------
+		#Calling the sql to create the report
+		#-----------------------------------------------------------------------------------------
+		CUST.DATA.lstFile = "Cttum_Upload_Report_"+CUST.DATA.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+		CUST.DATA.inputStr = CUST.DATA.BatchID
+		print(CUST.DATA.inputStr)
+
+		CUST.DATA.ReportHeader = "DR_ACCOUNT|CR_ACCOUNT|CURRENCY|AMOUNT|TRAN_DETAILS"
+
+		lv_a = "echo " + '"' + CUST.DATA.ReportHeader + '"' + " > " + CUST.DATA.lstFile
+		PRINT(lv_a)
+		lv_s = SYSTEM(lv_a)
+		PRINT(lv_s)
+
+		sv_a = "exebatch spbx4001" + " " + "CUSTOM.CTTUM_UPLOAD.CTTUM_UPLOAD_PROC" + " '" + CUST.DATA.inputStr +"'>>" + CUST.DATA.lstFile
+		PRINT(sv_a)
+		lv_u = SYSTEM(sv_a)
+		PRINT(lv_u)
+		IF (lv_u != 0) THEN
+		#{
+			CUST.DATA.errMsg = "Report generation Failed"
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+		ELSE
+			#=====================================================================
+			# Move the file to HPR menu
+			#=====================================================================
+			CUST.DATA.userId = BANCS.STDIN.userId
+			CUST.DATA.title = "Cttum Upload REPORT For "+CUST.DATA.BatchID
+			PRINT(CUST.DATA.title)
+			lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.DATA.lstFile + "' '" +CUST.DATA.title + "' '" + CUST.DATA.userId + "' '1' N"
+			PRINT(lv_a)
+			lv_x = SYSTEM(lv_a)
+			PRINT(lv_a)
+			if(lv_x == 0) then
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+				sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the batch  "+CUST.DATA.BatchID+". Check status in HPR"
+				sv_z = urhk_SetOrbOut(sv_g)
+				PRINT(sv_z)
+			ELSE
+				CUST.DATA.msg = "Error_2|Error.2^Report Generation Failed "
+				sv_c = urhk_setorbout("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.DATA.msg)
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			ENDIF
+		 ENDIF
+
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+
+	if(CUST.DATA.funcCode == "U")then
+		CUST.DATA.BANKID =BANCS.STDIN.contextBankId
+		print(CUST.DATA.BANKID)
+		print(BANCS.INPUT.fileName)		
+		sv_s = "filename |"
+		sv_s = sv_s + " select substr('"+ CUST.DATA.fileName +"',instr('"+ CUST.DATA.fileName +"' ,'\',-1)+1) "
+		sv_s = sv_s + " from dual "
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		if(sv_d == 0) then
+			CUST.DATA.filename = BANCS.OUTPARAM.filename
+			print(CUST.DATA.filename)
+		else
+			CUST.DATA.filename = ""
+		ENDIF
+
+		#------------------------------------------------------------
+		#	Calling related scripts
+		#-----------------------------------------------------------	
+		sv_r = urhk_getEnv("ONS_LOG_DIR")
+		if(sv_r == 0) then
+			CUST.DATA.FilePath = BANCS.OUTPARAM.envValue
+			print(CUST.DATA.FilePath)
+		endif
+					
+		CUST.DATA.FilePath = CUST.DATA.FilePath +"/"+BANCS.STDIN.userId+"/"+CUST.DATA.filename
+		print(CUST.DATA.FilePath)
+	 
+		call("cdataupdp004.scr")
+		sv_r = system("sleep 10")
+		
+		sv_d = "batchId | select to_char(sysdate,'ddmmyyyyhhmiss') from dual "
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+			CUST.DATA.batchID = BANCS.OUTPARAM.batchId
+			CUST.DATA.batchID = BANCS.STDIN.userId + "_" + CUST.DATA.batchID 
+		else
+			CUST.DATA.batchID = BANCS.STDIN.userId +"_"
+		endif
+
+		print (CUST.DATA.batchID)
+		##VP 07/11/2022
+		sv_u = urhk_getFileLocation("COM|vpcttumupl.com")
+		print(sv_u)
+		print(BANCS.OUTPARAM.fileLocation)
+		if(sv_u == 0)then
+		#{
+			sv_a = "stuserId|" + CUST.DATA.batchID 
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "funcCode|" + CUST.DATA.funcCode
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "EventType|MTTRUN"
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "dfilpth|" + CUST.DATA.FilePath 
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			sv_a = "dfilname|" + CUST.DATA.filename 
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+			print(sv_u)
+			BANCS.INPARAM.scriptName = "vpcttumupl.com"
+			BANCS.INPARAM.arguments = ""
+			sv_u = urhk_CallShellScript("b")
+			print(sv_u)
+			if(sv_u != 0)then
+				print("failed")
+			else
+				print("success")
+			endif
+		#}
+		endif
+
+		lv_b = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_x=   "BatchFile " + CUST.DATA.batchID + " Upload in progress; Inquire for Posting"
+		CUST.DATA.message = "RESULT_MSG|"+sv_x
+		sv_u = urhk_SetOrbOut(CUST.DATA.message)
+
+	ENDIF
+
+ENDOFSCRIPT:
+exitscript
+#trace off
+end-->

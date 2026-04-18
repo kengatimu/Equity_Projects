@@ -1,0 +1,265 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpAgentCommCons.scr
+#  Description     : batch AGCOM
+#  Date            : 08-04-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             08-04-2022      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Caution : Do not Change any variables and logics whitout proper change request and business rules
+#-------------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","GCHRG")==0)then
+                createclass("CUST","GCHRG",5)
+        endif
+
+        print(BANCS.STDIN.BODDate)
+        EQSRV.GLBDATA.boddate = left$(BANCS.STDIN.BODDate,10)
+        lv_a = EQSRV.GLBDATA.boddate
+        print(lv_a)
+        print(BANCS.STDIN.mySolId)
+        lv_x = BANCS.STDIN.mySolId + "|" + lv_a
+        print(lv_x)
+        sv_e = urhk_GetNextWorkingDate(lv_x)
+        print(sv_e)
+        if(sv_e==0)then
+        #{
+                print(BANCS.OUTPARAM.NextWorkingDate)
+                print(BANCS.OUTPARAM.PrevWorkingDate)
+                print(BANCS.OUTPARAM.NextDataCentreWorkingDate)
+                print(BANCS.OUTPARAM.PrevDataCentreWorkingDate)
+                EQSRV.GLBDATA.commissionDate = left$(BANCS.OUTPARAM.PrevDataCentreWorkingDate,10)
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.commissionDate = ""
+                exitscript
+        #}
+        endif
+
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EQSRV.GLBDATA.srvErrCode = "MTT"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "Agent Commission Tran"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.ModuleId        = "HTM"
+        sv_u = urhk_MTTS_DefineTransaction("ODLoanRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EQSRV.GLBDATA.srvErrCode = "MTT"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+		##----Edwin Z Exempted  insurance for ug -INC0150686 26102022
+        ##lv_q = " OdAcctId,OdAcid,odSolid,odClrbalamt,odSanctLim,odLienAmt,odCifId,totLimConsumed | select foracid,acid,sol_id,clr_bal_Amt,sanct_lim,lien_amt,cif_id,(select nvl(sum(tran_amt),0) from tbaadm.htd where bank_id=?SVAR and acid=gam.acid and pstd_flg='Y' and del_flg='N' and part_tran_type='D' and tran_sub_type<>'IC' and tran_date=to_date(?SVAR,'DD-MM-RRRR') and tran_particular not in ('lace fees','excise duty','insurance fee')) as totalLimtConsumed from tbaadm.gam where bank_id=?SVAR and schm_type='ODA' and schm_code='OD541' and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and sanct_lim>0 and sol_id=?SVAR"
+        lv_q = " OdAcctId,OdAcid,odSolid,odClrbalamt,odSanctLim,odLienAmt,odCifId,totLimConsumed | select foracid,acid,sol_id,clr_bal_Amt,sanct_lim,lien_amt,cif_id,(select nvl(sum(tran_amt),0) from tbaadm.htd where bank_id=?SVAR and acid=gam.acid and pstd_flg='Y' and del_flg='N' and part_tran_type='D' and tran_sub_type not in ('IC','BI') and tran_date=to_date(?SVAR,'DD-MM-RRRR') and tran_particular not in ('lace fees','excise duty','insurance fee')) as totalLimtConsumed from tbaadm.gam where bank_id=?SVAR and schm_type='ODA' and schm_code='OD541' and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and sanct_lim>0 and sol_id=?SVAR"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.commissionDate + "|" + BANCS.STDIN.contextBankId  + "|" + BANCS.STDIN.mySolId
+        print(lv_q)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                EQSRV.GLBDATA.OdAcctId = BANCS.OUTPARAM.OdAcctId
+                EQSRV.GLBDATA.OdAcid = BANCS.OUTPARAM.OdAcid
+                EQSRV.GLBDATA.odSolid = BANCS.OUTPARAM.odSolid
+                EQSRV.GLBDATA.odClrbalamt = BANCS.OUTPARAM.odClrbalamt
+                EQSRV.GLBDATA.odSanctLim = BANCS.OUTPARAM.odSanctLim
+                EQSRV.GLBDATA.odLienAmt = BANCS.OUTPARAM.odLienAmt
+                EQSRV.GLBDATA.odCifId = BANCS.OUTPARAM.odCifId
+                EQSRV.GLBDATA.totLimConsumed = BANCS.OUTPARAM.totLimConsumed
+                print(EQSRV.GLBDATA.totLimConsumed)
+                if(cdouble(EQSRV.GLBDATA.totLimConsumed)>0)then
+                #{
+                        lv_j = " drAcctId | select gam.foracid from tbaadm.gam,tbaadm.fcftt where gam.bank_id=?SVAR and fcftt.bank_id=?SVAR and fcftt.free_code_18='AGENT-FLOAT' and gam.acid=fcftt.acid and gam.cif_id=?SVAR and gam.allow_sweeps<>'Y' and gam.schm_code in ('SB126','CA207') and gam.entity_cre_flg='Y' and gam.del_flg='N' and gam.acct_cls_flg<>'Y' and gam.clr_bal_amt>=0 and fcftt.entity_cre_flg='Y' and fcftt.del_flg='N' and rownum<=1 "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.odCifId
+                        print(BANCS.INPARAM.BINDVARS)
+                        print(lv_j)
+                        lv_b = urhk_dbSelectWithBind(lv_j)
+                        if(lv_b==0)then
+                        #{
+                                EQSRV.GLBDATA.drAcctId = BANCS.OUTPARAM.drAcctId
+                        else
+                                EQSRV.GLBDATA.drAcctId = ""
+                                goto NXTREC
+                        #}
+                        endif
+                else
+                        goto NXTREC
+
+                #}
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+                if(sv_u == 0)then
+                #{
+                        EQSRV.GLBDATA.icrEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        EQSRV.GLBDATA.icrclearBalance = BANCS.OUTPARAM.clearBalance
+                        EQSRV.GLBDATA.icrsanLim = BANCS.OUTPARAM.sanctionLimit
+                        EQSRV.GLBDATA.icrdrawingPower = BANCS.OUTPARAM.drawingPower
+                        EQSRV.GLBDATA.icravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        EQSRV.GLBDATA.icrlienamt = BANCS.OUTPARAM.lienAmt
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                #}
+                else
+                #{
+                        EQSRV.GLBDATA.icrdrawingPower = 0
+                        EQSRV.GLBDATA.icrEffBal = 0
+                        EQSRV.GLBDATA.icrclearBalance = 0
+                        EQSRV.GLBDATA.icrsanLim = 0
+                        EQSRV.GLBDATA.icravalAmt = 0
+                        EQSRV.GLBDATA.icrlienamt = 0
+                #}
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.OdAcctId)
+                if(sv_u == 0)then
+                #{
+                        EQSRV.GLBDATA.ocrEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        EQSRV.GLBDATA.ocrclearBalance = BANCS.OUTPARAM.clearBalance
+                        EQSRV.GLBDATA.ocrsanLim = BANCS.OUTPARAM.sanctionLimit
+                        EQSRV.GLBDATA.ocrdrawingPower = BANCS.OUTPARAM.drawingPower
+                        EQSRV.GLBDATA.ocravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        EQSRV.GLBDATA.ocrlienamt = BANCS.OUTPARAM.lienAmt
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                #}
+                else
+                #{
+                        EQSRV.GLBDATA.ocrdrawingPower = 0
+                        EQSRV.GLBDATA.ocrEffBal = 0
+                        EQSRV.GLBDATA.ocrclearBalance = 0
+                        EQSRV.GLBDATA.ocrsanLim = 0
+                        EQSRV.GLBDATA.ocravalAmt = 0
+                        EQSRV.GLBDATA.ocrlienamt = 0
+                #}
+                endif
+#Tran Entry Starts
+                EQSRV.GLBDATA.chrgAmt = "0"
+                if(cdouble(EQSRV.GLBDATA.totLimConsumed)>0)then
+                #{
+                        EQSRV.GLBDATA.chrgAmt = cdouble(EQSRV.GLBDATA.totLimConsumed) * 0.5/100
+                        print(EQSRV.GLBDATA.chrgAmt)
+                #}
+                endif
+                if(cdouble(EQSRV.GLBDATA.ocravalAmt)>=0)then
+                #{
+                        #####CUST.GCHRG.eventId = "ODUTLCOMM"
+                        CUST.GCHRG.eventId = "AGENTFLOATCOMM"
+                        CUST.GCHRG.tranType = "T"
+                        CUST.GCHRG.tranSubType = "BI"
+                        ####CUST.GCHRG.drAcctId = EQSRV.GLBDATA.drAcctId
+                        CUST.GCHRG.drAcctId = EQSRV.GLBDATA.OdAcctId
+                        CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+                        if(fieldexists(EQSRV.GLBDATA.totLimConsumed)==1)then
+                                print(EQSRV.GLBDATA.totLimConsumed)
+                                CUST.GCHRG.tranAmt = FORMAT$(cdouble(EQSRV.GLBDATA.totLimConsumed),"%.2f")
+                                print(CUST.GCHRG.tranAmt)
+                                CUST.GCHRG.chrgAmt = CUST.GCHRG.tranAmt + "|" + BANCS.STDIN.homeCrncyCode
+                        endif
+                        callscriptifexist("gchrgcommon.scr")
+                        goto NXTREC
+                        ##############exitscript
+                #}
+                endif
+
+                NXTREC:
+                        print(EQSRV.GLBDATA.srvErrMsg)
+                        print(EQSRV.GLBDATA.srvErrCode)
+                        print(EQSRV.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        exitscript
+trace off
+end-->

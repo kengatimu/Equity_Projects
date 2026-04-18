@@ -1,0 +1,364 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: debitbatchset.scr
+# Type: NA|default
+# Description: debitAllBatch
+# Author:Ichangai James
+# Date:20-11-2022
+# Modification Log:
+#============================================================
+
+#-------------------------------------------------------------------------------------
+#    Name				: DEBITALLmn002.scr
+#    Description     	: This is for job id - DBGLT (western union global transfer). Debit to
+#						: western union clearing account and credit to western union settlement account.
+#    Date            	: 05-01-2013
+#    Author          	: Umesh.G
+#    Input           	: NA
+#    Output				: NA
+#    Called Script	 	: NA
+#    Calling Script	 	: getcparamvalue.scr
+#    Menu Option		: HBJSTM, HBJE
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0		05-01-2013			Umesh.G	 		Original Version
+#	 2.0        23-02-2013          Farhan          Removed the repository and classes
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="aff1da11249c511693eef229dd73227e978ecf4f9f9d72d2a48895f876dac6d4"
+	TRACE ON
+
+     CALL("Common_Interface_CreateRepos.scr")
+
+       sv_s = "account,status|"
+       sv_s = sv_s + " select a.foracid,a.entity_cre_flg from CUSTOM.INT_CHANGE5 a, tbaadm.gam b where b.BANK_ID = ?SVAR "
+       sv_s = sv_s + " and a.BANK_ID = b.bank_id  and a.entity_cre_flg='FDR' and schm_type in('TDA','TUA') "
+       sv_s = sv_s + " and a.foracid = b.foracid and b.acct_cls_flg <> 'Y' and b.clr_bal_amt<>'0' "
+       print(sv_s)
+       BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId 
+       print(BANCS.INPARAM.BINDVARS)
+       sv_c = urhk_dbCursorOpenWithBind(sv_s)
+       print(sv_c)
+
+      IF (sv_c==0) THEN
+      #{
+        CUST.INTERFACE.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+      	sv_k = urhk_dbCursorFetch(CUST.INTERFACE.DbcursorNumber)
+	print(sv_k)
+
+         WHILE (sv_k==0)
+            CUST.INTERFACE.drAccount = BANCS.OUTPARAM.account
+	    PRINT(CUST.INTERFACE.drAccount)
+		#-------------------------------------------------------------------------
+		# Fetch the Cr Account
+		#-------------------------------------------------------------------------
+		  sv_p = "crforacid|"
+		  sv_p = sv_p + " select b.foracid from tbaadm.gam a, tbaadm.gam b , tbaadm.tam where "
+		  sv_p = sv_p + " a.foracid = ?SVAR and a.acid =tam.acid and  REPAYMENT_ACID =b.acid "
+		  sv_p = sv_p + " and a.BANK_ID = ?SVAR and a.bank_id = tam.bank_id and b.acct_cls_flg <> 'Y' "
+		  print(sv_p)
+		  BANCS.INPARAM.BINDVARS = CUST.INTERFACE.drAccount + "|" + BANCS.STDIN.contextBankId
+		  print(BANCS.INPARAM.BINDVARS)
+		  sv_t = urhk_dbSelectWithBind(sv_p)
+		  print(sv_t)
+		IF (sv_t==0) THEN
+		 #{
+		        CUST.INTERFACE.crAccount = BANCS.OUTPARAM.crforacid	
+			PRINT(CUST.INTERFACE.crAccount)
+			CUST.INTERFACE.errMsg    = ""
+			CUST.INTERFACE.tranamt   = "0"
+			CUST.INTERFACE.Response   = ""
+			
+			sv_a = BANCS.STDIN.mySolId
+			CUST.INTERFACE.solId = sv_a
+
+			#------------------------------------------------------------------------------
+			#       Creating repository and class
+			#       Initializing the variables
+			#       Getting all the values from CPARAM
+			#------------------------------------------------------------------------------
+			IF (REPEXISTS("CUST") == 0) THEN
+			#{
+				CREATEREP("CUST")
+			#}
+			ENDIF
+			
+			IF (CLASSEXISTS("CUST","DEBITALL") == 0) THEN
+			#{
+				CREATECLASS("CUST","DEBITALL",5)
+			#}
+			ENDIF
+			BANCS.INPUT.moduleName = "DEBITALL"
+			BANCS.INPUT.parameterId = "DEBITALL_DESC"
+			
+			CALL ("getcparamvalue.scr")
+			IF (BANCS.OUTPUT.parameterVal != "") THEN
+			#{
+				CUST.DEBITALL.desc = BANCS.OUTPUT.parameterVal
+				#}
+			ELSE
+				#{
+				CUST.DEBITALL.desc = ""
+			#}
+			ENDIF
+
+			#------------------------------------------------------------------------------
+			# Getting zoneDate, tranamt
+			# Creating narration for tran remarks
+			#------------------------------------------------------------------------------
+			sv_s = "clearBalance |SELECT clr_bal_amt "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE bank_id = ?SVAR "
+			sv_s = sv_s + "AND  foracid = ?SVAR "
+			sv_s = sv_s + "AND entity_cre_flg ='Y' "
+			sv_s = sv_s + "AND acct_cls_flg ='N' "
+			sv_s = sv_s + "AND del_flg ='N' "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.drAccount
+			
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.INTERFACE.amount = BANCS.OUTPARAM.clearBalance
+				PRINT(CUST.INTERFACE.amount)
+				print (cdouble(CUST.INTERFACE.amount))
+				print (cint(CUST.INTERFACE.amount))
+				#}
+				
+			#}
+			ELSE
+				#{
+				CUST.INTERFACE.amount = "0"
+			#}
+			ENDIF
+			
+			IF (cdouble(CUST.INTERFACE.amount) == 0) THEN
+			#{
+				EXITSCRIPT
+			#}
+			ENDIF
+			
+			CUST.DEBITALL.narr = CUST.DEBITALL.desc
+			PRINT(CUST.DEBITALL.narr)
+			
+			#--------------------------------------------------------------------------
+			# Initialise the MTT repository
+			#--------------------------------------------------------------------------
+			
+			sv_r = REPEXISTS("MTT")
+			IF (sv_r == 0) THEN
+			#{
+				CREATEREP("MTT")
+			#}
+			ENDIF
+			
+			sv_r = CLASSEXISTS("MTT","TranDetails")
+			IF (sv_r == 0) THEN
+			#{
+				CREATECLASS("MTT","TranDetails",5)
+			#}
+			ENDIF
+			
+			sv_r = REPEXISTS("BANCS")
+			IF (sv_r == 0) THEN
+			#{
+				CREATEREP("BANCS")
+			#}
+			ENDIF
+			
+			sv_r = CLASSEXISTS("BANCS","INPARAM")
+			IF (sv_r == 0) THEN
+			#{
+				CREATECLASS("BANCS","INPARAM",5)
+			#}
+			ENDIF
+			
+			#===================================
+			# STEP 1 : INITIALIZE THE MTT
+			#===================================
+			
+			BANCS.INPARAM.PostTranFlg 		= "Y"
+			BANCS.INPARAM.CommitFlg 		= "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+			BANCS.INPARAM.ValidationFlag 		= "Y"
+			BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+			BANCS.INPARAM.CheckExceptions 		= "N"
+			
+			
+			sv_u = urhk_MTTS_PopulateInputDetails("")
+			
+			
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = CUST.DEBITALL.narr
+			
+			sv_v = "PurchaseComm"
+			PRINT(sv_v)
+			
+			#sv_k = urhk_MTTS_Initialize("")
+			#print(sv_k)
+			#IF(sv_k != 0) THEN
+			#{
+			#	sv_u = urhk_SRV_SetErr("MTT initialized failed")
+			#	GOTO ENDOFSCRIPT
+			#}
+			#ENDIF
+			
+			sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+			
+			#--------------------------------------------------
+			# Credit to HO
+			#--------------------------------------------------
+
+
+			sv_s = "ACCT_CRNCY_CODE |SELECT ACCT_CRNCY_CODE "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE bank_id = ?SVAR "
+			sv_s = sv_s + "AND  foracid = ?SVAR "
+			sv_s = sv_s + "AND entity_cre_flg ='Y' "
+			sv_s = sv_s + "AND acct_cls_flg ='N' "
+			sv_s = sv_s + "AND del_flg ='N' "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.crAccount
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.INTERFACE.currencycr = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+				PRINT(CUST.INTERFACE.currencycr)
+				#}
+				endif
+			
+			MTT.PartTranDetails.Account = CUST.INTERFACE.crAccount
+			MTT.PartTranDetails.RefCurrency = CUST.INTERFACE.currencycr
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.DEBITALL.narr
+			MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.INTERFACE.amount)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_e = "PurchaseIncome"
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			PRINT(sv_r)
+			
+			#------------------------------------------------------------------
+			# Debit From BR
+			#------------------------------------------------------------------
+
+			sv_s = "ACCT_CRNCY_CODE |SELECT ACCT_CRNCY_CODE "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE bank_id = ?SVAR "
+			sv_s = sv_s + "AND  foracid = ?SVAR "
+			sv_s = sv_s + "AND entity_cre_flg ='Y' "
+			sv_s = sv_s + "AND acct_cls_flg ='N' "
+			sv_s = sv_s + "AND del_flg ='N' "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.drAccount
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.INTERFACE.currency = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+				PRINT(CUST.INTERFACE.currency)
+				#}
+				endif
+
+			
+			MTT.PartTranDetails.Account = CUST.INTERFACE.drAccount
+			MTT.PartTranDetails.RefCurrency = CUST.INTERFACE.currency
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.DEBITALL.narr
+			sv_a = CDOUBLE(CUST.INTERFACE.amount )
+			sv_a = -(sv_a)
+			PRINT(sv_a)
+			MTT.PartTranDetails.RefAmount = sv_a
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_h = CUST.INTERFACE.drAccount
+			
+			
+			sv_r = urhk_MTTS_definePartTran(sv_h)
+			IF (sv_r == 1) THEN
+			#{
+				PRINT("Unable to create MTT Part transaction")
+				GOTO Finish
+			#}
+			ENDIF
+			
+			#############################
+			# Commit the transaction
+			#############################
+			sv_u = urhk_MTTS_EndDefinition("")
+			PRINT(sv_u)
+			
+			CUST.INTERFACE.TranId = BANCS.OUTPARAM.MTTTranId
+			PRINT(CUST.INTERFACE.TranId)
+
+		  	#############################
+			# Clear the Custom Table
+			#############################
+
+			sv_z = "Delete from CUSTOM.INT_CHANGE5 where entity_cre_flg='FDR' and bank_id= ?SVAR and foracid =?SVAR "
+			print(sv_z)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INTERFACE.drAccount
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_z)
+			IF (sv_d == 0) THEN
+			#{
+				sv_y = urhk_dbSQLWithBind("commit")
+				print(sv_y)
+			#}
+			ENDIF
+	        #}
+                ENDIF
+		sv_k = urhk_dbCursorFetch(CUST.INTERFACE.DbcursorNumber)
+		print(sv_k)
+
+	 #}
+	 DO
+	sv_c = urhk_dbCursorClose(CUST.INTERFACE.DbcursorNumber)
+	print(sv_c)
+      #}
+      ENDIF
+	##################################################
+	# If any error tran id will not be created
+	##################################################
+	IF ((sv_u != 0)  OR (CUST.INTERFACE.TranId==""))THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		PRINT (MTT.Error.Description)
+		CUST.INTERFACE.ResStatus = "F"
+		CUST.INTERFACE.Response = "Transaction creation Failed."
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO Finish
+	#}
+	ENDIF
+	#sv_r = urhk_MTTS_Close("")
+	#print(sv_r)
+	
+	Finish:
+		IF(CUST.INTERFACE.Response != "") THEN
+		#{
+			sv_u = SYSTEM("echo '"+CUST.INTERFACE.Response+"' >>DEBITALL2.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

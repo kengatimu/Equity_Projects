@@ -1,0 +1,445 @@
+#----------------------------------------------------------------------------------------------------------------------------------------
+# Filename              :       SweepToSatisfyLoan.scr
+# Description           :       This scripts to sweep funds from related accounts to operative account of a customer for recovery RWANDA.    
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           13-12-2024        Dennis Chirchir	original Version		1.0
+#----------------------------------------------------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	#--------------------------------------------------------------------------
+	#  Create Repositories
+	#--------------------------------------------------------------------------
+
+	sv_r = REPEXISTS("BANCS")
+    	IF (sv_r == 0) THEN
+           CREATEREP("BANCS")
+    	endif
+
+	sv_r = REPEXISTS("MISS")
+    	IF (sv_r == 0) THEN
+           CREATEREP("MISS")
+    	endif
+
+	sv_r = CLASSEXISTS("MISS", "CHRG")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MISS", "CHRG", 5)
+	ENDIF
+
+	#--------------------------------------------------------------------------
+	# Selecting Loan accounts with due amounts.
+	#--------------------------------------------------------------------------
+
+	MISS.CHRG.debit_flow_amt="0"
+	MISS.CHRG.onlyTran = ""
+
+	###########Pick CIFwise dues
+	lv_v = "cifId,dueAmtCif|select cif_id,sum(DMD_AMT-TOT_ADJ_AMT)  from  tbaadm.gam g ,tbaadm.lam l,tbaadm.lrs,tbaadm.ldt,tbaadm.gac where  "
+ 	lv_v = lv_v + " l.acid = g.acid and  lrs.acid = g.acid and l.bank_id = g.bank_id  and lrs.bank_id = g.bank_id and l.bank_id = ldt.bank_id and "
+ 	lv_v = lv_v + " lrs.bank_id = ldt.bank_id and  lrs.acid = ldt.acid and  ldt.acid = g.acid and g.acct_cls_flg='N'  and gac.acid = g.acid and "
+ 	lv_v = lv_v + " lrs.acid = gac.acid  and gac.bank_id = g.bank_id and lrs.bank_id = gac.bank_id and gac.bank_id = ldt.bank_id and g.bank_id='50' and g.schm_type='LAA' "
+ 	lv_v = lv_v + " and lrs.FLOW_ID='EIDEM' and g.schm_code in ('LA525','LA526','LA527','LA571','LA572')   and ldt.DMD_FLOW_ID in ('PRDEM','INDEM','PIDEM') "
+ 	lv_v = lv_v + " and DMD_AMT<>TOT_ADJ_AMT and l.op_acid in (select acid from tbaadm.gam where bank_id='50' and (clr_bal_amt-lien_amt)<=0 ) "
+ 	lv_v = lv_v + " and gac.CHRGE_OFF_FLG != 'Y' "
+ 	lv_v = lv_v + " and g.sol_id = ?SVAR "
+ 	lv_v = lv_v + " group by cif_id "
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+
+	lv_w = urhk_dbCursorOpenWithBind(lv_v)
+	print(lv_w)
+
+	print(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+
+	MISS.CHRG.MainCursorCifWise = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(MISS.CHRG.MainCursorCifWise)
+
+	lv_x = urhk_dbCursorFetch(MISS.CHRG.MainCursorCifWise)
+	if(lv_x!=0)then
+		print(BANCS.OUTPARAM.DB_ERRCODE)
+		print(BANCS.OUTPARAM.DB_ERRMSG)
+		MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+		goto NEXTRECIF
+	endif
+ 
+    while (lv_x == 0)
+    #{
+	MISS.CHRG.cifId = BANCS.OUTPARAM.cifId
+	MISS.CHRG.dueAmtCif = BANCS.OUTPARAM.dueAmtCif
+	print(MISS.CHRG.cifId)
+	print(MISS.CHRG.dueAmtCif)
+
+	##############Pick loan accounts per CIF.
+	sv_s = "acid,cifId,op_acid,dueAmt,foracid|select l.acid,cif_id, l.op_acid,sum(DMD_AMT-TOT_ADJ_AMT),foracid  from  tbaadm.gam g ,tbaadm.lam l,tbaadm.lrs,tbaadm.ldt,tbaadm.gac where  l.acid = g.acid and  lrs.acid = g.acid and l.bank_id = g.bank_id "
+	sv_s = sv_s + " and lrs.bank_id = g.bank_id and l.bank_id = ldt.bank_id and lrs.bank_id = ldt.bank_id and  lrs.acid = ldt.acid and  ldt.acid = g.acid and g.acct_cls_flg='N'  and gac.acid = g.acid and  lrs.acid = gac.acid "
+	sv_s = sv_s + " and gac.bank_id = g.bank_id and lrs.bank_id = gac.bank_id and gac.bank_id = ldt.bank_id and g.bank_id='50' and g.schm_type='LAA' and lrs.FLOW_ID='EIDEM' and g.schm_code in ('LA525','LA526','LA527','LA571','LA572') "  
+	sv_s = sv_s + "  and ldt.DMD_FLOW_ID in ('PRDEM','INDEM','PIDEM') and DMD_AMT<>TOT_ADJ_AMT and l.op_acid in (select acid from tbaadm.gam where bank_id='50' and (clr_bal_amt-lien_amt)<=0 )  and gac.CHRGE_OFF_FLG != 'Y' "
+	sv_s = sv_s + " and cif_id = ?SVAR "
+	sv_s = sv_s + " group by l.acid,l.op_acid,cif_id, foracid "
+	sv_s = sv_s + "  order by sum(DMD_AMT-TOT_ADJ_AMT) desc "
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = MISS.CHRG.cifId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_o = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_o)
+
+	print(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+	MISS.CHRG.MainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(MISS.CHRG.MainCursor)
+
+	sv_z = 0
+	MISS.CHRG.done = "N"
+
+
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+	sv_u = urhk_MTTS_PopulateInputDetails("")
+	print(sv_u)
+
+	sv_c = urhk_dbCursorFetch(MISS.CHRG.MainCursor)
+	if(sv_c!=0)then
+		print(BANCS.OUTPARAM.DB_ERRCODE)
+		print(BANCS.OUTPARAM.DB_ERRMSG)
+		MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+		goto NEXTREC
+	endif
+
+	while (sv_c == 0)
+	#{
+		MISS.CHRG.accts = 1
+
+		MISS.CHRG.acid = BANCS.OUTPARAM.acid
+		print(MISS.CHRG.acid)
+		MISS.CHRG.op_acid = BANCS.OUTPARAM.op_acid
+		print(MISS.CHRG.op_acid)
+		MISS.CHRG.cif_id = BANCS.OUTPARAM.cifId
+		print(MISS.CHRG.cif_id)
+		MISS.CHRG.foracid = BANCS.OUTPARAM.foracid
+		print(MISS.CHRG.foracid)
+		MISS.CHRG.dueAmt = BANCS.OUTPARAM.dueAmt
+		print(MISS.CHRG.dueAmt)
+	
+		sv_s = "countOp|select count(*) from tbaadm.gam,tbaadm.smt,tbaadm.gac where schm_type in ('SBA','CAA') and acct_cls_flg='N' and mode_of_oper_code='SELF' "
+		sv_s = sv_s + " and cif_id = ?SVAR and clr_bal_amt-lien_amt > 0 and gam.bank_id = '50' and acct_crncy_code ='RWF' and gam.acid != ?SVAR "
+		sv_s = sv_s + " and schm_code not in ('SB102','SB103','SB114','SB121','SB122','SB123','SB124','SB133','SB150','VA300','SB113','SB101','SB163') "
+		sv_s = sv_s + " and smt.acid=gam.acid and smt.bank_id = gam.bank_id and gac.acid=gam.acid and gam.bank_id=gac.bank_id and frez_code not in ('D','T') and acct_status ='A' and chrge_off_flg != 'Y' "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = MISS.CHRG.cif_id + "|" + MISS.CHRG.op_acid
+		print(BANCS.INPARAM.BINDVARS)
+	
+		lv_j = urhk_dbSelectWithBind(sv_s)
+		print(sv_s)
+	
+		if(lv_j == 0) then
+		#{
+			MISS.CHRG.countOp = BANCS.OUTPARAM.countOp
+			print(MISS.CHRG.countOp)
+		#}
+		else
+		#{
+			MISS.CHRG.countOp = 0
+		#}
+		endif
+		IF(CDOUBLE(MISS.CHRG.countOp) > 0) THEN
+    		#{
+				##get Operative account
+				sv_e =  "opAcctId|select foracid from tbaadm.gam where acid = ?SVAR and bank_id=?SVAR "
+				BANCS.INPARAM.BINDVARS = MISS.CHRG.op_acid + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				lv_j = urhk_dbSelectWithBind(sv_e)
+				print(sv_e)
+	
+				if(lv_j == 0) then
+				#{
+						MISS.CHRG.opAcctId = BANCS.OUTPARAM.opAcctId
+						print(MISS.CHRG.opAcctId)
+				else
+						MISS.CHRG.opAcctId = ""
+						GOTO NEXTREC
+				endif
+				##########
+				lv_s = urhk_getAcctDetailsInRepository(MISS.CHRG.opAcctId)
+				if(lv_s == 0) then
+						MISS.CHRG.OpClearBalance = BANCS.OUTPARAM.ClearBalance
+						print(MISS.CHRG.OpClearBalance)
+				else
+						GOTO NEXTREC
+				endif
+
+				if(cdouble(MISS.CHRG.dueAmtCif) <= cdouble(MISS.CHRG.OpClearBalance)) then
+					goto NEXTREC
+				endif
+
+				MISS.CHRG.duesWithOp = cdouble(MISS.CHRG.dueAmtCif) - cdouble(MISS.CHRG.OpClearBalance)
+				print(MISS.CHRG.duesWithOp)
+
+				MISS.CHRG.duesWithLn = cdouble(MISS.CHRG.dueAmtCif) - cdouble(MISS.CHRG.dueAmt)
+				print(MISS.CHRG.duesWithLn)
+
+                        	sv_r = repexists("MTT")
+                        	if(sv_r == 1)then
+                                	sv_r = urhk_MTTS_Close("")
+                        	endif
+
+                        	BANCS.INPARAM.PostTranFlg               = "Y"
+                        	BANCS.INPARAM.CommitFlg                 = "Y"
+                        	BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+                        	BANCS.INPARAM.ValidationFlag            = "Y"
+                        	BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+                        	BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+                        	BANCS.INPARAM.CheckExceptions           = "N"
+
+                        	sv_u = urhk_MTTS_Initialize("")
+                        	print(sv_u)
+                        	if(sv_u != 0 )then
+                                	ETSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                	ETSRV.GLBDATA.srvErrCode = "MTT"
+                                	ETSRV.GLBDATA.srvSucFail = "F"
+                               		goto Endofscript
+                        	endif
+
+				MTT.TranDetails.TranDate="0"
+				MTT.TranDetails.TranType = "T"
+				MTT.TranDetails.TranSubType = "BI"
+				MTT.TranDetails.Remarks = "Batch 2Loan Repay"
+				MTT.TranDetails.IgnoreExcp = "I"
+				MTT.TranDetails.PSTUpdateFlg ="N"
+			
+				sv_v = "bCashWithCrg"
+				print(sv_v)
+			
+				sv_u = urhk_MTTS_DefineTransaction("bCashWithCrg")
+				if(sv_u != 0) then
+					goto NEXTREC
+				endif
+	
+				##Pick other accounts and debit.
+				sv_s = "OpOtherforacid|select foracid from tbaadm.gam,tbaadm.smt,tbaadm.gac where schm_type in ('SBA','CAA') and acct_cls_flg='N' and mode_of_oper_code='SELF' "
+				sv_s = sv_s + " and cif_id = ?SVAR and clr_bal_amt-lien_amt > 0 and gam.bank_id = '50' and acct_crncy_code ='RWF' and gam.acid != ?SVAR "
+				sv_s = sv_s + " and schm_code not in ('SB102','SB103','SB114','SB121','SB122','SB123','SB124','SB133','SB150','VA300','SB113','SB101','SB163') "
+				sv_s = sv_s + " and smt.acid=gam.acid and smt.bank_id = gam.bank_id and gac.acid=gam.acid and gam.bank_id=gac.bank_id and frez_code not in ('D','T')  and acct_status ='A' and chrge_off_flg != 'Y' "
+				sv_s = sv_s + " order by schm_code desc "
+				print(sv_s)
+			
+				BANCS.INPARAM.BINDVARS = MISS.CHRG.cif_id + "|" + MISS.CHRG.op_acid
+				print(BANCS.INPARAM.BINDVARS)
+		
+				lv_o = urhk_dbCursorOpenWithBind(sv_s)
+				print(lv_o)
+				
+				if(lv_o==0)then
+						MISS.CHRG.tracodCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				else
+						MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+						goto NEXTREC
+				endif
+			
+				MISS.CHRG.tracodrec = 0
+				sv_z = urhk_dbCursorFetch(MISS.CHRG.tracodCurNum)
+				if(sv_z!=0)then
+					print(BANCS.OUTPARAM.DB_ERRCODE)
+					print(BANCS.OUTPARAM.DB_ERRMSG)
+					MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+					goto NEXTREC
+				endif
+
+				lv_t = 0
+				while(sv_z ==0)
+				#{
+					MISS.CHRG.OpOtherforacid = BANCS.OUTPARAM.OpOtherforacid
+					print(MISS.CHRG.dueAmt)
+					lv_l = urhk_getAcctDetailsInRepository(MISS.CHRG.OpOtherforacid)
+					print(lv_l)
+					if(lv_l == 0) then
+						MISS.CHRG.OpEffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+					else
+						GOTO NEXTREC
+					endif
+					
+					if((cdouble(MISS.CHRG.OpClearBalance) >0) and (cdouble(MISS.CHRG.accts)==1)) then
+						MISS.CHRG.dueAmt = cdouble(MISS.CHRG.dueAmt) - cdouble(MISS.CHRG.OpClearBalance)
+						print(MISS.CHRG.dueAmt)
+					endif
+
+					if(cdouble(MISS.CHRG.dueAmt) <= 0) then
+						GOTO NEXTREC
+					endif
+
+					if(cdouble(MISS.CHRG.OpEffAvailableAmt) > cdouble(MISS.CHRG.dueAmt)) then
+					#{
+							MISS.CHRG.tranAmt = MISS.CHRG.dueAmt
+							print(MISS.CHRG.tranAmt)
+							MISS.CHRG.onlyTran = "Y"
+					#}
+					else
+					#{
+							MISS.CHRG.onlyTran = "N"
+							MISS.CHRG.tranAmt = MISS.CHRG.OpEffAvailableAmt
+							print(MISS.CHRG.tranAmt)							
+					#}
+					endif
+					print(MISS.CHRG.OpOtherforacid)
+					
+					MTT.PartTranDetails.Account = MISS.CHRG.OpOtherforacid
+					lv_q = CDOUBLE(MISS.CHRG.OpEffAvailableAmt)
+					print(lv_q)
+					MTT.PartTranDetails.RefAmount   = -1*CDOUBLE(MISS.CHRG.tranAmt)
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					#MTT.PartTranDetails.ValueDate   = 0
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Consolidate = "N"
+					#MTT.PartTranDetails.ProxyPstgInd= "N"
+					MTT.PartTranDetails.Particulars = "Sweep for loan recovery-" + MISS.CHRG.foracid
+					MTT.PartTranDetails.tran_particular = "Sweep for loan recovery-" + MISS.CHRG.foracid
+					MTT.PartTranDetails.TranIdentifier  = "bCashWithCrg"
+					sv_r = urhk_MTTS_DefinePartTran("DR")
+					PRINT(sv_r)
+					IF(sv_r != 0) THEN
+					#{
+							sv_c = "Unable to Define the Part Tran."
+							PRINT(sv_c)
+							MTT.Error.Description = sv_c
+							sv_r = urhk_MTTS_ReportErrorCondition("")
+							GOTO NEXTREC
+					#}
+					ENDIF
+					
+					lv_t = lv_t + cdouble(MISS.CHRG.tranAmt)
+					print(lv_t)
+
+					MISS.CHRG.accts = cdouble(MISS.CHRG.accts) + 1
+					print(MISS.CHRG.accts)
+					
+					MISS.CHRG.dueAmt = cdouble(MISS.CHRG.dueAmt) - cdouble(MISS.CHRG.tranAmt)
+					print(MISS.CHRG.dueAmt)
+					
+					IF(MISS.CHRG.onlyTran == "Y" ) THEN
+						GOTO CREDIT
+					ENDIF
+					
+					sv_z = urhk_dbCursorFetch(MISS.CHRG.tracodCurNum)
+					print(sv_z)				
+				#}
+				DO
+				
+				CREDIT:
+				sv_u = urhk_dbCursorClose(MISS.CHRG.tracodCurNum)
+				print(sv_u)
+
+				print(lv_t)
+				##Credit operative account with sum of debits on customer accounts
+				MTT.PartTranDetails.Account = MISS.CHRG.opAcctId
+				MTT.PartTranDetails.RefAmount   = lv_t
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff   = "0"
+				MTT.PartTranDetails.Consolidate = "N"
+				#MTT.PartTranDetails.ProxyPstgInd= "N"
+				MTT.PartTranDetails.Particulars = "Sweep for loan recovery-" + MISS.CHRG.foracid
+				MTT.PartTranDetails.tran_particular = "Sweep for loan recovery-" + MISS.CHRG.foracid
+				MTT.PartTranDetails.TranIdentifier  = "bCashWithCrg"
+				MTT.PartTranDetails.EntryUserId = BANCS.STDIN.userId
+				sv_r = urhk_MTTS_DefinePartTran("CR")
+				PRINT(sv_r)
+				IF(sv_r != 0) THEN
+				#{
+						sv_c = "Unable to Define the Part Tran."
+						PRINT(sv_c)
+						MTT.Error.Description = sv_c
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						GOTO NEXTREC
+				#}
+				ENDIF
+
+       			sv_r = urhk_MTTS_EndDefinition("")
+        		print(sv_r)
+
+			if(sv_r == 0) then
+				if(fieldexists(BANCS.OUTPARAM.MTTTranId)==1) then
+					MISS.CHRG.tranid = BANCS.OUTPARAM.MTTTranId
+					print(MISS.CHRG.tranid)
+				else
+                        		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+					ETSRV.GLBDATA.SrvError = "Unable to create transaction"
+					sv_u = urhk_SetOrbErr(ETSRV.GLBDATA.SrvError)
+					MISS.CHRG.tranid = ""
+                        		goto NEXTREC			
+				endif
+			else
+               			sv_r = urhk_MTTS_ReportErrorCondition("")
+                		print (MTT.Error.Description)
+                		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+				MISS.CHRG.tranid  = ""
+				sv_u = urhk_SetOrbErr(MTT.Error.Description)
+                		goto NEXTREC
+			endif
+        		print(MTT.XCPN.NumExceptions)
+        		print(MTT.XCPN.NumWarnings)
+        		if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+        		#{
+                      		sv_u = urhk_MTTS_HandleExceptions("POST")
+                      		if (sv_u != 0) then
+                                		sv_r = urhk_MTTS_ReportErrorCondition("")
+                                		print (MTT.Error.Description)
+                				sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+						sv_u = urhk_SetOrbErr(MTT.Error.Description)
+                				goto NEXTREC
+                      		endif
+        		#}
+        		endif
+
+			sv_r = urhk_MTTS_Close("")
+			print(sv_r)
+
+		#}
+		ELSE
+		#{
+				GOTO NEXTREC
+		#}
+		ENDIF
+	
+		NEXTREC:
+		MISS.CHRG.accts = cdouble(MISS.CHRG.accts) + 1
+		print(MISS.CHRG.accts)
+
+		sv_c = urhk_dbCursorFetch(MISS.CHRG.MainCursor)
+		print(sv_c)
+		if(sv_c!=0)then
+		#{
+			print(BANCS.OUTPARAM.DB_ERRCODE)
+			print(BANCS.OUTPARAM.DB_ERRMSG)
+			MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+		#}
+		endif
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(MISS.CHRG.MainCursor)
+	print(sv_c)
+
+	NEXTRECIF:
+
+	MISS.CHRG.dueAmtCif = cdouble(MISS.CHRG.dueAmtCif) - cdouble(MISS.CHRG.dueAmt)
+	print(MISS.CHRG.dueAmtCif)
+
+	lv_x = urhk_dbCursorFetch(MISS.CHRG.MainCursorCifWise)
+	print(lv_x)
+
+	if(lv_x!=0)then
+		print(BANCS.OUTPARAM.DB_ERRCODE)
+		print(BANCS.OUTPARAM.DB_ERRMSG)
+		MISS.CHRG.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+	endif
+
+    #}
+    DO
+    lv_x = urhk_dbCursorClose(MISS.CHRG.MainCursorCifWise)
+    print(lv_x)
+
+	
+EXITSCRIPT
+END-->

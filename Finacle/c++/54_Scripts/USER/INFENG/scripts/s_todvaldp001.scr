@@ -1,0 +1,140 @@
+#-------------------------------------------------------------------------------------
+#    Name				: s_todvaldp001.scr
+#    Description     	: The script is execute to check if the account is active and
+#						: it has any TOD maintained in CATOD.
+#    Date            	: 18-01-2013
+#    Author          	: Divya
+#    Input           	: NA
+#    Output				: NA
+#    Called Script		: NA
+#    Calling Script		: getcparamvalue.scr
+#    Menu Option		: HACXFSOL
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0			18-01-2013		Divya	 		Original Version
+#	 2.0			31-03-2013		Divya			Added bank_id
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="d718f9113aebc6bb0fe7d3f9971799ee819f4f213956c3c29474722e1541ae6b"
+	TRACE ON
+	
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","TODVAL") == 0) THEN
+	#{
+		CREATECLASS("CUST","TODVAL",5)
+	#}
+	ENDIF
+	
+	
+	CUST.TODVAL.errMsg    = ""
+	CUST.TODVAL.workClass = ""
+	
+	
+	BANCS.INPUT.moduleName  = "ACCTSCHMXFR"
+	BANCS.INPUT.parameterId = "TODVAL_WC"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.TODVAL.workClass = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.TODVAL.errMsg = "Work Class setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_u = urhk_SRV_GetVal("acctStat.code")
+	CUST.TODVAL.acctStatus = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.TODVAL.acctStatus)
+	
+	sv_u = urhk_SRV_GetVal("xferAcct.foracid")
+	CUST.TODVAL.foracid = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.TODVAL.foracid)
+	
+	IF ((BANCS.STDIN.contextBankId == "54") OR (BANCS.STDIN.contextBankId == "43")) THEN
+	#{
+		sv_s = "count|SELECT COUNT(1) "
+		sv_s = sv_s + "FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + "WHERE status_flg = 'A'  "
+		sv_s = sv_s + "AND acct_num = ?SVAR "
+		sv_s = sv_s + "AND bank_id = ?SVAR AND CLS_FLG != 'Y'"
+		BANCS.INPARAM.BINDVARS = CUST.TODVAL.foracid + "|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_u)
+		
+		IF (sv_u == 0) THEN
+		#{
+			CUST.TODVAL.count = BANCS.OUTPARAM.count
+			PRINT(CUST.TODVAL.count)
+			#IF (CINT(CUST.TODVAL.count) >= 1) THEN
+			#{
+			#	CUST.TODVAL.errMsg = "Terminate TOD Contract then transfer "
+			#	GOTO ENDOFSCRIPT
+			#}
+			#ENDIF
+		#}
+		ENDIF
+		
+		sv_s = "count|SELECT COUNT(1) "
+		sv_s = sv_s + "FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + "WHERE status_flg = 'P' "
+		sv_s = sv_s + "AND acct_num = ?SVAR "
+		sv_s = sv_s + "AND bank_id = ?SVAR AND CLS_FLG != 'Y'"
+		BANCS.INPARAM.BINDVARS = CUST.TODVAL.foracid + "|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_u)
+		
+		IF (sv_u == 0) THEN
+		#{
+			CUST.TODVAL.count = BANCS.OUTPARAM.count
+			PRINT(CUST.TODVAL.count)
+			#IF (CINT(CUST.TODVAL.count) >= 1) THEN
+			#{
+			#	CUST.TODVAL.errMsg = "Cancel TOD Contract then transfer "
+			#	GOTO ENDOFSCRIPT
+			#}
+			#ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	PRINT(BANCS.STDIN.userWorkClass)
+	PRINT(CUST.TODVAL.workClass)
+	IF (CINT(BANCS.STDIN.userWorkClass) != CINT(CUST.TODVAL.workClass)) THEN
+	#{
+		PRINT(CUST.TODVAL.acctStatus)
+		IF (CUST.TODVAL.acctStatus != "A") THEN
+		#{
+			CUST.TODVAL.errMsg = "Only Active Accounts can be transfered"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		IF (CUST.TODVAL.errMsg != "") THEN
+		#{
+			sv_u = urhk_SRV_SetErr(CUST.TODVAL.errMsg)
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		
+		#TRACE OFF
+		EXITSCRIPT
+END-->

@@ -1,0 +1,431 @@
+#*******************************************************************************************************
+# Filename              : ModifyCorpRetCif.scr
+# Description           : This script is used to make connection with the third party
+# Input                 : 
+# Output                : workflow
+# Called Script         : 
+# Calling Script        :
+
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----          -----            --------          ----------------        ---------
+#  1           04-10-2021         Irungu  James       Original Version          1.0
+#********************************************************************************************************
+<--start
+trace on
+
+CALL("Common_Interface_CreateRepos.scr")
+
+
+sv_s=" CIF_ID, OLD_RM, NEW_RM, RETCOPR  |"
+sv_s = sv_s + " select foracid  ,manager,sol_id  ,case when  corp_id is null then 'RET' else 'CORP' end RETCORP  from CUSTOM.INT_CHANGE5 a, crmuser.accounts c   "
+sv_s = sv_s + "  WHERE a.BANK_ID = ?SVAR and orgkey = foracid and  A.ENTITY_CRE_FLG ='ALL'   " 
+print(sv_s)
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId 
+print(BANCS.INPARAM.BINDVARS)
+sv_c = urhk_dbCursorOpenWithBind(sv_s)
+print(sv_c)
+
+IF (sv_c==0) then
+#{
+
+		CUST.INTERFACE.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_k = urhk_dbCursorFetch(CUST.INTERFACE.DbcursorNumber)
+		print(sv_k)
+
+		WHILE (sv_k == 0)
+
+		
+		CUST.INTERFACE.interfaceRequestVersion = "10.2"
+		CUST.INTERFACE.bankID =BANCS.STDIN.contextBankId
+		CUST.INTERFACE.channelID = "CRM"
+		CUST.INTERFACE.startdate = MID$(BANCS.STDIN.BODDate,0,10)
+		CUST.INTERFACE.crValueDate = MID$(BANCS.STDIN.BODDate,0,10)
+		CUST.INTERFACE.instDate = ""
+		CUST.INTERFACE.lastdatepart ="T00:00:00.000"
+		print(CUST.INTERFACE.lastdatepart)
+		CUST.INTERFACE.sign ="-"
+		print(CUST.INTERFACE.sign)
+
+
+		CUST.INTERFACE.CIF =BANCS.OUTPARAM.CIF_ID
+		CUST.INTERFACE.OLD_RM =BANCS.OUTPARAM.OLD_RM
+		CUST.INTERFACE.NEW_RM =BANCS.OUTPARAM.NEW_RM
+		CUST.INTERFACE.RETCOPR =BANCS.OUTPARAM.RETCOPR
+
+		IF (CUST.INTERFACE.NEW_RM == "X") THEN	
+			CUST.INTERFACE.NEWRM = CUST.INTERFACE.OLD_RM
+		ELSE
+			CUST.INTERFACE.NEWRM = CUST.INTERFACE.NEW_RM
+		ENDIF	
+			
+
+
+		IF (CUST.INTERFACE.RETCOPR == "CORP") THEN			
+			CUST.INTERFACE.interfaceRequestID = "updateCorpCustomer"
+			CUST.INTERFACE.RM  = CUST.INTERFACE.NEWRM		
+			CUST.INTERFACE.SEGMNET =  "MSME"
+			CUST.INTERFACE.SUBSEGMENT = "UPPERCOPR"
+		ELSE
+			CUST.INTERFACE.interfaceRequestID = "RetCustMod"
+			CUST.INTERFACE.RM  =  CUST.INTERFACE.NEWRM
+			CUST.INTERFACE.SEGMNET = "ENTR"
+			CUST.INTERFACE.SUBSEGMENT = "UPPERINDV"
+		ENDIF
+
+
+
+			sv_a = " ADDRESSID,ADDRESSCATEGORY, CITY, STATE,COUNTRY , ZIP | select  ADDRESSID,ADDRESSCATEGORY, city, state,country , zip from CRMUSER.address where orgkey  = ?SVAR and   PREFERREDADDRESS  ='Y' and bank_id = ?SVAR and rownum = 1 "
+			print (sv_a)
+			BANCS.INPARAM.BINDVARS = CUST.INTERFACE.CIF  + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_a)
+			PRINT(sv_d)
+			IF(sv_d == 0) THEN
+				CUST.INTERFACE.ADDRESSID = BANCS.OUTPARAM.ADDRESSID
+				CUST.INTERFACE.ADDRESSCATEGORY = BANCS.OUTPARAM.ADDRESSCATEGORY
+				CUST.INTERFACE.STATE = BANCS.OUTPARAM.STATE
+				CUST.INTERFACE.COUNTRY = BANCS.OUTPARAM.COUNTRY
+				CUST.INTERFACE.CITY = BANCS.OUTPARAM.CITY
+				CUST.INTERFACE.ZIP = BANCS.OUTPARAM.ZIP
+
+			ELSE
+
+				goto VAYU
+			ENDIF
+
+
+
+		#-------------------------------------------------------------------------
+		# Fetch the current data time to send in request header
+		#-------------------------------------------------------------------------
+		sv_s = "date,time|SELECT TO_CHAR(SYSDATE,'YYYY-MM-DD'),TO_CHAR(SYSDATE,'HH:MM:SS') FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		
+		IF(sv_d == 0) THEN
+		#{
+			CUST.INTERFACE.msgDateTime = BANCS.OUTPARAM.date + "T" + BANCS.OUTPARAM.time + ".000"
+			print(CUST.INTERFACE.msgDateTime)
+		#}
+		ENDIF
+
+		#-------------------------------------------------------------------------
+		#- Forming the Header for RetCustAdd
+		#-------------------------------------------------------------------------
+
+		sv_s = "RequestID|SELECT CONCAT(CONCAT('Req_',TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS')),(DBMS_RANDOM.STRING('A',5))) FROM DUAL"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0)THEN
+		#{
+			CUST.INTERFACE.RequestID1 = BANCS.OUTPARAM.RequestID
+			print(CUST.INTERFACE.RequestID1)
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.RequestID1 = "Req_" + MID$(BANCS.STDIN.sysDate,6,4) + MID$(BANCS.STDIN.sysDate,3,2) + MID$(BANCS.STDIN.sysDate,0,2) + MID$(BANCS.STDIN.sysDate,11,2) + MID$(BANCS.STDIN.sysDate,14,2) + MID$(BANCS.STDIN.sysDate,17,2)
+			print(CUST.INTERFACE.RequestID1)
+		#}
+		ENDIF
+
+		CUST.INTERFACE.headerXML = ""
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Header>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestHeader>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<MessageKey>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestUUID>"+ CUST.INTERFACE.RequestID1 +"</RequestUUID>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ServiceRequestId>"+  CUST.INTERFACE.interfaceRequestID +"</ServiceRequestId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ServiceRequestVersion>10.2</ServiceRequestVersion>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<ChannelId>" + CUST.INTERFACE.channelID + "</ChannelId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</MessageKey>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RequestMessageInfo>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<BankId>" + CUST.INTERFACE.bankID + "</BankId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<TimeZone>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</TimeZone>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<EntityId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</EntityId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<EntityType>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</EntityType>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<MessageDateTime>" + CUST.INTERFACE.msgDateTime + "</MessageDateTime>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RequestMessageInfo>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Security>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Token>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<PasswordToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<UserId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</UserId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<Password>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Password>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</PasswordToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Token>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<FICertToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</FICertToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUserLoginSessionId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUserLoginSessionId>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUser>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUser>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<RealUserPwd>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RealUserPwd>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "<SSOTransferToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</SSOTransferToken>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Security>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</RequestHeader>"
+		CUST.INTERFACE.headerXML = CUST.INTERFACE.headerXML + "</Header>"
+
+		#-------------------------------------------------------------------------
+		#- Forming the Body for corp modification
+		#-------------------------------------------------------------------------
+
+		IF (CUST.INTERFACE.RETCOPR == "CORP") THEN	
+				CUST.INTERFACE.bodyXMLMsg = ""
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Body>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<updateCorpCustomerRequest>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<CorpCustomerModData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<mainData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<corpCustomerModCorporateData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<corp_key>" + CUST.INTERFACE.CIF  + "</corp_key>"
+				#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Manager>" + CUST.INTERFACE.RM  + "</Manager>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<primaryRMID>" + CUST.INTERFACE.RM  + "</primaryRMID>"				
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<SegmentationClass>" + CUST.INTERFACE.SEGMNET  + "</SegmentationClass>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<SubSegment>" + CUST.INTERFACE.SUBSEGMENT  + "</SubSegment>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</corpCustomerModCorporateData>"				
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<corpAddressModData>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<addresscategory>" + CUST.INTERFACE.ADDRESSCATEGORY + "</addresscategory>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<addressID>" + CUST.INTERFACE.ADDRESSID + "</addressID>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<cif_att_id>UPDATE</cif_att_id>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<city>" + CUST.INTERFACE.CITY + "</city>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<country>" + CUST.INTERFACE.COUNTRY + "</country>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<isAddressProofRcvd>N</isAddressProofRcvd>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<state>" + CUST.INTERFACE.STATE + "</state>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<zip>" + CUST.INTERFACE.ZIP + "</zip>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<HoldMailFlag>N</HoldMailFlag>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</corpAddressModData>"					
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</mainData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</CorpCustomerModData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</updateCorpCustomerRequest>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</Body>"			
+		ELSE
+				CUST.INTERFACE.bodyXMLMsg = ""
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Body>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<RetCustModRequest>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<RetCustModRq>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<RetCustModMainData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<CustModData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<CustId>" + CUST.INTERFACE.CIF  + "</CustId>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Manager>" + CUST.INTERFACE.RM  + "</Manager>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<SegmentationClass>" + CUST.INTERFACE.SEGMNET  + "</SegmentationClass>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<SubSegment>" + CUST.INTERFACE.SUBSEGMENT  + "</SubSegment>"				
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<RetAddrModDtls>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<AddrCategory>" + CUST.INTERFACE.ADDRESSCATEGORY + "</AddrCategory>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<HoldMailFlag>N</HoldMailFlag>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<AddressID>" + CUST.INTERFACE.ADDRESSID + "</AddressID>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<City>" + CUST.INTERFACE.CITY + "</City>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<Country>" + CUST.INTERFACE.COUNTRY + "</Country>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<State>" + CUST.INTERFACE.STATE + "</State>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<PostalCode>" + CUST.INTERFACE.ZIP + "</PostalCode>"
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</RetAddrModDtls>"				
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</CustModData>"	
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</RetCustModMainData>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</RetCustModRq>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</RetCustModRequest>"
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</Body>"
+		ENDIF
+				
+		#-------------------------------------------------------------------------
+		#Appending the header XML and body XML.
+		#-------------------------------------------------------------------------
+		CUST.INTERFACE.reqXMLMsg = "MSG_TYPE=XML,MSG_SUB_TYPE=FIXML###"
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + "<FIXML>"
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + CUST.INTERFACE.headerXML 
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + CUST.INTERFACE.bodyXMLMsg
+		CUST.INTERFACE.reqXMLMsg = CUST.INTERFACE.reqXMLMsg + "</FIXML>"
+
+		#-------------------------------------------------------------------------------
+		# Setting input values for urhk_ConnectToFIAndSendMsg userhook
+		#-------------------------------------------------------------------------------
+		BANCS.INPARAM.SERVICE_NAME              = "FIJCA"
+		print(BANCS.INPARAM.SERVICE_NAME)
+		BANCS.INPARAM.SEND_RECV_FLG             = "R"
+		sv_a = CUST.INTERFACE.reqXMLMsg
+		PRINT(sv_a)
+
+		#-------------------------------------------------------------------------
+		#- Executing the userhook to make the Outbound Call
+		#-------------------------------------------------------------------------
+		sv_l = urhk_ConnectToFIAndSendMsg(sv_a)
+		print(sv_l)
+		IF (sv_l != 0) THEN
+		#{
+			print(BANCS.OUTPARAM.ErrMsg)
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+			CUST.INTERFACE.errorMsgCode = "FIERR"  
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		IF (BANCS.OUTPARAM.ErrMsg != "") THEN
+		#{
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+			CUST.INTERFACE.errorMsgDesc = BANCS.OUTPARAM.ErrMsg 
+			CUST.INTERFACE.errorMsgCode = "FIERR" 
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.respXMLMsg = BANCS.OUTPARAM.RespMesg
+			print(CUST.INTERFACE.respXMLMsg)
+			CUST.INTERFACE.errorMsgFlg = ""
+			CUST.INTERFACE.errorMsgDesc = ""
+			
+			CUST.INTERFACE.opndate = ""
+			CUST.INTERFACE.cifid = ""
+			CUST.INTERFACE.errorCode = ""
+			CUST.INTERFACE.errorDesc = ""
+			sv_x = CUST.INTERFACE.respXMLMsg
+
+			#--------------------------------------------------------------------------------------------------------
+			# Fetching the status of the request
+			#--------------------------------------------------------------------------------------------------------
+			sv_y = "<Status>"
+			sv_z = "</Status>"
+			sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+			sv_e = GETPOSITION(sv_x, sv_z) - 1
+			
+			IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+			#{
+				CUST.INTERFACE.tranStatus = MID$(sv_x, sv_b, (sv_e - sv_b))
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.tranStatus = ""
+			#}
+			ENDIF
+		print(CUST.INTERFACE.tranStatus)
+		#--------------------------------------------------------------------------------------------------------
+# If Success fetching cif id and cif opn date else fetching error code and description
+#--------------------------------------------------------------------------------------------------------
+IF (CUST.INTERFACE.tranStatus =="SUCCESS")  THEN
+#{
+	CUST.INTERFACE.errorMsgFlg = "N"
+	sv_x = CUST.INTERFACE.respXMLMsg
+	sv_y = "<CustId>"
+	sv_z = "</CustId>"
+	sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+	sv_e = GETPOSITION(sv_x, sv_z) - 1
+	IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+	#{
+		CUST.INTERFACE.cifid = MID$(sv_x, sv_b, (sv_e - sv_b))
+		print(CUST.INTERFACE.cifid)
+	#}
+	ENDIF
+				#----------------------------------------------------------------------------------------------------
+				# Update custom table status
+				#----------------------------------------------------------------------------------------------------
+				sv_s = "UPDATE CUSTOM.INT_CHANGE5   SET ENTITY_CRE_FLG = 'MOD',  CUST_PREF ='SUCCESS' "
+				sv_s = sv_s + " WHERE Foracid  = ?SVAR AND bank_id = ?SVAR and ENTITY_CRE_FLG ='ALL'  "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = CUST.INTERFACE.cifid  + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+		
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+				#}
+				ENDIF
+		
+	IF (CUST.INTERFACE.CIF == "") THEN
+	#{
+		CUST.INTERFACE.errorMsgFlg = "Y"
+		CUST.INTERFACE.errorCode = "SYSERR"
+		CUST.INTERFACE.errorDesc = "Could not get response from server"
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	CUST.INTERFACE.errorMsgFlg = "Y"
+	IF(CUST.INTERFACE.tranStatus != "SUCCESS") THEN
+	#{
+		sv_x = CUST.INTERFACE.respXMLMsg
+		sv_y = "<ErrorCode>"
+		sv_z = "</ErrorCode>"
+		sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+		sv_e = GETPOSITION(sv_x, sv_z) - 1
+		IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+		#{
+			CUST.INTERFACE.errorCode = MID$(sv_x, sv_b, (sv_e - sv_b))
+		#}
+		ENDIF
+		sv_x = CUST.INTERFACE.respXMLMsg
+		sv_y = "<ErrorDesc>"
+		sv_z = "</ErrorDesc>"
+		sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+		sv_e = GETPOSITION(sv_x, sv_z) - 1
+		IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+		#{
+			CUST.INTERFACE.errorDesc = MID$(sv_x, sv_b, (sv_e - sv_b))
+
+
+
+		#}
+		ENDIF
+
+			#----------------------------------------------------------------------------------------------------
+			# Update custom table failure status
+			#----------------------------------------------------------------------------------------------------
+			IF((CUST.INTERFACE.errorCode == "") AND (CUST.INTERFACE.errorDesc == "")) THEN
+			#{
+				CUST.INTERFACE.errorCode = "SYSERR"
+				CUST.INTERFACE.errorDesc = "Could not get response from server"
+			#}
+			ENDIF
+
+			sv_s = "UPDATE CUSTOM.INT_CHANGE5  SET ENTITY_CRE_FLG = 'MDE', CUST_PREF = replace (q'["+CUST.INTERFACE.errorDesc+"]',q'[|]',q'[ ]')  "
+			sv_s = sv_s + " WHERE Foracid  = ?SVAR AND bank_id = ?SVAR and ENTITY_CRE_FLG ='ALL' "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =  CUST.INTERFACE.CIF   + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+	
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+			#{
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+			#}
+			ENDIF
+	#}
+	ENDIF
+	IF((CUST.INTERFACE.errorCode == "") AND (CUST.INTERFACE.errorDesc == "")) THEN
+	#{
+		CUST.INTERFACE.errorCode = "SYSERR"
+		CUST.INTERFACE.errorDesc = "Could not get response from server"
+	#}
+	ENDIF
+#}
+ENDIF
+
+
+#}
+ENDIF
+
+		sv_k = urhk_dbCursorFetch(CUST.INTERFACE.DbcursorNumber)
+		print(sv_k)
+
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(CUST.INTERFACE.DbcursorNumber)
+	print(sv_c)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+EXITSCRIPT
+#trace off
+end-->
+
+
+
+
+
+ENDIF

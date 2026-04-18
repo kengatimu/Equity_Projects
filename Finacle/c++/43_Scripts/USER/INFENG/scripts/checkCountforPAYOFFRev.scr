@@ -1,0 +1,279 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: checkCountforPAYOFFRev.scr
+# Type: NA|default
+# Description: This script is used for throwing error when restruct loan account is used in HPAYOFF - reversal and payoff function, HLASPAY, HLAUPAY
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="dae9a30ee55120788111baea707d9745c8bcd8d510fe03fdc2ab3407211e42a8"
+	# Script body goes here
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+
+ 	IF (CLASSEXISTS("CUST","HOLBNKNG") == 0) THEN
+        #{
+                CREATECLASS("CUST","HOLBNKNG",5)
+        #}
+        ENDIF
+       
+	sv_u = urhk_b2k_printrepos("BANCS")
+	
+	CUST.LADISB.errorFlg = " "
+	CUST.LADISB.errMsg = " "
+	CUST.LADISB.foracid     = TOUPPER(BANCS.INPUT.acctNum)
+	CUST.LADISB.operAcct    = TOUPPER(BANCS.INPUT.operAcct)
+	CUST.LADISB.funcCode 	= TOUPPER(BANCS.INPUT.funcCode)
+	CUST.LADISB.operAcctFrmTable = " "
+	
+	PRINT(CUST.LADISB.funcCode)
+	PRINT(CUST.LADISB.operAcct)
+	PRINT(CUST.LADISB.foracid)
+	PRINT(BANCS.STDIN.menuId)
+
+	######
+	IF (BANCS.STDIN.contextBankId =="43") THEN
+		IF ((BANCS.STDIN.menuId =="HPAYOFF") AND (CUST.LADISB.funcCode == "P")) THEN
+			IF ((BANCS.STDIN.homeSolId == "5000") OR (BANCS.STDIN.homeSolId == "15000")) THEN
+				IF (BANCS.STDIN.userId !="FIVUSR43") THEN
+					###
+					CUST.LADISB.sysDateadt = BANCS.STDIN.sysDate
+					print(CUST.LADISB.sysDateadt)
+					CUST.LADISB.getsysdateadtstart="99"
+					CUST.LADISB.getsysdateadtend="88"
+					CUST.LADISB.getsysdateadt00flg="N"
+					CUST.LADISB.getsysdateadt06flg="N"
+					sv_s = "getsysdateampm,getsysdateadttime|select substr(to_char(sysdate ,'DD-MON-RRRR HH:MI:SS AM'),22,2) ampm, substr(to_char(sysdate ,'DD-MON-RRRR HH:MI:SS AM'),13,2) adttime from dual "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS =  CUST.LADISB.sysDateadt
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					IF (sv_d =="0") THEN
+						CUST.LADISB.getsysdateampm = BANCS.OUTPARAM.getsysdateampm
+						print(CUST.LADISB.getsysdateampm)
+						CUST.LADISB.getsysdateadttime= BANCS.OUTPARAM.getsysdateadttime
+						print(CUST.LADISB.getsysdateadttime)
+						IF (CUST.LADISB.getsysdateampm=="PM") THEN
+							CUST.LADISB.getsysdateadt00="05"
+							print(CUST.LADISB.getsysdateadt00)
+					#		IF (CUST.HOLBNKNG.getsysdateadttime=="12") THEN
+					#			CUST.HOLBNKNG.getsysdateadttime="00"
+					#			print(CUST.HOLBNKNG.getsysdateadttime)
+					#		ENDIF
+							IF ( cint(CUST.LADISB.getsysdateadttime) > cint(CUST.LADISB.getsysdateadt00) ) THEN
+								print("intime")
+								CUST.LADISB.getsysdateadt00flg="Y"
+								print(CUST.LADISB.getsysdateadt00flg)
+								CUST.LADISB.errorFlg = "E"
+								CUST.LADISB.errMsg = "The menu option is invalid or it is not available for the user at this Moment "
+								PRINT(CUST.LADISB.errMsg)
+								GOTO ENDOFSCRIPT
+							ENDIF
+						ENDIF
+					ENDIF
+					###
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+	######
+	
+	IF(((BANCS.STDIN.menuId == "HPAYOFF") AND (CUST.LADISB.funcCode == "R")) OR ((BANCS.STDIN.menuId == "HLASPAY") AND (CUST.LADISB.funcCode == "S")) OR ((BANCS.STDIN.menuId == "HLAUPAY") AND (CUST.LADISB.funcCode == "U"))) THEN
+	#{
+		#------------------------------------------------------------------------------------
+		# Get the count from custom table to check if old loan acct has already been paid off
+		#------------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = "count|"
+		sv_s = sv_s + " SELECT COUNT(*)"
+		sv_s = sv_s + " FROM CUSTOM.C_LADISB_PAYOFF_OLDLOAN A "
+		sv_s = sv_s + " WHERE A.old_foracid = ?SVAR"
+		sv_s = sv_s + " AND A.del_flg = 'N'"
+		
+		IF(BANCS.STDIN.menuId == "HPAYOFF") THEN
+		#{
+			sv_s = sv_s + " AND A.entity_cre_flg = 'Y'"
+			sv_s = sv_s + " AND A.payoff_flg = 'Y'"
+			#}
+		ELSE
+			#{
+			sv_s = sv_s + " AND A.entity_cre_flg = 'N'"
+			sv_s = sv_s + " AND A.payoff_flg = 'N'"
+		#}
+		ENDIF
+		
+		sv_s = sv_s + " AND A.bank_id = ?SVAR"
+		
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.foracid  + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		PRINT(sv_d)
+		
+		IF ( sv_d != 0 ) THEN
+		#{
+			CUST.LADISB.errorFlg = "E"
+			CUST.LADISB.errMsg = "Error occured in getting count from custom table"
+			PRINT(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.LADISB.count = BANCS.OUTPARAM.count
+			PRINT(CUST.LADISB.count)
+		#}
+		ENDIF
+		
+		PRINT(CUST.LADISB.count)
+		IF(CUST.LADISB.count > 0) THEN
+		#{
+			CUST.LADISB.errorFlg = "E"
+			
+			IF(BANCS.STDIN.menuId == "HPAYOFF") THEN
+			#{
+				CUST.LADISB.errMsg = "Reversal cannot be done for this re-structured Loan a/c"
+				#}
+			ELSE
+				#{
+				CUST.LADISB.errMsg = "Payment cannot be done for this re-structured Loan a/c"
+			#}
+			ENDIF
+			
+			PRINT(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	IF((BANCS.STDIN.menuId == "HPAYOFF") AND (CUST.LADISB.funcCode == "P")) THEN
+	#{
+		#------------------------------------------------------------------------------------
+		# Get the operative acct from custom table for the old Loan acct
+		#------------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = "count|"
+		sv_s = sv_s + " SELECT count(1)"
+		sv_s = sv_s + " FROM CUSTOM.C_LADISB_PAYOFF_OLDLOAN A"
+		sv_s = sv_s + " WHERE A.old_foracid = ?SVAR"
+		sv_s = sv_s + " AND A.del_flg = 'N'"
+		sv_s = sv_s + " AND A.entity_cre_flg = 'N'"
+		sv_s = sv_s + " AND A.payoff_flg = 'N'"
+		sv_s = sv_s + " AND A.bank_id = ?SVAR"
+		
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.foracid + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+		PRINT(sv_d)
+		
+		IF ( sv_d != 0 ) THEN
+		#{
+			CUST.LADISB.errorFlg = "E"
+			CUST.LADISB.errMsg = "Error occured in getting operative account from custom table"
+			PRINT(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+			#}
+			ELSE
+			#{
+			CUST.LADISB.count = BANCS.OUTPARAM.count
+			#}
+		ENDIF
+		
+		IF ( CUST.LADISB.count != 0 ) THEN
+		#{
+			sv_s = ""
+			sv_s = "operAcctFrmTable|"
+			sv_s = sv_s + " SELECT LOAN_OP_FORACID"
+			sv_s = sv_s + " FROM CUSTOM.C_LADISB_PAYOFF_OLDLOAN A"
+			sv_s = sv_s + " WHERE A.old_foracid = ?SVAR"
+			sv_s = sv_s + " AND A.del_flg = 'N'"
+			sv_s = sv_s + " AND A.entity_cre_flg = 'N'"
+			sv_s = sv_s + " AND A.payoff_flg = 'N'"
+			sv_s = sv_s + " AND A.bank_id = ?SVAR"
+			
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.foracid + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			PRINT(sv_s)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_d)
+		
+			IF ( sv_d != 0 ) THEN
+			#{
+				CUST.LADISB.errorFlg = "E"
+				CUST.LADISB.errMsg = "Error occured in getting operative account from custom table"
+				PRINT(CUST.LADISB.errMsg)
+				GOTO ENDOFSCRIPT
+				#}
+			
+			ELSE
+				#{
+				CUST.LADISB.operAcctFrmTable = BANCS.OUTPARAM.operAcctFrmTable
+				PRINT(CUST.LADISB.operAcctFrmTable)
+			#}
+			ENDIF
+		#}	
+		ELSE
+		#{
+			GOTO ENDOFSCRIPT
+			#}
+		ENDIF
+		
+		IF(CUST.LADISB.operAcctFrmTable != CUST.LADISB.operAcct) THEN
+		#{
+			CUST.LADISB.errorFlg = "E"
+			CUST.LADISB.errMsg = "Please use the operative account -  " + CUST.LADISB.operAcctFrmTable + " for paying OFF this Loan A/C"
+			PRINT(CUST.LADISB.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		
+		sv_u = urhk_SetOrbOut("errorFlg|"+CUST.LADISB.errorFlg)
+		sv_u = urhk_SetOrbOut("errorMsg|"+CUST.LADISB.errMsg)
+		
+		#-------------------------------------------------------------------------------
+		# Deleting custom repositories and classes created
+		#-------------------------------------------------------------------------------
+		IF(CLASSEXISTS("CUST","LADISB") == 1) THEN
+		#{
+			DELETECLASS("CUST","LADISB")
+		#}
+		ENDIF
+		
+		IF(REPEXISTS("CUST") == 1) THEN
+		#{
+			DELETEREP("CUST")
+		#}
+		ENDIF
+		EXITSCRIPT
+		TRACE OFF
+END-->

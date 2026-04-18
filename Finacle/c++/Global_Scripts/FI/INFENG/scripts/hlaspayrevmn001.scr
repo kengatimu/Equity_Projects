@@ -1,0 +1,248 @@
+##########################################################################################
+# Source Name           : hlaspayrevmn001.scr
+# Date                  : 23-Nov-2013
+# Description           : Batch Job For HLASPAY Reversal
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        23-Nov-2013   Mohan Raghu Arudi         Base Version
+###########################################################################################
+<--START
+CHECKSUM="8a80f80c95644aa167c5b235956bc96e401e3b9d02fd0d290ecf0b223d4aa646"
+	TRACE ON
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	lv_r = REPEXISTS("CUST")
+	
+	IF(lv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether HLASPAYREV Class exists else create it
+	###########################################################################################
+	
+	lv_r = CLASSEXISTS("CUST","HLASPAYREV")
+	
+	IF(lv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","HLASPAYREV",5)
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Print BANCS Repository
+	###########################################################################################
+	
+	lv_u = urhk_b2k_printrepos("BANCS")
+	print(lv_u)
+	
+	#-----------------------------------------------------------------
+	#  MTT
+	#-----------------------------------------------------------------
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	
+	BANCS.INPUT.batchNo = MTT.InputDetails.Argument1
+	print(BANCS.INPUT.batchNo)
+	
+	
+	###########################################################################################
+	# Initialize the variables and Get the input values
+	###########################################################################################
+	
+	CUST.HLASPAYREV.bankId = BANCS.STDIN.contextBankId
+	PRINT(CUST.HLASPAYREV.bankId)
+	CUST.HLASPAYREV.batchNo = "1"
+	CUST.HLASPAYREV.srlNum = ""
+	CUST.HLASPAYREV.loanAcctNum = ""
+	CUST.HLASPAYREV.tranId = ""
+	CUST.HLASPAYREV.tranDate = ""
+	
+	CUST.HLASPAYREV.scriptSuccess = ""
+	CUST.HLASPAYREV.errMsgFlg = ""
+	CUST.HLASPAYREV.errMsg = ""
+	
+	IF(FIELDEXISTS(BANCS.INPUT.batchNo))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.batchNo) != "")THEN
+		#{
+			CUST.HLASPAYREV.batchNo = TOUPPER(TRIM(BANCS.INPUT.batchNo))
+			print(CUST.HLASPAYREV.batchNo)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(TRIM(CUST.HLASPAYREV.batchNo) == "")THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Main Cursor Starts Here
+	###########################################################################################
+	
+	BANCS.INPARAM.BINDVARS = CUST.HLASPAYREV.bankId + "|" + CUST.HLASPAYREV.batchNo
+	print(BANCS.INPARAM.BINDVARS)
+	
+	lv_s = "srlNum,loanAcctNum,tranId,tranDate,parttran|"
+	lv_s = lv_s + " SELECT SRL_NUM,LOAN_ACCT_NUM,TRAN_ID,to_char(TRAN_DATE,'DD-MM-YYYY'),PART_TRAN_SRL_NUM "
+	lv_s = lv_s + " FROM CUSTOM.LSPRV "
+	lv_s = lv_s + " WHERE BANK_ID = ?SVAR "
+	lv_s = lv_s + " AND BATCH_NO = ?SVAR "
+	lv_s = lv_s + " AND NVL(STATUS_FLG,'F') = 'F'"
+	#lv_s = lv_s + " AND tran_id  = '  S752924'"
+	
+	print(lv_s)
+	
+	lv_c = urhk_dbCursorOpenWithBind(lv_s)
+	IF (lv_c != 0 ) THEN
+	#{
+		CUST.HLASPAYREV.errMsgFlg = "Y"
+		CUST.HLASPAYREV.errMsg = "Could not open cursor"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	lv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(lv_n)
+	
+	lv_c = urhk_dbCursorFetch(lv_n)
+	PRINT(lv_c)
+	
+	IF(lv_c !=0) THEN
+	#{
+		CUST.HLASPAYREV.errMsgFlg = "Y"
+		CUST.HLASPAYREV.errMsg = "Could not fetch details from custom table"
+		lv_c = urhk_dbCursorClose(lv_n)
+		print(lv_c)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	WHILE(lv_c == 0)
+	#{
+		CUST.HLASPAYREV.srlNum = BANCS.OUTPARAM.srlNum
+		CUST.HLASPAYREV.loanAcctNum = BANCS.OUTPARAM.loanAcctNum
+		CUST.HLASPAYREV.tranId = BANCS.OUTPARAM.tranId
+		CUST.HLASPAYREV.tranDate = BANCS.OUTPARAM.tranDate
+		CUST.HLASPAYREV.parttran = BANCS.OUTPARAM.parttran
+		
+		print(CUST.HLASPAYREV.srlNum)
+		print(CUST.HLASPAYREV.loanAcctNum)
+		print(CUST.HLASPAYREV.tranId)
+		print(CUST.HLASPAYREV.tranDate)
+		
+		###########################################################################################
+		# Get the Sol Id of the Loan A/c Number and do context switching if required
+		###########################################################################################
+		
+		CUST.HLASPAYREV.contextSolId = BANCS.STDIN.mySolId
+		PRINT(CUST.HLASPAYREV.contextSolId)
+		CUST.HLASPAYREV.acctSolId = ""
+		sv_s = "acid,bankId,acctSolId|SELECT ACID,BANK_ID,SOL_ID FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE FORACID = ?SVAR"
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.HLASPAYREV.loanAcctNum
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0)THEN
+		#{
+			CUST.HLASPAYREV.acid = BANCS.OUTPARAM.acid
+			PRINT(CUST.HLASPAYREV.acid)
+			CUST.HLASPAYREV.bankId = BANCS.OUTPARAM.bankId
+			PRINT(CUST.HLASPAYREV.bankId)
+			CUST.HLASPAYREV.acctSolId = BANCS.OUTPARAM.acctSolId
+			PRINT(CUST.HLASPAYREV.acctSolId)
+			
+			sv_k = "valueDate|SELECT to_char(VALUE_DATE,'dd-mm-yyyy') FROM TBAADM.LTD"
+			sv_k = sv_k + " WHERE  TRAN_DATE = TO_DATE(?SVAR,'DD-MM-YYYY') "
+			sv_k = sv_k + " AND TRAN_ID = ?SVAR AND PART_TRAN_SRL_NUM = ?SVAR "
+			sv_k = sv_k + " AND ACID = ?SVAR AND BANK_ID = ?SVAR "
+			print(sv_k)
+			BANCS.INPARAM.BINDVARS = CUST.HLASPAYREV.tranDate + "|" +  CUST.HLASPAYREV.tranId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  CUST.HLASPAYREV.parttran + "|" +  CUST.HLASPAYREV.acid
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +  CUST.HLASPAYREV.bankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_l = urhk_dbSelectWithBind(sv_k)
+			print(sv_l)
+			IF(sv_l == 0)THEN
+			#{
+				CUST.HLASPAYREV.valueDate = BANCS.OUTPARAM.valueDate
+				#}
+			ELSE
+				#{
+				CUST.HLASPAYREV.errMsgFlg = "Y"
+				CUST.HLASPAYREV.errMsg = "LDT record is not present"
+				CALL("hlaspayrevdp004.scr")
+				GOTO NEXT_RECORD
+			#}
+			ENDIF
+			
+			#}
+		ELSE
+			#{
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "Invalid Account ID"
+			CALL("hlaspayrevdp004.scr")
+			GOTO NEXT_RECORD
+		#}
+		ENDIF
+		
+		IF(CUST.HLASPAYREV.acctSolId != CUST.HLASPAYREV.contextSolId)THEN
+		#{
+			sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.HLASPAYREV.acctSolId)
+			print(sv_u)
+			sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+			print(sv_u)
+		#}
+		ENDIF
+		
+		###########################################################################################
+		# Call Subscript to Reverse the transaction
+		###########################################################################################
+		
+		CUST.HLASPAYREV.scriptSuccess = "Y"
+		CALL("hlaspayrevdp001.scr")
+		
+		IF(CUST.HLASPAYREV.scriptSuccess == "Y")THEN
+		#{
+			#STATUS AND REV TRAN ID UPDATE SCRIPT
+			CALL("hlaspayrevdp003.scr")
+			#}
+		ELSE
+			#{
+			#ERROR HANDLING SCRIPT FOR TABLE UPDATE
+			CALL("hlaspayrevdp004.scr")
+		#}
+		ENDIF
+		
+		NEXT_RECORD:
+			
+			sv_l = urhk_dbSqlWithBind("COMMIT")
+			print(sv_l)
+			
+			lv_c = urhk_dbCursorFetch(lv_n)
+			PRINT(lv_c)
+		#}
+		DO
+		
+		lv_c = urhk_dbCursorClose(lv_n)
+		print(lv_c)
+		
+		###########################################################################################
+		
+	ENDOFSCRIPT:
+		
+END-->

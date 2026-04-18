@@ -1,0 +1,373 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpAgentLimitCr.scr 
+#  Description     : Agent ODA Limit Maintenance 
+#  Date            : 14-04-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             14-04-2022      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+	if(repexists("EBSRV")==0)then
+	#{
+		createrep("EBSRV")
+	#}
+	endif
+	if(repexists("MTT")==0)then
+	#{
+		createrep("MTT")
+	#}
+	endif
+	if(classexists("EBSRV","GLBDATA")==0)then
+	#{
+		createclass("EBSRV","GLBDATA",5)
+	#}
+	endif
+	if(classexists("MTT","InputDetails")==0)then
+	#{
+		createclass("MTT","InputDetails",5)
+	#}
+	endif
+	EBSRV.GLBDATA.needAmtfrmOd = "0"
+	EBSRV.GLBDATA.AgentDmd = ""
+	EBSRV.GLBDATA.acDmdYN = ""
+	EBSRV.GLBDATA.TranId = ""
+	if(fieldexists(BANCS.INPUT.AgentDmd)==1)then
+	#{
+		EBSRV.GLBDATA.AgentDmdYN = BANCS.INPUT.AgentDmd 
+	#}
+	else
+	#{
+		EBSRV.GLBDATA.AgentDmdYN = "N"
+	#}
+	endif
+	print(EBSRV.GLBDATA.AgentDmdYN)
+	if(EBSRV.GLBDATA.AgentDmdYN=="N")then
+	#{
+		exitscript
+	#}
+	endif
+	BANCS.OUTPUT.availTranAmt=0
+	if(fieldexists(BANCS.INPUT.Foracid)==1)then
+	#{
+		BANCS.INPUT.acctNum=BANCS.INPUT.Foracid
+	#}
+	else
+	#{
+		BANCS.INPUT.acctNum=""
+	#}
+	endif
+	if(BANCS.INPUT.acctNum=="")then
+	#{
+		exitscript
+	#}
+	endif
+	if(BANCS.INPUT.acctNum!="")then
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.acctNum)
+		print(sv_u)
+		if(sv_u==0)then
+		#{
+			##print(BANCS.OUTPARAM.sanctionLimit)
+			##print(BANCS.OUTPARAM.cleanAdhocLimit)
+			##print(BANCS.OUTPARAM.drawingPower)
+			##print(BANCS.OUTPARAM.usedUnclearOverDACC)
+			##print(BANCS.OUTPARAM.FXClearBalance)
+			print(BANCS.OUTPARAM.ClearBalance)
+			##print(BANCS.OUTPARAM.FxAvailableAmt)
+			print(BANCS.OUTPARAM.AvailableAmt)
+			##BANCS.INPUT.AgntAvailableAmt = BANCS.OUTPARAM.ClearBalance 
+			BANCS.INPUT.AgntAvailableAmt = BANCS.OUTPARAM.AvailableAmt 
+			##print(BANCS.OUTPARAM.DACCLimit)
+			##print(BANCS.OUTPARAM.FxFFDAvailableAmt)
+			##print(BANCS.OUTPARAM.FFDAvailableAmt)
+			##print(BANCS.OUTPARAM.lienAmt)
+			##print(BANCS.OUTPARAM.FxEffAvailableAmt)
+			##print(BANCS.OUTPARAM.EffAvailableAmt)
+			##print(BANCS.OUTPARAM.systemGeneratedLimit)
+			##print(BANCS.OUTPARAM.SystemReservedAmt)
+			print(BANCS.OUTPARAM.AllowSweeps)
+			print(BANCS.OUTPARAM.PoolId)
+			##print(BANCS.OUTPARAM.freezeCode)
+			print(BANCS.OUTPARAM.schmType)
+			print(BANCS.OUTPARAM.schmCode)
+			##print(BANCS.OUTPARAM.custId)
+		#}
+		else
+		#{
+			BANCS.INPUT.AgntAvailableAmt = 0
+		#}
+		endif
+	#}
+	else
+	#{
+		BANCS.INPUT.AgntAvailableAmt = 0
+	#}
+	endif
+	if((BANCS.OUTPARAM.schmCode=="CA207") or (BANCS.OUTPARAM.schmCode=="SB126"))then
+	#{
+		sv_d = "OdAcct|select foracid from tbaadm.gam where bank_id=?SVAR and cust_id=?SVAR "
+		sv_d = sv_d + " and schm_code='OD541' and acct_cls_flg<>'Y' and entity_cre_flg='Y' " 
+		sv_d = sv_d + " and del_flg='N' and rownum<=1"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.OUTPARAM.custId 
+		print(sv_d)
+		print(BANCS.INPARAM.BINDVARS)
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+		#{
+			BANCS.INPUT.OdAcct = BANCS.OUTPARAM.OdAcct
+		#}
+		else
+		#{
+			BANCS.INPUT.OdAcct = ""
+		#}
+		endif
+		if(BANCS.INPUT.OdAcct!="")then
+		#{
+			sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.OdAcct)
+			print(sv_u)
+			if(sv_u==0)then
+			#{
+				###Commission is 0.5% x 100,000 = 500
+				###LACE =500/1.2= 416.67
+				###Excise duty =500-416.67=83.33 (20%*LACE)
+				BANCS.INPUT.odsancLim = BANCS.OUTPARAM.sanctionLimit	
+				BANCS.INPUT.chrgComm = cdouble(BANCS.INPUT.odsancLim) * 0.5 /100
+				BANCS.INPUT.chrgLace = cdouble(BANCS.INPUT.chrgComm)/1.2
+				BANCS.INPUT.chrgexduty = cdouble(BANCS.INPUT.chrgComm) - cdouble(BANCS.INPUT.chrgLace)
+				##BANCS.INPUT.totchrg = cdouble(BANCS.INPUT.chrgComm) + cdouble(BANCS.INPUT.chrgLace) + cdouble(BANCS.INPUT.chrgexduty)
+				BANCS.INPUT.totchrg = cdouble(BANCS.INPUT.chrgComm) 
+				print(BANCS.INPUT.totchrg)
+				print(BANCS.OUTPARAM.sanctionLimit)
+				print(BANCS.OUTPARAM.AvailableAmt)
+				print(BANCS.OUTPARAM.ClearBalance)
+				BANCS.INPUT.actualLimit = cdouble(BANCS.OUTPARAM.AvailableAmt) - cdouble(BANCS.INPUT.totchrg)
+				print(BANCS.INPUT.actualLimit)
+				###BANCS.INPUT.AgntOdAvailableAmt= BANCS.OUTPARAM.AvailableAmt	
+				BANCS.INPUT.AgntOdAvailableAmt=cdouble(BANCS.INPUT.actualLimit)
+				###BANCS.INPUT.AgntOdAvailableAmt=BANCS.OUTPARAM.ClearBalance
+				print(BANCS.OUTPARAM.EffAvailableAmt)
+			#}
+			else
+			#{
+				BANCS.INPUT.AgntOdAvailableAmt =0
+			#}
+			endif
+		#}
+		else
+		#{
+			BANCS.INPUT.AgntOdAvailableAmt = 0
+		#}
+		endif
+		print(BANCS.INPUT.AgntAvailableAmt)
+		print(BANCS.INPUT.AgntOdAvailableAmt)
+		print(BANCS.INPUT.totchrg)
+		print(BANCS.INPUT.odsancLim)
+		EBSRV.GLBDATA.dueCnt = "0"
+		if(fieldexists(BANCS.INPUT.TranAmt)==1)then
+		#{
+			#For Overdue Validation 
+			lv_p = "dueCnt |  select count(*) from custom.agddt where bank_id=?SVAR and foracid=?SVAR " 
+			#######and free_text1= ?SVAR "
+			lv_p = lv_p + " and dmd_eff_date<=to_date(?SVAR,'DD-MM-RRRR') and dep_tran_id='BATCH' and dep_dccid='BATCH' "
+			lv_p = lv_p + " and dep_command='CSWOP' and dmd_amt - tot_adj_amt >0 and dep_srl_num='NOSWEEPDIRECT_CREDIT' "
+			lv_p = lv_p + " and entity_cre_flg='Y' and del_flg='N' "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.acctNum + "|" + left$(BANCS.STDIN.BODDate,10)
+			print(BANCS.INPARAM.BINDVARS)
+			print(lv_p)
+			lv_g = urhk_dbSelectWithBind(lv_p)
+			if(lv_g==0)then
+			#{
+				EBSRV.GLBDATA.dueCnt = BANCS.OUTPARAM.dueCnt
+			#}
+			else
+			#{
+				EBSRV.GLBDATA.dueCnt = "0"
+
+			#}
+			endif
+			BANCS.OUTPUT.agntTrnAmt = left$(BANCS.INPUT.TranAmt,14)
+			print(BANCS.OUTPUT.agntTrnAmt)
+			if(cdouble(BANCS.INPUT.AgntAvailableAmt)>0)then
+			#{
+				if(cdouble(BANCS.OUTPUT.agntTrnAmt)>cdouble(BANCS.INPUT.AgntAvailableAmt))then
+				#{
+					EBSRV.GLBDATA.needAmtfrmOd = cdouble(BANCS.OUTPUT.agntTrnAmt) - cdouble(BANCS.INPUT.AgntAvailableAmt)	
+					print(EBSRV.GLBDATA.needAmtfrmOd)
+					if(cdouble(EBSRV.GLBDATA.needAmtfrmOd)>cdouble(BANCS.INPUT.AgntOdAvailableAmt))then
+					#{
+						#Agent Related OD has insufficient Fund
+						BANCS.OUTPUT.agntValYN = "NOCR"
+						EBSRV.GLBDATA.needAmtfrmOd = "0"
+					#}
+					else
+					#{
+						#agent Releated OD has sufficient Fund with agent account balance
+						BANCS.OUTPUT.agntValYN = ""
+						print(EBSRV.GLBDATA.needAmtfrmOd)
+					#}
+					endif
+				#}
+				else
+				#{
+					#Agent Account itself has sufficient Fund,No Od Tran
+					##BANCS.OUTPUT.agntValYN = "NODR"
+					BANCS.OUTPUT.agntValYN = "NOTRAN"
+					EBSRV.GLBDATA.needAmtfrmOd = "0"
+				#}
+				endif
+			#}
+			else
+			#{
+				EBSRV.GLBDATA.needAmtfrmOd = cdouble(BANCS.OUTPUT.agntTrnAmt)
+				print(EBSRV.GLBDATA.needAmtfrmOd)
+				print(BANCS.INPUT.AgntOdAvailableAmt)
+				if(cdouble(EBSRV.GLBDATA.needAmtfrmOd) > cdouble(BANCS.INPUT.AgntOdAvailableAmt))then
+				#{
+						#Agent Related OD has insufficient Fund
+						BANCS.OUTPUT.agntValYN = "NOCR"
+						EBSRV.GLBDATA.needAmtfrmOd = "0"
+				#}
+				else
+				#{
+						#agent Releated OD has sufficient Fund with agent account balance
+						BANCS.OUTPUT.agntValYN = ""
+						print(EBSRV.GLBDATA.needAmtfrmOd)
+				#}
+				endif
+				
+			#}
+			endif
+				#Starts
+				print(BANCS.OUTPUT.agntValYN)
+				print(EBSRV.GLBDATA.dueCnt)
+				print(EBSRV.GLBDATA.needAmtfrmOd)
+				###if((BANCS.OUTPUT.agntValYN!="NOCR")and(cdouble(EBSRV.GLBDATA.dueCnt)<=0)and(cdouble(EBSRV.GLBDATA.needAmtfrmOd)>0))then
+				if((cdouble(EBSRV.GLBDATA.dueCnt)<=0)and(cdouble(EBSRV.GLBDATA.needAmtfrmOd)>0))then
+				#{
+                                sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+                                sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|CI")
+                                sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+                                sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+                                sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+                                sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.partTranSrlNum|1")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|"+BANCS.STDIN.homeCrncyCode )
+                                EBSRV.GLBDATA.tranAmt = EBSRV.GLBDATA.needAmtfrmOd 
+                                print(EBSRV.GLBDATA.tranAmt)
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode ) 
+                                print(BANCS.INPUT.OdAcct)
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|"+ BANCS.INPUT.OdAcct ) 
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+                                        EBSRV.GLBDATA.drRmks = "Dr:Agent Disb" 
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+                                        EBSRV.GLBDATA.drPart =  "Disbursement to Agent" + BANCS.INPUT.acctNum 
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|"+ EBSRV.GLBDATA.drPart )
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+                                sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.partTranSrlNum|2")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|"+ BANCS.STDIN.homeCrncyCode )
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+EBSRV.GLBDATA.tranAmt+"|"+ BANCS.STDIN.homeCrncyCode ) 
+                                print(BANCS.INPUT.acctNum)
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|"+ BANCS.INPUT.acctNum ) 
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|"+BANCS.STDIN.BODDate)
+                                        EBSRV.GLBDATA.drRmks = "Disbursement from Agent" 
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|"+ EBSRV.GLBDATA.drRmks )
+                                        EBSRV.GLBDATA.crPart = "Disbursement from Agent" + BANCS.INPUT.OdAcct
+                                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|"+ EBSRV.GLBDATA.crPart )
+                                sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+                                sv_o = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+                                sv_u = urhk_ExecSrvNoCommit("SRV_AddAndPostXferTran|same_user_verify = Y|retain_all_output = Y")
+                                print(sv_u)
+                                if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+                                #{
+                                       print(BANCS.OUTPARAM.successOrFailure)
+                                        if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_u!=0))then
+                                        #{
+                                                callscriptifexist("ebsrvHandler.scr")
+                                                if(fieldexists(EBSRV.GLBDATA.SrvError)==1)then
+                                                #{
+                                                        EBSRV.GLBDATA.srvMsg    = EBSRV.GLBDATA.SrvError
+                                                        EBSRV.GLBDATA.srvErrorCode = "E0012"
+                                                        EBSRV.GLBDATA.srvSF     = "F"
+                                                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                                                        sv_u = urhk_SetOrbOut("Message|" + EBSRV.GLBDATA.srvMsg )
+                                                        BANCS.OUTPUT.successOrFailure="F"
+							BANCS.OUTPUT.agntValYN = "F"
+                                                        lv_j = urhk_dbSqlWithBind("rollback")
+                                                        print(lv_j)
+                                                        exitscript
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                        if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_u==0))then
+                                        #{
+                                                print(BANCS.OUTPARAM.tranId)
+                                                print(BANCS.OUTPARAM.tranDate)
+                                                EBSRV.GLBDATA.TranId = BANCS.OUTPARAM.tranId
+                                                EBSRV.GLBDATA.disbTranDate = BANCS.OUTPARAM.tranDate
+                                                print(EBSRV.GLBDATA.TranId)
+                                                print(EBSRV.GLBDATA.disbTranDate)
+                                        #}
+                                        else
+                                        #{
+                                                lv_j = urhk_dbSqlWithBind("rollback")
+                                                print(lv_j)
+						if(BANCS.OUTPUT.agntValYN!="NOTRAN")then
+						BANCS.OUTPUT.agntValYN = "F"
+						else
+						BANCS.OUTPUT.agntValYN = "S"
+						endif
+                                                exitscript
+                                        #}
+                                        endif
+                                #}
+				endif
+				if(EBSRV.GLBDATA.TranId!="")then
+				#{
+					#Agent Deposit is Allowed After Crediting Agent Account from Od
+					BANCS.OUTPUT.agntValYN = "S"
+				#}
+				endif
+				#}
+				else
+				#{
+						if(BANCS.OUTPUT.agntValYN!="NOTRAN")then
+						BANCS.OUTPUT.agntValYN = "F"
+						else
+						BANCS.OUTPUT.agntValYN = "S"
+						endif
+				#}
+				endif
+				if(cdouble(EBSRV.GLBDATA.dueCnt)>=1)then
+				#{
+					BANCS.OUTPUT.agntValYN = "O"
+				#}
+				endif
+				##ends
+
+
+		#}
+		else
+		#{
+			BANCS.OUTPUT.agntValYN = "Y"
+		#}
+		endif
+	#}
+	else
+	#{
+		BANCS.OUTPUT.agntValYN = "Y"
+	#}
+	endif
+######trace off
+end-->

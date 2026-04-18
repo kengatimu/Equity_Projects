@@ -1,0 +1,880 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodadp002.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to fetch data to be displayed in details page in each mode.
+# Input                 :       Criteria page values.
+# Output                :       Details page values.
+# Called Script         :       None
+# Calling Script        :       ctodamn001.scr, ctodamn002.scr, ctodamn003.scr, ctodamn004.scr, ctodamn005.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           05-04-2013         Nitin Prabhakar   original Version          1.0
+#  2           24-07-2013         Bharath	Modified for TOL 361668       2.0
+#  3           25-07-2013         Bharath	Modified for expDate field    3.0
+#  4           26-07-2013         Bharath	Modified for total amount availed field
+#  5	       07-08-2013	  Kalvin	Modified for TO:363826&363177 4.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="2c1b4d8ff4f1da60a20f464c439bd67b0fda8e1977ac928c60aca8795d56b20f"
+	TRACE ON
+	CUST.CTODA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	print(CUST.CTODA.BODDate)
+	CUST.CTODA.todAmt = ""
+	#------------------------------------------------------------------------------
+	#  Fetching data from Db on basis of Function
+	#  IF clause - data fetchingfor add mode
+	#  ELSE clause -  data fetchingfor modes other than Add.
+	#------------------------------------------------------------------------------
+	IF (CUST.CTODA.funcCode != "I") THEN
+	#{
+		#------------------------------------------------------------------------------
+		#  Validating Account Status
+		#------------------------------------------------------------------------------
+		sv_s = "acctStatus|"
+		sv_s = sv_s + " SELECT SMT.acct_status"
+		sv_s = sv_s + " FROM TBAADM.SMT, TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.foracid = ?SVAR"
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s + " AND SMT.acid = GAM.acid"
+		sv_s = sv_s + " AND SMT.bank_id = GAM.bank_id"
+		sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND GAM.del_flg = 'N'"
+		sv_s = sv_s + " AND GAM.acct_cls_flg = 'N'"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.CTODA.acctStatus = BANCS.OUTPARAM.acctStatus
+			print(CUST.CTODA.acctStatus)
+			#}
+		ELSE
+			#{
+			CUST.CTODA.errorMsg = "Account is Invalid"
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF ( CUST.CTODA.acctStatus != "A" ) THEN
+		#{
+			CUST.CTODA.errorMsg = "Account is Dormant/Inactive"
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (CUST.CTODA.funcCode == "A") THEN
+	#{
+		#------------------------------------------------------------------------------
+		#  Fetching Account details for add modes from table GAM
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "accName,accCCY,schmType,schmCode|"
+		sv_s = sv_s + " SELECT ACCT_NAME,ACCT_CRNCY_CODE,SCHM_TYPE,SCHM_CODE"
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE FORACID = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_001"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.accName = BANCS.OUTPARAM.accName
+			print(CUST.CTODA.accName)
+			CUST.CTODA.accCCY = BANCS.OUTPARAM.accCCY
+			print(CUST.CTODA.accCCY)
+			CUST.CTODA.schmType = TRIM(BANCS.OUTPARAM.schmType)
+			print(CUST.CTODA.schmType)
+			CUST.CTODA.schmCode = TRIM(BANCS.OUTPARAM.schmCode)
+			print(CUST.CTODA.schmCode)
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------------------
+		#  Validating Account Id should be of SBA or CAA
+		#------------------------------------------------------------------------------
+		IF( (CUST.CTODA.schmType != "SBA") AND (CUST.CTODA.schmType != "CAA") ) THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_002"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------------------
+		#  Fetching Contract details for add modes from table CATOD_SANCTION_TABLE
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|N|Y|" + CUST.CTODA.BODDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "contractId,maxAvailAmt,contractPeriodMM,todAmt|"
+		sv_s = sv_s + " SELECT REQUEST_ID,REQ_AMT,REQ_PERIOD,TOD_AMT"
+		sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND DEL_FLG = ?SVAR"
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR"
+		sv_s = sv_s + " AND EXPIRY_DATE > TO_DATE(?SVAR,'DD-MM-YYYY')"
+		sv_s = sv_s + " AND CLS_FLG = 'N'"
+		sv_s = sv_s + " AND STATUS_FLG = 'A'"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_003"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.contractId = BANCS.OUTPARAM.contractId
+			print(CUST.CTODA.contractId)
+			CUST.CTODA.maxAvailAmt = BANCS.OUTPARAM.maxAvailAmt
+			CUST.CTODA.maxAvailAmt = FORMAT$(CDOUBLE(CUST.CTODA.maxAvailAmt),"%.2f")
+			print(CUST.CTODA.maxAvailAmt)
+			CUST.CTODA.contractPeriodMM = BANCS.OUTPARAM.contractPeriodMM
+			print(CUST.CTODA.contractPeriodMM)
+			CUST.CTODA.todAmt = BANCS.OUTPARAM.todAmt
+			print(CUST.CTODA.todAmt)
+		#}
+		ENDIF
+		sv_s = ""
+		sv_s = "sumTodAmt|SELECT SUM(CHARGE_AMT) FROM CUSTOM.C_TODA"
+		sv_s = sv_s + " WHERE SANCT_ID = ?SVAR"
+		sv_s = sv_s + " AND BANK_ID = ?SVAR AND VERIFY_BY IS NOT NULL"
+		
+		
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.contractId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0) THEN
+		#{
+			CUST.CTODA.sumTodAmt = BANCS.OUTPARAM.sumTodAmt
+			print(CUST.CTODA.sumTodAmt)
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		#  Fetching Contract preriod days from scheme setup
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.schmCode + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "availPeriodMM|"
+		sv_s = sv_s + " SELECT discret_advn_days"
+		sv_s = sv_s + " FROM TBAADM.DAR "
+		sv_s = sv_s + " WHERE schm_code = ?SVAR "
+		sv_s = sv_s + " AND del_flg = 'N'"
+		sv_s = sv_s + " AND dat_ref_type = 'UG'"
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CTODA.errorMsg = "Error in finding TOD availment period days from scheme"
+			CUST.CTODA.fieldName = "availPeriodMM"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.availPeriodMM = BANCS.OUTPARAM.availPeriodMM
+			print(CUST.CTODA.availPeriodMM)
+		#}
+		ENDIF
+		
+		#------------------------------------------------------------------------------
+		#  Fetching Contract expiry date
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.BODDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "expDate|"
+		sv_s = sv_s + " SELECT to_char((to_date( ?SVAR ,'dd-mm-yyyy') + " + CUST.CTODA.availPeriodMM
+		sv_s = sv_s + " ),'dd-mm-yyyy') "
+		sv_s = sv_s + " FROM DUAL "
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CTODA.errorMsg = "Error in finding TOD availment expiry date"
+			CUST.CTODA.fieldName = "availPeriodMM"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.expDate = BANCS.OUTPARAM.expDate
+			print(CUST.CTODA.expDate)
+		#}
+		ENDIF
+		
+		
+		#--------------------------------------------------------------------------
+		# Finding maximum contract amount
+		#--------------------------------------------------------------------------
+		CUST.CTODA.maxContractAmt=0
+		sv_s = "conAmt|"
+		sv_s = sv_s + " SELECT CONTRACT_AMT "
+		sv_s = sv_s + " FROM CUSTOM.CATOD_MASTER_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		sv_s = sv_s + " AND  ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND  DEL_FLG = 'N'"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			sv_w = "SUCCESSORFAILURE|N"
+			sv_u = urhk_SetOrbOut(sv_w)
+			sv_m = "Error in finding maximum contract amount"
+			sv_z = "Error_0|" + sv_m
+			sv_u = urhk_SetOrbOut(sv_z)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.maxContractAmt = BANCS.OUTPARAM.conAmt
+			print(CUST.CTODA.maxContractAmt)
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------
+		# Checking saction amount
+		#--------------------------------------------------------------------------
+		sv_s = "sanctAmt|"
+		sv_s = sv_s + " SELECT nvl(sanct_amt,0) "
+		sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		sv_s = sv_s + " AND  status_flg = 'A'"
+		sv_s = sv_s + " AND  entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND  del_flg = 'N'"
+		sv_s = sv_s + " AND CLS_FLG = 'N'"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			sv_w = "SUCCESSORFAILURE|N"
+			sv_u = urhk_SetOrbOut(sv_w)
+			sv_m = "Error in finding sanction amount"
+			sv_z = "Error_0|" + sv_m
+			sv_u = urhk_SetOrbOut(sv_z)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.sanctAmt = BANCS.OUTPARAM.sanctAmt
+			print(CUST.CTODA.sanctAmt)
+		#}
+		ENDIF
+		
+		
+		#--------------------------------------------------------------------------
+		#FETCHING THE AVAILABLE TOD THAT CAN BE UTILIZED
+		#--------------------------------------------------------------------------
+		
+		sv_s = " todBalance,clrBalAmt|SELECT  (clean_single_tran_lim+single_tran_lim ),clr_bal_amt  "
+		sv_s = sv_s + " FROM tbaadm.gam  "
+		sv_s = sv_s + " WHERE  foracid =?SVAR   "
+		sv_s = sv_s + " AND del_flg='N'  "
+		sv_s = sv_s + " AND  entity_cre_flg='Y'  "
+		sv_s = sv_s + " AND bank_id=?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CTODA.errorMsg = "Error in fietching the details"
+			CUST.CTODA.fieldName = "totAvailedAmt"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.todBalance = BANCS.OUTPARAM.todBalance
+			CUST.CTODA.clrBalAmt = BANCS.OUTPARAM.clrBalAmt
+			PRINT(CUST.CTODA.todBalance)
+			PRINT(CUST.CTODA.clrBalAmt)
+		#}
+		ENDIF
+		
+		IF(CDOUBLE(CUST.CTODA.maxContractAmt) < CDOUBLE(CUST.CTODA.sanctAmt)) THEN
+		#{
+			print("setting sanction amt same as contract amt")
+			CUST.CTODA.sanctAmt = CUST.CTODA.maxContractAmt
+			#}
+		ELSE
+			#{
+			print(CUST.CTODA.sanctAmt)
+		#}
+		ENDIF
+		
+		IF ((CDOUBLE(CUST.CTODA.clrBalAmt)<0))THEN
+		#{
+			#-------FIRST half of comparision--------------------
+			#LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMBER(CATOD_USED_AMT),TO_NUMBER(CATOD_CLR_BAL_AMT) + (-1 * CATOD_USED_AMT ) )
+			#-------------------------------------------------------------------------
+			CUST.CTODA.temp1=cdouble(CUST.CTODA.clrBalAmt)
+			PRINT(CUST.CTODA.temp1)
+			CUST.CTODA.temp2=(-1*CDOUBLE(CUST.CTODA.todBalance))
+			PRINT(CUST.CTODA.temp2)
+			CUST.CTODA.temp3 = CDOUBLE(CUST.CTODA.clrBalAmt)+ (-1 * CDOUBLE(CUST.CTODA.todBalance))
+			PRINT(CUST.CTODA.temp3)
+			#finding the least of the the above three--------------#
+			IF (CDOUBLE(CUST.CTODA.temp1)< CDOUBLE(CUST.CTODA.temp2)) THEN
+			#{
+				IF(CDOUBLE(CUST.CTODA.temp1)< CDOUBLE(CUST.CTODA.temp3)) THEN
+				#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp1)
+					PRINT(CUST.CTODA.tempMain2)
+					#}
+				ELSE
+					#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp3)
+					PRINT(CUST.CTODA.tempMain2)
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				IF(CDOUBLE(CUST.CTODA.temp2)< CDOUBLE(CUST.CTODA.temp3)) THEN
+				#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp2)
+					PRINT(CUST.CTODA.tempMain2)
+					#}
+				ELSE
+					#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp3)
+					PRINT(CUST.CTODA.tempMain2)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.tempMain2)
+			#--------------------------------------------------------------
+			#COMPLETEING THE COMPARISION
+			#LEAST(TO_NUMBER(CATOD_MAX_AMT),  TO_NUMBER(CATOD_MAX_AMT) + LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMBER(CATOD_USED_AMT),TO_NUMBER(CATOD_CLR_BAL_AMT) + (-1 * CATOD_USED_AMT ) ));
+			#---------------------------------------------------------
+			CUST.CTODA.tempMain1= CUST.CTODA.sanctAmt
+			IF(CDOUBLE(CUST.CTODA.tempMain1) < CDOUBLE(CUST.CTODA.tempMain2) ) THEN
+			#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain1
+				#}
+			ELSE
+				#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain2
+			#}
+			ENDIF
+			CUST.CTODA.totAvailedAmt =CUST.CTODA.otherTodAvailed
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			IF(CDOUBLE(CUST.CTODA.totAvailedAmt)<=0) THEN
+			#{
+				CUST.CTODA.totAvailedAmt="0"
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.totAvailedAmt)
+			print(CUST.CTODA.todAmt)
+			print(CUST.CTODA.sumTodAmt)
+			IF(CDOUBLE(CUST.CTODA.totAvailedAmt) > 0) THEN
+			#{
+				#CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.todAmt) + CDOUBLE(CUST.CTODA.sumTodAmt)
+				CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.todAmt)
+			#}
+			ENDIF
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			print(CUST.CTODA.totAvailedAmt)
+			#------------------------------------------------------
+			#if clear balance is greater than zero
+			#------------------------------------------------------
+			#}
+		ELSE
+			#{
+			
+			CUST.CTODA.tempMain1= CUST.CTODA.sanctAmt
+			#-------------FIRST half of comparision-------------------------
+			#LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMber(CATOD_USED_AMT))
+			#------------------------------------------------------------------
+			
+			CUST.CTODA.temp1=cdouble(CUST.CTODA.clrBalAmt)
+			CUST.CTODA.temp2=(-1*CDOUBLE(CUST.CTODA.todBalance))
+			IF(CDOUBLE(CUST.CTODA.temp1)< CDOUBLE(CUST.CTODA.temp2)) THEN
+			#{
+				CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp1)
+				#}
+			ELSE
+				#{
+				CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp2)
+			#}
+			ENDIF
+			#--------------------------------------------------------------
+			#COMPLETEING THE COMPARISION
+			#LEAST(TO_NUMBER(CATOD_MAX_AMT),  TO_NUMBER(CATOD_MAX_AMT) + LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMber(CATOD_USED_AMT)));
+			#------------------------------------------------
+			
+			IF(CDOUBLE(CUST.CTODA.tempMain1) < CDOUBLE(CUST.CTODA.tempMain2 )) THEN
+			#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain1
+				#}
+			ELSE
+				#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain2
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.otherTodAvailed)
+			CUST.CTODA.totAvailedAmt =CUST.CTODA.otherTodAvailed
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			IF(CDOUBLE(CUST.CTODA.totAvailedAmt)<=0) THEN
+			#{
+				CUST.CTODA.totAvailedAmt="0"
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.totAvailedAmt)
+			print(CUST.CTODA.todAmt)
+			print(CUST.CTODA.sumTodAmt)
+			#CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.sumTodAmt)
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			print(CUST.CTODA.totAvailedAmt)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|N|Y|" + CUST.CTODA.BODDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "todAmt|"
+		sv_s = sv_s + " SELECT TOD_AMT"
+		sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND DEL_FLG = ?SVAR"
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR"
+		sv_s = sv_s + " AND EXPIRY_DATE > TO_DATE(?SVAR,'DD-MM-YYYY')"
+		sv_s = sv_s + " AND CLS_FLG = 'N'"
+		sv_s = sv_s + " AND STATUS_FLG = 'A'"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0) THEN
+		#{
+			CUST.CTODA.todAmt = BANCS.OUTPARAM.todAmt
+			Print(CUST.CTODA.todAmt)
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		#  Fetching data for modes other than add from table C_TODA
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.bankId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId + "|N"
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "contractId,accName,availPeriodMM,chrgAmt,netTodAmount,remarks,expDate|"
+		sv_s = sv_s + " SELECT SANCT_ID,ACCT_NAME,PERIOD,CHARGE_AMT,REQ_AMT,REMARKS,to_char(EXPIRY_DATE,'dd-mm-yyyy')"
+		sv_s = sv_s + " FROM CUSTOM.C_TODA "
+		sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+		sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+		sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+		sv_s = sv_s + " AND IS_DELETED = ?SVAR"
+		IF (CUST.CTODA.funcCode == "I") THEN
+		#{
+			sv_s = sv_s + " AND VERIFY_BY IS NOT NULL"
+			#}
+		ELSE
+			#{
+			sv_s = sv_s + " AND VERIFY_BY IS NULL"
+		#}
+		ENDIF
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			IF (CUST.CTODA.funcCode == "I") THEN
+			#{
+				CUST.INTERFACE.errorCode = "CTODA_ERR_004"
+			#}
+			ENDIF
+			IF ((CUST.CTODA.funcCode == "V") OR (CUST.CTODA.funcCode == "X")) THEN
+			#{
+				CUST.INTERFACE.errorCode = "CTODA_ERR_005"
+			#}
+			ENDIF
+			IF (CUST.CTODA.funcCode == "M") THEN
+			#{
+				CUST.INTERFACE.errorCode = "CTODA_ERR_006"
+			#}
+			ENDIF
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "abc"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.contractId = BANCS.OUTPARAM.contractId
+			print(CUST.CTODA.contractId)
+			CUST.CTODA.accName = BANCS.OUTPARAM.accName
+			print(CUST.CTODA.accName)
+			CUST.CTODA.availPeriodMM = BANCS.OUTPARAM.availPeriodMM
+			print(CUST.CTODA.availPeriodMM)
+			CUST.CTODA.chrgAmt = BANCS.OUTPARAM.chrgAmt
+			CUST.CTODA.chrgAmt = FORMAT$(CDOUBLE(CUST.CTODA.chrgAmt),"%.2f")
+			print(CUST.CTODA.chrgAmt)
+			CUST.CTODA.netTodAmount = BANCS.OUTPARAM.netTodAmount
+			CUST.CTODA.netTodAmount = FORMAT$(CDOUBLE(CUST.CTODA.netTodAmount),"%.2f")
+			print(CUST.CTODA.netTodAmount)
+			CUST.CTODA.remarks = BANCS.OUTPARAM.remarks
+			print(CUST.CTODA.remarks)
+			# calculating the TOD availment amount.
+			CUST.CTODA.availAmt = CDOUBLE(CUST.CTODA.netTodAmount) - CDOUBLE(CUST.CTODA.chrgAmt)
+			CUST.CTODA.availAmt = FORMAT$(CDOUBLE(CUST.CTODA.availAmt),"%.2f")
+			print(CUST.CTODA.availAmt)
+			CUST.CTODA.expDate = BANCS.OUTPARAM.expDate
+			print(CUST.CTODA.expDate)
+		#}
+		ENDIF
+		sv_s = ""
+		sv_s = "todAmtFull|SELECT SUM(CHARGE_AMT) FROM CUSTOM.C_TODA"
+		sv_s = sv_s + " WHERE SANCT_ID = ?SVAR"
+		sv_s = sv_s + " AND BANK_ID = ?SVAR AND VERIFY_BY IS NOT NULL"
+		
+		
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.contractId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0) THEN
+		#{
+			print(BANCS.OUTPARAM.todAmtFull)
+			CUST.CTODA.sumTodAmt = BANCS.OUTPARAM.todAmtFull
+			print(CUST.CTODA.sumTodAmt)
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		#  Fetching Account details for modes other than add from table GAM
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "accCCY|"
+		sv_s = sv_s + " SELECT ACCT_CRNCY_CODE"
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE FORACID = ?SVAR "
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_001"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.accCCY = BANCS.OUTPARAM.accCCY
+			print(CUST.CTODA.accCCY)
+		#}
+		ENDIF
+		#------------------------------------------------------------------------------
+		#  Fetching Contract details for modes other than add from table CATOD_SANCTION_TABLE
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.contractId + "|Y"
+		IF (CUST.CTODA.funcCode != "I") THEN
+		#{
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|N"
+		#}
+		ENDIF
+		#BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.bankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "maxAvailAmt,contractPeriodMM|"
+		sv_s = sv_s + " SELECT REQ_AMT,REQ_PERIOD"
+		sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR"
+		sv_s = sv_s + " AND CLS_FLG = 'N'"
+		IF (CUST.CTODA.funcCode != "I") THEN
+		#{
+			sv_s = sv_s + " AND DEL_FLG = ?SVAR"
+		#}
+		ENDIF
+		#sv_s = sv_s + " AND BANK_ID = ?SVAR"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_003"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "accNum"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.maxAvailAmt = BANCS.OUTPARAM.maxAvailAmt
+			CUST.CTODA.maxAvailAmt = FORMAT$(CDOUBLE(CUST.CTODA.maxAvailAmt),"%.2f")
+			print(CUST.CTODA.maxAvailAmt)
+			CUST.CTODA.contractPeriodMM = BANCS.OUTPARAM.contractPeriodMM
+			print(CUST.CTODA.contractPeriodMM)
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------
+		# Finding maximum contract amount
+		#--------------------------------------------------------------------------
+		CUST.CTODA.maxContractAmt=0
+		sv_s = "conAmt|"
+		sv_s = sv_s + " SELECT CONTRACT_AMT "
+		sv_s = sv_s + " FROM CUSTOM.CATOD_MASTER_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		sv_s = sv_s + " AND  ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND  DEL_FLG = 'N'"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			sv_w = "SUCCESSORFAILURE|N"
+			sv_u = urhk_SetOrbOut(sv_w)
+			sv_m = "Error in finding maximum contract amount"
+			sv_z = "Error_0|" + sv_m
+			sv_u = urhk_SetOrbOut(sv_z)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.maxContractAmt = BANCS.OUTPARAM.conAmt
+			print(CUST.CTODA.maxContractAmt)
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------
+		# Checking saction amount
+		#--------------------------------------------------------------------------
+		sv_s = "sanctAmt|"
+		sv_s = sv_s + " SELECT nvl(sanct_amt,0) "
+		sv_s = sv_s + " FROM CUSTOM.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		sv_s = sv_s + " AND  status_flg = 'A'"
+		sv_s = sv_s + " AND  entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND  del_flg = 'N'"
+		sv_s = sv_s + " AND CLS_FLG = 'N'"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			sv_w = "SUCCESSORFAILURE|N"
+			sv_u = urhk_SetOrbOut(sv_w)
+			sv_m = "Error in finding sanction amount"
+			sv_z = "Error_0|" + sv_m
+			sv_u = urhk_SetOrbOut(sv_z)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.sanctAmt = BANCS.OUTPARAM.sanctAmt
+			print(CUST.CTODA.sanctAmt)
+		#}
+		ENDIF
+		
+		
+		
+		#--------------------------------------------------------------------------
+		#FETCHING THE AVAILABLE TOD THAT CAN BE UTILIZED
+		#--------------------------------------------------------------------------
+		
+		sv_s = " todBalance,clrBalAmt|SELECT  (clean_single_tran_lim+single_tran_lim ),clr_bal_amt  "
+		sv_s = sv_s + " FROM tbaadm.gam  "
+		sv_s = sv_s + " WHERE  foracid =?SVAR   "
+		sv_s = sv_s + " AND del_flg='N'  "
+		sv_s = sv_s + " AND  entity_cre_flg='Y'  "
+		sv_s = sv_s + " AND bank_id=?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.CTODA.accNum + "|" + BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CTODA.errorMsg = "Error in fietching the details"
+			CUST.CTODA.fieldName = "totAvailedAmt"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CTODA.todBalance = BANCS.OUTPARAM.todBalance
+			CUST.CTODA.clrBalAmt = BANCS.OUTPARAM.clrBalAmt
+			PRINT(CUST.CTODA.todBalance)
+			PRINT(CUST.CTODA.clrBalAmt)
+		#}
+		ENDIF
+		#=====================================CHANGES  MADE FOR   TO:363826&363177==================================================================#
+		
+		IF ((CDOUBLE(CUST.CTODA.clrBalAmt)<0))THEN
+		#{
+			#-------FIRST half of comparision--------------------
+			#LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMBER(CATOD_USED_AMT),TO_NUMBER(CATOD_CLR_BAL_AMT) + (-1 * CATOD_USED_AMT ) )
+			#-------------------------------------------------------------------------
+			CUST.CTODA.temp1=cdouble(CUST.CTODA.clrBalAmt)
+			PRINT(CUST.CTODA.temp1)
+			CUST.CTODA.temp2=(-1*CDOUBLE(CUST.CTODA.todBalance))
+			PRINT(CUST.CTODA.temp2)
+			CUST.CTODA.temp3 = CDOUBLE(CUST.CTODA.clrBalAmt)+ (-1 * CDOUBLE(CUST.CTODA.todBalance))
+			PRINT(CUST.CTODA.temp3)
+			#finding the least of the the above three--------------#
+			IF (CDOUBLE(CUST.CTODA.temp1)< CDOUBLE(CUST.CTODA.temp2) )THEN
+			#{
+				IF(CDOUBLE(CUST.CTODA.temp1)< CDOUBLE(CUST.CTODA.temp3)) THEN
+				#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp1)
+					#}
+				ELSE
+					#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp3)
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				IF(CDOUBLE(CUST.CTODA.temp2) < CDOUBLE(CUST.CTODA.temp3)) THEN
+				#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp2)
+					#}
+				ELSE
+					#{
+					CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp3)
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			#--------------------------------------------------------------
+			#COMPLETEING THE COMPARISION
+			#LEAST(TO_NUMBER(CATOD_MAX_AMT),  TO_NUMBER(CATOD_MAX_AMT) + LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMBER(CATOD_USED_AMT),TO_NUMBER(CATOD_CLR_BAL_AMT) + (-1 * CATOD_USED_AMT ) ));
+			#---------------------------------------------------------
+			CUST.CTODA.tempMain1= CUST.CTODA.sanctAmt
+			IF(CDOUBLE(CUST.CTODA.tempMain1) < CDOUBLE(CUST.CTODA.tempMain2 ) )THEN
+			#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain1
+				#}
+			ELSE
+				#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain2
+			#}
+			ENDIF
+			CUST.CTODA.totAvailedAmt =CUST.CTODA.otherTodAvailed
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			IF(CDOUBLE(CUST.CTODA.totAvailedAmt)<=0) THEN
+			#{
+				CUST.CTODA.totAvailedAmt="0"
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.totAvailedAmt)
+			PRINT(CUST.CTODA.totAvailedAmt)
+			print(CUST.CTODA.sumTodAmt)
+			print(CUST.CTODA.todAmt)
+			#CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.todAmt) + CDOUBLE(CUST.CTODA.sumTodAmt)
+			CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.todAmt)
+			print(CUST.CTODA.totAvailedAmt)
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			print(CUST.CTODA.totAvailedAmt)
+			#------------------------------------------------------
+			#if clear balance is greater than zero
+			#------------------------------------------------------
+			#}
+		ELSE
+			#{
+			CUST.CTODA.tempMain1= CUST.CTODA.sanctAmt
+			#-------------FIRST half of comparision-------------------------
+			#LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMber(CATOD_USED_AMT))
+			#------------------------------------------------------------------
+			
+			CUST.CTODA.temp1=cdouble(CUST.CTODA.clrBalAmt)
+			CUST.CTODA.temp2=(-1*CDOUBLE(CUST.CTODA.todBalance))
+			IF(CDOUBLE(CUST.CTODA.temp1) < CDOUBLE(CUST.CTODA.temp2)) THEN
+			#{
+				CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp1)
+				#}
+			ELSE
+				#{
+				CUST.CTODA.tempMain2=CDOUBLE(CUST.CTODA.sanctAmt)+ CDOUBLE( CUST.CTODA.temp2)
+			#}
+			ENDIF
+			#--------------------------------------------------------------
+			#COMPLETEING THE COMPARISION
+			#LEAST(TO_NUMBER(CATOD_MAX_AMT),  TO_NUMBER(CATOD_MAX_AMT) + LEAST(TO_NUMBER(CATOD_CLR_BAL_AMT), -1 * TO_NUMber(CATOD_USED_AMT)));
+			#------------------------------------------------
+			
+			IF(CDOUBLE(CUST.CTODA.tempMain1) < CDOUBLE(CUST.CTODA.tempMain2) ) THEN
+			#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain1
+				#}
+			ELSE
+				#{
+				CUST.CTODA.otherTodAvailed= CUST.CTODA.tempMain2
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.otherTodAvailed)
+			CUST.CTODA.totAvailedAmt =CUST.CTODA.otherTodAvailed
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			IF(CDOUBLE(CUST.CTODA.totAvailedAmt)<=0) THEN
+			#{
+				CUST.CTODA.totAvailedAmt="0"
+			#}
+			ENDIF
+			PRINT(CUST.CTODA.totAvailedAmt)
+			PRINT(CUST.CTODA.totAvailedAmt)
+			print(CUST.CTODA.todAmt)
+			#CUST.CTODA.totAvailedAmt = CDOUBLE(CUST.CTODA.totAvailedAmt) + CDOUBLE(CUST.CTODA.sumTodAmt)
+			CUST.CTODA.totAvailedAmt = FORMAT$(CDOUBLE(CUST.CTODA.totAvailedAmt),"%.2f")
+			print(CUST.CTODA.totAvailedAmt)
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

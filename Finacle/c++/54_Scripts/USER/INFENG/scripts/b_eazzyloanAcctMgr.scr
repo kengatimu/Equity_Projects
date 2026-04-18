@@ -1,0 +1,335 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_eazzyloanAcctMgr.scr
+#  Description     : This script will allocate loan account Managers to eazzy loans opened everyday
+#  Date            : 13-06-2017
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             13-06-2017      Timothy Karemeri		Original Version
+#  1.0             02-08-2019      Timothy Karemeri		Revised Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUSTS") == 0) THEN
+#{
+	CREATEREP("CUSTS")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","ACMLA") == 0) THEN
+#{
+	CREATECLASS("CUSTS","ACMLA",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","ACMLA") == 0) THEN
+#{
+    CREATECLASS("CUSTS","ACMLA", 5)
+#}
+ENDIF
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUSTS.ACMLA.errMsg = ""
+
+#------------------------------------------------------------------------------
+#Finding count of records that need to be processed
+#------------------------------------------------------------------------------
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print (sv_a)
+
+BANCS.INPUT.moduleName = "LOANINT"
+BANCS.INPUT.parameterId = "CURRMGR"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUSTS.ACMLA.currAcctmgr = BANCS.OUTPUT.parameterVal
+        PRINT(CUSTS.ACMLA.currAcctmgr)
+	 PRINT(CUSTS.ACMLA.currAcctmgr)
+#}
+ELSE
+#{
+    CUSTS.ACMLA.errMsg = "Cparam set up not done for CURRMGR"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_s="custcount|"
+sv_s = sv_s + " select count(*) from tbaadm.gam where bank_id = ?SVAR "
+sv_s = sv_s + " and sol_id = ?SVAR "
+sv_s = sv_s + " and schm_code in ('LA527','LA529','LA548') "
+sv_s = sv_s + " and ACCT_CLS_FLG ! = 'Y' "
+sv_s = sv_s + " and ACCT_MGR_USER_ID = ?SVAR "
+print(sv_s)
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUSTS.ACMLA.currAcctmgr
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+IF (sv_d != 0) THEN 
+#{
+	CUSTS.ACMLA.errMsg = "DB ERROR!"
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	CUSTS.ACMLA.custcount = BANCS.OUTPARAM.custcount
+	print(CUSTS.ACMLA.custcount)
+	IF (CINT(CUSTS.ACMLA.custcount)== 0) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+sv_y="AcctMgrcount|"
+sv_y = sv_y + " select count(*) from tbaadm.upr where home_bank_id = ?SVAR "
+sv_y = sv_y + " and sol_id = ?SVAR and user_work_class in ('075','085','100')  "
+sv_y = sv_y + " and role_id in ('CCL','COM','C_BR_MK') and del_flg !='Y' "
+print (sv_y)
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+sv_x = urhk_dbSelectWithBind(sv_y)
+IF (sv_x != 0) THEN 
+#{
+	CUSTS.ACMLA.errMsg = "DB ERROR!"
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	CUSTS.ACMLA.AcctMgrcount= BANCS.OUTPARAM.AcctMgrcount
+	print(CUSTS.ACMLA.AcctMgrcount)
+	IF (CINT(CUSTS.ACMLA.AcctMgrcount)== 0) THEN
+	#{
+		CUSTS.ACMLA.errMsg = "No Account Manager under Work Class 075,085 or 100!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+CUSTS.ACMLA.CasesToAllocate = cint(CUSTS.ACMLA.custcount)/cint(CUSTS.ACMLA.AcctMgrcount)
+print(CUSTS.ACMLA.CasesToAllocate)
+CUSTS.ACMLA.CasesToAllocate = cint(CUSTS.ACMLA.CasesToAllocate) + 1
+print(CUSTS.ACMLA.CasesToAllocate)
+
+
+
+sv_y="acctMgr|"
+sv_y = sv_y + " select user_id from tbaadm.upr where home_bank_id = ?SVAR "
+sv_y = sv_y + " and sol_id = ?SVAR and user_work_class in ('075','085','100')  "
+sv_y = sv_y + " and role_id in ('CCL','COM','C_BR_MK') and del_flg !='Y' "
+print (sv_y)
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+sv_x = urhk_dbCursorOpenWithBind(sv_y)
+IF (sv_x == 0) THEN 
+#{
+	CUSTS.ACMLA.DbNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(CUSTS.ACMLA.DbNumber)
+	sv_m = urhk_dbCursorFetch(CUSTS.ACMLA.DbNumber)
+	print(sv_m)
+	
+	WHILE (sv_m == 0) 
+	#{
+
+		CUSTS.ACMLA.acctMgr= BANCS.OUTPARAM.acctMgr
+		print(CUSTS.ACMLA.acctMgr)
+	 
+	sv_s="foracid,solid|"
+	sv_s = sv_s + " select foracid,sol_id from tbaadm.gam where bank_id = ?SVAR "
+	sv_s = sv_s + " and sol_id = ?SVAR "
+	sv_s = sv_s + " and schm_code in ('LA527','LA529','LA548') "
+	sv_s = sv_s + " and ACCT_CLS_FLG ! = 'Y' "
+	sv_s = sv_s + " and ACCT_MGR_USER_ID = ?SVAR "
+	sv_s = sv_s + " and ROWNUM <= ?SVAR "
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUSTS.ACMLA.currAcctmgr + "|" + CUSTS.ACMLA.CasesToAllocate
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_c)
+
+	IF (sv_c==0) then
+	#{
+		CUSTS.ACMLA.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_k = urhk_dbCursorFetch(CUSTS.ACMLA.DbcursorNumber)
+		print(sv_k)
+		sv_q = 0
+		WHILE ((sv_k == 0) AND (sv_q <= CUSTS.ACMLA.CasesToAllocate))
+		#{
+				sv_q = sv_q + 1
+				print(sv_q)
+			CUSTS.ACMLA.foracid= BANCS.OUTPARAM.foracid
+			CUSTS.ACMLA.solid= BANCS.OUTPARAM.solid
+			print(CUSTS.ACMLA.foracid)
+			print(CUSTS.ACMLA.solid)
+
+			print(BANCS.STDIN.mySolId)
+			
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId  + "|" + CUSTS.ACMLA.foracid
+				sv_s = " acid,AcctsolId,schmCode,schmType,acctClsFlag,sweeps,acctCrncyCode|select acid,sol_id,schm_code, schm_type, acct_cls_flg,allow_sweeps, acct_crncy_code from tbaadm.gam "
+				sv_s = sv_s + "where bank_id = ?SVAR "
+				sv_s = sv_s + "and foracid = ?SVAR "
+				sv_s = sv_s + "and acct_cls_flg != 'Y' "
+				PRINT(sv_s)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_d)
+
+				IF (sv_d == 0) THEN
+				#{
+				CUSTS.ACMLA.acid = BANCS.OUTPARAM.acid
+				PRINT(sv_d)
+				CUSTS.ACMLA.AcctsolId = BANCS.OUTPARAM.AcctsolId
+				PRINT(CUSTS.ACMLA.acid)
+				CUSTS.ACMLA.schmCode = BANCS.OUTPARAM.schmCode
+				PRINT(CUSTS.ACMLA.schmCode)
+				CUSTS.ACMLA.schmType = BANCS.OUTPARAM.schmType
+				PRINT(CUSTS.ACMLA.schmType)
+				CUSTS.ACMLA.acctClsFlag = BANCS.OUTPARAM.acctClsFlag
+				PRINT(CUSTS.ACMLA.acctClsFlag)
+				CUSTS.ACMLA.sweeps = BANCS.OUTPARAM.sweeps
+				PRINT(CUSTS.ACMLA.sweeps)
+				CUSTS.ACMLA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+				PRINT(CUSTS.ACMLA.acctCrncyCode)
+				#}
+				ELSE
+				#{
+				GOTO ERROR
+				#}
+				ENDIF
+			#--------------------------------------------------------------------------------------------------------------
+			#--------------------------------------------------------------------------------------------------------------
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMLA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMLA.acid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMLA.schmCode)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMLA.schmType)
+			PRINT(sv_u)
+			
+			sv_u = urhk_ExecSrv("SRV_FetchLAAcctDtlForModify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+			IF (sv_u == 0) THEN
+			
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMLA.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMLA.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMLA.schmType)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMLA.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|" + CUSTS.ACMLA.sweeps)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctClsFlag|" + CUSTS.ACMLA.acctClsFlag)
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+				PRINT(sv_u)
+
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId|" + CUSTS.ACMLA.acctMgr)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|" + CUSTS.ACMLA.acctCrncyCode)
+				PRINT(sv_u)
+
+				sv_u = urhk_ExecSrv("SRV_ModifyLAAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF (sv_u == 0) THEN
+				print("SUCCESS")
+				ENDIF
+
+			ENDIF
+
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF (sv_v > 0) then
+					#{
+						sv_u = system("echo 'Error for Acct:"+CUSTS.ACMLA.foracid+" ' >>loanMgr.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+							print(sv_u)
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+		ERROR:
+		sv_k = urhk_dbCursorFetch(CUSTS.ACMLA.DbcursorNumber)
+		print(sv_k)
+		
+		#}
+		DO
+
+		sv_c = urhk_dbCursorClose(CUSTS.ACMLA.DbcursorNumber)
+		print(sv_c)
+	#}
+	ENDIF
+
+	ERROR1:
+	sv_m = urhk_dbCursorFetch(CUSTS.ACMLA.DbNumber)
+	print(sv_m)
+	
+	#}
+	DO
+
+	sv_g = urhk_dbCursorClose(CUSTS.ACMLA.DbNumber)
+	print(sv_g)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF(CUSTS.ACMLA.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUSTS.ACMLA.errMsg+"' >>loanMgr.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

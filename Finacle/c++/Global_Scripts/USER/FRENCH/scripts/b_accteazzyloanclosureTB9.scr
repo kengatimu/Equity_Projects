@@ -1,0 +1,167 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : b_acctclose.scr
+#   Description     : This script is called from job
+#   Date            : 06-02-2014
+#   Author          : jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : 
+#   Calling Script  : NA
+#   Menu Option     : 
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             06-02-2014      jane     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+
+sv_r = REPEXISTS("CUSTS")
+IF (sv_r == 0) THEN
+	CREATEREP("CUSTS")
+ENDIF
+
+sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+IF (sv_r == 0) THEN
+     CREATECLASS("CUSTS", "GLBDATA", 5)
+ENDIF
+
+sv_b = BANCS.STDIN.mySolId
+print(sv_b)
+
+sv_q="foracid|"
+sv_q = sv_q + " select foracid from tbaadm.gam where schm_code in ('LA529') and bank_id ='54' and clr_bal_amt ='0'  and acct_cls_flg ='N' and acct_opn_date<(select db_stat_date from tbaadm.gct where bank_id='54') "
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId 
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+IF(sv_e==0) THEN
+	    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	    sv_q = urhk_dbCursorFetch(sv_m)
+	    print(sv_q)
+
+	   IF(sv_q == 1) THEN
+		 sv_x = urhk_dbCursorClose(sv_m)
+		 print(sv_x)
+		 exitscript
+	   ENDIF
+	  print(sv_q)
+
+WHILE (sv_q==0)
+	CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+	print(CUSTS.GLBDATA.foracid)
+
+	sv_u = "solid,acid,schmcode,clsflg,clrbal|"
+	sv_u = sv_u + "select sol_id,acid,schm_code,acct_cls_flg,clr_bal_amt from tbaadm.gam  "
+	sv_u = sv_u + " where foracid = ?SVAR  and bank_id= ?SVAR"
+	print(sv_u)
+
+	BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_w =  urhk_dbSelectWithBind(sv_u)
+	print(sv_w)
+
+	IF (sv_w==0) THEN  
+	#{
+		CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+		print(CUSTS.GLBDATA.acid)
+
+		CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+		print(CUSTS.GLBDATA.schmcode)
+
+		CUSTS.GLBDATA.solid=BANCS.OUTPARAM.solid
+		print(CUSTS.GLBDATA.solid)
+
+		CUSTS.GLBDATA.clsflg=BANCS.OUTPARAM.clsflg
+		print(CUSTS.GLBDATA.clsflg)
+
+		CUSTS.GLBDATA.clrbal=BANCS.OUTPARAM.clrbal
+		print(CUSTS.GLBDATA.clrbal)
+
+		
+		IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+		#{
+			sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+			print(sv_u)
+			sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	
+	 sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+
+	# sv_a=urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+
+	# sv_a=urhk_SetUrhkInp("clsrProcCrit.tranType.tranType|")
+
+	sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr|retain_all_output = Y")
+	print(sv_u)
+
+		IF (sv_u == 0 ) THEN
+		#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUSTS.GLBDATA.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUSTS.GLBDATA.schmcode)
+				PRINT(sv_u)
+				sv_u = urhk_ExecSrv(" SRV_CloseLoanAcctAndVerify|retain_all_output = Y")
+				PRINT(sv_u)
+				
+		#}
+		ENDIF	
+		
+		IF (sv_u != 0) THEN
+			#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}
+				ELSE
+				#{
+					sv_v = 0
+				#}
+			ENDIF
+
+			IF (sv_v > 0) THEN
+			#{
+				sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>closed.log")
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+					sv_u = system("echo '"+sv_e+"' >>closed.log")
+					print(sv_u)
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)	
+
+DO
+sv_d = urhk_dbCursorClose(sv_m)
+        print(sv_d)
+
+               print("ALL ACCOUNTS CLOSED")
+ENDIF
+
+trace off
+exitscript
+end-->

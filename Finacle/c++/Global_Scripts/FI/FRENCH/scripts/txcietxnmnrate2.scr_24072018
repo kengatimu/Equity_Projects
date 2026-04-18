@@ -1,0 +1,453 @@
+########################################################################################################
+# rate request
+########################################################################################################
+<--start
+trace on
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+############################################
+#Assigns the values to the variables
+############################################
+
+sv_a = urhk_b2k_PrintRepos("BANCS")
+print(sv_a)
+sv_y=0
+
+CUST.DATA.BankId=BANCS.STDIN.contextBankId
+print(CUST.DATA.BankId)
+CUST.DATA.from_cncy=CUST.CIETXN.drAcctNumCcy
+print(CUST.DATA.from_cncy)
+
+
+IF (FIELDEXISTS(CUST.CIETXN.crAcctNum)) THEN
+	CUST.CIETXN.crAcctNum = CUST.CIETXN.crAcctNum
+	print(CUST.CIETXN.crAcctNum)
+	IF(FIELDEXISTS(CUST.CIETXN.creditEntity))THEN
+		print(CUST.CIETXN.creditEntity)
+		IF ((FIELDEXISTS(CUST.CIETXN.creditEntity)) AND (FIELDEXISTS(CUST.CIETXN.crAcctNum))) THEN
+			BANCS.INPARAM.BINDVARS =  CUST.CIETXN.crAcctNum + "|" + CUST.CIETXN.creditEntity
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = "Acctcrncycode|SELECT acct_crncy_code FROM tbaadm.gam "
+			sv_u = sv_u + " where  foracid= ?SVAR "
+			sv_u = sv_u + " AND BANK_ID = ?SVAR and acct_cls_flg='N' "
+			print(sv_u)
+			sv_y=urhk_dbSelectWithBind(sv_u)
+			print(sv_y)
+			if (sv_y == "0") then
+				CUST.DATA.Acctcrncycode=BANCS.OUTPARAM.Acctcrncycode
+				print(CUST.DATA.Acctcrncycode)
+				CUST.DATA.to_crncy=CUST.DATA.Acctcrncycode
+				print(CUST.DATA.to_crncy)
+				CUST.CIETXN.crAcctNumCcy = CUST.DATA.Acctcrncycode
+				print(CUST.CIETXN.crAcctNumCcy)
+			ELSE
+				CUST.DATA.errMsg="Invalid credit Account"
+				sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				sv_e=urhk_SetOrbOut("StattusCode|2")
+				GOTO End
+			endif
+		ENDIF
+	ENDIF
+ENDIF
+
+
+CUST.DATA.tran_crncy=CUST.CIETXN.rateCode
+print(CUST.DATA.tran_crncy)
+CUST.DATA.rate_code=CUST.CIETXN.rateCode
+print(CUST.DATA.rate_code)
+CUST.DATA.refAmt=CUST.CIETXN.refAmt
+print(CUST.DATA.refAmt)
+
+IF (BANCS.STDIN.contextBankId!="99") THEN
+	BANCS.INPARAM.BINDVARS =  CUST.DATA.rate_code + "|" +BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = "count|SELECT count(1) FROM tbaadm.rtl "
+	sv_u = sv_u + " where  RATECODE= ?SVAR "
+	sv_u = sv_u + " AND BANK_ID = ?SVAR and del_flg='N' "
+	print(sv_u)
+	sv_y=urhk_dbSelectWithBind(sv_u)
+	print(sv_y)
+	if (sv_y == "0") then
+		CUST.DATA.count=BANCS.OUTPARAM.count
+		print(CUST.DATA.count)
+		if (CUST.DATA.count==0) then
+			CUST.DATA.errMsg="Kindly Supply Valid rate_code"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			sv_e=urhk_SetOrbOut("StattusCode|2")
+			GOTO End
+		endif
+	endif
+ENDIF
+
+############################################
+# Fetching the value from table
+############################################
+		CUST.CIETXN.DccId=""
+		sv_a = urhk_GetChannelInfo("")
+		print(sv_a)
+		if (sv_a!=0) then
+		#{
+			sv_u = urhk_SRV_SetErr("Error: Channel ID is not passed/Incorrect")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO ENDOFSCRIPT
+		#}
+		else
+		#{
+			CUST.CIETXN.DccId = BANCS.OUTPARAM.DccId
+			print(CUST.CIETXN.DccId)
+
+			IF ((CUST.CIETXN.DccId=="FNT") OR (CUST.CIETXN.DccId=="COR") OR (CUST.CIETXN.DccId=="EAZ")) THEN
+			IF (CUST.DATA.to_crncy == CUST.DATA.from_cncy) THEN
+			CUST.DATA.rate="1"
+			CUST.DATA.treaRate=""
+			ENDIF
+			ENDIF
+
+BANCS.INPARAM.BINDVARS =CUST.DATA.from_cncy + "|" + CUST.DATA.to_crncy
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.DATA.rate_code + "|" +BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+sv_u = sv_u + " AND RATECODE= ?SVAR "
+sv_u = sv_u + " AND BANK_ID = ?SVAR  and rownum<2 "
+print(sv_u)
+sv_y=urhk_dbSelectWithBind(sv_u)
+print(sv_y)
+if (sv_y == "0") then
+	sv_k = BANCS.OUTPARAM.fxdcrncycode
+	print(sv_k)
+	sv_j = BANCS.OUTPARAM.ratecode
+	print(sv_j)
+	sv_p = BANCS.OUTPARAM.Rate
+	print(sv_p)
+	CUST.DATA.rate = sv_p
+	print(CUST.DATA.rate)
+	sv_x= BANCS.OUTPARAM.treaRate
+	print(sv_x)
+	CUST.DATA.treaRate = sv_x
+	print(CUST.DATA.treaRate)
+	CUST.DATA.fixed_crncy = CUST.DATA.from_cncy
+	print(CUST.DATA.fixed_crncy)
+	CUST.DATA.var_crncy = CUST.DATA.to_crncy
+	print(CUST.DATA.var_crncy)
+else
+	BANCS.INPARAM.BINDVARS = CUST.DATA.to_crncy + "|" + CUST.DATA.from_cncy 
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.DATA.rate_code + "|" +BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+	sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+	sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+	sv_u = sv_u + " AND RATECODE= ?SVAR "
+	sv_u = sv_u + " AND BANK_ID = ?SVAR and rownum<2 "
+	print(sv_u)
+	sv_y=urhk_dbSelectWithBind(sv_u)
+	print(sv_y)
+	if (sv_y == "0") then
+		sv_k = BANCS.OUTPARAM.fxdcrncycode
+		print(sv_k)
+		sv_j = BANCS.OUTPARAM.ratecode
+		print(sv_j)
+		sv_p = BANCS.OUTPARAM.Rate
+		print(sv_p)
+		CUST.DATA.rate = sv_p
+		print(CUST.DATA.rate)
+		sv_x= BANCS.OUTPARAM.treaRate
+		print(sv_x)
+		CUST.DATA.treaRate = sv_x
+		print(CUST.DATA.treaRate)
+		CUST.DATA.fixed_crncy = CUST.DATA.to_crncy
+		print(CUST.DATA.fixed_crncy)
+		CUST.DATA.var_crncy = CUST.DATA.from_cncy
+		print(CUST.DATA.var_crncy)
+	ELSE
+		IF (CUST.DATA.to_crncy != CUST.DATA.from_cncy) THEN
+		#{
+			CUST.DATA.errMsg="Rate Not Maintained"
+			sv_e=urhk_SetOrbOut("StattusCode|2")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#}
+		ENDIF
+		print("Rate Not Maintained")
+	endif
+endif
+
+
+###########################################################################################
+# Get the Charge Amt
+###########################################################################################
+
+CHARGE_CALC:
+
+#-----------------------------------------------------------------------------------------
+# Get a dummy home currency account to derive charge amount
+#-----------------------------------------------------------------------------------------
+
+CUST.CIETXN.dummyAcct = ""
+
+#
+IF ((CUST.CIETXN.DccId=="FNT") OR (CUST.CIETXN.DccId=="COR")) THEN
+	sv_s = "dummyAcct|SELECT FORACID FROM TBAADM.GAM"
+	#sv_s = "dummyAcct|SELECT /*+ INDEX_JOIN(GAM) */ FORACID FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE  BANK_ID = ?SVAR"
+	#sv_s = sv_s + " AND SOL_ID = ?SVAR"
+	sv_s = sv_s + " AND ACCT_CRNCY_CODE = ?SVAR"
+	sv_s = sv_s + " AND SCHM_TYPE ='SBA'"
+	#sv_s = sv_s + " AND SCHM_TYPE NOT IN ('LAA','CLA','TDA','TUA','BIA','FBA')"
+	sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND DEL_FLG = 'N'"
+	sv_s = sv_s + " AND ACCT_CLS_FLG = 'N'"
+	#sv_s = sv_s + " AND NVL(TRIM(FREZ_CODE),'Z') = 'Z'"
+	sv_s = sv_s + " AND ACCT_OWNERSHIP = 'C'"
+	sv_s = sv_s + " AND ROWNUM < 2"
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.homeCrncyCode
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+
+	IF(sv_d == 0)THEN
+#{
+	CUST.CIETXN.dummyAcct = BANCS.OUTPARAM.dummyAcct	
+	PRINT(CUST.CIETXN.dummyAcct)
+#}
+	ENDIF
+ELSE
+	#sv_s = "dummyAcct|SELECT FORACID FROM TBAADM.GAM"
+	sv_s = "dummyAcct|SELECT /*+ INDEX_JOIN(GAM) */ FORACID FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE  BANK_ID = ?SVAR"
+	#sv_s = sv_s + " AND SOL_ID = ?SVAR"
+	sv_s = sv_s + " AND ACCT_CRNCY_CODE = ?SVAR"
+	sv_s = sv_s + " AND SCHM_TYPE ='SBA'"
+	#sv_s = sv_s + " AND SCHM_TYPE NOT IN ('LAA','CLA','TDA','TUA','BIA','FBA')"
+	sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND DEL_FLG = 'N'"
+	sv_s = sv_s + " AND ACCT_CLS_FLG = 'N'"
+	sv_s = sv_s + " AND NVL(TRIM(FREZ_CODE),'Z') = 'Z'"
+	sv_s = sv_s + " AND ACCT_OWNERSHIP = 'C'"
+	sv_s = sv_s + " AND ROWNUM < 2"
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.homeCrncyCode
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+
+	IF(sv_d == 0)THEN
+#{
+	CUST.CIETXN.dummyAcct = BANCS.OUTPARAM.dummyAcct	
+	PRINT(CUST.CIETXN.dummyAcct)
+#}
+	ENDIF
+	ENDIF
+
+##########################################################################################
+
+print(CUST.CIETXN.DccId)
+
+IF(CUST.CIETXN.DccId == "FNT") THEN
+#{
+
+print(CUST.CIETXN.chargeAmt)
+
+call("charge_mtt.scr")
+
+CUST.CIETXN.calcAmt = CUST.CIETXN.chargeAmt
+print(CUST.CIETXN.calcAmt)
+
+#}
+Else
+#{
+
+#-----------------------------------------------------------------------------------------
+# Set Input for GCHRG SRV
+#-----------------------------------------------------------------------------------------
+
+CUST.CIETXN.chargeEventId=BANCS.INPUT.chargeEventId
+print(CUST.CIETXN.chargeEventId)
+CUST.CIETXN.chargeAmtCcy=BANCS.STDIN.homeCrncyCode
+print(CUST.CIETXN.chargeAmtCcy)
+CUST.CIETXN.refAmtInHomeCcy = CUST.CIETXN.refAmt
+print(CUST.CIETXN.refAmtInHomeCcy)
+
+sv_u = urhk_SetUrhkInp("genChrgCrit.eventId.eventId|" +CUST.CIETXN.chargeEventId)
+sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgCrncy.crncyCode|" +CUST.CIETXN.chargeAmtCcy)
+sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgAmt|"+CUST.CIETXN.refAmtInHomeCcy+"|"+CUST.CIETXN.chargeAmtCcy)
+sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranType|T")
+sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranSubType|BI")
+sv_u = urhk_SetUrhkInp("genChrgCrit.chrgDrCrncy.crncyCode|" +CUST.CIETXN.chargeAmtCcy)
+sv_u = urhk_SetUrhkInp("genChrgCrit.drAcct.foracid|" + CUST.CIETXN.dummyAcct)
+sv_u = urhk_SetUrhkOut("genChrgDtl.calcAmt|calcAmt")
+
+sv_u = urhk_ExecSrvNoCommit("SRV_FetchDfltGenChrgDtl|retain_all_output = Y")
+print(sv_u)
+
+IF(sv_u != 0)THEN
+#{
+	CUST.CIETXN.errorFlg = "Y"
+	sv_n = BANCS.OUTPARAM.Error_num
+	IF(sv_n != 0)THEN
+	#{
+		sv_s = BANCS.OUTPARAM.ErrorMesg_1
+		print(sv_s)
+		CUST.CIETXN.errorMsg = sv_s
+	#}
+	ENDIF
+        CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + ";  " + "Unable to get Charge Details;"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+CUST.CIETXN.calcAmt = BANCS.OUTPARAM.calcAmt
+print(CUST.CIETXN.calcAmt)
+
+sv_p = GETPOSITION(CUST.CIETXN.calcAmt,"|")
+print(sv_p)
+
+IF(sv_p > 0)THEN
+#{
+	sv_a = MID$(CUST.CIETXN.calcAmt,0,sv_p-1)
+	print(sv_a)
+	sv_a = cint(sv_a)
+	print(sv_a)
+
+	CUST.CIETXN.chargeAmt = sv_a
+	print(CUST.CIETXN.chargeAmt)
+	
+	sv_c = MID$(CUST.CIETXN.calcAmt,sv_p,3)
+	print(sv_c)
+	CUST.CIETXN.chargeAmtCcy = sv_c
+	print(CUST.CIETXN.chargeAmtCcy)
+
+	
+#}
+ELSE
+#{
+	CUST.CIETXN.errorFlg = "Y"
+        CUST.CIETXN.errorMsg = CUST.CIETXN.errorMsg + "  " + "Unable to get Charge Details;"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+#}
+ENDIF
+
+
+###########################################################################################
+# Get Rate From SRV
+###########################################################################################
+
+CUST.CIETXN.refCrncy = CUST.CIETXN.refCrncy
+print(CUST.CIETXN.refCrncy)
+CUST.CIETXN.acctCrncy = CUST.CIETXN.crAcctNumCcy
+print(CUST.CIETXN.acctCrncy)
+CUST.CIETXN.rateCode = CUST.CIETXN.rateCode
+print(CUST.CIETXN.rateCode)
+CUST.CIETXN.refAmt = CUST.CIETXN.refAmt
+print(CUST.CIETXN.refAmt)
+CUST.CIETXN.rate = CUST.DATA.rate
+print(CUST.CIETXN.rate)
+CUST.CIETXN.treaRate = CUST.DATA.treaRate
+print(CUST.CIETXN.treaRate)
+
+sv_u = urhk_SetUrhkInp("fromCrncy.crncyCode|"+CUST.CIETXN.refCrncy)
+sv_u = urhk_SetUrhkInp("toCrncy.crncyCode|"+CUST.CIETXN.acctCrncy)
+sv_u = urhk_SetUrhkInp("rateCode.refCode|"+CUST.CIETXN.rateCode)
+sv_u = urhk_SetUrhkInp("fromAmt|"+CUST.CIETXN.refAmt+"|"+CUST.CIETXN.refCrncy)
+
+IF(CUST.CIETXN.rate != "")THEN
+#{
+	sv_u = urhk_SetUrhkInp("rate|"+CUST.CIETXN.rate)	
+#}
+ENDIF
+
+IF(CUST.CIETXN.treaRate != "")THEN
+#{
+	sv_u = urhk_SetUrhkInp("treaRate|"+CUST.CIETXN.treaRate)
+#}
+ENDIF
+
+sv_u = urhk_SetUrhkOut("rate|rate")
+sv_u = urhk_SetUrhkOut("treaRate|treaRate")
+sv_u = urhk_SetUrhkOut("toAmt|toAmt")
+
+sv_u = urhk_ExecSrvNoCommit("SRV_TieredConvCrncy")
+print(sv_u)
+
+IF(sv_u == 0)THEN
+#{
+        CUST.CIETXN.rate = BANCS.OUTPARAM.rate
+        PRINT(CUST.CIETXN.rate)
+
+	CUST.CIETXN.treaRate = BANCS.OUTPARAM.treaRate
+	PRINT(CUST.CIETXN.treaRate)
+
+	CUST.CIETXN.toAmt = BANCS.OUTPARAM.toAmt
+	PRINT(CUST.CIETXN.toAmt)
+
+	sv_p = GETPOSITION(CUST.CIETXN.toAmt,"|")
+	print(sv_p)
+
+	IF(sv_p > 0)THEN
+	#{
+		CUST.CIETXN.tranAmt = MID$(CUST.CIETXN.toAmt,0,sv_p-1)
+		PRINT(CUST.CIETXN.tranAmt)
+		CUST.CIETXN.tranAmtCcy = MID$(CUST.CIETXN.toAmt,sv_p,3)
+		PRINT(CUST.CIETXN.tranAmtCcy)
+	#}
+	ENDIF
+	
+#}
+ELSE
+#{
+
+	print(BANCS.OUTPARAM.Fatal_num)
+        print(BANCS.OUTPARAM.Error_num)
+        print(BANCS.OUTPARAM.Warning_num)
+        print(BANCS.OUTPARAM.UserInfo_num)
+        print(BANCS.OUTPARAM.Xcpn_num)
+        print(BANCS.OUTPARAM.Xcpn_Err_num)
+        print(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+        print(BANCS.OUTPARAM.Xcpn_Err_num)
+
+        sv_d = 1
+        sv_n = 1
+        sv_c = CINT(BANCS.OUTPARAM.Error_num)
+        WHILE (sv_d <= sv_c)
+        #{
+                sv_f = FORMAT$(sv_d,"%d")
+                sv_b = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+                print(sv_b)
+                sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+                print(sv_e)
+                sv_a = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+                print(sv_a)
+                sv_d = sv_d + 1
+                sv_n = sv_n + 1
+                sv_d = sv_c + 1
+        #}
+        DO
+	CUST.CIETXN.errorFlg = "Y"
+	CUST.CIETXN.errorMsg = sv_b
+	CUST.CIETXN.rate = " "
+	CUST.CIETXN.tranAmt = " "
+	CUST.CIETXN.tranAmtCcy = " "
+		
+#}
+ENDIF
+
+ENDOFSCRIPT:
+
+End:
+EXITSCRIPT
+##trace off
+end-->
+
+

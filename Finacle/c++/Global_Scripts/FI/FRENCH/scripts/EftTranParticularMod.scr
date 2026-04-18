@@ -1,0 +1,157 @@
+##########################################################################################
+# Product		: Finacle Core
+# Category		: User Defined
+# Script		: EftTranParticularMod.scr
+# Menu                  : 
+# Author                : Irungu James
+# Date	                : 12-07-203
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+###########################################################################################
+<--start
+trace on
+
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUST","BILL") == 0) THEN
+        #{
+                CREATECLASS("CUST","BILL",5)
+        #}
+	ENDIF
+
+
+	IF (FIELDEXISTS(CUSTS.SBACT.tranid)==1)THEN
+
+		CUST.BILL.tranId = CUSTS.SBACT.tranid
+		IF((CUSTS.SBACT.tranRmks !="")  AND (CUSTS.SBACT.tranPrtcls!=""))THEN
+			
+			IF(CUSTS.SBACT.DccId =="POL")THEN
+				lv_a = CUSTS.SBACT.tranPrtcls
+				print(lv_a)
+				lv_b = CUSTS.SBACT.tranRmks
+				print(lv_b)
+				IF( (FIELDEXISTS(CUSTS.SBACT.cRefNum)== 1) ) THEN
+					print(CUSTS.SBACT.cRefNum)
+				ELSE
+					CUSTS.SBACT.cRefNum = " "
+				ENDIF
+			ENDIF
+
+			sv_y="TRAN, particular, serial, type|"
+			sv_y = sv_y + " select TRAN_ID, TRAN_PARTICULAR,PART_TRAN_SRL_NUM, PART_TRAN_TYPE from tbaadm.DTD WHERE BANK_ID=?SVAR AND tran_id= lpad(?SVAR,9,' ') "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUSTS.SBACT.tranid
+			print(BANCS.INPARAM.BINDVARS)
+			print (sv_y)
+
+			sv_v = urhk_dbcursorOpenWithBind(sv_y)
+			PRINT(sv_v)
+
+
+			IF(sv_v == 0) THEN
+				CUST.BILL.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				print(CUST.BILL.CURSOR_NUMBER)
+				sv_b = urhk_dbCursorFetch(CUST.BILL.CURSOR_NUMBER)
+				print(sv_b)
+				BANCS.INPUT.RECCOUNT = CINT("1")
+				print(BANCS.INPUT.RECCOUNT)
+				CUST.BILL.tranDate= BANCS.STDIN.BODDate
+				WHILE(sv_b == "0")
+				
+					CUST.BILL.partTranSrlNum = BANCS.OUTPARAM.serial
+
+					Print (CUST.BILL.tranId)
+					print (CUST.BILL.tranDate)
+					print (CUST.BILL.partTranSrlNum)
+
+					# HARRISON -  CASHCLOUD NARRATIONS #
+					IF(CUSTS.SBACT.DccId =="POL")THEN
+						CUST.BILL.tranPartclrs = BANCS.OUTPARAM.particular
+						print(CUST.BILL.tranPartclrs)
+						lv_x  = trim(MID$(CUST.BILL.tranPartclrs,0,7))
+						print(lv_x)
+
+						IF(lv_x == "CHARGE")THEN
+							lv_q = "ptt_tran_remarks,ptt_tran_partcls |select tran_remarks,tran_partcls from tbaadm.ptt where event_id=?SVAR and del_flg='N' and entity_cre_flg='Y' and bank_id=?SVAR and rownum < 2"
+							print(lv_q)
+							BANCS.INPARAM.BINDVARS = CUSTS.SBACT.eventId+"|"+ BANCS.STDIN.contextBankId
+							print(BANCS.INPARAM.BINDVARS)
+
+							lv_c = urhk_dbSelectWithBind(lv_q)
+							PRINT(lv_c)
+
+							IF(lv_c == 0)THEN
+							#{
+								CUSTS.SBACT.tranPrtcls = BANCS.OUTPARAM.ptt_tran_remarks +" "+ CUSTS.SBACT.cRefNum
+								print(CUSTS.SBACT.tranPrtcls)
+								CUSTS.SBACT.tranRmks = BANCS.OUTPARAM.ptt_tran_partcls +" " + CUSTS.SBACT.cRefNum
+								print(CUSTS.SBACT.tranRmks)
+							#}
+							ENDIF
+						ELSE
+							CUSTS.SBACT.tranPrtcls = lv_a
+							CUSTS.SBACT.tranRmks = lv_b
+						ENDIF 
+					ENDIF
+					# HARRISON -  CASHCLOUD NARRATIONS #
+
+					sv_u = urhk_SetUrhkInp("pTran.tranId|" + CUST.BILL.tranId)
+					sv_u = urhk_SetUrhkInp("pTran.tranDate|" +  CUST.BILL.tranDate)
+					sv_u = urhk_SetUrhkInp("pTran.partTranSrlNum|" + CUST.BILL.partTranSrlNum)
+					sv_u = urhk_ExecSrv("SRV_FetchPartTranForModify|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_u)
+
+					IF (sv_u == 0) THEN
+						sv_u = urhk_CopyOutToIn("")
+						sv_u = urhk_SetUrhkInp("tranPrtcls|"+MID$(CUSTS.SBACT.tranPrtcls,0,50))
+						sv_u = urhk_SetUrhkInp("tranRmks|"+MID$(CUSTS.SBACT.tranRmks,0,30))
+						sv_u = urhk_ExecSrv("SRV_ModifyPartTran|retain_all_output = Y|same_user_verify = Y")
+						PRINT(sv_u)
+						IF (sv_u == 0) THEN
+							print("SUCCESS")
+						ENDIF
+					ELSE
+						 CALL("trapSRVError.scr")
+					ENDIF
+
+					NEXTREC:
+					sv_b = urhk_dbCursorFetch(CUST.BILL.CURSOR_NUMBER)
+					print(sv_b)
+				DO
+sv_u = urhk_dbCursorClose(CUST.BILL.CURSOR_NUMBER)
+			ENDIF
+
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				ELSE
+					sv_v = 0
+				ENDIF
+				IF (sv_v > 0) then
+					sv_u = system("echo 'Error for Acct:"+CUST.BILL.tranId+" '")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+						print(sv_u)
+					DO
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+
+trace off
+end-->

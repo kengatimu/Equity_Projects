@@ -1,0 +1,371 @@
+############################################################################################################									
+# Source Name						: iclgrejmn002.scr
+# Date								: 19-02-2013
+# Description						: This script is used to get the next page when rejection code is 'R'
+# Input								: None
+# Output							: To get the next page
+# Called Script						: None
+# Calling Script					: None
+# Author     						: Shilpa
+# Bank								:
+# Modification History				:
+#		< Version No.> 			<Date>		<Author Name> 		<Description>
+#		 0.1					19-02-2013 	Shilpa 				Original Version
+#        0.2                    17-06-2013  Shilpa          	trim function removed
+#        0.3                    16-07-2013  Bharath          	Added validation on custom table
+############################################################################################################
+<--START
+CHECKSUM="c2e63008f96531ba777cf04d0e28da45ba68015a6025af985e6e19b3a52965ef"
+	TRACE ON
+	#==========================================================*
+	# CREATING NEW REPOSITORY AND CLASS
+	#==========================================================*
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+	
+	print(BANCS.INPUT.foracid)
+	print(BANCS.INPUT.instNo)
+	print(BANCS.INPUT.instAmt)
+	print(BANCS.INPUT.funcCode)
+	
+	CUST.DATA.foracid = BANCS.INPUT.foracid
+	print(CUST.DATA.foracid)
+	CUST.DATA.instNo= BANCS.INPUT.instNo
+	print(CUST.DATA.instNo)
+	CUST.DATA.instAmt = BANCS.INPUT.instAmt
+	print(CUST.DATA.instAmt)
+	CUST.DATA.funcCode= BANCS.INPUT.funcCode
+	print(CUST.DATA.funcCode)
+	
+	
+	
+	##########################################################################################################
+	# To validate account Number
+	#########################################################################################################
+	sv_s = "count|SELECT count(*) "
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE foracid = ?SVAR"
+	sv_s = sv_s + " AND del_flg ='N'"
+	sv_s = sv_s + " AND entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND acct_cls_flg ='N'"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	sv_j = BANCS.OUTPARAM.count
+	print(sv_j)
+	IF (sv_j == 0 ) THEN
+	#{
+		sv_e = "Enter Valid Account Number"
+		sv_m = "foracid"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	#}
+	ENDIF
+	
+	
+	##########################################################################################################
+	#The foll step is to Validate record in ICI
+	##########################################################################################################
+	
+	CUST.DATA.date1 = LEFT$(BANCS.STDIN.BODDate,10)
+	print(CUST.DATA.date1)
+	
+	
+	sv_d = "v_day|SELECT to_char((to_date(?SVAR,'DD-MM-YYYY')),'DAY') from DUAL"
+	
+	BANCS.INPARAM.BINDVARS = CUST.DATA.date1
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	PRINT(sv_u)
+	sv_e = trim(BANCS.OUTPARAM.v_day)
+	print(sv_e)
+	
+	IF (sv_e == "MONDAY") THEN
+	#{
+		sv_t = (CUST.DATA.date1  + "|" + "0" + "|" + "-3")
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(sv_t)
+		CUST.DATA.date2 = MID$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+		print(CUST.DATA.date2)
+		#}
+	ELSE
+		#{
+		sv_t = (CUST.DATA.date1  + "|" + "0" + "|" + "-1")
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(sv_t)
+		
+		CUST.DATA.date2 = MID$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+		print(CUST.DATA.date2)
+	#}
+	ENDIF
+	
+	#########################################################################################################
+	# To get the count from CUST_INWREM_TABLE table .If the count is 0 then show error message
+	#########################################################################################################
+	sv_s = "Count|SELECT count(1) "
+	sv_s = sv_s + " FROM CUSTOM.CUST_INWREM_TABLE "
+	sv_s = sv_s + " WHERE acid=(SELECT acid FROM TBAADM.GAM WHERE foracid= ?SVAR "
+	sv_s = sv_s + 				" AND bank_id = ?SVAR "
+	sv_s = sv_s + 				" AND del_flg = 'N' "
+	sv_s = sv_s + 				" AND entity_cre_flg = 'Y') "
+	sv_s = sv_s + " AND zone_date BETWEEN to_date(?SVAR,'DD-MM-YYYY') AND to_date(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + " AND inst_num =  LPAD(?SVAR,16,' ') "
+	sv_s = sv_s + " AND inst_amt  = ?SVAR "
+	sv_s = sv_s + " AND bank_id= ?SVAR "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.date2+ "|" + CUST.DATA.date1 + "|" +CUST.DATA.instNo + "|" +CUST.DATA.instAmt + "|" +BANCS.STDIN.contextBankId
+	
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	print(sv_u)
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	IF (sv_q == 0) THEN
+	#{
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		#}
+	ELSE
+		#{
+		sv_e = "Instrument already rejected"
+		sv_m = "foracid"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#########################################################################################################
+	# To get the count from ICI table .If the count is 0 then show error message
+	#########################################################################################################
+	
+	sv_s = "Count|SELECT count(1) "
+	sv_s = sv_s + " FROM TBAADM.ICI  "
+	sv_s = sv_s + " WHERE acid=(SELECT acid FROM TBAADM.GAM WHERE foracid= ?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + " AND del_flg = 'N' "
+	sv_s = sv_s + " AND entity_cre_flg = 'Y') "
+	sv_s = sv_s + " AND zone_date BETWEEN to_date(?SVAR,'DD-MM-YYYY') AND to_date(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + " AND inst_num =  LPAD(?SVAR,16,' ') "
+	sv_s = sv_s + " AND inst_amt  = ?SVAR "
+	sv_s = sv_s + " AND rej_type ='N'"
+	sv_s = sv_s + " AND bank_id= ?SVAR "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.date2+ "|" + CUST.DATA.date1 + "|" +CUST.DATA.instNo + "|" +CUST.DATA.instAmt + "|" +BANCS.STDIN.contextBankId
+	
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	print(sv_u)
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	IF (sv_q > 1) THEN
+	#{
+		sv_e = "Duplicate record found, Cant proceed"
+		sv_m = "foracid"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	IF (sv_q == 0) THEN
+	#{
+		sv_e = "No matching record found"
+		sv_m = "foracid"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#The foll step is to Validate record in ICI
+	#---------------------------------------------------------------------------
+	
+	CUST.DATA.date1 = LEFT$(BANCS.STDIN.BODDate,10)
+	print(CUST.DATA.date1)
+	
+	
+	sv_d = "v_day|SELECT to_char((to_date(?SVAR,'DD-MM-YYYY')),'DAY') from DUAL"
+	
+	BANCS.INPARAM.BINDVARS = CUST.DATA.date1
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	PRINT(sv_u)
+	sv_e = trim(BANCS.OUTPARAM.v_day)
+	print(sv_e)
+	
+	
+	IF (sv_e == "MONDAY") THEN
+	#{
+		sv_t = (CUST.DATA.date1  + "|" + "0" + "|" + "-3")
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(sv_t)
+		CUST.DATA.date2 = MID$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+		print(CUST.DATA.date2)
+		#}
+	ELSE
+		#{
+		sv_t = (CUST.DATA.date1  + "|" + "0" + "|" + "-1")
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(sv_t)
+		CUST.DATA.date2 = MID$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+		print(CUST.DATA.date2)
+	#}
+	ENDIF
+	
+	
+	sv_s = "zoneCode,zoneDate,valueDate,draweeBankCode,draweeBranchCode, "
+	sv_s = sv_s + " draweeSortCode,pressbankCode,pressbrCode,presssortCode,issBankCode,"
+	sv_s = sv_s + " issBrCode,tranrmks,solId|"
+	sv_s = sv_s + " SELECT "
+	sv_s = sv_s + " zone_code,to_char(zone_date,'dd-mm-yyyy'),to_char(value_date,'DD-MM-YYYY'),drawee_bank_code, "
+	sv_s = sv_s + " drawee_br_code,drawee_sort_code,pres_bank_code,pres_br_code,pres_sort_code,"
+	sv_s = sv_s + " iss_bank_code,iss_br_code,tran_rmks,sol_id "
+	sv_s = sv_s + " FROM TBAADM.ICI  "
+	sv_s = sv_s + " WHERE acid=(SELECT acid FROM TBAADM.GAM WHERE foracid= ?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + " AND del_flg = 'N' "
+	sv_s = sv_s + " AND entity_cre_flg = 'Y') "
+	sv_s = sv_s + " AND zone_date BETWEEN to_date(?SVAR ,'DD-MM-YYYY') AND to_date(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + " AND inst_num = LPAD(?SVAR,16,' ') "
+	sv_s = sv_s + " AND inst_amt = ?SVAR "
+	sv_s = sv_s + " AND rej_type ='N'"
+	sv_s = sv_s + " AND bank_id= ?SVAR"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.date2+ "|" + CUST.DATA.date1 + "|" +CUST.DATA.instNo + "|" +CUST.DATA.instAmt + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.DATA.zoneCode= BANCS.OUTPARAM.zoneCode
+		print(CUST.DATA.zoneCode)
+		
+		CUST.DATA.zoneDate= BANCS.OUTPARAM.zoneDate
+		print(CUST.DATA.zoneDate)
+		
+		CUST.DATA.valueDate= BANCS.OUTPARAM.valueDate
+		print(CUST.DATA.valueDate)
+		
+		CUST.DATA.draweeBankCode= BANCS.OUTPARAM.draweeBankCode
+		print(CUST.DATA.draweeBankCode)
+		
+		CUST.DATA.draweeBranchCode= BANCS.OUTPARAM.draweeBranchCode
+		print(CUST.DATA.draweeBranchCode)
+		
+		CUST.DATA.draweeSortCode= BANCS.OUTPARAM.draweeSortCode
+		print(CUST.DATA.draweeSortCode)
+		
+		CUST.DATA.pressbankCode= BANCS.OUTPARAM.pressbankCode
+		print(CUST.DATA.pressbankCode)
+		
+		CUST.DATA.pressbrCode= BANCS.OUTPARAM.pressbrCode
+		print(CUST.DATA.pressbrCode)
+		
+		CUST.DATA.presssortCode= BANCS.OUTPARAM.presssortCode
+		print(CUST.DATA.presssortCode)
+		
+		
+		CUST.DATA.issBankCode= BANCS.OUTPARAM.issBankCode
+		print(CUST.DATA.issBankCode)
+		
+		CUST.DATA.issBrCode= BANCS.OUTPARAM.issBrCode
+		print(CUST.DATA.issBrCode)
+		
+		CUST.DATA.tranrmks= BANCS.OUTPARAM.tranrmks
+		print(CUST.DATA.tranrmks)
+		
+		CUST.DATA.solId= BANCS.OUTPARAM.solId
+		print(CUST.DATA.solId)
+		
+		sv_z = "zoneCode" + "|" + CUST.DATA.zoneCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "zoneDate" +"|"+ CUST.DATA.zoneDate + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "valueDate" +"|"+ CUST.DATA.valueDate + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "draweeBankCode" +"|"+ CUST.DATA.draweeBankCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "draweeBranchCode" +"|"+ CUST.DATA.draweeBranchCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "draweeSortCode" +"|"+ CUST.DATA.draweeSortCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "pressbankCode" +"|"+ CUST.DATA.pressbankCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "pressbrCode" +"|"+ CUST.DATA.pressbrCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "presssortCode" +"|"+ CUST.DATA.presssortCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "issBankCode" +"|"+ CUST.DATA.issBankCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "issBrCode" +"|"+ CUST.DATA.issBrCode + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "tranrmks" +"|"+ CUST.DATA.tranrmks + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		sv_z = "solId" +"|"+ CUST.DATA.solId + "|"
+		sv_g = urhk_SetOrbOut(sv_z)
+		print(sv_g)
+		#}
+	ELSE
+		#{
+		CUST.DATA.zoneCode = ""
+		CUST.DATA.zoneDate= ""
+		CUST.DATA.valueDate=""
+		CUST.DATA.draweeBankCode=""
+		CUST.DATA.draweeBranchCode=""
+		CUST.DATA.pressbankCode=""
+		CUST.DATA.draweeSortCode=""
+		CUST.DATA.pressbankCode=""
+		CUST.DATA.pressbrCode=""
+		CUST.DATA.presssortCode=""
+		CUST.DATA.issBankCode=""
+		CUST.DATA.issBrCode=""
+		CUST.DATA.tranrmks=""
+		CUST.DATA.solId=""
+	#}
+	ENDIF
+	
+	FINISH :
+		TRACE OFF
+		EXITSCRIPT
+END-->

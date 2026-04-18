@@ -1,0 +1,195 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : FI_SIDelete.scr
+#  Description     : Delete standing order API
+#  Date            : 30-04-2022
+#  Author          : James Maina
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             30-04-2022      James Maina		Original Version
+#-----------------------------------------------------------------------------------------------
+
+<--start
+trace on
+
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUST","SOD") == 0) THEN
+        #{
+                CREATECLASS("CUST","SOD",5)
+        #}
+        ENDIF
+
+
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	print (sv_a)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("RecPmtId"))== 0) ) THEN
+	#{
+   		CUST.SOD.errMsg="Please enter RecPmtId"
+		sv_t = "ERROR| " +CUST.SOD.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+
+
+	#---------------------------------------------------------------------------------------------------------------
+	#Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+
+	CUST.SOD.RecPmtId= BANCS.INPUT.RecPmtId
+	PRINT(CUST.SOD.RecPmtId)
+
+
+	#---------------------------------------------------------------------------------------------------------------
+	#Getting sol_id and formated si serial number from sih
+	#---------------------------------------------------------------------------------------------------------------
+
+	sv_k="SISRLNO,solid|SELECT SI_SRL_NUM, SOL_ID FROM TBAADM.SIH WHERE BANK_ID=?SVAR AND TRIM(SI_SRL_NUM)=?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.SOD.RecPmtId
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_h = urhk_dbselectWithBind(sv_k)
+        print(sv_h)
+	IF(sv_h=="0") THEN 
+	#{
+
+		CUST.SOD.RecPmtId= BANCS.OUTPARAM.SISRLNO
+		PRINT(CUST.SOD.RecPmtId)
+
+        	CUST.SOD.solid= BANCS.OUTPARAM.solid
+        	print(CUST.SOD.solid)
+
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------------------------------------------
+	#Changing sol code
+	#---------------------------------------------------------------------------------------------------------------
+
+	IF(CUST.SOD.solid != BANCS.STDIN.mySolId)THEN
+	#{
+		sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.SOD.solid)
+		print(sv_u)
+		sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+		print(sv_u)
+	#}
+	ENDIF	
+
+
+
+
+
+
+	sv_u = urhk_SetUrhkInp("siHdr.siSrlNum|"+CUST.SOD.RecPmtId)
+
+	sv_u = urhk_ExecSrv("SRV_FetchSIForDelete|retain_all_output = Y|same_user_verify = Y")
+	print(sv_u)
+	IF(sv_u==0)THEN
+	#{
+ 
+		PRINT("SUCCESS1")
+		sv_u = urhk_CopyOutToIn("")
+
+
+		sv_u = urhk_ExecSrv("SRV_DeleteSI|retain_all_output = Y|same_user_verify = Y")
+		print(sv_u)
+		IF(sv_u==0)THEN
+		#{
+			PRINT("SUCCESS2")
+			sv_u = urhk_SetUrhkInp("siHdr.siSrlNum|"+CUST.SOD.RecPmtId)
+
+			sv_u = urhk_ExecSrv("SRV_FetchSIForVerify|retain_all_output = Y|same_user_verify = Y")
+			print(sv_u)
+			IF(sv_u==0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+
+				sv_u = urhk_ExecSrv("SRV_VerifySI|retain_all_output = Y|same_user_verify = Y")
+
+   				CUST.SOD.errMsg=CUST.SOD.RecPmtId
+				sv_t = "RecPmtId| " +CUST.SOD.errMsg
+				sv_u = urhk_SetOrbOut(sv_t)
+
+			#}
+			ELSE
+			#{
+				GOTO CHECKERROR
+
+			#}
+			ENDIF
+
+
+		#}
+		ELSE
+		#{
+			GOTO CHECKERROR
+
+		#}
+		ENDIF
+
+	#}
+	ELSE
+	#{
+		GOTO CHECKERROR
+
+	#}
+	ENDIF
+
+	CHECKERROR:
+
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) then
+		#{
+			sv_u = system("echo 'Error '")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "ERROR | " +sv_e
+				sv_u = urhk_SetOrbOut(sv_t)
+				GOTO ENDSCRIPT
+
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+
+
+ENDSCRIPT:
+
+trace off
+
+end-->

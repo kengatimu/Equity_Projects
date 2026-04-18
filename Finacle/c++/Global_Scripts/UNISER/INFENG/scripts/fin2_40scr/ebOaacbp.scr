@@ -1,0 +1,304 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Name                   : ebOaacbp.scr 
+#   Date                   : 20-Feb-2020
+#   Description            :
+#   JobId                  : 
+#   Input                  :
+#   Output                 :
+#   Author                 : Vino Palani
+#   Calling Script         : 
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Modification History   :
+#
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#Reps/Class
+#++++++++++
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("ONS")==0)then
+                createrep("ONS")
+        endif
+        if(classexists("ONS","CUSTOM")==0)then
+                createclass("ONS","CUSTOM",5)
+        endif
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+#Inp
+#+++
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+	EQSRV.GLBDATA.SchemeType = "FBA"
+	sv_d = "CifId,Crncy,LimitAmt,LimitExpDate,schmCode,AcctSol,glsubhCode | "
+	sv_d = sv_d + " select cif_id,currency,limit,to_char(to_Date(limit_expiry,'DD-MM-RR'),'DD-MM-YYYY'), "
+	sv_d = sv_d + " acct_type,(select primary_sol_id from crmuser.cmg where cif_id = trim(fba_lcbgus.cif_id) "
+	sv_d = sv_d + " and entity_cre_flg='Y' and del_flg='N' and bank_id= ?SVAR), "
+	sv_d = sv_d + " (select gl_sub_head_code from tbaadm.gss "
+	sv_d = sv_d + " where schm_code=acct_type and del_flg='N' "
+	sv_d = sv_d + " and bank_id=?SVAR and DEFAULT_FLG='Y') "
+	sv_d = sv_d + " from custom.fba_lcbgus where bank_id=?SVAR and status is null"
+	sv_d = sv_d + " and trim(acct_type)='GT001' "
+	###sv_d = sv_d + " and rownum<=3 "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(sv_d)
+        sv_u = urhk_dbCursorOpenWithBind(sv_d)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.racoCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        endif
+        EQSRV.GLBDATA.racoRec = 0
+        print(EQSRV.GLBDATA.racoCurNum)
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.racoCurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{ vploop starts
+        #+++++++++++++++++
+                print("traco loop in")
+                EQSRV.GLBDATA.CifId = BANCS.OUTPARAM.CifId
+		EQSRV.GLBDATA.Crncy = BANCS.OUTPARAM.Crncy 
+		EQSRV.GLBDATA.LimitAmt = BANCS.OUTPARAM.LimitAmt
+		EQSRV.GLBDATA.LimitExpDate = BANCS.OUTPARAM.LimitExpDate
+		EQSRV.GLBDATA.schmCode = BANCS.OUTPARAM.schmCode
+		EQSRV.GLBDATA.AcctSol = BANCS.OUTPARAM.AcctSol
+		EQSRV.GLBDATA.glsubhCode = BANCS.OUTPARAM.glsubhCode
+		sv_u = urhk_GetCustomerDetails (EQSRV.GLBDATA.CifId)
+		if(sv_u == 0) then
+			EQSRV.GLBDATA.RetailOrCorp = BANCS.OUTPARAM.RetailOrCorp
+			EQSRV.GLBDATA.CustShortName = BANCS.OUTPARAM.CustShortName
+			EQSRV.GLBDATA.CustName = BANCS.OUTPARAM.CustName
+		else
+			EQSRV.GLBDATA.srvErrMsg =       "Customer  Failed"
+			EQSRV.GLBDATA.srvErrCode = "Failed : urhk_GetCustomerDetails "
+			EQSRV.GLBDATA.srvSucFail = "F"
+			goto NXTLP
+		endif
+
+	
+		#ContextSol
+                #++++++++++
+                        print(BANCS.STDIN.mySolId)
+                        print(EQSRV.GLBDATA.AcctSol)
+                        if ( BANCS.STDIN.mySolId != EQSRV.GLBDATA.AcctSol ) then
+                                sv_u = urhk_SetUrhkInp("sol.solId|" +EQSRV.GLBDATA.AcctSol)
+                                sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                                        print(BANCS.OUTPARAM.successOrFailure)
+                                        sv_s = BANCS.OUTPARAM.successOrFailure
+                                else
+                                        sv_s = "X"
+                                endif
+                                if (( sv_u != 0 ) and ( sv_s != "S"))then
+                                        EQSRV.GLBDATA.srvErrMsg =       "CCS Failed"
+                                        EQSRV.GLBDATA.srvErrCode = "Failed : SRV_ModifyContextSol "
+                                        EQSRV.GLBDATA.srvSucFail = "F"
+                                        goto NXTLP
+                                endif
+                        endif
+		sv_i = urhk_SetUrhkInp("acctCriteria.custId.cifId|"+EQSRV.GLBDATA.CifId)
+		sv_i = urhk_SetUrhkInp("acctCriteria.schmCode.schmCode|"+EQSRV.GLBDATA.schmCode)
+		sv_i = urhk_SetUrhkInp("acctCriteria.schmCode.schmType|FBA")
+		sv_i = urhk_SetUrhkInp("acctCriteria.crncyCode.crncyCode|"+EQSRV.GLBDATA.Crncy)
+		sv_i = urhk_SetUrhkInp("acctCriteria.solId.solId|"+EQSRV.GLBDATA.AcctSol)
+		sv_i = urhk_SetUrhkInp("acctCriteria.glSubHeadCode.glSubHeadCode|"+EQSRV.GLBDATA.glsubhCode)
+		sv_i = urhk_SetUrhkInp("acctCriteria.glSubHeadCode.solId|"+EQSRV.GLBDATA.AcctSol)
+		sv_i = urhk_SetUrhkInp("acctCriteria.glSubHeadCode.crncyCode|"+EQSRV.GLBDATA.Crncy)
+	#output
+		sv_u = urhk_ExecSrv("SRV_FetchDfltFBAcctDtls|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg=Y")
+		print(sv_u)
+		if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+			print(BANCS.OUTPARAM.successOrFailure)
+			sv_s = BANCS.OUTPARAM.successOrFailure
+		else
+			sv_s = "X"
+		endif
+		if (( sv_u == 0 ) and ( sv_s=="S") ) then
+			print("fetch success")
+			#EQSRV.GLBDATA.custName = BANCS.OUTPARAM.custName
+			#EQSRV.GLBDATA.custShortName = BANCS.OUTPARAM.custShortName
+		else
+			print(EQSRV.GLBDATA.CifId)
+			EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.CifId 
+			callscriptifexist("ebsrvHandler.scr")
+			EQSRV.GLBDATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+			EQSRV.GLBDATA.srvErrCode = "Failed : SRV_FetchDfltFBAcctDtls "
+			EQSRV.GLBDATA.srvSucFail = "F"
+			goto NXTLP
+		endif
+# To find the Interest Table Code
+	print (EQSRV.GLBDATA.schmCode)
+	sv_s = "intTblCode|"
+	sv_s = sv_s + " select int_tbl_code from tbaadm.csp where schm_code ='"+EQSRV.GLBDATA.schmCode+"' and crncy_code = '"+EQSRV.GLBDATA.Crncy+"'"
+	sv_s = sv_s + " and del_flg !='Y' and bank_id='"+BANCS.STDIN.contextBankId+"' "
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	if(sv_d ==0) then
+		EQSRV.GLBDATA.intTblCode= BANCS.OUTPARAM.intTblCode
+	else
+		EQSRV.GLBDATA.intTblCode = " "
+	endif
+	print(EQSRV.GLBDATA.intTblCode)
+#acctBasic
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.custId.cifId|"+EQSRV.GLBDATA.CifId)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|"+EQSRV.GLBDATA.schmCode)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|"+EQSRV.GLBDATA.SchemeType)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|"+EQSRV.GLBDATA.Crncy)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.solId.solId|"+EQSRV.GLBDATA.AcctSol)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctShortName|" + EQSRV.GLBDATA.CustShortName )
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctOpnDate|"+BANCS.STDIN.BODDate )
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.glSubHeadCode.glSubHeadCode|"+EQSRV.GLBDATA.glsubhCode)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.glSubHeadCode.solId|"+EQSRV.GLBDATA.AcctSol)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.glSubHeadCode.crncyCode|"+EQSRV.GLBDATA.Crncy)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctName|" + EQSRV.GLBDATA.CustName )
+#acctCustInfo
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.custId.cifId|"+EQSRV.GLBDATA.CifId)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.pbPsCode.code|N")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.localCalFlg|N")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|N")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.relativeFlg|N")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.ecsEnabled|N")
+#acctInterestTax
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.custId.cifId|"+EQSRV.GLBDATA.CifId)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.schmCode.schmType|"+EQSRV.GLBDATA.SchemeType)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.schmCode.schmCode|"+EQSRV.GLBDATA.schmCode)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctCrncyCode.crncyCode|"+EQSRV.GLBDATA.Crncy)
+#basicInterest
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.basicInterest.peggedFlg|N")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.basicInterest.intTblCode.tblCode|"+EQSRV.GLBDATA.intTblCode)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.acctClassMISCEntered|Y")
+#acctLimits
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.acctLimitsEntered|1")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.sanctionLimit|"+EQSRV.GLBDATA.LimitAmt + "|" + EQSRV.GLBDATA.Crncy )
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.sanctDate|"+BANCS.STDIN.BODDate )
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.applicableDate|"+BANCS.STDIN.BODDate )
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.limitLevelInterest|N")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.supercedeFlg|N")
+	EQSRV.GLBDATA.LimitExpDate = EQSRV.GLBDATA.LimitExpDate + " 00:00:00"
+	print(EQSRV.GLBDATA.LimitExpDate)
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.expiryDate|"+EQSRV.GLBDATA.LimitExpDate)
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.limitPenalDays|0")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.limitPenalMths|0")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.documentDate|"+BANCS.STDIN.BODDate )
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.normalInterestRate|0.00")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.penalInterestRate|0.00")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.custDrPref|0.00")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.acctDrPref|0.00")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.sanctionLevelCode.refCode|OTHER")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.sanctionAuthCode.refCode|OTH")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.drawingPowerInd.code|E")
+	sv_a = urhk_SetUrhkInp("acctCommonInfo.acctLimits.sanctionRefNum|LM00001")
+	sv_r = urhk_SetUrhkInp("acctCommonInfo.acctLimits.acctRecalledFlg|N")
+
+	sv_i = urhk_SetUrhkInp("fbSchemeDetails.sancMarginPc|0.000000")
+	sv_i = urhk_SetUrhkInp("fbSchemeDetails.sancUsanceDays.mths|0")
+	sv_i = urhk_SetUrhkInp("fbSchemeDetails.sancUsanceDays.days|0")
+	sv_i = urhk_SetUrhkInp("fbSchemeDetails.maxAlwdAdvnLim|99999999999999.99|"+EQSRV.GLBDATA.Crncy)
+	sv_i = urhk_SetUrhkInp("fbInterestDtls.payIntFlg|N")
+	sv_i = urhk_SetUrhkInp("fbInterestDtls.colIntFlg|N")
+	sv_i = urhk_SetUrhkInp("fbInterestDtls.peggedFlg|Y")
+	sv_i = urhk_SetUrhkInp("fbInterestDtls.pegReviewDate|31-12-2099 00:00:00")
+	##sv_a = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.acctGeneralCookie|adtCookie")
+	##sv_a = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.acid|acid")
+	sv_a = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|foracid")
+	sv_u = urhk_ExecSrv("SRV_OpenFBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+	print(sv_u)
+                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                        print(BANCS.OUTPARAM.successOrFailure)
+                        sv_s = BANCS.OUTPARAM.successOrFailure
+                else
+                        sv_s = "X"
+                endif
+                if (( sv_u == 0 ) and ( sv_s=="S") ) then
+			print("success")
+			EQSRV.GLBDATA.foracid = BANCS.OUTPARAM.foracid
+			##EQSRV.GLBDATA.adtCookie = BANCS.OUTPARAM.adtCookie
+			EQSRV.GLBDATA.srvErrMsg = "Account opend/verified successfully - " + EQSRV.GLBDATA.foracid 
+			EQSRV.GLBDATA.srvSucFail = "S"
+			EQSRV.GLBDATA.srvErrCode = "000"
+			goto NXTLP
+                else
+                        print(EQSRV.GLBDATA.CifId)
+                        EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.CifId 
+                        callscriptifexist("ebsrvHandler.scr")
+                        EQSRV.GLBDATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                        EQSRV.GLBDATA.srvErrCode = "Failed : SRV_OpenFBAcctAndVerify "
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto NXTLP
+                endif
+        NXTLP:
+                print(EQSRV.GLBDATA.srvErrMsg)
+                print(EQSRV.GLBDATA.srvErrCode)
+                print(EQSRV.GLBDATA.srvSucFail)
+                if((EQSRV.GLBDATA.srvSucFail =="S") and (EQSRV.GLBDATA.srvErrCode=="000"))then
+			sv_u = " update custom.fba_lcbgus set status='S' ,msg=?SVAR,user_id=?SVAR,"
+			sv_u = sv_u + " rcre_time=to_date(?SVAR,'DD-MM-YYYY') where trim(cif_id)=?SVAR and bank_id=?SVAR and acct_type=?SVAR "
+ 			sv_u = sv_u + " and limit=?NVAR "
+			BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.srvErrMsg + "|" + BANCS.STDIN.userId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + EQSRV.GLBDATA.CifId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schmCode + "|" + EQSRV.GLBDATA.LimitAmt 
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_u)
+			sv_d = urhk_dbSqlWithBind(sv_u)
+			if(sv_d==0)then
+				sv_d = urhk_dbSqlWithBind("Commit")
+			endif
+                endif
+                if((EQSRV.GLBDATA.srvSucFail =="F") and (EQSRV.GLBDATA.srvErrCode!="000"))then
+			sv_u = " update custom.fba_lcbgus set status='F' ,msg=?SVAR,user_id=?SVAR,"
+			sv_u = sv_u + " rcre_time=to_date(?SVAR,'DD-MM-YYYY') where trim(cif_id)=?SVAR and bank_id=?SVAR and acct_type=?SVAR "
+ 			sv_u = sv_u + " and limit=?NVAR "
+			BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.srvErrMsg + "|" + BANCS.STDIN.userId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + EQSRV.GLBDATA.CifId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schmCode + "|" + EQSRV.GLBDATA.LimitAmt 
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_u)
+			sv_d = urhk_dbSqlWithBind(sv_u)
+			if(sv_d==0)then
+				sv_d = urhk_dbSqlWithBind("Commit")
+			endif
+		endif
+
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.racoCurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.racoCurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "taraco Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto VAYU
+                endif
+                EQSRV.GLBDATA.racoRec = cint(EQSRV.GLBDATA.racoRec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.racoRec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.racoCurNum)
+        print(sv_u)
+VAYU:
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvSucFail)
+        if(classexists("EQSRV","GLBDATA")==1)then
+                deleteclass("EQSRV","GLBDATA")
+        endif
+        if(repexists("EQSRV")==1)then
+                deleterep("EQSRV")
+        endif
+        exitscript
+trace off
+end-->

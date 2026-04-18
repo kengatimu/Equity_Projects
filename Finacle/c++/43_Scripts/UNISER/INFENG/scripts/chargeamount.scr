@@ -1,0 +1,189 @@
+<--START
+CHECKSUM="6fef7f379ebfd51ba79526b9ae0433d6caa531dc73a1163d30c991be8a0ac139"
+	#===========================================================================================*
+	# Name                          :   chargeamount.scr
+	# Date                          :   08-04-2013
+	# Description                   :   This script is used to get the charge amount for transaction
+	# Author                        :   Chethan
+	# Input							:	EventId and EventType
+	# output						:	Charge Amount
+	# Called Scripts                :   <none>
+	# Calling Script                :   <none>
+	# Reference                     :
+	# Modification History  		:
+	#  <Serial No.>  <Date>     <AuthorName>	<Description>
+	#--------------------------------------------------------------------------
+	#	1			08-04-2013	Chethan.S		Original Version
+	#============================================================================================*
+	
+	TRACE ON
+	
+	IF(REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+	#{
+		CREATECLASS("CUST","ATM",5)
+	#}
+	ENDIF
+	
+	CUST.ATM.errMsg = ""
+	
+	BANCS.INPUT.moduleName  = "ATM"
+	BANCS.INPUT.parameterId = "SCHMCODE_10"
+	
+	CALL ("atmgetcparamvalue.scr")
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.ATM.schmCode10 = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ATM.errMsg = "SCHMCODE setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "SCHMCODE_5"
+	
+	CALL ("atmgetcparamvalue.scr")
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.ATM.schmCode5 = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.ATM.errMsg = "SCHMCODE setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_a = urhk_getAcctDetailsInRepository(CUST.ATM.acct_num)
+	sv_t = trim(BANCS.OUTPARAM.schmType)
+	print(sv_t)
+	sv_o = trim(BANCS.OUTPARAM.schmCode)
+	print(sv_o)
+	
+	sv_s = LEFT$(sv_o,2)
+	print(sv_s)
+	
+	#---------------------------------------------------------
+	# Finding Account from place holder of Cheque Commision
+	#---------------------------------------------------------
+	sv_b = "TODCHGS"
+	#################################################################
+	#	MODIFIED TO GET CORRECT INCOME ACCOUNT FOR BACID	#
+	#################################################################
+	sv_x = "originalSol|select sol_id from gam where foracid= ?SVAR "
+	sv_x = sv_x + " AND DEL_FLG ='N' "
+	BANCS.INPARAM.BINDVARS = CUST.ATM.acct_num
+	sv_r =urhk_dbSelectWithBind(sv_x)
+	print(sv_r)
+	sv_d = BANCS.OUTPARAM.originalSol
+	print(sv_d)
+	sv_i = sv_b + "|" + BANCS.STDIN.homeCrncyCode + "|" + sv_d
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	IF (sv_u == 1 ) THEN
+	#{
+		sv_c = urhk_SetOrbOut("Error_01|ERROR^Income Account doesn't exists")
+		CUST.ATM.errMsg = "Income Account doesn't exists"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.ATM.income_acct = BANCS.OUTPARAM.AcctId
+	print(CUST.ATM.income_acct)
+	
+	
+	#---------------------------------------------------------
+	# Total debit amount
+	#---------------------------------------------------------
+	
+	sv_m = CUST.ATM.chargeAmt
+	CUST.ATM.chargeAmt = (cint(sv_m) * cint("10")) / cint("100")
+	print(CUST.ATM.chargeAmt)
+	sv_t = CUST.ATM.chargeAmt
+	CUST.ATM.chargeAmt = cint(CUST.ATM.chargeAmt)
+	
+	######  VALIDATING FOR CA204 ##############
+	
+	IF (sv_o != CUST.ATM.schmCode10) THEN
+	#{
+		sv_t = (cint(sv_m) * cint("10")) / cint("100")
+		print(sv_t)
+		#}
+	ELSE
+		#{
+		sv_t = (cint(sv_m) * cint("2")) / cint("100")
+		print(sv_t)
+	#}
+	ENDIF
+	
+	IF (sv_o == CUST.ATM.schmCode10) THEN
+	#{
+		IF (sv_t < cint("200")) THEN
+		#{
+			sv_t = (cint(sv_m) * cint("2")) / cint("100")
+			print(sv_t)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		IF (sv_t < cint("200")) THEN
+		#{
+			sv_t = "200"
+			print(sv_t)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	######  END VALIDATING FOR CA204 ##############
+	
+	######  VALIDATING FOR M-KESHO ##############
+	
+	IF (sv_o == CUST.ATM.schmCode5 ) THEN
+	#{
+		IF (sv_t < cint("100")) THEN
+		#{
+			sv_t = "100"
+			print(sv_t)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		
+		IF (sv_t < cint("200") AND (sv_o==CUST.ATM.schmCode5)) THEN
+		#{
+			sv_t = "200"
+			print(sv_t)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	print(sv_t)
+	
+	CUST.ATM.tot_amt = sv_t
+	print(sv_t)
+	sv_t = cdouble(CUST.ATM.tot_amt)
+	print(sv_t)
+	
+	CUST.ATM.income_amt = sv_t
+	print(CUST.ATM.income_amt)
+	
+	ENDOFSCRIPT:
+		IF(CUST.ATM.errMsg != "" ) THEN
+		#{
+			print(CUST.ATM.errMsg)
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.RespCode = "99"
+		#}
+		ENDIF
+		
+END-->

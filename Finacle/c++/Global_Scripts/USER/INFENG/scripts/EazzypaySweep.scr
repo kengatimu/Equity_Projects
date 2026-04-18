@@ -1,0 +1,225 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : EazzypaySweep.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 17-04-2018
+#  Author          : Edwin
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : NA
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             02-11-2018      Edwin Z		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","MOBIL") == 0) THEN
+	#{
+		CREATECLASS("CUST","MOBIL",5)
+	#}
+ENDIF
+
+
+
+CUST.MOBIL.NARRATION = "MERCHANT SWEEP"
+PRINT(CUST.MOBIL.NARRATION)
+
+
+sv_q="acct,bal,pool|"
+sv_q = sv_q + "  select foracid, clr_bal_amt, pool_id from tbaadm.gam where pool_id in  (select pool_id from "
+sv_q = sv_q + " (select pool_id , count (pool_id) xx  from tbaadm.gam where schm_code!='VA302' and pool_id in  ( select  pool_id  "
+sv_q = sv_q + " from tbaadm.gam where schm_code ='SB144' and bank_id ='54') "
+sv_q = sv_q + "  group by pool_id) where xx ='2') and schm_code ='SB144' AND clr_bal_amt > 0 "
+
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+IF(sv_e==0) THEN
+#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+			IF(sv_q == 1) THEN
+				sv_x = urhk_dbCursorClose(sv_m)
+				print(sv_x)
+				exitscript
+			ENDIF
+		print(sv_q)
+
+WHILE (sv_q==0)
+	CUST.MOBIL.acct=BANCS.OUTPARAM.acct
+	print(CUST.MOBIL.acct)
+	CUST.MOBIL.DRAMT=BANCS.OUTPARAM.bal
+	print(CUST.MOBIL.DRAMT)
+	CUST.MOBIL.pool=BANCS.OUTPARAM.pool
+	print(CUST.MOBIL.pool)
+	
+sv_q="FORACID|"
+sv_q = sv_q + " select foracid  from tbaadm.gam where pool_id = ?SVAR  and schm_code !='SB144' and schm_code !='VA302' "
+print(sv_q)
+BANCS.INPARAM.BINDVARS = CUST.MOBIL.pool
+print(BANCS.INPARAM.BINDVARS)
+sv_b = urhk_dbSelectWithBind(sv_q)
+print(sv_b)
+	IF(sv_b==0) THEN
+		CUST.MOBIL.CRACCT = BANCS.OUTPARAM.FORACID
+		print(CUST.MOBIL.CRACCT)
+	ENDIF
+
+
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+	
+				sv_r = REPEXISTS("MTT")
+				IF (sv_r == 0) THEN
+				#{
+					CREATEREP("MTT")
+				#}
+				ENDIF
+				
+				sv_r = CLASSEXISTS("MTT","TranDetails")
+				IF (sv_r == 0) THEN
+				#{
+					CREATECLASS("MTT","TranDetails",5)
+				#}
+				ENDIF
+				
+				sv_r = REPEXISTS("BANCS")
+				IF (sv_r == 0) THEN
+				#{
+					CREATEREP("BANCS")
+				#}
+				ENDIF
+				
+				sv_r = CLASSEXISTS("BANCS","INPARAM")
+				IF (sv_r == 0) THEN
+				#{
+					CREATECLASS("BANCS","INPARAM",5)
+				#}
+				ENDIF
+	
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+		
+				BANCS.INPARAM.PostTranFlg 		= "Y"
+				BANCS.INPARAM.CommitFlg 		= "Y"
+				BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+				BANCS.INPARAM.ValidationFlag 		= "Y"
+				BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+				BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+				BANCS.INPARAM.CheckExceptions 		= "N"
+							
+				sv_u = urhk_MTTS_PopulateInputDetails("")
+								
+				
+				MTT.TranDetails.TranType = "T"
+				MTT.TranDetails.TranSubType = "CI"
+				MTT.TranDetails.IgnoreExcp = "I"
+				MTT.TranDetails.Consolidate = "N"
+				MTT.TranDetails.Remarks = CUST.MOBIL.NARRATION
+				
+				sv_v = "PurchaseComm"
+				PRINT(sv_v)
+				
+				
+				sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+	
+		
+	#--------------------------------------------------
+	# Credit to Branch Mobile Charges A/c
+	#--------------------------------------------------
+	
+				MTT.PartTranDetails.Account = CUST.MOBIL.CRACCT
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = CUST.MOBIL.NARRATION
+				MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.MOBIL.DRAMT)
+				PRINT(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = ""
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "PurchaseIncome"
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				PRINT(sv_r)
+	
+	#------------------------------------------------------------------
+	# Debit From Customer A/c
+	#------------------------------------------------------------------
+	
+			MTT.PartTranDetails.Account = CUST.MOBIL.acct
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars =  CUST.MOBIL.NARRATION
+			sv_a = CDOUBLE(CUST.MOBIL.DRAMT)
+			sv_a = -(sv_a)
+			PRINT(sv_a)
+			MTT.PartTranDetails.RefAmount = sv_a
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_h = "D" + CUST.MOBIL.acct
+			
+			
+			sv_r = urhk_MTTS_definePartTran(sv_h)
+			IF (sv_r == 1) THEN
+			#{
+				PRINT("Unable to create MTT Part transaction")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+	#############################
+	# Commit the transaction
+	#############################
+	sv_u = urhk_MTTS_EndDefinition("")
+	PRINT(sv_u)
+	
+	CUST.MOBIL.TranId = BANCS.OUTPARAM.MTTTranId
+	PRINT(CUST.MOBIL.TranId)
+	
+	
+	##################################################
+	# If any error tran id will not be created
+	##################################################
+	IF ((sv_u != 0)  OR (CUST.MOBIL.TranId==""))THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		PRINT (MTT.Error.Description)
+		CUST.MOBIL.ResStatus = "F"
+		CUST.MOBIL.Response = "Transaction creation Failed."
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO EndOfScript
+	#}
+	ENDIF
+
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	DO
+#}
+ENDIF
+
+ENDOFSCRIPT:
+
+trace off
+end-->

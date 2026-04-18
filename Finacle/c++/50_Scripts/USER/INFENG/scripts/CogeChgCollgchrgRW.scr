@@ -1,0 +1,666 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : gchrgcommon.scr
+#   Description     : This is common script for general charge collection
+#   Date            : 20-02-2013
+#   Author          : Bharath Reddy B
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : This is called from many scripts
+#   Calling Script  : None
+#   Menu Option     :
+#   Srl. No         Date            Author          Description.
+#   -------         ------          ------          ------------
+#   1.0             20-02-2013      Bharath Reddy B     Original Version
+#   2.0             07-03-2013      Bharath Reddy B     Error Message Changed
+#-----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="a5640b01083d1fe6457320773b3a43c011a58155fcf4a6b086a9994e7f192c02"
+	TRACE ON
+	
+	sv_r = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_r)
+	#-------------------------------------------------------------------------------------------------------
+	# Checking Required Variables
+	#-------------------------------------------------------------------------------------------------------
+	print(CUST.DATA.tranType)
+	print(CUST.DATA.tranSubType)
+	print(CUST.DATA.drAcctId)
+	print(CUST.DATA.acctCrncyCode)
+	print(CUST.DATA.eventId)
+	print(CUST.DATA.TotalAmt)
+
+	CUST.DATA.tranId			= ""
+	CUST.DATA.tranDate			= ""
+	CUST.DATA.gchrgErrMsg		= ""
+	CUST.DATA.successOrFailure	= "S"
+	
+	
+	IF(FIELDEXISTS(BANCS.INPUT.srvcallmode))THEN
+	#{
+		CUST.DATA.srvcallmode = BANCS.INPUT.srvcallmode
+		PRINT(CUST.DATA.srvcallmode)
+		#}
+	ELSE
+		#{
+		CUST.DATA.srvcallmode = ""
+	#}
+	ENDIF
+
+	#-------------------------------------------------------------------------------------------------------
+	# Setting inputs for the service to collect the charges
+	#-------------------------------------------------------------------------------------------------------
+	sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranType|" + CUST.DATA.tranType)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranSubType|" + CUST.DATA.tranSubType)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.drAcct.foracid|" + CUST.DATA.drAcctId)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.eventId.eventId|" + CUST.DATA.eventId)
+	print(sv_u)
+	print(CUST.DATA.TotalAmt)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgAmt|" + CUST.DATA.TotalAmt)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgCrncy.crncyCode|" + CUST.DATA.acctCrncyCode)
+	print(sv_u)
+	
+	
+	##################################################
+	# FetchDfltGenChrgDt
+	##################################################
+	IF(CUST.DATA.srvcallmode == "E")THEN
+	#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_FetchDfltGenChrgDtl|retain_all_output = Y")
+		print(sv_u)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_FetchDfltGenChrgDtl|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u != 0)THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			print(sv_u)
+			
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchDfltGenChrgDtl|retain_all_output = Y")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------------------------
+	# Checking for errors
+	#---------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		CUST.DATA.successOrFailure	= "F"
+		IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+			#}
+		ELSE
+			#{
+			sv_v = 0
+		#}
+		ENDIF
+		
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				CUST.DATA.gchrgErrMsg = CUST.DATA.gchrgErrMsg + " ! " + sv_e
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+		#{
+			sv_d = 1
+			sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+			WHILE (sv_d <= sv_c)
+			#{
+				sv_f = FORMAT$(sv_d,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+				PRINT(sv_e)
+				
+				sv_d = sv_d + 1
+				sv_n = sv_n + 1
+				sv_d = sv_c + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_u = urhk_CopyOutToIn("")
+	print(sv_u)
+	
+	sv_u = urhk_SetUrhkOut("genChrgCrit.gchSrlNum|gchSrlNum")
+	
+	##################################################
+	# AddGenChrgDtl
+	##################################################
+	
+	IF(CUST.DATA.srvcallmode == "E")THEN
+	#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_AddGenChrgDtl|retain_all_output = Y")
+		print(sv_u)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_AddGenChrgDtl|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u != 0)THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			print(sv_u)
+			
+			sv_u = urhk_SetUrhkOut("genChrgCrit.gchSrlNum|gchSrlNum")
+			sv_u = urhk_ExecSrvNoCommit("SRV_AddGenChrgDtl|retain_all_output = Y")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------------------------
+	# Checking for errors
+	#---------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		CUST.DATA.successOrFailure	= "F"
+		IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+			#}
+		ELSE
+			#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				CUST.DATA.gchrgErrMsg = CUST.DATA.gchrgErrMsg + " ! " + sv_e
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+		#{
+			sv_d = 1
+			sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+			WHILE (sv_d <= sv_c)
+			#{
+				sv_f = FORMAT$(sv_d,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+				PRINT(sv_e)
+				
+				sv_d = sv_d + 1
+				sv_n = sv_n + 1
+				sv_d = sv_c + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################################
+	# FetchGenChrgDtlForVerify
+	##################################################
+	
+	CUST.DATA.gchSrlNum = BANCS.OUTPARAM.gchSrlNum
+	print(CUST.DATA.gchSrlNum)
+	
+	sv_a = urhk_SetUrhkInp("genChrgCrit.gchSrlNum|" + CUST.DATA.gchSrlNum)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranType|" + CUST.DATA.tranType)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranSubType|" + CUST.DATA.tranSubType)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.drAcct.foracid|" + CUST.DATA.drAcctId)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.eventId.eventId|" + CUST.DATA.eventId)
+	print(sv_u)
+	print(CUST.DATA.TotalAmt)	
+	sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgAmt|" + CUST.DATA.TotalAmt)
+	print(sv_u)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgCrncy.crncyCode|" + CUST.DATA.acctCrncyCode)
+	print(sv_u)
+	
+	
+	IF(CUST.DATA.srvcallmode == "E")THEN
+	#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_FetchGenChrgDtlForVerify|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_FetchGenChrgDtlForVerify|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u != 0)THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			print(sv_u)
+			
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchGenChrgDtlForVerify|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------------------------
+	# Checking for errors
+	#---------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		CUST.DATA.successOrFailure	= "F"
+		IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+			#}
+		ELSE
+			#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				CUST.DATA.gchrgErrMsg = CUST.DATA.gchrgErrMsg + " ! " + sv_e
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+		#{
+			sv_d = 1
+			sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+			WHILE (sv_d <= sv_c)
+			#{
+				sv_f = FORMAT$(sv_d,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+				PRINT(sv_e)
+				
+				sv_d = sv_d + 1
+				sv_n = sv_n + 1
+				sv_d = sv_c + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	##################################################
+	# VerifyGenChrgDtl
+	##################################################
+	
+	sv_u = urhk_CopyOutToIn("")
+	print(sv_u)
+	
+	sv_a = urhk_SetUrhkInp("genChrgCrit.gchSrlNum|" + CUST.DATA.gchSrlNum)
+	sv_a = urhk_SetUrhkOut("genChrgCrit.tranId|tranId")
+	sv_a = urhk_SetUrhkOut("genChrgCrit.tranDate|tranDate")
+
+	IF (CUST.DATA.Narration  !="") THEN
+        #{
+		sv_u = urhk_SetUrhkInp("genChrgDtl.chrgDtls|" + CUST.DATA.Narration)
+		PRINT(sv_u)
+        #}
+        ENDIF
+	
+	IF(CUST.DATA.srvcallmode == "E")THEN
+	#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_VerifyGenChrgDtl|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_ExecSrvNoCommit("SRV_VerifyGenChrgDtl|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u != 0)THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			print(sv_u)
+			
+			sv_a = urhk_SetUrhkOut("genChrgCrit.tranId|tranId")
+			sv_a = urhk_SetUrhkOut("genChrgCrit.tranDate|tranDate")
+			sv_u = urhk_ExecSrvNoCommit("SRV_VerifyGenChrgDtl|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------------------------
+	# Checking for errors
+	#---------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		CUST.DATA.successOrFailure	= "F"
+		IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+			#}
+		ELSE
+			#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				CUST.DATA.gchrgErrMsg = CUST.DATA.gchrgErrMsg + " ! " + sv_e
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+		#{
+			sv_d = 1
+			sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+			WHILE (sv_d <= sv_c)
+			#{
+				sv_f = FORMAT$(sv_d,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+				PRINT(sv_e)
+				
+				sv_d = sv_d + 1
+				sv_n = sv_n + 1
+				sv_d = sv_c + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.DATA.chargeTranId = BANCS.OUTPARAM.tranId
+	print(CUST.DATA.chargeTranId)
+	CUST.DATA.cTranDate = BANCS.OUTPARAM.tranDate
+	CUST.DATA.chargeTranDate = MID$(BANCS.OUTPARAM.tranDate,0,10)
+	print(CUST.DATA.chargeTranDate)
+	
+	#---------------------------------------------------------------------------------------------------
+	# Checking for unposted transactions in DTD
+	#---------------------------------------------------------------------------------------------------
+
+	sv_d = " sleep 2 "
+        PRINT(sv_d)
+        sv_u = SYSTEM(sv_d)
+        PRINT(sv_u)
+
+	#CUST.DATA.chargeTranId = "  5454043"
+	sv_s = "dCount|SELECT count(1) FROM TBAADM.DTD "
+	sv_s = sv_s + " WHERE DTD.tran_id =?SVAR "
+	sv_s = sv_s + " AND DTD.TRAN_DATE = to_date(?SVAR,'dd-mm-yyyy')"
+	#sv_s = sv_s + " AND DTD.pstd_flg = 'Y' "
+	sv_s = sv_s + " AND DTD.del_flg='N' "
+	sv_s = sv_s + " AND DTD.bank_id=?SVAR "
+	sv_s = sv_s + " AND ENTRY_USER_ID = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.chargeTranId + "|" + CUST.DATA.chargeTranDate + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	CUST.DATA.dCount = BANCS.OUTPARAM.dCount
+	  print(CUST.DATA.dCount)
+	
+	IF (CUST.DATA.dCount != 0) THEN
+	#{
+		sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+CUST.DATA.cTranDate)
+		sv_u = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranId|"+CUST.DATA.chargeTranId)
+		sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+		sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+		
+		IF(CUST.DATA.srvcallmode == "E")THEN
+		#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				print(sv_u)
+				
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y")
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		IF (sv_u != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+				#}
+			ELSE
+				#{
+				sv_v = 0
+			#}
+			ENDIF
+			
+			IF (sv_v > 0) THEN
+			#{
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					print(sv_e)
+					sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+				#}
+				DO
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+			#{
+				sv_d = 1
+				sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+				WHILE (sv_d <= sv_c)
+				#{
+					sv_f = FORMAT$(sv_d,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+					PRINT(sv_e)
+					
+					sv_d = sv_d + 1
+					sv_n = sv_n + 1
+					sv_d = sv_c + 1
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		sv_u = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranId|tranId")
+	        print(sv_u)
+		sv_u = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranDate|tranDate")
+	        print(sv_u)
+		sv_u = urhk_SetUrhkOut("tranDtl.ignoreXcpnFlg|ignoreXcpnFlg")
+	        print(sv_u)
+		sv_u = urhk_SetUrhkOut("tranDtl.pstFlg|pstFlg")
+	        print(sv_u)
+
+		
+		IF(CUST.DATA.srvcallmode == "E")THEN
+		#{
+
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+      
+      
+        
+			IF(sv_u != 0)THEN
+  			#{
+  				sv_u = urhk_CopyOutToIn("")
+  				print(sv_u)
+  				sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+  				print(sv_u)
+          
+  			#}
+  			ENDIF
+			#}
+		ELSE
+			#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+
+			
+			IF(sv_u != 0)THEN
+  			#{
+  				sv_u = urhk_CopyOutToIn("")
+  				print(sv_u)
+  				sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+  				print(sv_u)
+          
+  			#}
+  			ENDIF
+		#}
+		ENDIF
+		
+		IF (sv_u != 0) THEN
+		#{
+			CUST.DATA.successOrFailure     = "F"
+
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+				#}
+			ELSE
+				#{
+				sv_v = 0
+			#}
+			ENDIF
+			
+			IF (sv_v > 0) THEN
+			#{
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					print(sv_e)
+					CUST.DATA.gchrgErrMsg = CUST.DATA.gchrgErrMsg + " ! " + sv_e
+					sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+				#}
+				DO
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Xcpn_num) == 1)THEN
+			#{
+				sv_d = 1
+				sv_c = CINT(BANCS.OUTPARAM.Xcpn_num)
+				WHILE (sv_d <= sv_c)
+				#{
+					sv_f = FORMAT$(sv_d,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("XcpnCode_" + sv_f)
+					PRINT(sv_e)
+					
+					sv_d = sv_d + 1
+					sv_n = sv_n + 1
+					sv_d = sv_c + 1
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+ENDOFSCRIPT:
+EXITSCRIPT
+TRACE OFF
+END-->

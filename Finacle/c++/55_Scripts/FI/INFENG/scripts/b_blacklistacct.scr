@@ -1,0 +1,113 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : b_blacklistacct.scr
+#   Description     : This script is called from SRV_AddAndPostCashTran_pre_process_data.scr
+#   Date            :18/07/2013
+#   Author          :jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : SRV_AddAndPostCashTran_validate_data.scr,SRV_AddAndPostXferTran_validate_data.scr
+#   Menu Option     :HTM
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0            21/08/2013      jane    		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="e3e6b1fc72a370f18a2249de19f85bf4de2a0e102734a02c46e34693192f49c7"
+	TRACE ON
+	sv_a = urhk_B2k_PrintRepos("BANCS")
+	print(sv_a)
+	
+	sv_a = REPEXISTS("STDWFS")
+	IF (sv_a == 0) THEN
+	#{
+		CREATEREP("STDWFS")
+	#}
+	ENDIF
+	
+	sv_a = CLASSEXISTS("STDWFS", "GLBDATA")
+	IF (sv_a == 0) THEN
+	#{
+		CREATECLASS("STDWFS", "GLBDATA", 5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranSubType")
+	sv_b=BANCS.OUTPARAM.srvValue
+	print(sv_b)
+	STDWFS.GLBDATA.subtype=sv_b
+	
+	sv_c = urhk_SRV_GetVal("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid")
+	sv_d=BANCS.OUTPARAM.srvValue
+	print(sv_d)
+	STDWFS.GLBDATA.foracid=sv_d
+	
+	sv_e = urhk_SRV_GetVal("tranDtl.partTranDetailLL.<rec_0>.partTranType.code")
+	sv_f=BANCS.OUTPARAM.srvValue
+	print(sv_f)
+	STDWFS.GLBDATA.type=sv_f
+	
+	
+	
+	BANCS.INPUT.moduleName = "NEWFORMACCT"
+	BANCS.INPUT.parameterId = "BLACKLISTING"
+	
+	CALL ("getcparamvalue.scr")
+	print(BANCS.OUTPUT.parameterVal)
+	
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		STDWFS.GLBDATA.BLACKLISTING = BANCS.OUTPUT.parameterVal
+		print(STDWFS.GLBDATA.BLACKLISTING)
+		#}
+	ELSE
+		#{
+		sv_f=urhk_SRV_SetErr("BLACKLISTING setup not done in CPARAM")
+		BANCS.OUTPUT.successOrFailure="F"
+		exitscript
+	#}
+	ENDIF
+	
+	
+	IF ((STDWFS.GLBDATA.subtype == "NP") OR ((STDWFS.GLBDATA.subtype == "CI") AND (STDWFS.GLBDATA.type=="D")) OR ((STDWFS.GLBDATA.subtype == "BI") AND (STDWFS.GLBDATA.type=="D"))) THEN
+	#{
+		
+		sv_x = "cifid|select distinct cifid from dedupadm.blacklistdataset a,tbaadm.cmg b,tbaadm.gam c where "
+		sv_x = sv_x + "b.cust_id in (select cust_id from tbaadm.gam where foracid= ?SVAR)"
+		sv_x = sv_x + "AND a.bank_id= ?SVAR "
+		sv_x = sv_x + "AND c.cust_id=b.cust_id "
+		sv_x = sv_x + "AND a.cifid=b.cif_id "
+		BANCS.INPARAM.BINDVARS = STDWFS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_m = urhk_dbSelectWithBind(sv_x)
+		PRINT(sv_m)
+		IF (sv_m == 0) THEN
+		#{
+			STDWFS.GLBDATA.cifid = BANCS.OUTPARAM.cifid
+			print (STDWFS.GLBDATA.cifid)
+			
+			IF (STDWFS.GLBDATA.cifid != "") THEN
+			#{
+				
+				sv_y = urhk_B2k_PutUserException(STDWFS.GLBDATA.BLACKLISTING)
+				print(sv_y)
+				
+			#}
+			ENDIF
+			
+			#}
+		ELSE
+			#{
+			
+			STDWFS.GLBDATA.cifid = " "
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	TRACE OFF
+	exitscript
+END-->

@@ -1,0 +1,1170 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: Batch Job
+# Script: delayedChargeColln.scr
+# Type: GCHRG|default
+# Description: DElayed Charge Collection
+# Author: Sridevi_Vutukuru
+# Date: 11/9/18 11:07 AM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="b874e45444124f4b46719ce8318d00f33848e37f181752329be2cd339c21c35f"
+	
+	TRACE ON
+	LIBNAME CUSTOMSO
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","CHRG")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CHRG",5)
+	#}
+	ENDIF
+	
+	sv_s = "timeStamp|select to_char(sysdate,'ddmmyyyyhhmiss') from dual"
+	PRINT(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.CHRG.timeStamp = BANCS.OUTPARAM.timeStamp
+		PRINT(CUST.CHRG.timeStamp)
+	#}
+	ENDIF
+	
+	CUST.CHRG.remark = " "	
+
+	CUST.CHRG.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+	CUST.CHRG.errMsg = ""
+	CUST.CHRG.failureFile = "failfile_ChrgCollection_" + BANCS.STDIN.mySolId + ".lst"
+	
+	CUST.CHRG.failFileIndex1 = ""
+	CUST.CHRG.failFileIndex1 = urtn_fileOpen(CUST.CHRG.failureFile + "|w")
+	CUST.CHRG.successFile = "successFile_ChrgCollection_" + BANCS.STDIN.mySolId + ".lst"
+	
+	CUST.CHRG.successFileIndex1 = ""
+	CUST.CHRG.successFileIndex1 = urtn_fileOpen(CUST.CHRG.successFile + "|w")
+	
+	PRINT(CUST.CHRG.failFileIndex1)
+	PRINT(CUST.CHRG.successFileIndex1)
+	
+	
+	CUST.CHRG.collectedAmt = ""
+	CUST.CHRG.list_file_name = CUST.CHRG.failureFile
+	CUST.CHRG.title = "Pending Charge Collection Failure Report"
+	CUST.CHRG.mrt_file_name = "ChrgCollection.mrt"
+	CUST.CHRG.rpt_file_name = "ChrgCollection_" + CUST.CHRG.timeStamp + ".rpt"
+	CUST.CHRG.rpt =  "ChrgCollection_" + CUST.CHRG.timeStamp
+	
+	CUST.CHRG.list_file_nameSuccess = CUST.CHRG.successFile
+	CUST.CHRG.titleSuccess = "Pending Charge Collection Success Report"
+	CUST.CHRG.mrt_file_name1 = "DchrgCollnSuccess.mrt"
+	CUST.CHRG.rpt_file_nameSuccess = "ChrgCollectionSuccess_" + CUST.CHRG.timeStamp + ".rpt"
+	CUST.CHRG.rptSuccess =  "ChrgCollectionSuccess_" +  CUST.CHRG.timeStamp
+	CUST.CHRG.FULLY_ADJUSTED_FLG ="N"
+	
+	##########################################################################
+	# VAT Credit Account from CPARAM
+	##########################################################################
+	
+	CUST.CHRG.parameterId = "COMMISSION_VAT_BACID"
+	
+	sv_s = "b_acid|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = 'OT'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CHRG.parameterId
+	
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_b=urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_b)
+	IF (sv_b == 0) THEN
+	#{
+		CUST.CHRG.bacid2=BANCS.OUTPARAM.b_acid
+		
+		PRINT(CUST.CHRG.bacid2)
+		
+		#}
+	ELSE
+		#{
+		CUST.CHRG.errMsg = "Error| VAT credit Account not Found"
+		PRINT(CUST.CHRG.errMsg)
+		sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	sv_s = "CHARGE_TYPE,SRL_NUM,ACCT_NUM,TRAN_DATE,LIEN_APPLIED_AMT,CHARGE_AMT,VAT_AMT,TOTAL_CHARGE_AMT,CHARGE_CRNCY_CODE,LIEN_STATUS_FLG,TOT_ADJ_AMT,FAILURE_REMARKS|"
+	sv_s = sv_s + "SELECT CHARGE_TYPE,SRL_NUM,ACCT_NUM,TRAN_DATE,LIEN_APPLIED_AMT,CHARGE_AMT,VAT_AMT,TOTAL_CHARGE_AMT,CHARGE_CRNCY_CODE,LIEN_STATUS_FLG,TOT_ADJ_AMT,FAILURE_REMARKS "
+	sv_s = sv_s + " FROM CUSTOM.C_CHARGE_COLLECTION WHERE BANK_ID=?SVAR AND SOL_ID=?SVAR"
+	sv_s = sv_s + " AND FULLY_ADJUSTED_FLG='N'"
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	IF(sv_c!=0) THEN
+	#{
+		CUST.CHRG.errMsg = "Error|No delayed charges pending for processesing"
+		PRINT(CUST.CHRG.errMsg)
+		sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(sv_n)
+	
+	sv_f = urhk_dbCursorFetch(sv_n)
+	PRINT(sv_f)
+	IF(sv_f!=0) THEN
+	#{
+		CUST.CHRG.errMsg = "Error|No delayed charges pending for processesing"
+		PRINT(CUST.CHRG.errMsg)
+		sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	WHILE(sv_f == 0)
+	#{
+		
+		CUST.CHRG.CHARGE_TYPE = BANCS.OUTPARAM.CHARGE_TYPE
+		CUST.CHRG.SRL_NUM = BANCS.OUTPARAM.SRL_NUM
+		CUST.CHRG.ACCT_NUM = BANCS.OUTPARAM.ACCT_NUM
+		CUST.CHRG.TRAN_DATE = BANCS.OUTPARAM.TRAN_DATE
+		CUST.CHRG.LIEN_APPLIED_AMT = BANCS.OUTPARAM.LIEN_APPLIED_AMT
+		CUST.CHRG.CHARGE_AMT = BANCS.OUTPARAM.CHARGE_AMT
+		CUST.CHRG.VAT_AMT = BANCS.OUTPARAM.VAT_AMT
+		CUST.CHRG.TOTAL_CHARGE_AMT = BANCS.OUTPARAM.TOTAL_CHARGE_AMT
+		CUST.CHRG.CHARGE_CRNCY_CODE = BANCS.OUTPARAM.CHARGE_CRNCY_CODE
+		CUST.CHRG.LIEN_STATUS_FLG = BANCS.OUTPARAM.LIEN_STATUS_FLG
+		CUST.CHRG.TOT_ADJ_AMT = BANCS.OUTPARAM.TOT_ADJ_AMT
+		CUST.CHRG.FAILURE_REMARKS = BANCS.OUTPARAM.FAILURE_REMARKS
+		
+		PRINT(CUST.CHRG.CHARGE_TYPE)
+		PRINT(CUST.CHRG.SRL_NUM)
+		PRINT(CUST.CHRG.ACCT_NUM)
+		PRINT(CUST.CHRG.TRAN_DATE)
+		PRINT(CUST.CHRG.LIEN_APPLIED_AMT)
+		PRINT(CUST.CHRG.CHARGE_AMT)
+		PRINT(CUST.CHRG.VAT_AMT)
+		PRINT(CUST.CHRG.TOTAL_CHARGE_AMT)
+		PRINT(CUST.CHRG.TOT_ADJ_AMT)
+		PRINT(CUST.CHRG.FAILURE_REMARKS)
+		PRINT(CUST.CHRG.LIEN_STATUS_FLG)
+		CUST.CHRG.actcrncy = ""
+		CUST.CHRG.lienamt = CUST.CHRG.LIEN_APPLIED_AMT
+		CUST.CHRG.acct = ""
+		CUST.CHRG.chrgAcnt = ""
+		CUST.CHRG.unpaidacnt = ""
+		CUST.CHRG.bacid= ""
+		CUST.CHRG.liensum="0"
+		CUST.CHRG.liencount="0"
+		CUST.CHRG.liencode = ""
+		CUST.CHRG.b2k_id = ""
+		CUST.CHRG.taxflg = "N"
+		CUST.CHRG.unmarkLien = ""
+		CUST.CHRG.unmarkLien = CUST.CHRG.LIEN_APPLIED_AMT
+		CUST.CHRG.acct = CUST.CHRG.ACCT_NUM
+		CUST.CHRG.foracid = CUST.CHRG.ACCT_NUM
+		CUST.CHRG.reasonCode="DCHRG"
+		CUST.CHRG.lienRemarks="Delayed Charges Lien"
+		CUST.CHRG.FULLY_ADJUSTED_FLG = "N"
+		CUST.CHRG.remark = " "	
+		CUST.CHRG.errMsg = " "
+		CUST.CHRG.bacid1 = ""
+		CUST.CHRG.adjstStatus = ""
+		CUST.CHRG.rateCode	= ""
+		CUST.CHRG.rate		= ""
+		CUST.CHRG.rateCode2	= ""
+		CUST.CHRG.rate2		= ""
+		CUST.CHRG.tranid	= ""	
+		CUST.CHRG.delay_lien = "0"
+		CUST.CHRG.lienremoved = "N"
+
+		sv_r = urhk_getAcctDetailsInRepository(CUST.CHRG.acct)
+		IF(sv_r != 0)THEN
+		#{
+			sv_q ="account is not found"
+			PRINT(sv_q)
+			sv_q = CUST.CHRG.acct+"|"+sv_q
+			sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + sv_q)
+			PRINT(sv_b)
+			GOTO NEXTACID
+			
+			#}
+		ELSE
+			#{
+			CUST.CHRG.acctSolId = BANCS.OUTPARAM.acctSolId
+			CUST.CHRG.actcrncy = BANCS.OUTPARAM.acctCrncyCode
+			CUST.CHRG.frezCode = BANCS.OUTPARAM.freezeCode
+			
+			sv_e = BANCS.OUTPARAM.EffAvailableAmt
+			PRINT(sv_e)
+			#BANCS.INPARAM.InputAmount = sv_e
+			#BANCS.INPARAM.RoundOffAmt =1
+			#BANCS.INPARAM.RoundOffFlag = "L"
+			#sv_r = urhk_B2k_RoundOff ("")
+			#PRINT(sv_r)
+			#IF(sv_r ==0) THEN
+			#{
+			#	sv_e = BANCS.OUTPARAM.OutputAmount
+			#}
+			#ENDIF
+			CUST.CHRG.effavlamt = sv_e
+			IF ((CUST.CHRG.frezCode == "D") OR (CUST.CHRG.frezCode == "T"))THEN
+			#{
+				CUST.CHRG.acctFreezed = "Y"
+				sv_q = "Account is freezed"
+				CUST.CHRG.remark = sv_q
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|" + sv_q
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+	        ##########################################################################
+        	#Credit Account from CPARAM
+        	##########################################################################
+
+        	CUST.CHRG.parameterId = CUST.CHRG.CHARGE_TYPE+"_BACID"
+
+        	sv_s = "b_acid|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+        	sv_s = sv_s + " WHERE M.MODULE_NAME = 'OT'"
+        	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+        	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+        	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+        	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+        	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+        	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+        	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+        	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+        	PRINT(sv_s)
+
+        	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CHRG.parameterId
+
+        	PRINT(BANCS.INPARAM.BINDVARS)
+        	sv_b=urhk_dbSelectWithBind(sv_s)
+        	PRINT(sv_b)
+        	IF (sv_b == 0) THEN
+        	#{
+                	CUST.CHRG.bacid1=BANCS.OUTPARAM.b_acid
+                	PRINT(CUST.CHRG.bacid1)
+                #}
+        	ELSE
+                #{
+                	#CUST.CHRG.errMsg ="Error|Charge Credit Account not Found in CPARAM"
+                	CUST.CHRG.errMsg =CUST.CHRG.foracid+"|Charge Credit Account not Found in CPARAM"
+                	PRINT(CUST.CHRG.errMsg)
+                	sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+                	PRINT(sv_b)
+                	GOTO NEXTACID
+        	#}
+        	ENDIF
+
+        	#sv_e = CUST.CHRG.bacid1 + "|" + CUST.CHRG.actcrncy + "|" + BANCS.STDIN.mySolId
+		#IF(CUST.CHRG.CHARGE_TYPE == "DMGCHRG")THEN
+		#{
+			sv_e = CUST.CHRG.bacid1 + "|" +BANCS.STDIN.homeCrncyCode+ "|" + BANCS.STDIN.mySolId
+		#}
+		#ENDIF	
+        	sv_m = urhk_B2k_BacidToAcctId(sv_e)
+        	PRINT(sv_m)
+        	IF (sv_m == 0 ) THEN
+        	#{
+                	CUST.CHRG.chrgAcnt = BANCS.OUTPARAM.AcctId
+                	PRINT(CUST.CHRG.chrgAcnt)
+                #}
+        	ELSE
+                #{
+                	#CUST.CHRG.errMsg = "Error| Charge Credit Account not Found"
+                	CUST.CHRG.errMsg = CUST.CHRG.foracid+"| Charge Credit Account not Found"
+                	PRINT(CUST.CHRG.errMsg)
+                	sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+                	PRINT(sv_b)
+                	GOTO NEXTACID
+        	#}
+        	ENDIF
+
+	        #sv_e = CUST.CHRG.bacid2 + "|" + CUST.CHRG.actcrncy + "|" + BANCS.STDIN.mySolId
+       		# IF(CUST.CHRG.CHARGE_TYPE == "DMGCHRG")THEN
+                #{
+                        sv_e = CUST.CHRG.bacid2 + "|" +BANCS.STDIN.homeCrncyCode+ "|" + BANCS.STDIN.mySolId
+                #}
+                #ENDIF
+	
+		sv_m = urhk_B2k_BacidToAcctId(sv_e)
+        	PRINT(sv_m)
+        	IF (sv_m == 0 ) THEN
+        	#{
+                	CUST.CHRG.vatCreditAcnt = BANCS.OUTPARAM.AcctId
+                	PRINT(CUST.CHRG.vatCreditAcnt)
+                #}
+        	ELSE
+                #{
+                	#CUST.CHRG.errMsg = "Error| VAT credit Account not Found"
+                	CUST.CHRG.errMsg = CUST.CHRG.foracid +"| VAT credit Account not Found"
+                	PRINT(CUST.CHRG.errMsg)
+                	sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+                	PRINT(sv_b)
+                	GOTO NEXTACID
+        	#}
+        	ENDIF
+
+
+		BANCS.INPARAM.BINDVARS=CUST.CHRG.acct+"|"+BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_q = "acid|select acid from tbaadm.gam where foracid=?SVAR AND bank_id=?SVAR "
+		sv_q = sv_q + " AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		PRINT(sv_q)
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 1) THEN
+		#{
+			sv_q ="account is not found"
+			PRINT(sv_q)
+			sv_q = CUST.CHRG.acct+"|"+sv_q
+			sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + sv_q)
+			PRINT(sv_b)
+			GOTO NEXTACID
+			#}
+		ELSE
+			#{
+			CUST.CHRG.acid = BANCS.OUTPARAM.acid
+		#}
+		ENDIF
+		
+		
+		###############CREDIT ACCt#
+		
+		CUST.CHRG.lienflg="N"
+		CUST.CHRG.postamt = 0
+		
+		
+		##################################################
+		##to check if  account is not active
+		##################################################
+		
+		BANCS.INPARAM.BINDVARS = CUST.CHRG.acid + "|" + BANCS.STDIN.contextBankId
+		CUST.CHRG.schm_type = ""
+		sv_q= "schm_type|select schm_type from tbaadm.gam where acid = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		sv_q= sv_q + " AND bank_id=?SVAR"
+		PRINT(sv_q)
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.CHRG.schm_type = TRIM(BANCS.OUTPARAM.schm_type)
+			
+		#}
+		ENDIF
+		
+		IF(CUST.CHRG.schm_type == "ODA")THEN
+		#{
+			sv_q= "acctStat|select ACCT_STATUS from tbaadm.cam where acid = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+			#}
+		ELSE
+			#{
+			sv_q= "acctStat|select ACCT_STATUS from tbaadm.SMT where acid = ?SVAR "
+		#}
+		ENDIF
+		
+		sv_q= sv_q + " AND bank_id=?SVAR"
+		PRINT(sv_q)
+		BANCS.INPARAM.BINDVARS = CUST.CHRG.acid + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.CHRG.acctStat = BANCS.OUTPARAM.acctStat
+			IF(CUST.CHRG.acctStat!="A")THEN
+			#{
+				sv_q =" account is not active"
+				CUST.CHRG.remark = sv_q
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|" + sv_q
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		
+		PRINT(CUST.CHRG.effavlamt)
+		PRINT(CUST.CHRG.acct)
+		sv_e=CUST.CHRG.effavlamt
+		PRINT(sv_e)
+		#sv_c = CDOUBLE(sv_e)
+		sv_c = sv_e
+		CUST.CHRG.postamt1 = 0
+		CUST.CHRG.acctFreezed = "N"
+		
+		
+		
+		##########################################################
+		#RateCode######
+		##########################################################
+		
+		IF(CUST.CHRG.CHARGE_CRNCY_CODE != CUST.CHRG.actcrncy)THEN
+		#{
+			
+			sv_r = REPEXISTS("CUST")
+			
+			IF(sv_r == 0) THEN
+			#{
+				CREATEREP ("CUST")
+			#}
+			ENDIF
+			sv_r = CLASSEXISTS("CUST","RATE")
+			IF(sv_r == 0) THEN
+			#{
+				CREATECLASS ("CUST","RATE",5)
+			#}
+			ENDIF
+			
+			CUST.RATE.acctCrncy	=	CUST.CHRG.actcrncy
+			CUST.RATE.refCrncy	=CUST.CHRG.CHARGE_CRNCY_CODE	
+			CUST.RATE.TranType	=	"T"
+			CALL("fetchRateCode.scr")
+			
+			CUST.CHRG.rateCode	=	CUST.RATE.rateCode
+			CUST.CHRG.rate		=	CUST.RATE.rate
+			
+		#}
+		ENDIF
+ 		IF(CUST.CHRG.CHARGE_CRNCY_CODE != BANCS.STDIN.homeCrncyCode)THEN
+                #{
+
+                        sv_r = REPEXISTS("CUST")
+
+                        IF(sv_r == 0) THEN
+                        #{
+                                CREATEREP ("CUST")
+                        #}
+                        ENDIF
+                        sv_r = CLASSEXISTS("CUST","RATE")
+                        IF(sv_r == 0) THEN
+                        #{
+                                CREATECLASS ("CUST","RATE",5)
+                        #}
+                        ENDIF
+
+                        CUST.RATE.acctCrncy     =BANCS.STDIN.homeCrncyCode
+                        CUST.RATE.refCrncy      =CUST.CHRG.CHARGE_CRNCY_CODE
+                        CUST.RATE.TranType      =       "T"
+                        CALL("fetchRateCode.scr")
+
+                        CUST.CHRG.rateCode2      =       CUST.RATE.rateCode
+                        CUST.CHRG.rate2          =       CUST.RATE.rate
+
+                #}
+                ENDIF
+
+		
+		#sv_c is eff available balance
+		sv_i = 0
+		
+		###Below steps added to check the efective available balance inclusive of delayed lien
+
+		sv_q = "delay_lien|SELECT LIEN_AMT FROM TBAADM.ALT WHERE ACID = ?SVAR AND BANK_ID=?SVAR AND LIEN_REASON_CODE='DCHRG'"
+		BANCS.INPARAM.BINDVARS = CUST.CHRG.acid +"|"+ BANCS.STDIN.contextBankId
+
+                sv_r = urhk_dbselectWithBind(sv_q)
+                PRINT(sv_r)
+                IF (sv_r == 0) THEN
+                #{
+                        CUST.CHRG.delay_lien = BANCS.OUTPARAM.delay_lien
+			PRINT(CUST.CHRG.delay_lien)
+                #}
+                ENDIF
+
+		sv_c = CDOUBLE(sv_c) + CDOUBLE(CUST.CHRG.delay_lien)
+		PRINT(sv_c)
+
+		sv_y = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+		IF(sv_c > sv_y)THEN
+		#{
+			sv_w = CDOUBLE(CUST.CHRG.CHARGE_AMT) - CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+			IF(sv_w > 0)THEN
+			#{
+				CUST.CHRG.collChargeAmt = sv_w
+				CUST.CHRG.collVatAmt = CUST.CHRG.VAT_AMT
+				#}
+			ELSE
+				#{
+				CUST.CHRG.collChargeAmt = "0"
+				CUST.CHRG.collVatAmt = sv_y
+			#}
+			ENDIF
+			CUST.CHRG.adjstStatus = "F"
+			#}
+		ELSE
+			#{
+			IF(sv_c > 0)THEN
+			#{
+				sv_w = CDOUBLE(CUST.CHRG.CHARGE_AMT) - CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+				IF(sv_w > 0)THEN
+				#{
+					IF(sv_c >sv_w)THEN
+					#{
+						CUST.CHRG.collChargeAmt = sv_w
+						CUST.CHRG.collVatAmt = sv_c - sv_w
+						sv_l= CDOUBLE(CUST.CHRG.TOT_ADJ_AMT) + CDOUBLE(CUST.CHRG.collChargeAmt) + CDOUBLE(CUST.CHRG.collVatAmt)
+						sv_i = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - sv_l
+						
+						#}
+					ELSE
+						#{
+						CUST.CHRG.collChargeAmt = sv_c
+						CUST.CHRG.collVatAmt = "0"
+						sv_l= CDOUBLE(CUST.CHRG.TOT_ADJ_AMT) + CDOUBLE(CUST.CHRG.collChargeAmt) + CDOUBLE(CUST.CHRG.collVatAmt)
+						sv_i = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - sv_l
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					CUST.CHRG.collChargeAmt = "0"
+					CUST.CHRG.collVatAmt = sv_c
+					sv_l= CDOUBLE(CUST.CHRG.TOT_ADJ_AMT) + CDOUBLE(CUST.CHRG.collChargeAmt) + CDOUBLE(CUST.CHRG.collVatAmt)
+					sv_i = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - sv_l
+				#}
+				ENDIF
+				CUST.CHRG.adjstStatus = "P"
+				#}
+			ELSE
+				#{
+				CUST.CHRG.collChargeAmt = "0"
+				CUST.CHRG.collVatAmt = "0"
+				CUST.CHRG.adjstStatus = "N"
+			#}
+			ENDIF
+			
+			
+		#}
+		ENDIF
+		
+		IF(CUST.CHRG.adjstStatus == "N")THEN
+		#{
+			#IF((CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)== 0) AND (CUST.CHRG.LIEN_STATUS_FLG == "N"))THEN
+			IF(CUST.CHRG.LIEN_STATUS_FLG == "N")THEN
+			#{
+				CUST.CHRG.lienAmt = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+				CUST.CHRG.lienMark = "Y"
+				CALL("delayed_chrg_lien.scr")
+				IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+				#{
+					CUST.CHRG.LIEN_STATUS_FLG = "Y"
+					CUST.CHRG.LIEN_APPLIED_AMT = CUST.CHRG.lienAmt
+					CUST.CHRG.remark = " Lien applied ON pending amount " + CUST.CHRG.lienAmt
+					CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "NA" + "|" + CUST.CHRG.remark
+					PRINT(CUST.CHRG.resMsg)
+					sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+					GOTO FAILURE
+					#}
+				ELSE
+					#{
+					PRINT("LIEN UPDATION FAILED")
+					CUST.CHRG.remark = CUST.CHRG.LienFailureReason
+					GOTO FAILURE
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				IF(CUST.CHRG.LIEN_STATUS_FLG == "Y")THEN
+				#{
+					CUST.CHRG.remark = CUST.CHRG.FAILURE_REMARKS
+					CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "NA" + "|" + CUST.CHRG.remark
+					PRINT(CUST.CHRG.resMsg)
+					sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+					GOTO FAILURE
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			###Added below steps to remove the lien on account so that the balance can be used for charge collection.
+			## Here removing the total delayed charge lien on account and updating the LIEN_STATUS_FLG as N, so that after successfull post of transaction
+			## for partial collection, only remianing amount will be added as new lien. For full adjustment if transaction fails the total amount will be
+			## marked as new lien
+
+			IF(CDOUBLE(CUST.CHRG.delay_lien) > CDOUBLE("0"))THEN
+			#{
+                        	CUST.CHRG.lienAmt = CDOUBLE(CUST.CHRG.delay_lien)
+                        	CUST.CHRG.lienMark = "N"
+                        	CALL("delayed_chrg_lien.scr")
+                        	IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+                        	#{
+                                  	CUST.CHRG.LIEN_STATUS_FLG = "N"
+					CUST.CHRG.lienremoved = "Y"
+				#}
+				ENDIF
+                        #}
+                        ENDIF
+
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			
+			BANCS.INPARAM.PostTranFlg = "Y"
+			BANCS.INPARAM.CommitFlg = "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+			BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw = "Y"
+			BANCS.INPARAM.CheckExceptions = "Y"
+			sv_r = urhk_MTTS_Initialize("")
+			PRINT(sv_r)
+			IF(sv_r != 0)THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.CHRG.ErrorMessage)
+				CUST.CHRG.remark = CUST.CHRG.ErrorMessage
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|" +CUST.CHRG.remark
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+			############################################
+			#Define Transaction
+			#############################################
+			MTT.TranDetails.TranID 					= ""
+			MTT.TranDetails.TranDate                = "0"
+			MTT.TranDetails.TranType                = "T"
+			MTT.TranDetails.PostFlag                = "Y"
+			MTT.TranDetails.TranSubType             = "BI"
+			MTT.TranDetails.ReversalFlag            = "N"
+			MTT.TranDetails.IgnoreExcp              = "I"
+			MTT.TranDetails.Consolidate             = "Y"
+			MTT.TranDetails.Remarks                 = "Delayed Charge Collection Transaction"
+			sv_t = urhk_MTTS_DefineTransaction("Delayed_Chrg_Tran")
+			
+			IF(sv_t != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.CHRG.ErrorMessage)
+				CUST.CHRG.remark = CUST.CHRG.ErrorMessage
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|" +CUST.CHRG.remark
+				PRINT(CUST.CHRG.errMsg)
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+			
+			
+			sv_f = CDOUBLE(CUST.CHRG.collChargeAmt) + CDOUBLE(CUST.CHRG.collVatAmt)
+			CUST.CHRG.debitAmt = sv_f
+			######################################
+			# Debit part tran for charge
+			######################################
+			
+			MTT.PartTranDetails.Account     = CUST.CHRG.acct
+			#MTT.PartTranDetails.RefCurrency = CUST.CHRG.actcrncy
+			MTT.PartTranDetails.RefCurrency=CUST.CHRG.CHARGE_CRNCY_CODE
+			MTT.PartTranDetails.Particulars = CUST.CHRG.CHARGE_TYPE +" Delayed Charge Collection"
+			MTT.PartTranDetails.Remarks = CUST.CHRG.CHARGE_TYPE + " Delayed Charge Collection"
+			IF(CUST.CHRG.CHARGE_CRNCY_CODE != CUST.CHRG.actcrncy)THEN
+			#{
+			MTT.PartTranDetails.RateCode= CUST.CHRG.rateCode
+			MTT.PartTranDetails.Rate = CUST.CHRG.rate
+			#}
+			ENDIF
+			MTT.PartTranDetails.RefAmount = -cdouble(CUST.CHRG.debitAmt)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Consolidate = "Y"
+			MTT.PartTranDetails.TranIdentifier = "Delayed_Chrg_Tran"
+			MTT.PartTranDetails.CarveAmtFlg="Y"
+			
+			#----------------------------------------------------------------------------------
+			# Defining the Debit Part Tran for Charge amount
+			#----------------------------------------------------------------------------------
+			sv_u = urhk_MTTS_DefinePartTran("Delayed_Chrg_Debit_Tran")
+			PRINT(sv_u)
+			
+			IF (sv_u != 0) THEN
+			#{
+				
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.CHRG.ErrorMessage)
+				CUST.CHRG.remark = CUST.CHRG.ErrorMessage
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|"+CUST.CHRG.remark
+				PRINT(CUST.CHRG.errMsg)
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+			
+			
+			
+			######################################
+			# Credit part tran for charge
+			######################################
+			MTT.PartTranDetails.Account=CUST.CHRG.chrgAcnt
+			MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CHRG.collChargeAmt)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Particulars = CUST.CHRG.CHARGE_TYPE +" "+ CUST.CHRG.acct +" Delayed Charge Collection"
+			MTT.PartTranDetails.Remarks = CUST.CHRG.CHARGE_TYPE + " Delayed Charge Collection"
+			IF(CUST.CHRG.CHARGE_CRNCY_CODE != BANCS.STDIN.homeCrncyCode)THEN
+			#{
+			MTT.PartTranDetails.RateCode= CUST.CHRG.rateCode2
+			MTT.PartTranDetails.Rate = CUST.CHRG.rate2
+			#}
+			ENDIF
+			#MTT.PartTranDetails.RefCurrency= BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RefCurrency=CUST.CHRG.CHARGE_CRNCY_CODE
+			MTT.PartTranDetails.ValueDate="0"
+			MTT.PartTranDetails.ReportCode = ""
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="Delayed_Chrg_Tran"
+			MTT.PartTranDetails.TranBusinessType=""
+			
+			
+			sv_u = urhk_MTTS_DefineChargePartTran("Delayed_Chrg_Credit_Tran")
+			PRINT(sv_u)
+			
+			IF (sv_u != 0) THEN
+			#{
+				
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.CHRG.ErrorMessage)
+				CUST.CHRG.remark = CUST.CHRG.ErrorMessage
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|"+CUST.CHRG.remark
+				PRINT(CUST.CHRG.errMsg)
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+			
+			######################################
+			# Credit part tran for VAT
+			######################################
+			
+			MTT.PartTranDetails.Account=CUST.CHRG.vatCreditAcnt
+			MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CHRG.collVatAmt)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Particulars = CUST.CHRG.CHARGE_TYPE +" "+ CUST.CHRG.acct +" Delayed VAT Collection"
+			MTT.PartTranDetails.Remarks = CUST.CHRG.CHARGE_TYPE + " Delayed Charge Collection"
+			IF(CUST.CHRG.CHARGE_CRNCY_CODE != BANCS.STDIN.homeCrncyCode)THEN
+			#{
+			MTT.PartTranDetails.RateCode= CUST.CHRG.rateCode2
+			MTT.PartTranDetails.Rate = CUST.CHRG.rate2
+			#}
+			ENDIF
+			#MTT.PartTranDetails.RefCurrency= BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.RefCurrency=CUST.CHRG.CHARGE_CRNCY_CODE	
+			MTT.PartTranDetails.ValueDate="0"
+			MTT.PartTranDetails.ReportCode = ""
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="Delayed_Chrg_Tran"
+			MTT.PartTranDetails.PTranBusinessType=""
+			
+			
+			
+			sv_u = urhk_MTTS_DefineChargePartTran("Delayed_Chrg_Credit_Tran")
+			PRINT(sv_u)
+			
+			IF (sv_u != 0) THEN
+			#{
+				PRINT(CUST.CHRG.errMsg)
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.CHRG.ErrorMessage)
+				CUST.CHRG.remark = CUST.CHRG.ErrorMessage
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|"+CUST.CHRG.remark
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				PRINT(sv_b)
+				GOTO FAILURE
+			#}
+			ENDIF
+			
+			
+			#---------------------------------------------------------------------------------------------------
+			
+			
+			
+			
+			sv_r = urhk_putExceptionsIntoRepository("")
+			PRINT(sv_r)
+			
+			sv_s = urhk_b2k_printRepos("EXCP")
+			
+			sv_r = urhk_MTTS_EndDefinition("")
+			PRINT(sv_r)
+			
+			IF(sv_r !=0) THEN
+			#{
+				sv_a = "Transaction Commit Failed"
+				PRINT(sv_a)
+				sv_h = urhk_MTTS_ReportErrorCondition("")
+				PRINT(sv_h)
+				PRINT(MTT.Error.Description)
+				CUST.CHRG.remark = MTT.Error.Description
+				sv_h = urhk_MTTS_HandleExceptions("POST")
+				PRINT(sv_h)
+				sv_h=urhk_B2k_PrintRepos("MTT")
+				PRINT(sv_h)
+				CUST.CHRG.errMsg = CUST.CHRG.foracid + "|"+CUST.CHRG.remark
+				sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+				CUST.CHRG.pstdFlg = "N"
+				GOTO FAILURE
+			#}
+			ENDIF
+			
+			PRINT(BANCS.OUTPARAM.MTTTranId)
+			CUST.CHRG.tranid = BANCS.OUTPARAM.MTTTranId
+			IF(CUST.CHRG.tranid == "" )THEN
+			#{
+				CUST.CHRG.lienflg ="Y"
+				CUST.CHRG.taxflg = "N"
+				
+				#}
+			ELSE
+				#{
+				CUST.CHRG.taxflg = "Y"
+				IF(CUST.CHRG.adjstStatus == "F")THEN
+				#{
+					CUST.CHRG.lienflg ="N"
+					CUST.CHRG.TOT_ADJ_AMT = CUST.CHRG.TOTAL_CHARGE_AMT
+					CUST.CHRG.LIEN_STATUS_FLG = "Y"
+					CUST.CHRG.LIEN_APPLIED_AMT = "0"
+					CUST.CHRG.FULLY_ADJUSTED_FLG ="Y"
+					CUST.CHRG.remark = "Pending Charge collected successfully"
+					### Below steps added to remove if any lien applied earlier and the cahrge is fully adjusted
+					# Here checking whetehr the lien is already removed before transaction creation ot not, if not so removing again
+					IF(CUST.CHRG.lienremoved != "Y")THEN
+					#{
+						CUST.CHRG.lienMark = "N"
+						CUST.CHRG.lienAmt = CUST.CHRG.debitAmt
+						CALL("delayed_chrg_lien.scr")
+						IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+						#{
+							#CUST.CHRG.LIEN_STATUS_FLG = "Y"
+							#CUST.CHRG.LIEN_APPLIED_AMT = CUST.CHRG.lienAmt
+							#CUST.CHRG.remark = " Lien applied ON pending amount " + CUST.CHRG.lienAmt
+							CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "    NA" + "|" + CUST.CHRG.remark
+							PRINT(CUST.CHRG.resMsg)
+							sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+							GOTO FAILURE
+						#}
+						ELSE
+						#{
+							PRINT("LIEN UPDATION FAILED")
+							CUST.CHRG.remark = CUST.CHRG.LienFailureReason
+							GOTO FAILURE
+						#}
+						ENDIF
+					
+					#}
+					ELSE
+					#{
+						CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "    NA" + "|" + CUST.CHRG.remark
+						PRINT(CUST.CHRG.resMsg)
+						sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+						GOTO FAILURE
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					CUST.CHRG.lienflg = "Y"
+					CUST.CHRG.FULLY_ADJUSTED_FLG ="N"
+					CUST.CHRG.TOT_ADJ_AMT = CDOUBLE(CUST.CHRG.TOT_ADJ_AMT) + CDOUBLE(CUST.CHRG.debitAmt)
+					CUST.CHRG.LIEN_APPLIED_AMT = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT) - CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			### When the full adjusted transaction is failed and lien is not marked earlier	
+			IF((CUST.CHRG.lienflg == "Y") AND (CUST.CHRG.adjstStatus == "F") )THEN
+			#{
+				CUST.CHRG.FULLY_ADJUSTED_FLG ="N"
+				IF(CUST.CHRG.LIEN_STATUS_FLG == "N")THEN
+				#{
+					#APPLY LieN ON TOT_CHRG_AMT - TOT_ADJ_AMT
+					CUST.CHRG.lienAmt = CDOUBLE(CUST.CHRG.TOTAL_CHARGE_AMT)-CDOUBLE(CUST.CHRG.TOT_ADJ_AMT)
+					CUST.CHRG.lienMark = "Y"
+					CALL("delayed_chrg_lien.scr")
+					IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+					#{
+						CUST.CHRG.LIEN_STATUS_FLG = "Y"
+						CUST.CHRG.LIEN_APPLIED_AMT = CUST.CHRG.lienAmt
+						CUST.CHRG.remark = " Lien applied ON pending amount " + CUST.CHRG.lienAmt
+						CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "NA" + "|" + CUST.CHRG.remark
+						PRINT(CUST.CHRG.resMsg)
+						sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+						GOTO FAILURE
+						#}
+					ELSE
+						#{
+						PRINT("LIEN UPDATION FAILED")
+						CUST.CHRG.remark = CUST.CHRG.LienFailureReason
+						GOTO FAILURE
+					#}
+					ENDIF
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			### When the partial  amount is adjusted lien should be marked/removed with the remaining/adjusted amount 
+			IF((CUST.CHRG.taxflg == "Y") AND (CUST.CHRG.adjstStatus == "P") )THEN
+			#{
+				IF(CUST.CHRG.LIEN_STATUS_FLG == "N")THEN
+				#{
+					CUST.CHRG.lienMark = "Y"
+					CUST.CHRG.lienAmt = sv_i
+					
+					#}
+				ELSE
+					#{
+					CUST.CHRG.lienMark = "N"
+					CUST.CHRG.lienAmt = CUST.CHRG.debitAmt
+				#}
+				ENDIF
+				CALL("delayed_chrg_lien.scr")
+				IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+				#{
+					CUST.CHRG.LIEN_STATUS_FLG = "Y"
+					CUST.CHRG.LIEN_APPLIED_AMT = CUST.CHRG.lienAmt
+					CUST.CHRG.remark = " Lien applied ON pending amount " + CUST.CHRG.lienAmt
+					CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "    NA" + "|" + CUST.CHRG.remark
+					PRINT(CUST.CHRG.resMsg)
+					sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+					GOTO FAILURE
+					#}
+				ELSE
+					#{
+					PRINT("LIEN UPDATION FAILED")
+					CUST.CHRG.remark = CUST.CHRG.LienFailureReason
+					GOTO FAILURE
+				#}
+				ENDIF
+				#}
+			ELSE
+			### When the partial adjustment is failed and no lien marked earlier then lien should be marked with the remaining amount 
+				#{
+				IF((CUST.CHRG.taxflg == "N") AND (CUST.CHRG.adjstStatus == "P") )THEN
+				#{
+					IF(CUST.CHRG.LIEN_STATUS_FLG == "N")THEN
+					#{
+						CUST.CHRG.lienMark = "Y"
+						CUST.CHRG.lienAmt = sv_i
+						CALL("delayed_chrg_lien.scr")
+						IF(CUST.CHRG.LienSuccessOrFailure == "S")THEN
+						#{
+							CUST.CHRG.LIEN_STATUS_FLG = "Y"
+							CUST.CHRG.LIEN_APPLIED_AMT = CUST.CHRG.lienAmt
+							CUST.CHRG.remark = " Lien applied ON pending amount " + CUST.CHRG.lienAmt
+							CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "NA" + "|" + CUST.CHRG.remark
+							PRINT(CUST.CHRG.resMsg)
+							sv_b = urtn_fileWrite(CUST.CHRG.successFileIndex1  + "|" + CUST.CHRG.resMsg)
+							GOTO FAILURE
+							#}
+						ELSE
+							#{
+							PRINT("LIEN UPDATION FAILED")
+							CUST.CHRG.remark = CUST.CHRG.LienFailureReason
+							GOTO FAILURE
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+		FAILURE:
+			
+			############################################################
+			# update record IN CUSTOM.C_CHARGE_COLLECTION
+			############################################################
+			
+			
+			sv_s= "UPDATE CUSTOM.C_CHARGE_COLLECTION SET TOT_ADJ_AMT=?SVAR,FULLY_ADJUSTED_FLG=?SVAR,"
+			sv_s= sv_s + "LAST_ADJUSTED_DATE=TO_DATE(?SVAR,'DD-MM-YY'),LIEN_STATUS_FLG=?SVAR,"
+			sv_s= sv_s + "LIEN_APPLIED_AMT=?SVAR,LCHG_USER_ID=?SVAR,LCHG_TIME=SYSDATE,FAILURE_REMARKS=?SVAR WHERE SRL_NUM=?SVAR AND CHARGE_TYPE = ?SVAR"
+			sv_s= sv_s + " AND TRAN_DATE =TO_DATE(?SVAR,'DD-MM-YY') AND ACCT_NUM=?SVAR AND SOL_ID=?SVAR AND BANK_ID=?SVAR"
+			BANCS.INPARAM.BINDVARS = CUST.CHRG.TOT_ADJ_AMT + "|" + CUST.CHRG.FULLY_ADJUSTED_FLG  + "|" + CUST.CHRG.BODDate
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CHRG.LIEN_STATUS_FLG+"|"+CUST.CHRG.LIEN_APPLIED_AMT
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.userId+ "|" + CUST.CHRG.remark+ "|" +CUST.CHRG.SRL_NUM
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  +"|"+ CUST.CHRG.CHARGE_TYPE +"|"+CUST.CHRG.TRAN_DATE
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ CUST.CHRG.acct+ "|"+ BANCS.STDIN.mySolId+"|"+BANCS.STDIN.contextBankId
+			sv_r = urhk_dbSqlWithBind(sv_s)
+			PRINT(sv_r)
+			
+			
+			
+			IF(sv_r == 0)THEN
+			#{
+				CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "Updated the record successfully"
+				PRINT(CUST.CHRG.resMsg)
+				#}
+			ELSE
+				#{
+				CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "Failed to update the record"
+				PRINT(CUST.CHRG.resMsg)
+				sv_u = urhk_dbSqlWithBind("ROLLBACK")
+			#}
+			ENDIF
+
+			
+			IF(TRIM(CUST.CHRG.tranid) != "")THEN
+			#{
+				sv_s = "INSERT INTO CUSTOM.C_CHARGE_COLLECTION_TRAN_TBL(FORACID,SOL_ID,TRAN_DATE,TRAN_ID,TRAN_AMT,CHRG_CCY_CODE,RCRE_USER_ID"
+				sv_s = sv_s +",RCRE_TIME,BANK_ID) VALUES (?SVAR,?SVAR,to_date(?SVAR,'DD-MM-YY'),?SVAR,?SVAR,?SVAR,?SVAR,sysdate,?SVAR)"
+				BANCS.INPARAM.BINDVARS = CUST.CHRG.acct +"|"+ BANCS.STDIN.mySolId +"|"+ CUST.CHRG.BODDate +"|"+ CUST.CHRG.tranid +"|"+CUST.CHRG.debitAmt
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ CUST.CHRG.CHARGE_CRNCY_CODE +"|"+ BANCS.STDIN.userId+"|"+BANCS.STDIN.contextBankId
+				PRINT(sv_s)
+				PRINT(BANCS.INPARAM.BINDVARS)
+	                        sv_r = urhk_dbSqlWithBind(sv_s)
+       		                PRINT(sv_r)
+
+	                        IF(sv_r == 0)THEN
+                        	#{
+                                	CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "Inserted the record successfully"
+                                	PRINT(CUST.CHRG.resMsg)
+                                #}
+                        	ELSE
+                                #{
+                                	CUST.CHRG.resMsg = CUST.CHRG.acct + "|" + "Failed to insert the record"
+                                	PRINT(CUST.CHRG.resMsg)
+				#}
+				ENDIF
+                        #}
+                        ENDIF
+
+		NEXTACID:
+			sv_f = urhk_dbCursorFetch(sv_n)
+			PRINT(sv_f)
+			
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(sv_n)
+		PRINT(sv_c)
+		
+	ENDOFSCRIPT:
+		IF(CUST.CHRG.errMsg == "") THEN
+		#{
+			CUST.CHRG.errMsg = " Other Accounts|Batch Job executed with out any Errors"
+			sv_b = urtn_fileWrite(CUST.CHRG.failFileIndex1 + "|" + CUST.CHRG.errMsg)
+			PRINT(sv_b)
+		#}
+		ENDIF
+		
+		sv_c = urtn_fileClose(CUST.CHRG.failFileIndex1)
+		PRINT(sv_c)
+		sv_c = urtn_fileClose(CUST.CHRG.successFileIndex1)
+		PRINT(sv_c)
+		
+		CUST.CHRG.ERR000002 = "Failed "
+		PRINT(CUST.CHRG.list_file_name)
+		sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CUST.CHRG.mrt_file_name + " " + CUST.CHRG.list_file_name + " " + CUST.CHRG.rpt
+		PRINT(sv_r)
+		sv_r = SYSTEM(sv_r)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CHRG.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CUST.CHRG.rpt_file_name+" '" + CUST.CHRG.title+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		
+		##############
+		
+		PRINT(CUST.CHRG.list_file_nameSuccess )
+		sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + CUST.CHRG.mrt_file_name1 + " " + CUST.CHRG.list_file_nameSuccess  + " " + CUST.CHRG.rptSuccess
+		PRINT(sv_r)
+		sv_r = SYSTEM(sv_r)
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CHRG.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ CUST.CHRG.rpt_file_nameSuccess+" '" + CUST.CHRG.titleSuccess+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		
+		
+		##############
+		
+		
+		IF (sv_r != 0) THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.CHRG.ERR000002 + "^DATE")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		sv_c = urtn_fileClose(CUST.CHRG.failFileIndex1)
+		PRINT(sv_c)
+		
+		
+	FINISH:
+		TRACE OFF
+		
+END-->
+

@@ -1,0 +1,299 @@
+#+++++++++++++++++++++++++++++++++
+#FileName       : ebLoanMail.scr 
+#Desc           : send smtp
+#Author         : Vino Palani
+#Date           : 04-Jul-2019
+#+++++++++++++++++++++++++++++++++
+<--start
+trace on
+#Reps&Class
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQMAIL")==0)then
+                createrep("EQMAIL")
+        endif
+        if(classexists("EQMAIL","GLBDATA")==0)then
+                createclass("EQMAIL","GLBDATA",5)
+        endif
+        EQMAIL.GLBDATA.comfil     = ""
+	EQMAIL.GLBDATA.PartyName = ""
+	EQMAIL.GLBDATA.PartyLname = ""
+	EQMAIL.GLBDATA.PartyAcct = ""
+	EQMAIL.GLBDATA.loanAmt = 0 
+	EQMAIL.GLBDATA.LoanAmt = 0 
+	EQMAIL.GLBDATA.frmPartyName = ""
+	EQMAIL.GLBDATA.frmPartyLname = ""
+	EQMAIL.GLBDATA.loanRefNum = ""
+	EQMAIL.GLBDATA.loanCifId = ""
+	EQMAIL.GLBDATA.productCode = ""
+	EQMAIL.GLBDATA.productCode = ""
+	EQMAIL.GLBDATA.sweepTranId = ""
+	EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+	##EQMAIL.GLBDATA.ccAddr = "austine.ngunju@equitybank.co.ke"
+	EQMAIL.GLBDATA.ccAddr = "bonface.macharia@equitybank.co.ke"
+
+        sv_u = urhk_MTTS_populateInputDetails("")
+        if(sv_u != 0) then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                endif
+                goto ENDSCR
+	else
+		###EQMAIL.GLBDATA.PartyName = MTT.InputDetails.Argument1
+		EQMAIL.GLBDATA.PartyAcct = MTT.InputDetails.Argument1
+		EQMAIL.GLBDATA.loanAmt = MTT.InputDetails.Argument2
+		###EQMAIL.GLBDATA.frmPartyName = MTT.InputDetails.Argument4
+		EQMAIL.GLBDATA.loanRefNum = MTT.InputDetails.Argument3
+		EQMAIL.GLBDATA.loanCifId = MTT.InputDetails.Argument4
+		EQMAIL.GLBDATA.productCode = MTT.InputDetails.Argument5
+		EQMAIL.GLBDATA.sweepTranId = trim(MTT.InputDetails.Argument6)
+        endif
+#check
+        if(EQMAIL.GLBDATA.sweepTranId =="")then
+                exitscript
+        else
+                EQMAIL.GLBDATA.tranDate = mid$(BANCS.STDIN.BODDate,0,10)
+                sv_d = "pstCnt | select count(*) from tbaadm.dtd where bank_id=?SVAR "
+                sv_d = sv_d + " and tran_id=lpad(?SVAR,9,' ') and tran_date=to_date(?SVAR,'DD-MM-RR') "
+                sv_d = sv_d + " and pstd_flg='Y' and pstd_date is not null and del_flg='N' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQMAIL.GLBDATA.sweepTranId + "|" + EQMAIL.GLBDATA.tranDate
+                print(BANCS.INPARAM.BINDVARS)
+                print(sv_d)
+                sv_u = urhk_dbSelectWithBind(sv_d)
+                if(sv_u==0)then
+                        EQMAIL.GLBDATA.pstCnt = BANCS.OUTPARAM.pstCnt
+                else
+                        EQMAIL.GLBDATA.pstCnt = 0
+                endif
+                if(EQMAIL.GLBDATA.pstCnt<=0)then
+                        print("no smtp")
+                        exitscript
+                endif
+        endif
+#Inputs/Outputs
+	sv_s = "frmPartyName,frmPartyLname | select (case when instrc(nvl(cust_short_name,cust_first_name),' ',1,1) >0 "
+	sv_s = sv_s + " then substr(nvl(cust_short_name,cust_first_name),1,instrc(nvl(cust_short_name,cust_first_name),' ',1,1)) "
+	sv_s = sv_s + " else cust_short_name end) as firstName, "
+	sv_s = sv_s + " (case when instrc(nvl(cust_last_name,cust_last_name),' ',1,1) >0 "
+	sv_s = sv_s + " then substr(nvl(cust_last_name,cust_last_name),1,instrc(nvl(cust_last_name,cust_last_name),' ',1,1)) "
+	sv_s = sv_s + " else cust_last_name end) as lastName "
+	sv_s = sv_s + " from tbaadm.cmg where cif_id=?SVAR and bank_id=?SVAR "
+	BANCS.INPARAM.BINDVARS = EQMAIL.GLBDATA.loanCifId + "|" + BANCS.STDIN.contextBankId
+	print(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbSelectWithBind(sv_s)
+        if(sv_u == 0)then
+                        EQMAIL.GLBDATA.frmPartyName    = BANCS.OUTPARAM.frmPartyName
+                        EQMAIL.GLBDATA.frmPartyLname     = BANCS.OUTPARAM.frmPartyLname
+        else
+                        EQMAIL.GLBDATA.frmPartyName    = "NA"
+                        EQMAIL.GLBDATA.frmPartyLname     = "NA"
+        endif
+        if(EQMAIL.GLBDATA.frmPartyName == EQMAIL.GLBDATA.frmPartyLname)then
+                EQMAIL.GLBDATA.frmPartyName = EQMAIL.GLBDATA.frmPartyName
+                EQMAIL.GLBDATA.custLastNAme = "NA"
+        endif
+	sv_s = "PartyName,PartyLname | select (case when instrc(nvl(cust_short_name,cust_first_name),' ',1,1) >0 "
+	sv_s = sv_s + " then substr(nvl(cust_short_name,cust_first_name),1,instrc(nvl(cust_short_name,cust_first_name),' ',1,1)) "
+	sv_s = sv_s + " else cust_short_name end) as firstName, "
+	sv_s = sv_s + " (case when instrc(nvl(cust_last_name,cust_last_name),' ',1,1) >0 "
+	sv_s = sv_s + " then substr(nvl(cust_last_name,cust_last_name),1,instrc(nvl(cust_last_name,cust_last_name),' ',1,1)) "
+	sv_s = sv_s + " else cust_last_name end) as lastName "
+	sv_s = sv_s + " from tbaadm.cmg where cif_id in (select cif_id from tbaadm.gam where bank_id=?SVAR and foracid=?SVAR ) "
+	sv_s = sv_s + " and bank_id=?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQMAIL.GLBDATA.PartyAcct + "|" + BANCS.STDIN.contextBankId
+	print(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbSelectWithBind(sv_s)
+        if(sv_u == 0)then
+                        EQMAIL.GLBDATA.PartyName    = BANCS.OUTPARAM.PartyName
+                        EQMAIL.GLBDATA.PartyLname     = BANCS.OUTPARAM.PartyLname
+        else
+                        EQMAIL.GLBDATA.PartyName    = "NA"
+                        EQMAIL.GLBDATA.PartyLname     = "NA"
+        endif
+        if(EQMAIL.GLBDATA.PartyName == EQMAIL.GLBDATA.PartyLname)then
+                EQMAIL.GLBDATA.PartyName = EQMAIL.GLBDATA.PartyName
+                EQMAIL.GLBDATA.PartyLname = "NA"
+        endif
+#fetching tomail
+        sv_s = " toAddr |select email from tbaadm.cemail where email_b2kid in (select cif_id from tbaadm.gam where foracid='"+ EQMAIL.GLBDATA.PartyAcct +"' ) "
+        sv_s = sv_s + " and preferredflag='Y' "
+        print(sv_s)
+        sv_u = urhk_dbSelectWithBind(sv_s)
+        if(sv_u==0)then
+                EQMAIL.GLBDATA.toAddr = BANCS.OUTPARAM.toAddr
+	else
+		EQMAIL.GLBDATA.toAddr = "austine.ngunju@equitybank.co.ke"
+	endif
+
+        EQMAIL.GLBDATA.frmAddr  = "No-Reply@equitybank.co.ke"
+	EQMAIL.GLBDATA.LoanAmt = cdouble(EQMAIL.GLBDATA.loanAmt) 
+	sv_s = "LoanAmt | select to_char("+EQMAIL.GLBDATA.LoanAmt+",99999999999999999.99) from dual"
+        print(sv_s)
+        sv_u = urhk_dbSelectWithBind(sv_s)
+        if(sv_u==0)then
+		EQMAIL.GLBDATA.LoanAmt = BANCS.OUTPARAM.LoanAmt
+	else
+		EQMAIL.GLBDATA.LoanAmt = cdouble(EQMAIL.GLBDATA.loanAmt) 
+	endif
+        sv_u = urhk_getFileLocation("COM|ebLoanMail.com")
+        if(sv_u ==0)then
+                print(BANCS.OUTPARAM.fileLocation)
+                EQMAIL.GLBDATA.comfil = BANCS.OUTPARAM.fileLocation + "ebLoanMail.com"
+                #++++++++++++++
+                ##Frame
+                #++++++++++++++
+                if(EQMAIL.GLBDATA.productCode =="927")then
+                        EQMAIL.GLBDATA.toAddr = "stockfinancing@Protoenergy.com"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+		if(EQMAIL.GLBDATA.productCode =="929")then
+                        EQMAIL.GLBDATA.toAddr = "alex.mwania@vivoenergy.com"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+
+		if(EQMAIL.GLBDATA.productCode =="1020")then
+                        EQMAIL.GLBDATA.toAddr = "Indextradefinancing@outlookindex.co.ke"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+
+		if(EQMAIL.GLBDATA.productCode =="1021")then
+                        EQMAIL.GLBDATA.toAddr = "OutlookTradeFinancing@outlookltd.co.ke"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+
+		if(EQMAIL.GLBDATA.productCode =="1027")then                       
+			EQMAIL.GLBDATA.toAddr = "oceandistributors@gmail.com,info@odl.co.ke"                        
+		endif
+
+		if(EQMAIL.GLBDATA.productCode =="1024")then			       
+			EQMAIL.GLBDATA.toAddr = "tobacco@mtkenyagroup.co.ke"				
+		endif
+
+		if(EQMAIL.GLBDATA.productCode =="1025")then			       
+			EQMAIL.GLBDATA.toAddr = "finance@bidii.co.ke"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1029")then			       
+			EQMAIL.GLBDATA.toAddr = "mbindaa21@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1030")then			       
+			EQMAIL.GLBDATA.toAddr = "TEAMRIFT@bat.onmicrosoft.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1031")then			       
+			EQMAIL.GLBDATA.toAddr = "lucyaccmatonyok@gmail.com,finance.matonyok@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1032")then			       
+			EQMAIL.GLBDATA.toAddr = "buruknonwoven@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1034")then			       
+			EQMAIL.GLBDATA.toAddr = "teskoentltd@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1035")then			       
+			EQMAIL.GLBDATA.toAddr = "carrodltd@gmail.com"				
+		endif		
+		if(EQMAIL.GLBDATA.productCode =="1088")then			       
+			EQMAIL.GLBDATA.toAddr = "bigulpbeverages@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1089")then			       
+			EQMAIL.GLBDATA.toAddr = "creditcontrol@chlorideexide.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1041")then			       
+			EQMAIL.GLBDATA.toAddr = "lawrencelumbasyo@lawrenceduncan.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1091")then			       
+			EQMAIL.GLBDATA.toAddr = "info@cognoltd.co.ke"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1090")then			       
+			EQMAIL.GLBDATA.toAddr = "info@tb-distributors.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1107")then			       
+			EQMAIL.GLBDATA.toAddr = "Poluoch@coastalbottlers.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1116")then			       
+			EQMAIL.GLBDATA.toAddr = "accounts@veew.co.ke"
+			EQMAIL.GLBDATA.ccAddr = "fa@veew.co.ke"
+		endif
+		if(EQMAIL.GLBDATA.productCode =="1042")then			       
+			EQMAIL.GLBDATA.toAddr = "ndovupeter@gmail.com"				
+		endif
+		if(EQMAIL.GLBDATA.productCode =="933")then
+                        EQMAIL.GLBDATA.toAddr = "eazzybiz.equity@capwell.co.ke"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+
+                if(EQMAIL.GLBDATA.productCode =="935")then
+                        EQMAIL.GLBDATA.toAddr = "financeint@tembotamu.co.ke"
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+                if(EQMAIL.GLBDATA.productCode =="930")then
+                        ##EQMAIL.GLBDATA.toAddr = "shilen.gadhia@united.co.ke"
+                        EQMAIL.GLBDATA.toAddr = "kisumuzone@united.co.ke"
+                        EQMAIL.GLBDATA.ccAddr = "harshid.shah@united.co.ke,nilesh.patel@united.co.ke,Jigar.patel@united.co.ke"
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1045")then
+                        EQMAIL.GLBDATA.toAddr = "sales.accounts@savannahcement.com"
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1026")then
+                        EQMAIL.GLBDATA.toAddr = "treasury@nockenya.co.ke"
+                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1019")then
+                        EQMAIL.GLBDATA.toAddr = "ken.treasury@olaenergy.com"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1077")then
+                        EQMAIL.GLBDATA.toAddr = "Frida.kioko@total.co.ke,Amilia.kittony@total.co.ke"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1171")then
+                        EQMAIL.GLBDATA.toAddr = "mr3easystock@mediaroomthree.co.ke"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1172")then
+                        EQMAIL.GLBDATA.toAddr = "wmtbeer@hotmail.com"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1173")then
+                        EQMAIL.GLBDATA.toAddr = "retail.finance@quadco309.com"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1166")then
+                        EQMAIL.GLBDATA.toAddr = "Beer_retailfinance@mtkenyagroup.co.ke"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1167")then
+                        EQMAIL.GLBDATA.toAddr = "Karue_retailfinance@mtkenyagroup.co.ke"                       
+                endif
+		if(EQMAIL.GLBDATA.productCode =="1178")then
+                        EQMAIL.GLBDATA.toAddr = "etg.msa@etgworld.com"                       
+                endif	
+		if(EQMAIL.GLBDATA.productCode =="1185")then
+                        EQMAIL.GLBDATA.toAddr = "equityintegration@muthokinju.co.ke"                       
+                endif	
+		if(EQMAIL.GLBDATA.productCode =="1204")then
+                        EQMAIL.GLBDATA.toAddr = "orders@rubiskenya.com,treasury@rubiskenya.com"                       
+                endif	
+		if(EQMAIL.GLBDATA.productCode =="1180")then
+                        EQMAIL.GLBDATA.toAddr = "okebirodavid@yahoo.com"                       
+                endif
+                if(EQMAIL.GLBDATA.productCode =="022")then
+                        ##EQMAIL.GLBDATA.ccAddr = "HoDigitalLendingSupport@equitybank.co.ke"
+                endif
+                EQMAIL.GLBDATA.comfil = EQMAIL.GLBDATA.comfil + " " + EQMAIL.GLBDATA.toAddr + " " + EQMAIL.GLBDATA.PartyName+ " " + EQMAIL.GLBDATA.PartyLname + " " + EQMAIL.GLBDATA.PartyAcct + " " + EQMAIL.GLBDATA.LoanAmt + " " + EQMAIL.GLBDATA.frmPartyName + " " + EQMAIL.GLBDATA.frmPartyLname + " " + EQMAIL.GLBDATA.loanRefNum + " " + EQMAIL.GLBDATA.ccAddr + " " + EQMAIL.GLBDATA.productCode 
+                print(EQMAIL.GLBDATA.comfil)
+        else
+                EQMAIL.GLBDATA.comfil   = ""
+        endif
+        if(EQMAIL.GLBDATA.comfil != "")then
+                sv_u = system(EQMAIL.GLBDATA.comfil)
+                if(sv_u ==0)then
+                        print("smtp success")
+                else
+                        print("failed smtp")
+                endif
+        endif
+#CleanUp
+        if(classexists("EQMAIL","GLBDATA")==1)then
+                deleteclass("EQMAIL","GLBDATA")
+        endif
+        if(repexists("EQMAIL")==1)then
+                deleterep("EQMAIL")
+        endif
+        exitscript
+trace off
+end-->

@@ -1,0 +1,232 @@
+#----------------------------------------------------------------------------------------------
+#  Name            : payoffReconEazzy Loan
+#  Description     :
+#  Date            : 
+#  Author          : DKC
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+        	sv_u = urhk_B2K_PrintRepos("BANCS")
+        	print(sv_u)
+        	if(repexists("PYOFF")==0)then
+                	createrep("PYOFF")
+        	endif
+        	if(classexists("PYOFF","GLBDATA")==0)then
+                	createclass("PYOFF","GLBDATA",5)
+        	endif
+
+ 		lv_p = urhk_b2k_sleep("10")
+
+      		sv_u = urhk_MTTS_PopulateInputDetails("")
+        	print(sv_u)
+        	if(sv_u == 0)then
+        	#{
+                	print(MTT.InputDetails.Argument1)
+                	PYOFF.GLBDATA.OdAcctId = MTT.InputDetails.Argument1
+                	PYOFF.GLBDATA.OpAcctId = MTT.InputDetails.Argument2
+			PYOFF.GLBDATA.TelcoPayment = MTT.InputDetails.Argument3
+			PYOFF.GLBDATA.TelcoRefno = MTT.InputDetails.Argument4
+		#}
+		else
+		#{
+                	PYOFF.GLBDATA.OdAcctId = ""
+                	PYOFF.GLBDATA.OpAcctId = ""
+			PYOFF.GLBDATA.TelcoPayment = ""
+			PYOFF.GLBDATA.TelcoRefno = ""
+		#}
+		endif
+		print(PYOFF.GLBDATA.OdAcctId)
+		print(PYOFF.GLBDATA.OpAcctId)
+		print(PYOFF.GLBDATA.TelcoPayment)
+		print(PYOFF.GLBDATA.TelcoRefno)
+                sv_u = urhk_getAcctDetailsInRepository(PYOFF.GLBDATA.OdAcctId)
+                if(sv_u!=0)then
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|Invalid OD Account")
+                        BANCS.OUTPUT.successOrFailure="F"
+                        exitscript
+                else
+                        PYOFF.GLBDATA.drCif  = BANCS.OUTPARAM.cifId
+                        PYOFF.GLBDATA.odEffBal = BANCS.OUTPARAM.EffAvailableAmt
+			PYOFF.GLBDATA.odclearBalance = BANCS.OUTPARAM.clearBalance
+			PYOFF.GLBDATA.odacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode 
+		endif
+
+		print(PYOFF.GLBDATA.odclearBalance)
+		if(cdouble(PYOFF.GLBDATA.odclearBalance) >= cdouble("0")) then
+			print("payoff complete")
+			exitscript
+		else
+			PYOFF.GLBDATA.odclearBalance = -1 * cdouble(PYOFF.GLBDATA.odclearBalance)
+			print(PYOFF.GLBDATA.odclearBalance)
+		endif
+		PYOFF.GLBDATA.RepayAmount = PYOFF.GLBDATA.odclearBalance
+		print(PYOFF.GLBDATA.RepayAmount)
+
+                sv_u = urhk_getAcctDetailsInRepository(PYOFF.GLBDATA.OpAcctId)
+                if(sv_u!=0)then
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                        sv_u = urhk_SetOrbOut("Message|Invalid Operative Account")
+                        BANCS.OUTPUT.successOrFailure="F"
+                        exitscript
+                else
+                        PYOFF.GLBDATA.drCif  = BANCS.OUTPARAM.cifId
+                        PYOFF.GLBDATA.opEffBal = BANCS.OUTPARAM.EffAvailableAmt
+			PYOFF.GLBDATA.opclearBalance = BANCS.OUTPARAM.clearBalance
+			PYOFF.GLBDATA.opacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			PYOFF.GLBDATA.acctOwnerShip = BANCS.OUTPARAM.acctOwnerShip
+		endif
+		print(PYOFF.GLBDATA.opEffBal)
+		if((cdouble(PYOFF.GLBDATA.opEffBal) <= 0) and (PYOFF.GLBDATA.acctOwnerShip != "O") and (PYOFF.GLBDATA.TelcoPayment != "Y")) then
+			exitscript
+		endif
+		if((cdouble(PYOFF.GLBDATA.opEffBal) < cdouble(PYOFF.GLBDATA.RepayAmount)) and (PYOFF.GLBDATA.acctOwnerShip != "O") and (PYOFF.GLBDATA.TelcoPayment != "Y")) then
+				PYOFF.GLBDATA.RepayAmount = PYOFF.GLBDATA.opEffBal
+				print(PYOFF.GLBDATA.RepayAmount)
+		endif
+
+		####mtt
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "N"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.CheckExceptions           = "N"
+
+        sv_r = REPEXISTS("MTT")
+        print(sv_r)
+        IF (sv_r == 1) THEN
+                sv_r = urhk_MTTS_Close("")
+                print(sv_r)
+        ENDIF
+
+        sv_u = urhk_MTTS_initialize("")
+        PRINT(sv_u)
+        #===================================
+        # Clear Error Message
+        #===================================
+        MTT.Error.Description   =   ""
+
+        #-------------------------------------------
+        #       Populate the details required for Transaction header
+        #------------------------------------------
+
+        MTT.TranDetails.TranDate        =   	"0"
+        MTT.TranDetails.PostFlag        =       "Y"
+        MTT.TranDetails.TranType        =       "T"
+        MTT.TranDetails.TranSubType     =       "CI"
+        MTT.TranDetails.IgnoreExcp      =       "I"
+        MTT.TranDetails.Consolidate     =       "N"
+        MTT.TranDetails.ReversalFlag    =       "N"
+        MTT.TranDetails.PostTranFlg     =       "Y"
+        MTT.TranDetails.ValidationFlag  =       "Y"
+        MTT.TranDetails.RestrictModifyInd =     "SECOND_GROUP"
+        MTT.TranDetails.ErrorCheckForLuw =      "N"
+        #***************************************************************************
+        #Define the transaction
+        #***************************************************************************
+        PRINT("before define")
+        sv_r = urhk_MTTS_DefineTransaction("ODPOFF")
+        PRINT(sv_r)
+        IF (sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Transaction.."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+                #}
+        ELSE
+                #{
+                PRINT("success")
+        #}
+        ENDIF
+
+        PYOFF.GLBDATA.tranAmt = cdouble(PYOFF.GLBDATA.RepayAmount)
+        print(PYOFF.GLBDATA.tranAmt)
+
+        # ---------------------------------------------------------------------
+        # Populate the details required for CREDIT and DEBIT part-tran to office account
+        # ---------------------------------------------------------------------
+		###CR
+        MTT.PartTranDetails.Account = PYOFF.GLBDATA.OdAcctId
+        MTT.PartTranDetails.RefAmount   = CDOUBLE(PYOFF.GLBDATA.tranAmt)
+        MTT.PartTranDetails.RefCurrency = PYOFF.GLBDATA.odacctCrncyCode
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Payoff from:" + PYOFF.GLBDATA.OpAcctId
+        MTT.PartTranDetails.tran_particular = "Payoff from:" + PYOFF.GLBDATA.OpAcctId
+	if(PYOFF.GLBDATA.TelcoPayment == "Y") then
+                MTT.PartTranDetails.RefNum = PYOFF.GLBDATA.TelcoRefno
+		MTT.PartTranDetails.Particulars2 = PYOFF.GLBDATA.TelcoRefno
+	endif
+        MTT.PartTranDetails.TranIdentifier  = "ODPOFF"
+        MTT.PartTranDetails.EntryUserId = BANCS.STDIN.userId
+        sv_r = urhk_MTTS_DefinePartTran("CR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        MTT.PartTranDetails.Account = PYOFF.GLBDATA.OpAcctId
+        MTT.PartTranDetails.RefAmount   = -1*CDOUBLE(PYOFF.GLBDATA.tranAmt)
+        MTT.PartTranDetails.RefCurrency = PYOFF.GLBDATA.opacctCrncyCode
+	MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.ProxyPstgInd= "P"
+        MTT.PartTranDetails.Particulars = "Payoff for:" + PYOFF.GLBDATA.OdAcctId
+        MTT.PartTranDetails.tran_particular = "Payoff for:" + PYOFF.GLBDATA.OdAcctId
+	if(PYOFF.GLBDATA.TelcoPayment == "Y") then
+                MTT.PartTranDetails.RefNum = PYOFF.GLBDATA.TelcoRefno
+		MTT.PartTranDetails.Particulars2 = PYOFF.GLBDATA.TelcoRefno
+	endif
+        MTT.PartTranDetails.TranIdentifier  = "ODPOFF"
+        sv_r = urhk_MTTS_DefinePartTran("DR")
+        PRINT(sv_r)
+        IF(sv_r != 0) THEN
+        #{
+                sv_c = "Unable to Define the Part Tran."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        # ---------------------------------------------------------------------
+        # Commit the transaction
+        # ---------------------------------------------------------------------
+        sv_r = urhk_MTTS_EndDefinition("")
+        IF (sv_r != 0) THEN
+        #{
+                sv_c = "Unable to end the transaction definition."
+                PRINT(sv_c)
+                MTT.Error.Description = sv_c
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                GOTO ENDOFSCRIPT
+                #}
+        ELSE
+                #{
+                PRINT("successfully posted")
+		PYOFF.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+		print(PYOFF.GLBDATA.TranId)
+        #}
+        ENDIF
+
+
+        ENDOFSCRIPT:
+        sv_r = urhk_MTTS_Close("")
+        EXITSCRIPT
+	#################
+
+trace off
+end-->

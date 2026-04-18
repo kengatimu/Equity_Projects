@@ -1,0 +1,485 @@
+#===============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: ReverseChargeOffMTT.scr
+# event: NA
+# description: ReverseChargeOffMTT
+#===============================================================
+<--start
+#trace on
+###############################################################################
+# Define the Transaction
+###############################################################################
+sv_a = urhk_MTTS_PopulateInputDetails("")
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="CI"
+	MTT.TranDetails.Remarks="Reverse Charge OFF transaction"
+MTT.TranDetails.IgnoreExcp="Y"
+MTT.TranDetails.Consolidate="Y"
+MTT.TranDetails.PrintAdviceInd="B"
+MTT.TranDetails.TranIdOnline="Y"
+MTT.TranDetails.sysTranCode="LOANAA003"
+
+sv_z = urhk_MTTS_DefineTransaction("revChargeOff")
+
+###############################################################################
+# Get all the amounts into local variables . Please do not set these variables
+# anywhere else in this script. The variables are : -
+# sv_l = pending principal
+# sv_p = pending interest
+# sv_g = pending penal interest
+# sv_o = pending interest book Amount.
+# sv_h = pending penal interest book Amount.
+# sv_r = recovered principal Amount.
+# sv_v = provision amount
+###############################################################################	
+	sv_c = MTT.InputDetails.intRouteFlg
+	sv_l = CDOUBLE(MTT.InputDetails.prinTranAmt)
+	sv_d = MTT.InputDetails.nonPastDueFlg
+	sv_p = CDOUBLE(MTT.InputDetails.intTranAmt)
+	sv_g = CDOUBLE(MTT.InputDetails.penalIntTranAmt)
+	sv_o = CDOUBLE(MTT.InputDetails.bookTranAmt)
+	sv_h = CDOUBLE(MTT.InputDetails.penalBookTranAmt) 
+	sv_r = CDOUBLE(MTT.InputDetails.revTranAmt)
+        sv_v = CDOUBLE(MTT.InputDetails.provisionAmt)
+        sv_n = CDOUBLE(MTT.InputDetails.intSuspAmt)
+        sv_e = CDOUBLE(MTT.InputDetails.penalIntSuspAmt)
+	sv_u = CDOUBLE(MTT.InputDetails.outUEIAmt)
+	sv_i = MTT.InputDetails.islamicProductTypeFlg
+	sv_w = MTT.InputDetails.unearnedIncAppFlg
+	sv_j = MTT.InputDetails.chargeoffFlg
+
+#unearned income is added in pending interest in actap107. Hence subtracting it here
+sv_p = sv_p - sv_u
+sv_p = sv_p - sv_g 
+sv_o = sv_o - sv_h 
+
+###############################################################################
+# Credit Suspense account or credit P&L/Penal P&L account
+###############################################################################
+#print (MTT.InputDetails.intSuspAcct)
+#sv_d will be Y when a past due account is being chrged off. Else it will be N
+	if (sv_d == "Y") then
+		if (sv_o !=0 OR sv_p !=0 ) then 
+			MTT.PartTranDetails.Account=MTT.InputDetails.intSuspAcct
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+			MTT.PartTranDetails.RefAmount=(sv_p + sv_o)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+			MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to Interest Suspense account "
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LACHO"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="revChargeOff"
+	###############################################################################
+	# Imp:- Do Not Change the PTranBusinessType. This is used for ACPART entries.
+	###############################################################################
+			MTT.PartTranDetails.PTranBusinessType="SUSP"
+
+			MTT.LAAddnlDetails.OriginOfTran = "REVCH"
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.EntryUserId="SYSTEM"
+			MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+			MTT.PartTranDetails.sysPartTranCode ="PTRN01163"
+			sv_z = urhk_MTTS_DefinePartTran("suspenseAccount")
+		endif
+	else 
+		if (sv_n != 0) then 
+			MTT.PartTranDetails.Account=MTT.InputDetails.pAndLAcid
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+			MTT.PartTranDetails.RefAmount=sv_n
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+			MTT.PartTranDetails.RateCode = MTT.InputDetails.intRateCode	
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to to P&L Account "
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LACHO"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="revChargeOff"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+
+			MTT.LAAddnlDetails.OriginOfTran = "REVCH"
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.EntryUserId="SYSTEM"
+			MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+			MTT.PartTranDetails.sysPartTranCode ="PTRN01164"		
+			sv_z = urhk_MTTS_DefinePartTran("interest")
+		endif
+	endif 
+
+###############################################################################
+# Credit Penal Suspense account or credit P&L/Penal P&L account
+###############################################################################
+#print (MTT.InputDetails.penalIntSuspAcct)
+#sv_d will be Y when a past due account is being chrged off. Else it will be N
+	if (sv_d == "Y") then
+		if (sv_h !=0 OR sv_g !=0 ) then 
+			MTT.PartTranDetails.Account=MTT.InputDetails.penalIntSuspAcct
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+			MTT.PartTranDetails.RefAmount=(sv_g + sv_h)
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+			MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to Penal Interest Suspense account "
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LACHO"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="revChargeOff"
+	###############################################################################
+	# Imp:- Do Not Change the PTranBusinessType. This is used for ACPART entries.
+	###############################################################################
+			MTT.PartTranDetails.PTranBusinessType="SUSP"
+
+			MTT.LAAddnlDetails.OriginOfTran = "REVCH"
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.EntryUserId="SYSTEM"
+			MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+			MTT.PartTranDetails.sysPartTranCode ="PTRN01165"
+
+			sv_z = urhk_MTTS_DefinePartTran("penalsuspenseAccount")
+		endif
+	else 
+		if (sv_e != 0) then 
+			MTT.PartTranDetails.Account=MTT.InputDetails.penalPandLAcid
+			MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+			MTT.PartTranDetails.RefAmount=sv_e
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+			 MTT.PartTranDetails.RateCode =  MTT.InputDetails.intRateCode	
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to to Penal P&L Account "
+
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LACHO"
+			sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_m == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="revChargeOff"
+			MTT.PartTranDetails.PTranBusinessType="LOANS"
+
+			MTT.LAAddnlDetails.OriginOfTran = "REVCH"
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.EntryUserId="SYSTEM"
+			MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+			MTT.PartTranDetails.sysPartTranCode ="PTRN01166"
+
+			sv_z = urhk_MTTS_DefinePartTran("penalInt")
+		endif
+	endif 
+
+###############################################################################
+# Debit Loan Acccount
+###############################################################################
+
+sv_p=sv_p+sv_g
+	if (sv_p != 0) then
+		if(MTT.InputDetails.intRouteFlg=="L") then
+			MTT.PartTranDetails.Account=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of Charge Off"
+		endif
+		if(MTT.InputDetails.intRouteFlg=="O") then
+			MTT.PartTranDetails.Account=MTT.InputDetails.loanIntAcct    
+			MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Reversal of Charge off from Suspense "
+			MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+		endif
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.loanAcct
+		MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.revDateDiff 
+		MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.tranId
+   
+		MTT.LAAddnlDetails.ReversalPtranSrlNum =MTT.InputDetails.partTranSerNum 
+		MTT.LAAddnlDetails.ReversalFlg = "Y"
+		MTT.LAAddnlDetails.DemandSatisfyFlg = "N"
+		MTT.LAAddnlDetails.AdvancePaymentFlg = "N"
+
+		if(sv_w != "E") then
+		   MTT.PartTranDetails.RefAmount=-sv_p
+		else
+		            MTT.PartTranDetails.RefAmount=-(sv_p+sv_u)
+		endif
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = ""
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier="revChargeOff"
+###############################################################################
+# Imp:- Do Not Change the PTranBusinessType. This is used for ACPART entries.
+###############################################################################
+		MTT.PartTranDetails.PTranBusinessType="LAINT"
+		MTT.LAAddnlDetails.OriginOfTran = "CHOFF"
+		MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.defltCollFlowId
+		MTT.LAAddnlDetails.TypeOfDemand = "A"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01167"
+		sv_z = urhk_MTTS_DefinePartTran("loanAccount")
+	endif
+
+###############################################################################
+# Debit Interest Collect account
+###############################################################################
+#print (MTT.InputDetails.intBookAcct)
+	if (sv_o !=0 ) then 
+	    if (sv_d != "Y") then	
+			MTT.PartTranDetails.Account=MTT.InputDetails.intBookAcct
+		else
+			 MTT.PartTranDetails.Account=MTT.InputDetails.pdIntBookAcct	
+		endif
+		MTT.PartTranDetails.RefAmount=-sv_o
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = ""
+		if(MTT.PartTranDetails.RefAmount >= 0) then
+            MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to Interest Collect Account "
+        else
+            MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Debit to Interest Collect Account "
+        endif
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.TranIdentifier="revChargeOff"
+		MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01168"
+		sv_z = urhk_MTTS_DefinePartTran("intCollect")
+	endif
+
+###############################################################################
+# Debit Penal Interest Collect account
+###############################################################################
+#print (MTT.InputDetails.intBookAcct)
+	if (sv_h !=0 ) then 
+	    if (sv_d != "Y") then	
+			MTT.PartTranDetails.Account=MTT.InputDetails.penalIntBookAcct
+		else
+			 MTT.PartTranDetails.Account=MTT.InputDetails.pdPenalIntBookAcct	
+		endif
+		MTT.PartTranDetails.RefAmount=-sv_h
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = ""
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Debit to Penal Interest Collect Account "
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.TranIdentifier="revChargeOff"
+		MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01169"
+		sv_z = urhk_MTTS_DefinePartTran("penalintCollect")
+	endif
+
+###############################################################################
+# Credit Principal Loss Line
+###############################################################################
+
+	if (sv_l !=0 ) then
+		MTT.PartTranDetails.Account=MTT.InputDetails.prinLossLine
+		MTT.PartTranDetails.RefAmount=sv_l
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to Principal Loss Line account "
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.TranIdentifier="revChargeOff"
+		MTT.PartTranDetails.PTranBusinessType="OFDEB"
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01170"
+		sv_z = urhk_MTTS_DefinePartTran("prinLossLine")
+###############################################################################
+# Debit Charge Off Loss Line
+###############################################################################
+		MTT.PartTranDetails.Account=MTT.InputDetails.chargeOffLine
+		MTT.PartTranDetails.RefAmount=-sv_l
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+		MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+		MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Debit to Charge Off Account "
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.TranIdentifier="revChargeOff"
+		MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01171"	
+		sv_z = urhk_MTTS_DefinePartTran("chargeOffLossLine")
+	endif
+###############################################################################
+# Debit Recovery Loss Line
+###############################################################################
+    if (sv_r !=0 ) then
+        MTT.PartTranDetails.Account=MTT.InputDetails.recoveryLine
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+        MTT.PartTranDetails.RefAmount=-sv_r
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+        MTT.PartTranDetails.RateCode = ""
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Debit to Recovery Account "
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="revChargeOff"
+        MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01172"
+        sv_z = urhk_MTTS_DefinePartTran("recovLine")
+###############################################################################
+# Credit Principal Loss Line
+###############################################################################
+        MTT.PartTranDetails.Account=MTT.InputDetails.prinLossLine
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+        MTT.PartTranDetails.RefAmount=sv_r
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+        MTT.PartTranDetails.RateCode = ""
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " - Credit to Principal Loss Line "
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LACHO"
+		sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_m == 0) then
+			call("getMTTTranPart.scr")
+		endif
+
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="revChargeOff"
+        MTT.PartTranDetails.PTranBusinessType="LOANS"
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01173"
+        sv_z = urhk_MTTS_DefinePartTran("prinLine")
+    endif
+
+###############################################################################
+# Debit Provision Amount
+###############################################################################
+    if (sv_v != 0 ) then
+    	MTT.PartTranDetails.Account=MTT.InputDetails.provisionCrAcct
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+        MTT.PartTranDetails.RefAmount=-sv_v
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+        MTT.PartTranDetails.RateCode = MTT.InputDetails.rateCode
+        MTT.PartTranDetails.Particulars=MTT.InputDetails.provisionCrAcct + " - Reversal of provisioning"
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="revChargeOff"
+        MTT.PartTranDetails.PTranBusinessType="OFDEB"
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01174"
+        sv_z = urhk_MTTS_DefinePartTran("provisionCrAcct") 
+##############################################################################
+# Credit Provision Amount 
+###############################################################################
+        MTT.PartTranDetails.Account=MTT.InputDetails.provisionDrAcct
+		MTT.PartTranDetails.ValueDate=MTT.InputDetails.valueDateDiff
+        MTT.PartTranDetails.RefAmount=sv_v
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+       	MTT.PartTranDetails.RateCode = MTT.InputDetails.ProvRateCode 
+		MTT.PartTranDetails.Particulars=MTT.InputDetails.provisionDrAcct + " - Reversal of provisioning"
+        MTT.PartTranDetails.Consolidate="Y"
+        MTT.PartTranDetails.TranIdentifier="revChargeOff"
+        MTT.PartTranDetails.PTranBusinessType="OFCRE"
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+		MTT.PartTranDetails.EntryUserId="SYSTEM"
+		MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+		MTT.PartTranDetails.sysPartTranCode ="PTRN01175"
+        sv_z = urhk_MTTS_DefinePartTran("provisionDrAcct")
+    endif
+##############################################################################
+# Credit to Unearned Income Account
+###############################################################################
+
+if(sv_u != 0) then
+   if(sv_w == "E") then
+      if (sv_i == "M" OR sv_i == "T") then
+		 if ((sv_j == "F") OR (sv_j == "P")) then
+            MTT.PartTranDetails.Account=MTT.InputDetails.ueiAcct
+            MTT.PartTranDetails.RefAmount=sv_u
+            MTT.PartTranDetails.RefCurrency=MTT.InputDetails.tranCrncy
+            MTT.PartTranDetails.RateCode =MTT.InputDetails.rateCode
+            MTT.PartTranDetails.Particulars=MTT.InputDetails.loanAcct + " Outstanding UEI entry during charge off"
+            MTT.PartTranDetails.Consolidate="Y"
+            MTT.PartTranDetails.TranIdentifier="revChargeOff"
+            MTT.PartTranDetails.PTranBusinessType="LOANS"
+            MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.loanAcct
+            MTT.PartTranDetails.EntryUserId="SYSTEM"
+            MTT.PartTranDetails.EntryTime=BANCS.STDIN.BODDate
+            sv_z = urhk_MTTS_DefinePartTran("OutstandingUEIAcctRev")
+         endif
+      endif
+   endif
+endif
+
+sv_z = urhk_MTTS_EndDefinition("")
+
+#trace off
+end-->
+

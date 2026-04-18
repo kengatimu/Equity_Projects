@@ -1,0 +1,348 @@
+#-------------------------------------------------------------------------------------
+#    Name			: PLZERO_USDRev.scr
+#    Description     		: This script is execute through batch job for FX zeroisation
+#    Date            		: 20-12-2014
+#    Author          		: Suhasini
+#    Input           		: NA
+#    Output			: NA
+#    Called Script	 	: NA
+#    Calling Script	 	: NA
+#    Menu Option		: HBJSTM, HBJE
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="866098f74c30edfcad8deed31da47fb9da23365f2e895bfb82880cc91d32f541"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+	sv_r = urhk_MTTS_Close("")
+	PRINT(sv_r)
+	
+	
+	BANCS.INPARAM.PostTranFlg 		= "Y"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+	BANCS.INPARAM.ValidationFlag 		= "Y"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "N"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	PRINT(sv_u)
+	IF(sv_u != 0 ) THEN
+	#{
+		CUST.PLZERO.errMsg = "MTT Initialize Failed"
+		GOTO Finish
+	#}
+	ENDIF
+	
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","PLZERO") == 0) THEN
+	#{
+		CREATECLASS("CUST","PLZERO",5)
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("MTT","TranDetails",5)
+	#}
+	ENDIF
+	
+	#===================================
+	#Initializing variables
+	#===================================
+	CUST.PLZERO.narration= "EOY PL BAL TRANSFER 2021 TO HO"
+	
+	IF(BANCS.STDIN.contextBankId == "11")THEN
+	#{
+		CUST.PLZERO.HOAccount = "2000500021667"
+	#}
+	ENDIF
+
+	
+	IF(BANCS.STDIN.contextBankId == "43")THEN
+	#{
+		CUST.PLZERO.HOAccount = "5000500020372"
+	#}
+	ENDIF
+
+	
+	
+	#=================================
+	#Report Initialization
+	#=================================
+	sv_d = "Today|SELECT to_char(sysdate,'ddmmyyyyhhmiss') FROM dual"
+	PRINT(sv_d)
+	
+	sv_p = urhk_dbSelectWithBind(sv_d)
+	
+	IF (BANCS.OUTPARAM.DB_ERRCODE == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.Today)
+		CUST.PLZERO.Today = BANCS.OUTPARAM.Today
+		#}
+	ELSE
+		#{
+		CUST.PLZERO.Today = ""
+	#}
+	ENDIF
+	
+	CUST.PLZERO.ExpenseRevReport = "ExpenseRev_PLZERO_" + CUST.PLZERO.Today + ".lst"
+	sv_a = "PNL EXPENSE ACCOUNTS ZEROISATION"
+	sv_c = "echo " + sv_a + " >> " + CUST.PLZERO.ExpenseRevReport
+	PRINT(sv_c)
+	sv_d = SYSTEM(sv_c)
+	PRINT(sv_d)
+	
+	sv_a = "foracid!currencycode!indictor!partitionflag!partitiontype!amount"
+	sv_c = "echo " + sv_a + " >> " + CUST.PLZERO.ExpenseRevReport
+	PRINT(sv_c)
+	sv_d = SYSTEM(sv_c)
+	PRINT(sv_d)
+	
+	CUST.PLZERO.IncomeRevReport = "IncomeRev_PLZERO_" + CUST.PLZERO.Today + ".lst"
+	sv_a = "PNL INCOME ACCOUNTS ZEROISATION"
+	sv_c = "echo " + sv_a + " >> " + CUST.PLZERO.IncomeRevReport
+	PRINT(sv_c)
+	sv_d = SYSTEM(sv_c)
+	PRINT(sv_d)
+	
+	sv_a = "foracid!currencycode!indictor!partitionflag!partitiontype!amount"
+	sv_c = "echo " + sv_a + " >> " + CUST.PLZERO.IncomeRevReport
+	PRINT(sv_c)
+	sv_d = SYSTEM(sv_c)
+	PRINT(sv_d)
+	
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.IgnoreExcp = "I"
+	MTT.TranDetails.Consolidate = "N"
+	MTT.TranDetails.Remarks = CUST.PLZERO.narration
+	MTT.TranDetails.ValidationFlag = "Y"
+	MTT.TranDetails.PostTranFlg = "Y"
+	MTT.TranDetails.CheckExceptions = "Y"
+	
+	sv_u = urhk_MTTS_DefineTransaction("plzeroisation")
+	PRINT(sv_u)
+	IF(sv_u != 0 ) THEN
+	#{
+		CUST.PLZERO.errMsg = "MTT Initialize Failed"
+		GOTO Finish
+	#}
+	ENDIF
+	
+	
+	#------------------------------------------------------------------
+	#  EXPENSE ACCOUNT ZEROISATION
+	#------------------------------------------------------------------
+	
+	
+	CUST.PLZERO.usdCrncyCode = "USD"
+	print(CUST.PLZERO.usdCrncyCode)
+
+	IncomeRev:
+		#################################################
+		#IncomeRev PNL zeroisation
+		#################################################
+		#------------------------------------------------------------------
+		#  Getting account to credit/debit and amount
+		#
+		#------------------------------------------------------------------
+		sv_s = "balance, tranparticulars,indicator,foracid, tranId, valDate|select tran_amt,TRAN_PARTICULAR, PART_TRAN_TYPE,forACID,tran_id, tran_date from tbaadm.htd,tbaadm.gam "
+		sv_s = sv_s + "where htd.bank_id = gam.bank_id and htd.bank_id = ?SVAR and htd.acid = gam.acid "
+		sv_s = sv_s + "and TRAN_PARTICULAR = 'EOY PL BAL TRANSFER 2020 TO HO' AND DTH_INIT_SOL_ID = ?SVAR "
+		sv_s = sv_s + "and VALUE_DATE = '05-feb-2022' "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_r =  urhk_dbcursorOpenWithBind(sv_s)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.PLZERO.incCount = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			PRINT(CUST.PLZERO.incCount)
+			#}
+		ELSE
+			#{
+			CUST.PLZERO.incErrMsg = "No Records fetched."
+			GOTO Finish
+		#}
+		ENDIF
+		
+		sv_c = urhk_dbCursorFetch(CUST.PLZERO.incCount)
+		PRINT(sv_c)
+		
+		IF(sv_c !=0)THEN
+		#{
+			CUST.PLZERO.incErrMsg = "No Records fetched."
+			GOTO Finish
+		#}
+		ENDIF
+		
+		sv_c = 0
+		WHILE (sv_c == 0)
+		#{
+			CUST.PLZERO.foracid = BANCS.OUTPARAM.foracid
+			print(CUST.PLZERO.foracid)
+			CUST.PLZERO.balance = BANCS.OUTPARAM.balance
+			print(CUST.PLZERO.balance)
+			CUST.PLZERO.indicator = BANCS.OUTPARAM.indicator
+			print(CUST.PLZERO.indicator)
+			CUST.PLZERO.tranparticulars = BANCS.OUTPARAM.tranparticulars
+			CUST.PLZERO.tranId = BANCS.OUTPARAM.tranId
+			print(CUST.PLZERO.tranId)
+			CUST.PLZERO.valDate = BANCS.OUTPARAM.valDate
+			print(CUST.PLZERO.valDate)
+					
+			#--------------------------------------------------
+			# expense/income account
+			#--------------------------------------------------
+			
+			MTT.PartTranDetails.Account = CUST.PLZERO.foracid
+			MTT.PartTranDetails.RefCurrency = CUST.PLZERO.usdCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.ValueDate           =  "0"
+			MTT.PartTranDetails.Particulars = CUST.PLZERO.narration
+			IF (CUST.PLZERO.indicator == "C")THEN
+				MTT.PartTranDetails.RefAmount = -cdouble(CUST.PLZERO.balance)
+			ELSE
+				MTT.PartTranDetails.RefAmount = cdouble(CUST.PLZERO.balance)
+			ENDIF
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "plzeroisation"
+			sv_e = "PurchaseIncomeRev"
+						
+			sv_r = urhk_MTTS_definePartTran(sv_e)
+			PRINT(sv_r)
+			
+			
+			sv_h = -cdouble(CUST.PLZERO.balance)
+			PRINT(sv_h)
+			sv_q = sv_h
+			PRINT(sv_q)
+
+			CUST.PLZERO.hoForacid = CUST.PLZERO.HOAccount
+			CUST.PLZERO.hoBalance = CUST.PLZERO.balance
+			CUST.PLZERO.hoIndicator = CUST.PLZERO.indicator
+
+			MTT.PartTranDetails.Account = CUST.PLZERO.hoForacid
+			MTT.PartTranDetails.RefCurrency = CUST.PLZERO.usdCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.ValueDate           =  "0"
+			MTT.PartTranDetails.Particulars = CUST.PLZERO.narration
+			IF (CUST.PLZERO.indicator == "C")THEN
+				MTT.PartTranDetails.RefAmount = cdouble(CUST.PLZERO.hoBalance)
+			ELSE
+				MTT.PartTranDetails.RefAmount = -cdouble(CUST.PLZERO.hoBalance)
+			ENDIF
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "Y"
+			MTT.PartTranDetails.TranIdentifier = "plzeroisation"
+
+
+			sv_a = CUST.PLZERO.foracid + "!" + CUST.PLZERO.usdCrncyCode + "!" + CUST.PLZERO.indicator + "!" + CUST.PLZERO.balance
+			sv_c = "echo " + sv_a + " >> " + CUST.PLZERO.IncomeRevReport
+			PRINT(sv_c)
+			sv_d = SYSTEM(sv_c)
+			
+			sv_c = urhk_dbCursorFetch(CUST.PLZERO.incCount)
+			PRINT(sv_c)
+
+
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(CUST.PLZERO.incCount)
+		PRINT(sv_c)
+		
+				
+			#############################
+			# Commit the transaction
+			#############################
+			sv_u = urhk_MTTS_EndDefinition("")
+			PRINT(sv_u)
+			
+			CUST.PLZERO.TranId = BANCS.OUTPARAM.MTTTranId
+			PRINT(CUST.PLZERO.TranId)
+			
+			PRINT(MTT.XCPN.NumExceptions)
+			IF((MTT.XCPN.NumExceptions >= 1) OR (MTT.XCPN.NumWarnings >= 1)) THEN
+			#{
+				sv_u = urhk_MTTS_HandleExceptions("POST")
+				IF (sv_u != 0) THEN
+				#{
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					PRINT (MTT.Error.Description)
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				sv_u = urhk_MTTS_HandleExceptions("POST")
+				IF (sv_u != 0) THEN
+				#{
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					PRINT (MTT.Error.Description)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_r = urhk_MTTS_Close("")
+			PRINT(sv_r)
+			
+			IF (sv_r == 1) THEN
+			#{
+				PRINT("Unable to Close MTT ")
+				GOTO Finish
+			#}
+			ENDIF
+
+		
+	Finish:
+		
+		sv_a = "exebatch babx4040 $B2K_SESSION_ID " + CUST.PLZERO.IncomeRevReport + " 'PNL IncomeRev Account Zeroisation Report' 'MANAGER' '1' N"
+		PRINT(sv_a)
+		sv_x = SYSTEM(sv_a)
+		PRINT(sv_x)
+		IF (sv_x != 0) THEN
+		#{
+			CUST.PLZERO.SuccessReport = "N"
+		#}
+		ENDIF
+		EXITSCRIPT
+		TRACE OFF
+END-->

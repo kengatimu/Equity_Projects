@@ -1,0 +1,192 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_supremefee001.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 10-08-2020
+#  Author          : Karemeri Timothy
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-08-2020      Karemeri Timothy		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","LEDGR") == 0) THEN
+#{
+	CREATECLASS("CUST","LEDGR",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUST.LEDGR.errMsg = ""
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print(sv_a)
+
+#BANCS.INPUT.moduleName  = "TMCHARGES"
+
+BANCS.INPUT.parameterId = "SUP_FEE1"
+CALL("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.LEDGR.supchrgs1 = BANCS.OUTPUT.parameterVal
+    PRINT(CUST.LEDGR.supchrgs1)
+#}
+ELSE
+#{
+    CUST.LEDGR.errMsg = "Supreme Charge 1 event setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" +BANCS.STDIN.contextBankId
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_f = "cifId| "
+sv_f = sv_f + "select distinct cif_id FROM tbaadm.gam where bank_id = ?SVAR and sol_id = ?SVAR and schm_code in "
+sv_f = sv_f + "('CA200','SB100','CA201','SB104','CA205','SB105','CA207','SB110','CA210','SB113','CA215','CA240','CA244') "
+sv_f = sv_f + "and  ACCT_CLS_FLG ! = 'Y' and acid in (select acid from tbaadm.smt where bank_id = ?SVAR "
+sv_f = sv_f + " and acct_status = 'A') "
+print (sv_f)
+
+sv_g = urhk_dbCursorOpenWithBind(sv_f)
+
+IF(sv_g==0) THEN
+	    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	    sv_f = urhk_dbCursorFetch(sv_m)
+	    print(sv_f)
+
+	   IF(sv_f == 1) THEN
+		 sv_x = urhk_dbCursorClose(sv_m)
+		 print(sv_x)
+		 exitscript
+	   ENDIF
+	  print(sv_f)
+
+WHILE (sv_f==0)
+	CUST.LEDGR.cifId = BANCS.OUTPARAM.cifId
+	print(CUST.LEDGR.cifId)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + CUST.LEDGR.cifId 
+	PRINT(BANCS.INPARAM.BINDVARS)
+
+	sv_k = "count1|select count(*) from tbaadm.gam where bank_id = ?SVAR and sol_id = ?SVAR and CIF_ID = ?SVAR and schm_code in "
+	sv_k = sv_k + "('CA200','SB100','CA201','SB104','CA205','SB105','CA207','SB110','CA210','SB113','CA215','CA240','CA244') "
+	print(sv_k)
+		sv_x = urhk_dbselectWithBind(sv_k)
+	print(sv_x)
+
+	IF (sv_x == 0) THEN
+	#{
+		CUST.LEDGR.count1 = cint(BANCS.OUTPARAM.count1)
+		print(CUST.LEDGR.count1)
+	#}
+	ENDIF
+
+	IF (CUST.LEDGR.count1 >= 1) THEN
+	#{
+
+	CUST.LEDGR.amt = cdouble(CUST.LEDGR.supchrgs1)
+	PRINT(CUST.LEDGR.amt)
+		BANCS.INPARAM.BINDVARS = CUST.LEDGR.cifId + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_e = "foracid|select foracid from "
+		sv_e = sv_e + "(select foracid from TBAADM.GAM where acid in "
+		sv_e = sv_e + "(select acid from tbaadm.smt where ACCT_STATUS = 'A') "
+		sv_e = sv_e + "and cif_id = ?SVAR "
+		sv_e = sv_e + "and bank_id =?SVAR "
+		sv_e = sv_e + "and schm_code in ('CA200','SB100','CA201','SB104','CA205','SB105','CA207','SB110','CA210','SB113','CA215','CA240','CA244') "
+		sv_e = sv_e + "and ACCT_CLS_FLG != 'Y' "
+		sv_e = sv_e + "order by clr_bal_amt desc) "
+		sv_e = sv_e + "where rownum < 2 "
+		print(sv_e)
+
+		sv_f = urhk_dbselectWithBind(sv_e)
+		print(sv_f)
+
+		IF (sv_f == 0) THEN
+		#{
+			CUST.LEDGR.foracid = BANCS.OUTPARAM.foracid
+			print(CUST.LEDGR.foracid)
+
+		ELSE
+		GOTO EXITLOOP
+		#}
+		ENDIF
+	#}
+	ENDIF
+		sv_a = urhk_getAcctDetailsInRepository(CUST.LEDGR.foracid)
+		IF(sv_a==0)THEN
+		#{
+		CUST.LEDGR.EffAvailableAmt =CDOUBLE(BANCS.OUTPARAM.EffAvailableAmt)
+		#}
+		ENDIF
+
+		IF (CDOUBLE(CUST.LEDGR.EffAvailableAmt) >= cdouble(CUST.LEDGR.amt)) THEN
+		#{
+			CUST.GCHRG.tranType = "T"
+			CUST.GCHRG.tranSubType = "BI"
+			CUST.GCHRG.drAcctId = CUST.LEDGR.foracid
+			CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.chrgAmt = CUST.LEDGR.amt + "|" + BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.eventId = "SUPFEE"
+			CALL("gchrgcommon.scr")
+			IF (CUST.GCHRG.successOrFailure == "S") THEN
+			#{
+				PRINT("Charge collected")
+			#}
+			ELSE
+			#{
+				PRINT("Failure")
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+		GOTO EXITLOOP
+		#}
+		ENDIF
+EXITLOOP:
+	sv_f = urhk_dbCursorFetch(sv_m)
+	print(sv_f)
+DO
+ print("ALL CHARGES COLLECTED")
+#}
+ENDIF
+
+
+ENDOFSCRIPT:
+IF(CUST.LEDGR.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUST.LEDGR.errMsg+"' >>memberChrg.log")
+#}
+ENDIF
+
+
+trace off
+end-->

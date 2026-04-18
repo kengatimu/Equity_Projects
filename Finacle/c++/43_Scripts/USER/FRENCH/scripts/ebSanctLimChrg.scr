@@ -1,0 +1,344 @@
+
+#   Name            : ebSanctLimChrg.scr 
+#   Description     :
+#   Date            : 13-02-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : SRV_VerifyAcctSanctLimit_post_process_data.scr
+#   Calling Script  : getcparamvalue.scr, gchrgcommon.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          Description.
+#   -------         ------          ------          ------------
+#   1.0             13-02-2013      Sateesh     Original Version
+#   2.0		05-08-2013	    Vijaya V	 Changes for TOL - 364579
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0417b6c0836438c7620b9ac3d9b0577257ad073d41ca26b0bda6e6346ebc7a65"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#	Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LMTCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","LMTCHRG",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	sv_u = urhk_B2K_PrintRepos("BANCS")	
+	print(sv_u)
+	sv_u = urhk_B2K_PrintRepos("CUST")	
+	print(sv_u)
+	#-----------------------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-----------------------------------------------------------------------------------------------
+	CUST.LMTCHRG.errMsg = ""
+	
+	print (CUST.LMTCHRG.modifyFlg)
+	
+	IF(CUST.LMTCHRG.modifyFlg == "N")THEN
+	#{
+		print("Sanction Limit not modified")
+	##	GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting loan account number and sanction limit
+	#-----------------------------------------------------------------------------------------------
+	sv_g =  urhk_SRV_GetVal("limitHdr.limitAcct.foracid")
+	IF(sv_g == 0)THEN
+	#{
+		CUST.LMTCHRG.acctId = BANCS.OUTPARAM.srvValue
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "Error in getting Account number from frontend"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_g =  urhk_SRV_GetVal("limitHdr.limitAcct.crncyCode")
+	IF(sv_g == 0)THEN
+	#{
+		CUST.LMTCHRG.acctCrncyCode = BANCS.OUTPARAM.srvValue
+		#}
+	ELSE
+		#{
+		CUST.LMTCHRG.errMsg = "Error in getting Account Crncy code from frontend"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#++++++++++++++++++ Vino
+	sv_b = urhk_getAcctDetailsInRepository(CUST.LMTCHRG.acctId)
+	if(sv_b==0)then
+		CUST.GCHRG.drSchmCode = BANCS.OUTPARAM.schmCode
+		CUST.GCHRG.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+	else	
+		CUST.GCHRG.drSchmCode = ""
+		CUST.GCHRG.acctCrncyCode = ""
+	endif
+	if(CUST.GCHRG.drSchmCode=="OD541")then
+		exitscript
+	endif
+	#++++++++++++++++++
+	#++++++++++++++++++++++++++++++++++++++++Vino BCDC
+	sv_a = urhk_getAcctDetailsInRepository(CUST.LMTCHRG.acctId)
+	PRINT(sv_a)
+	IF (sv_a == 0) THEN
+	    CUST.GCHRG.laSolId = BANCS.OUTPARAM.acctSolId
+	    CUST.GCHRG.schmCode = BANCS.OUTPARAM.schmCode
+            CUST.GCHRG.schmType = BANCS.OUTPARAM.schmType
+	else
+	    CUST.GCHRG.laSolId = ""
+	    CUST.GCHRG.schmCode = ""
+	    CUST.GCHRG.schmType = ""
+	ENDIF
+	sv_d = "isBCDC | select count(*) from tbaadm.sst where bank_id=?SVAR and set_id='BCDC' and sol_id=?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.laSolId
+	print(BANCS.INPARAM.BINDVARS)
+	print(sv_d)
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	if(sv_u==0)then
+	    CUST.GCHRG.isBCDC = BANCS.OUTPARAM.isBCDC
+	else
+	    CUST.GCHRG.isBCDC = 0
+	endif
+        #-----------------------------------------------------------------------------------------------
+        #Getting bacid from LMTCHRG values
+        #-----------------------------------------------------------------------------------------------
+        if(BANCS.STDIN.contextBankId=="43")then
+                if(cdouble(CUST.GCHRG.isBCDC)>=1)then
+                        BANCS.INPUT.moduleName = "LIMITCHARGES"
+                        #BANCS.INPUT.parameterId = "BCDCODVAT"
+			BANCS.INPUT.parameterId = "EVENT_ID"
+                        if(CUST.GCHRG.acctCrncyCode=="USD")then
+                                BANCS.INPUT.moduleName = "LIMITCHARGES"
+                                #BANCS.INPUT.parameterId = "BCDCODVATUSD"
+				BANCS.INPUT.parameterId = "EVENT_ID"
+                        endif
+                else
+                        BANCS.INPUT.moduleName = "LIMITCHARGES"
+                        BANCS.INPUT.parameterId = "EVENT_ID"
+                endif
+        else
+                BANCS.INPUT.moduleName = "LIMITCHARGES"
+                BANCS.INPUT.parameterId = "EVENT_ID"
+        endif
+        CALL ("getcparamvalue.scr")
+        print(BANCS.OUTPUT.parameterVal)
+
+        IF(BANCS.OUTPUT.parameterVal != "")THEN
+        #{
+                CUST.CPARAM.eventId= BANCS.OUTPUT.parameterVal
+                #}
+        ELSE
+                #{
+                CUST.LMTCHRG.errMsg = "eventid setup not done in CPARAM"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+        if(cdouble(CUST.GCHRG.isBCDC)>=1)then
+                sv_q = urhk_B2k_ForacidToAcid(CUST.LMTCHRG.acctId)
+                if(sv_q==0)then
+                        CUST.GCHRG.laAcid = BANCS.OUTPARAM.Acid
+                endif
+                sv_d = "InitChrgCnt | select count(*) from tbaadm.cxl where bank_id=?SVAR "
+                sv_d = sv_d + "and target_acid=?SVAR "
+                sv_d = sv_d + "and entity_cre_flg='Y' and del_flg='N' and comp_b2kid_type='GECHG' "
+                sv_d = sv_d + "and chrg_tran_id is not null "
+                sv_d = sv_d + "and chrg_tran_date is not null "
+                sv_d = sv_d + "and event_type='GCHRG' "
+                sv_d = sv_d + "and event_id in ('ODCVAT','ODCVAT-USD') "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.laAcid
+                sv_u = urhk_dbSelectWithBind(sv_d)
+                if(sv_u==0)then
+                        CUST.GCHRG.InitChrgCnt = BANCS.OUTPARAM.InitChrgCnt
+                else
+                        CUST.GCHRG.InitChrgCnt = ""
+                endif
+                if(cdouble(CUST.GCHRG.InitChrgCnt)>=1)then
+                        print("One time Charge already Collected")
+                        ##exitscript
+                endif
+                sv_d = "operAcctId | select (select foracid from tbaadm.gam "
+                sv_d = sv_d + "where bank_id=?SVAR and acid=gac.int_dr_acid and entity_cre_flg='Y' and del_flg='N') "
+                sv_d = sv_d + " from tbaadm.gac where bank_id=?SVAR and acid=?SVAR "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.laAcid
+                sv_u = urhk_dbSelectWithBind(sv_d)
+                if(sv_u==0)then
+                        CUST.GCHRG.OperAcctId = BANCS.OUTPARAM.operAcctId
+                else
+                        CUST.GCHRG.OperAcctId = ""
+                endif
+                if(CUST.GCHRG.OperAcctId!="")then
+                        CUST.GCHRG.drAcctId = CUST.GCHRG.OperAcctId
+                else
+                        CUST.GCHRG.drAcctId = CUST.LMTCHRG.acctId
+                endif
+        else
+                CUST.GCHRG.drAcctId     = CUST.LMTCHRG.acctId
+        endif
+
+	if(cdouble(CUST.GCHRG.isBCDC)>=1)then
+	####{
+        sv_u = urhk_SRV_NumOfRecs("limitLL")
+        sv_i = BANCS.OUTPARAM.srvValue
+        print(sv_i)
+        sv_p = 1
+        sv_j = 0
+        sv_p = FORMAT$(sv_p,"%d")
+        sv_j = FORMAT$(sv_j,"%d")
+        while(sv_j < sv_i)
+        #{
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.key.serial_num")
+				CUST.LMTCHRG.serial_num=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.serial_num)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.lhtSrlNum")
+				CUST.LMTCHRG.lhtSrlNum=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.lhtSrlNum)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.applicableDate")
+				CUST.LMTCHRG.applicableDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.applicableDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.sanctLimit")
+				CUST.LMTCHRG.sanctLimit=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.sanctLimit)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.limitLevelIntFlg")
+				CUST.LMTCHRG.limitLevelIntFlg=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.limitLevelIntFlg)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.supercedeFlg")
+				CUST.LMTCHRG.supercedeFlg=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.supercedeFlg)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.sanctDate")
+				CUST.LMTCHRG.sanctDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.sanctDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.expiryDate")
+				CUST.LMTCHRG.expiryDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.expiryDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.limitPenaltyMth")
+				CUST.LMTCHRG.limitPenaltyMth=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.limitPenaltyMth)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.limitPenaltyDay")
+				CUST.LMTCHRG.limitPenaltyDay=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.limitPenaltyDay)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.limitPenaltyDate")
+				CUST.LMTCHRG.limitPenaltyDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.limitPenaltyDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.loanPaperDate")
+				CUST.LMTCHRG.loanPaperDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.loanPaperDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.limitReviewDate")
+				CUST.LMTCHRG.limitReviewDate=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.limitReviewDate)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.normalIntPcnt")
+				CUST.LMTCHRG.normalIntPcnt=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.normalIntPcnt)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.penalIntPcnt")
+				CUST.LMTCHRG.penalIntPcnt=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.penalIntPcnt)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.securityDesc")
+				CUST.LMTCHRG.securityDesc=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.securityDesc)
+			sv_u = urhk_SRV_GetVal("limitLL.<rec_" + sv_j + ">.rmks")
+				CUST.LMTCHRG.rmks=BANCS.OUTPARAM.srvValue
+				print(CUST.LMTCHRG.rmks)
+			if ((CUST.LMTCHRG.rmks !="") and (CUST.LMTCHRG.rmks =="0"))then
+				BANCS.STDIN.WFflg="Y"
+				print(BANCS.STDIN.WFflg)
+			else
+				BANCS.STDIN.WFflg="N"
+				print(BANCS.STDIN.WFflg)
+			endif
+			if(BANCS.STDIN.WFflg =="Y")then
+				GOTO NXTLP
+			else
+				CUST.GCHRG.acctCrncyCode        = CUST.LMTCHRG.acctCrncyCode
+				CUST.GCHRG.eventId                      = CUST.CPARAM.eventId
+				CUST.GCHRG.chrgAmt                      = CUST.LMTCHRG.sanctLimit
+				CUST.GCHRG.tranType                     = "T"
+				CUST.GCHRG.tranSubType          = "BI"
+				#++++++++++++++++++++++++++++++++++++++++Vino BCDC
+				CALL("gchrgcommon.scr")
+				IF(CUST.GCHRG.successOrFailure == "S") THEN
+					IF (FIELDEXISTS(CUST.GCHRG.chargeTranId)) THEN
+						print(CUST.GCHRG.chargeTranId)
+						sv_d = " upCnt | select count(*) from tbaadm.dtd where bank_id=?SVAR "
+						sv_d = sv_d + "  and tran_id=lpad(?SVAR,9,' ') " 
+						sv_d = sv_d + " and tran_date=to_date(?SVAR,'DD-MM-RR') "
+						sv_d = sv_d + " and pstd_flg<>'Y' and del_flg='N' "
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + trim(CUST.GCHRG.chargeTranId) + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+						print(sv_d)
+						print(BANCS.INPARAM.BINDVARS)
+						sv_u = urhk_dbSelectWithBind(sv_d)
+						if(sv_u==0)then
+							CUST.GCHRG.upCnt = BANCS.OUTPARAM.upCnt
+						else
+							CUST.GCHRG.upCnt = 0
+						endif
+						if(cdouble(CUST.GCHRG.upCnt)>=1)then
+							#callscriptifexist("ebGchrgod.scr")
+						endif
+					ENDIF
+				ELSE
+					CUST.LMTCHRG.errMsg = CUST.GCHRG.gchrgErrMsg
+					print(CUST.LMTCHRG.errMsg)
+					IF (FIELDEXISTS(CUST.GCHRG.chargeTranId)) THEN
+						print(CUST.GCHRG.chargeTranId)
+						sv_d = " upCnt | select count(*) from tbaadm.dtd where bank_id=?SVAR "
+						sv_d = sv_d + "  and tran_id=lpad(?SVAR,9,' ') " 
+						sv_d = sv_d + " and tran_date=to_date(?SVAR,'DD-MM-RR') "
+						sv_d = sv_d + " and pstd_flg<>'Y' and del_flg='N' "
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + trim(CUST.GCHRG.chargeTranId) + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+						print(sv_d)
+						print(BANCS.INPARAM.BINDVARS)
+						sv_u = urhk_dbSelectWithBind(sv_d)
+						if(sv_u==0)then
+							CUST.GCHRG.upCnt = BANCS.OUTPARAM.upCnt
+						else
+							CUST.GCHRG.upCnt = 0
+						endif
+						if(cdouble(CUST.GCHRG.upCnt)>=1)then
+							#callscriptifexist("ebGchrgod.scr")
+						endif
+					ENDIF
+				ENDIF
+			#}
+			endif
+
+        NXTLP:
+        sv_j = CINT(sv_j) + 1
+        sv_j = FORMAT$(sv_j,"%d")
+        #}
+        DO
+	####}
+	endif
+	
+	ENDOFSCRIPT:
+		IF(CUST.LMTCHRG.errMsg != "") THEN
+		#{
+			sv_u = urhk_SRV_setErr(CUST.LMTCHRG.errMsg)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

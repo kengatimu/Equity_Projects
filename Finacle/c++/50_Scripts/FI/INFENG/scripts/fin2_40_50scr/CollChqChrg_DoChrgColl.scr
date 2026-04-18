@@ -1,0 +1,312 @@
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: CollChqChrg_DoChrgColl.scr
+# event: NA
+# description: NA
+#=================================================
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       CollChqChrg_DoChrgColl.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This script is to collect charge with charge services.
+# Input                 :       None
+# Output                :       Charge Tran Id and Charge Tran Date
+# Called Script         :       CollChqChrg_main.scr
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           11-06-2013      Nitin Prabhakar       Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--start
+TRACE ON
+CUST.INTERFACE.noOfPttRecords = ""
+CUST.INTERFACE.ChrgAmt = ""
+CUST.INTERFACE.actualAmt = ""
+CUST.INTERFACE.CalcAmt = ""
+CUST.INTERFACE.calChrgAmt = ""
+CUST.INTERFACE.BTName = "createChequeCharges"
+CUST.INTERFACE.LDFlag = "N"
+
+###########################################################################
+# Set inputs GCHARGGE service to collect charge 
+# service : SRV_FetchDfltGenChrgDtl
+########################################################################### 
+
+############################################
+# Setting CPARAM CODE FOR CHARGE EVENT ID
+############################################
+
+IF(CUST.INTERFACE.chrgEventID == "INWARD CHEQUE REJECT") THEN
+#{
+        CUST.INTERFACE.errorCode = "CHQREJCHRG"
+#}
+ELSE
+#{
+        CUST.INTERFACE.errorCode = "CHQCBNCHRG"
+#}
+ENDIF
+
+#----- Find the number of Records in PTT for the Event ID
+BANCS.INPARAM.BINDVARS = "GCHRG|" + CUST.INTERFACE.chrgEventID + "|Y|N|" + CUST.INTERFACE.bankId
+print(BANCS.INPARAM.BINDVARS)
+sv_s = "noOfPttRecords|select count(*) from tbaadm.ptt"
+sv_s = sv_s + " where event_type = ?SVAR"
+sv_s = sv_s + " and event_id = ?SVAR"
+sv_s = sv_s + " and entity_cre_flg = ?SVAR"
+sv_s = sv_s + " and del_flg = ?SVAR"
+sv_s = sv_s + " and BANK_ID = ?SVAR"
+print(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+
+IF(sv_d == 0)THEN
+#{
+	CUST.INTERFACE.noOfPttRecords = BANCS.OUTPARAM.noOfPttRecords
+	PRINT(CUST.INTERFACE.noOfPttRecords)
+#}
+ENDIF
+BANCS.INPUT.rejCode = CUST.INTERFACE.RejCode
+#-------------------------------------------------------------------------------
+# Validating the Reject Reason Code
+#-------------------------------------------------------------------------------
+lv_q = "oldRejCode|SELECT nvl(max(OLD_CLG_REJ_CODE),0)"
+lv_q = lv_q + " FROM custom.rrcm"
+lv_q = lv_q + " WHERE CLG_REJ_CODE = '" + CUST.INTERFACE.RejCode + "'"
+lv_q = lv_q + " AND ENTITY_CRE_FLG = 'Y' "
+lv_q = lv_q + " AND BANK_ID = '" + BANCS.STDIN.contextBankId + "'"
+
+lv_e = urhk_dbSelectWithBind(lv_q)
+
+IF(lv_e != 0)THEN
+#{
+	CUST.INTERFACE.errorCode = "ERR087"
+	CUST.INTERFACE.successOrFailure = "F"
+	GOTO FINISH
+	#}
+ELSE
+	#{
+	CUST.INTERFACE.oldRejCode = BANCS.OUTPARAM.oldRejCode
+	print(CUST.INTERFACE.oldRejCode)
+#}
+ENDIF
+
+IF(CUST.INTERFACE.oldRejCode == "0")THEN
+#{
+	CUST.INTERFACE.errorCode = "ERR087"
+	CUST.INTERFACE.successOrFailure = "F"
+	GOTO FINISH
+#}
+ENDIF
+
+CUST.INTERFACE.RejCode = CUST.INTERFACE.oldRejCode
+
+lv_q = "count|SELECT count(*)"
+lv_q = lv_q + " FROM TBAADM.CRC"
+lv_q = lv_q + " WHERE CLG_REJ_CODE = '" + CUST.INTERFACE.RejCode + "'"
+lv_q = lv_q + " AND DEL_FLG = 'N' "
+lv_q = lv_q + " AND BANK_ID = '" + BANCS.STDIN.contextBankId + "'"
+
+lv_e = urhk_dbSelectWithBind(lv_q)
+lv_p=BANCS.OUTPARAM.count
+
+IF(lv_p == 0)THEN
+#{
+        CUST.INTERFACE.errorCode = "ERR087"
+        CUST.INTERFACE.successOrFailure = "F"
+
+        GOTO FINISH
+#}
+ENDIF
+
+sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranType|T")
+sv_u = urhk_SetUrhkInp("genChrgCrit.tranType.tranSubType|BI")
+sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgCrncy.crncyCode|" + CUST.INTERFACE.currencyCode)
+sv_u = urhk_SetUrhkInp("genChrgCrit.drAcct.foracid|" + CUST.INTERFACE.AcctId)
+sv_u = urhk_SetUrhkInp("genChrgCrit.eventId.eventId|" + CUST.INTERFACE.chrgEventID)
+sv_u = urhk_SetUrhkInp("genChrgCrit.gchSrlNum|" + CUST.INTERFACE.RejCode)
+sv_u = urhk_SetUrhkOut("genChrgLL.<rec_0>.crAcct.foracid|foracid")
+
+sv_n = 0
+print(CUST.INTERFACE.noOfPttRecords)
+while(sv_n < CINT(CUST.INTERFACE.noOfPttRecords))
+#{
+	sv_s = "genChrgLL.<rec_" + FORMAT$(sv_n,"%d") + ">.actualAmt|actualAmt_" + FORMAT$(sv_n,"%d")
+	print(sv_s)
+	sv_u = urhk_SetUrhkOut(sv_s)
+	PRINT(sv_u)
+
+	sv_n = sv_n + 1
+	print(sv_n)
+#}
+DO
+
+sv_n = 0
+print(CUST.INTERFACE.noOfPttRecords)
+while(sv_n < CINT(CUST.INTERFACE.noOfPttRecords))
+#{
+	sv_s = "genChrgLL.<rec_" + FORMAT$(sv_n,"%d") + ">.calcAmt|calcAmt_" + FORMAT$(sv_n,"%d")
+	print(sv_s)
+	sv_u = urhk_SetUrhkOut(sv_s)
+	PRINT(sv_u)
+
+	sv_n = sv_n + 1
+	print(sv_n)
+#}
+DO
+
+###########################################################################
+# Execution of service
+########################################################################### 
+sv_u = urhk_ExecSrvNoCommit("SRV_FetchDfltGenChrgDtl |retain_all_output = Y")
+
+###########################################################################
+# If service calling fails, then capture the error, exception and warnings
+# and throw an error message
+########################################################################### 
+print(sv_u)    
+IF (sv_u != 0) THEN
+#{
+	# calling script to trap SRV execution error
+	CUST.INTERFACE.srvErrFlg ="Y"
+	CUST.INTERFACE.successOrFailure = "F"
+	GOTO ERROREXIT
+#}
+ELSE
+#{
+	CUST.INTERFACE.crAcct = BANCS.OUTPARAM.foracid
+	print(CUST.INTERFACE.crAcct)	
+	print(CUST.INTERFACE.LDFlag)
+	
+	sv_n = 0
+	WHILE(sv_n < CINT(CUST.INTERFACE.noOfPttRecords))
+	#{
+			PRINT(sv_n)
+			CUST.INTERFACE.ChrgAmt = ("BANCS").("OUTPARAM").("actualAmt_" + FORMAT$(sv_n,"%d"))
+			PRINT(CUST.INTERFACE.ChrgAmt)
+			sv_m = getPosition(CUST.INTERFACE.ChrgAmt,"|")
+			CUST.INTERFACE.ChrgAmt = MID$(CUST.INTERFACE.ChrgAmt,0,sv_m-1)
+			print(CUST.INTERFACE.ChrgAmt)
+			IF(CDOUBLE(CUST.INTERFACE.ChrgAmt) > CDOUBLE("0")) THEN
+			#{
+				CUST.INTERFACE.actualAmt = CUST.INTERFACE.ChrgAmt
+				print(CUST.INTERFACE.actualAmt)
+				sv_n = CINT(CUST.INTERFACE.noOfPttRecords)
+			#}
+			ENDIF
+
+			sv_n = sv_n + 1
+			print(sv_n)
+	#}
+	DO
+#}
+ENDIF
+print(CUST.INTERFACE.crAcct)
+print(CUST.INTERFACE.actualAmt)
+IF(CDOUBLE(CUST.INTERFACE.actualAmt) != CDOUBLE("0")) THEN
+#{
+	sv_a = urhk_CopyOutToIn("")
+	print(sv_a)
+	print(CUST.INTERFACE.tranRmks)
+	IF (CUST.INTERFACE.tranRmks != "") THEN
+	#{
+		sv_u = urhk_SetUrhkInp("genChrgLL.<rec_0>.tranRmks|" + CUST.INTERFACE.tranRmks)
+	#}
+	ENDIF
+	###########################################################################
+	# Calling SRV_AddGenChrgDtl for charge calculation
+	########################################################################### 
+	print(CUST.INTERFACE.chrgEventID)
+	sv_u = urhk_ExecSrvNoCommit("SRV_AddGenChrgDtl |same_user_verify = Y|retain_all_output = Y")
+	print(sv_u)
+	###########################################################################
+	# If service calling fails, then capture the error, exception and warnings
+	# and throw an error message
+	########################################################################### 
+
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	sv_u = urhk_CopyOutToIn("")
+
+	###########################################################################
+	# Calling SRV_FetchGenChrgDtlForVerify for charge calculation
+	########################################################################### 
+	sv_u = urhk_ExecSrvNoCommit("SRV_FetchGenChrgDtlForVerify|same_user_verify = Y|retain_all_output = Y")
+			
+	###########################################################################
+	# If service calling fails, then capture the error, exception and warnings
+	# and throw an error message
+	########################################################################### 
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	sv_u = urhk_CopyOutToIn("")
+
+	sv_a = urhk_SetUrhkOut("genChrgCrit.tranId|tranId")
+	sv_a = urhk_SetUrhkOut("genChrgCrit.tranDate|tranDate")
+
+	###########################################################################
+	# Calling SRV_VerifyGenChrgDtl for Verifying the general charge details
+	########################################################################### 
+	sv_u = urhk_ExecSrvNoCommit("SRV_VerifyGenChrgDtl|same_user_verify = Y|call_mode = N")
+
+	###########################################################################
+	# If service calling fails, then capture the error, exception and warnings
+	# and throw an error message ELSE fetch tranId and tranDate
+	########################################################################### 
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		sv_u = urhk_ExecSrvNoCommit("SRV_VerifyGenChrgDtl|same_user_verify = Y|call_mode = N")
+		print(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.srvErrFlg ="Y"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.chrgTranID = BANCS.OUTPARAM.tranId
+			CUST.INTERFACE.chrgTranDate = BANCS.OUTPARAM.tranDate
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.chrgTranID = BANCS.OUTPARAM.tranId
+		CUST.INTERFACE.chrgTranDate = BANCS.OUTPARAM.tranDate
+	#}
+	ENDIF
+
+	#print(CUST.INTERFACE.crTranCode)
+	print(CUST.INTERFACE.chrgTranID)
+	print(CUST.INTERFACE.chrgTranDate)
+
+	CUST.INTERFACE.chrgTranDate = MID$(CUST.INTERFACE.chrgTranDate,0,10)
+	print(CUST.INTERFACE.chrgTranDate)
+#}
+ELSE
+#{
+	# Zero charge collected 
+        CUST.INTERFACE.chrgTranID = "000"
+        CUST.INTERFACE.chrgTranDate = BANCS.STDIN.BODDate
+#}
+ENDIF
+
+#DP2FINISH:
+end-->

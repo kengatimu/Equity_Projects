@@ -1,0 +1,177 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: s_modifyandpostdenom.scr
+# Type: NA|default
+# Description: s_modifyandpostdenom.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+###############################################################################
+#   Source Name         :   SRV_AddAndPostCashTran_post_process_data.scr
+#   Date                :   10-DEC-2007
+#   Description         :   This script is for DENOM module to capture denominations
+#   Author              :   Castro
+#   Called Script       :   1) denomdp011.scr
+#                           - to parse the front end value into denom repositories
+#                           2) denomdp016.scr
+#                           - for C_DENM_CR or C_DENM_DR table update and C_DETD table value insertion
+#                       :   3)denomdp015.scr
+#                           - for C_DERD table update
+#   Calling Script      :
+#   MODULE CODE         :  DENOM
+#   Modification History:
+#   <Serial No.>   <Date>   <Author Name>    <Description>
+#################################################################################
+<--START
+CHECKSUM="e121a0e93374d01cc96e9ba9914e626462b8447b07d6d8d11ca80250f5ae5405"
+	TRACE ON
+	sv_r = 	REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	IF(BANCS.STDIN.moduleIdentity == "FI") THEN
+	#{
+		GOTO FINISH
+	#}
+	ELSE
+		#{
+		sv_a = urhk_B2K_PrintRepos("BANCS")
+		PRINT(sv_a)
+		IF (FIELDEXISTS(BANCS.INPUT.srvcallmode)) THEN
+		#{
+			IF (BANCS.INPUT.srvcallmode == "S") THEN
+			#{
+				sv_d = urhk_SRV_GetVal("tranHdr.tranIdentifier.tranDate")
+				BANCS.INPUT.tranDate = MID$(BANCS.OUTPARAM.srvValue,0,10)
+				PRINT(BANCS.INPUT.tranDate)
+				sv_d = urhk_B2k_getDateDiffFromBODDate(BANCS.INPUT.tranDate)
+				PRINT(sv_d)
+				IF (sv_d == 0) THEN
+				#{
+					IF(CINT(BANCS.OUTPARAM.DateDiff) < 0) THEN
+					#{
+						sv_s = urhk_SRV_SetErr("Approval has expired for this referral. Kindly withdraw AND Submit afresh.")
+						PRINT(sv_s)
+						GOTO FINISH
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF((FIELDEXISTS(ONS.CUSTOM.custDataIn)==0) OR (TRIM(ONS.CUSTOM.custDataIn) == "")) THEN
+	#{
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranId")
+	CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+	sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranDate")
+	CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue,10)
+	PRINT(CUST.DENOM.tranId)
+	PRINT(CUST.DENOM.tranDate)
+	
+	CUST.DENOM.bank_id = BANCS.STDIN.contextBankId
+	PRINT(CUST.DENOM.bank_id)
+	
+	sv_a = ONS.CUSTOM.custDataIn
+	sv_u = urhk_ParseONSCustData(sv_a)
+	sv_q = urhk_B2k_PRINTRepos("BANCS")
+	PRINT(sv_q)
+	
+	IF (FIELDEXISTS(BANCS.INPUT.tmdet_FIELD_1) == 0)THEN
+	#{
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	CUST.DENOM.Flag = BANCS.INPUT.tmdet_FIELD_1
+	CUST.DENOM.cucycnt = BANCS.INPUT.tmdet_FIELD_2
+	CUST.DENOM.authMatrixId = ""
+	PRINT(CUST.DENOM.Flag)
+	PRINT(CUST.DENOM.cucycnt)
+	
+	#----- Check on denom captured - will help in case BANCS repositories are not flushed ------
+	sv_q = "disFlg|SELECT 1 FROM DUAL WHERE EXISTS (SELECT 1 FROM custom.c_solmnt WHERE sol_id = '" + BANCS.STDIN.mySolId + "' AND dis_flg = 'Y' AND bank_id=?SVAR)"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_r = urhk_DBSelectWithBind(sv_q)
+	PRINT(sv_r)
+	IF((sv_r!=0) AND (CUST.DENOM.Flag!="Y")) THEN
+	#{
+		sv_r = urhk_SRV_SetErr("Run time error - commit again")
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	IF(CUST.DENOM.Flag == "Y") THEN
+	#{
+		CALL("denomdp018.scr")
+		CALL("denomdp011.scr")
+		sv_k = 1
+		WHILE(sv_k <= CINT(CUST.DENOM.cucycnt))
+		#{
+			CUST.DENOM.serialno = sv_k
+			CUST.DENOM.tellerId = ("CUST").("DENOM").("tellerId"+ FORMAT$(sv_k,"%d"))
+			CUST.DENOM.solId = ("CUST").("DENOM").("solId"+ FORMAT$(sv_k,"%d"))
+			CALL("denomdp016.scr")
+			#------------------------------------------------------------
+			# Below code added to validate for -ve denom value
+			# - Sandeep Patil
+			#------------------------------------------------------------
+			IF(CUST.DENOM.ERRORMESSAGE !="") THEN
+			#{
+				GOTO ERRORMESSAGE
+			#}
+			ENDIF
+			
+			CUST.DENOM.tellerId = ("CUST").("DENOM").("tellerId"+ FORMAT$(sv_k,"%d"))
+			CUST.DENOM.solId = ("CUST").("DENOM").("solId"+ FORMAT$(sv_k,"%d"))
+			CALL("denomdp015.scr")
+			sv_k = sv_k + 1
+			PRINT(sv_k)
+		#}
+		DO
+		#--------- Deleting the trasaction from C_DETD & C_DERD tables
+		BANCS.INPARAM.BINDVARS =  CUST.DENOM.tranId + "|" + CUST.DENOM.bank_id
+		
+		sv_l = "DELETE FROM custom.c_detd "
+		sv_m = "DELETE FROM custom.c_derd "
+		sv_n = "WHERE dxfer_id = ?SVAR AND BANK_ID = ?SVAR AND DXFER_FLG='E' "
+		
+		sv_a = sv_l + sv_n
+		sv_v = urhk_dbsqlWithBind(sv_a)
+		PRINT(sv_v)
+		
+		sv_b = sv_m + sv_n
+		sv_v = urhk_dbsqlWithBind(sv_b)
+		PRINT(sv_v)
+		
+	#}
+	ENDIF
+	
+	GOTO FINISH
+	
+	ERRORMESSAGE:
+		sv_r = urhk_SRV_SetErr("Error: Please re-create the transaction")
+		PRINT(sv_r)
+	FINISH:
+		TRACE OFF
+END-->

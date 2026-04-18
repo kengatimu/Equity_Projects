@@ -1,0 +1,204 @@
+-------------------------------------------------------------------------------------------------------------
+#    Name            : AutoAccountClosure.scr
+#    Description     : Automation menu
+#    Date            : 01-JAN-2023
+#    Author          : Irungu James
+#    Input           : NA
+#    Output          : NA
+#    Calling Script  : NA
+#    Menu Option     : CAUTOMNU
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           01-JAN-2023         Irungu James              Original Version         1.0
+#------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+
+
+	#==============================================================================
+	#       Intialising Variables
+	#=============================================================================
+
+	CUST.DATA.SOURCEFILE = CUST.DATA.FilePath
+	print(CUST.DATA.SOURCEFILE)
+
+	sv_r = urtn_fileAccess(CUST.DATA.SOURCEFILE)
+	print(sv_r)
+	IF ( sv_r != 0 ) THEN
+		sv_r = urhk_TBAF_DispMesg("Unable to Access FILE_LIST")
+		sv_v = "UNABLE TO ACCESS THE LIST OF FILES"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	#--------------------------
+	#	OPENING THE FILE
+	#--------------------------
+
+	sv_t = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	print(sv_t)
+	IF (sv_t < 0) THEN
+		print("Unable to open the file")
+		GOTO ENDOFSCRIPT
+	ELSE
+		print("File Opened SuccessFully")
+		CUST.DATA.succIndex = sv_t
+	ENDIF
+
+	#===================================================================================================================
+	#       Read The File Data
+	#===================================================================================================================
+
+	CUST.DATA.fileRec = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	PRINT(CUST.DATA.fileRec)
+	sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+	PRINT(sv_t)
+	IF(sv_t != 0) THEN
+		sv_z = "SuccessOrFailure|N"
+		sv_u = urhk_SetOrbOut(sv_z)
+		sv_z = "Error_03|ERROR^Upload file is empty^fileName"
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	sv_z = 0
+	sv_y = 0
+	CUST.DATA.RECCNT = 0
+	#=======================================================================================
+	#       Split And Storage Of data in file
+	#=======================================================================================
+
+	WHILE(sv_t == 0)
+	#{
+
+		sv_y =format$(sv_z,"%d")
+		CUST.DATA.RECCNT = cint(CUST.DATA.RECCNT)+1
+		CUST.DATA.inputRecord         =       TOUPPER(CUST.DATA.inputRecord)
+		sv_k = CUST.DATA.inputRecord
+	
+		sv_g = 0
+		sv_n = 1
+
+		sv_c = TRIM(CUST.DATA.inputRecord)
+		CUST.DATA.FORACID= sv_c
+		print(CUST.DATA.FORACID)
+
+
+			#===================================================================================================
+			#       STORAGE OF DATA INTO CUSTOM TABLE
+			#===================================================================================================
+				
+			sv_s = " INSERT INTO custom.CUST_AUTO_ACCT_CLS (FORACID, RCRE_USER_ID,FILE_NAME,RCRE_TIME, ENTITY_CRE_FLG, PROCESSED_FLG,FREE_TEXT2, BANK_ID ) "
+			sv_s = sv_s + "  VALUES (?SVAR,?SVAR,?SVAR,sysdate,'N','N',?SVAR, ?SVAR)"
+			BANCS.INPARAM.BINDVARS  = CUST.DATA.FORACID +"|"+ BANCS.STDIN.userId  + "|" + CUST.DATA.file_name  + "|" + CUST.DATA.RECCNT + "|" +  BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_s)
+			sv_r =  urhk_dbSQLwithbind(sv_s)
+			print(sv_r)
+			if(sv_r == 0)then
+				sv_r = urhk_dbSQLwithbind("commit")
+				print(sv_r)
+				if(sv_r == 0)then
+					CUST.DATA.sucess = "UPDATE SUCCESSFULL"
+					CUST.DATA.scnt="1"
+				else
+					CUST.DATA.errorMsg  = " UPDATE FAILED"
+					sv_r = urhk_dbSQLwithbind("ROLLBACK")
+					GOTO NEXTREC1
+				endif
+			else
+				CUST.DATA.errorMsg  = "UPDATE SOME ERROR IN THIS"
+				sv_w =CUST.DATA.errorMsg+"  "+CUST.DATA.SOURCEFILE
+				print(sv_w)
+				sv_r = urhk_dbSQLwithbind("ROLLBACK")
+				GOTO NEXTREC1
+			endif
+		
+	
+
+		NEXTREC1:
+		sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+		PRINT(sv_t)
+		sv_z = sv_z + 1
+
+
+		CUST.DATA.recCount = sv_z
+		print(CUST.DATA.recCount)
+		sv_y = format$(sv_z,"%d")
+		PRINT(sv_y)
+
+	DO
+	#===================================================================================#
+	# Closing the files                                                                 #
+	#===================================================================================#
+	sv_j = urtn_fileClose(CUST.DATA.SOURCEFILE)
+	print(sv_j)
+	sv_t = urtn_fileClose(CUST.DATA.fileRec)
+	PRINT(sv_t)
+	sv_e = system("mv "+CUST.DATA.FilePath+" "+CUST.DATA.FilePath+"_Done")
+	print(sv_e)
+	
+	
+	IF  (cdouble(CUST.DATA.RECCNT) > cdouble ("500")) THEN
+
+		CUST.DATA.BATCHNO =  FORMAT$((cdouble(CUST.DATA.RECCNT) / CDOUBLE("10")),"%.0f")
+		Print (CUST.DATA.BATCHNO)
+		
+		sv_s = "UPDATE CUSTOM.CUST_AUTO_ACCT_CLS SET FREE_TEXT3 = 'X' where PROCESSED_FLG ='N' and FILE_NAME =?SVAR  and Bank_id =?SVAR "
+		BANCS.INPARAM.BINDVARS =  CUST.DATA.file_name +"|"+  BANCS.STDIN.contextBankId 
+		PRINT(sv_s)
+		PRINT(sv_s)
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d==0)THEN
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+		ENDIF
+		
+		CUST.DATA.Rec = "1"
+		CUST.DATA.Loop = "12"
+
+		while(CUST.DATA.Loop != 0)
+
+			sv_s = "UPDATE CUSTOM.CUST_AUTO_ACCT_CLS SET FREE_TEXT3 = ?SVAR where FREE_TEXT3 ='X' and PROCESSED_FLG ='N' and FILE_NAME =?SVAR  and bank_id  =?SVAR and rownum < ?SVAR "
+			BANCS.INPARAM.BINDVARS = CUST.DATA.Rec +"|"+  CUST.DATA.file_name +"|"+  BANCS.STDIN.contextBankId + "|" +   CUST.DATA.BATCHNO 
+			PRINT(sv_s)
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d==0)THEN
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+			ENDIF
+			
+			sv_e = "nohup babx4061 $B2K_SESSION_ID AutoAcctCloseBatch.scr " +'"'+ CUST.DATA.Rec +'"'+ " " +'"'+CUST.DATA.file_name + '"' + " @s &"
+			print(sv_e)
+			sv_a = system(sv_e)
+					
+			CUST.DATA.Rec= cint (CUST.DATA.Rec) + 1
+			Print(CUST.DATA.Rec)
+			CUST.DATA.Loop= cint (CUST.DATA.Loop) - 1
+			Print (CUST.DATA.Loop)
+		DO
+	ELSE
+		##Closing the Accts
+
+		sv_s = "UPDATE CUSTOM.CUST_AUTO_ACCT_CLS SET FREE_TEXT3 = 'X' where PROCESSED_FLG ='N' and FILE_NAME =?SVAR  and Bank_id =?SVAR "
+		BANCS.INPARAM.BINDVARS =  CUST.DATA.file_name +"|"+  BANCS.STDIN.contextBankId 
+		PRINT(sv_s)
+		PRINT(sv_s)
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d==0)THEN
+			sv_d = urhk_dbSqlWithBind("COMMIT")
+		ENDIF
+		
+
+		CUST.DATA.Rec ="X"
+
+		sv_e = "nohup babx4061 $B2K_SESSION_ID AutoAcctCloseBatch.scr " +'"'+ CUST.DATA.Rec +'"'+ " " +'"'+CUST.DATA.file_name + '"' + " @s &"
+		print(sv_e)
+		sv_a = system(sv_e)		 
+	ENDIF
+
+ENDOFSCRIPT:
+EXITSCRIPT
+#TRACE OFF
+END-->

@@ -1,0 +1,309 @@
+#---------------------------------------------------------------------------------    
+#	Name			: int_susp.scr
+#	Description		: This script calculates the interest suspense amount and
+#					: additional provisional amounal amount for the given account.
+#	Date			: 16-01-2013
+#	Author			: Prakash
+#	Input			: BANCS.INPUT.lv_acid,BANCS.INPUT.lv_crbacid,BANCS.INPUT.lv_solId
+#	Output			: BANCS.OUTPUT.newintsusp,BANCS.OUTPUT.prvamt
+#	Called Script	: NA
+#	Calling Scrip	: getcparamvalue.scr
+#	Menu Option		:
+#	Srl. No			Date			Author			Description.
+#	-------			---------		-------			---------------
+#	1.0				16-01-2013		Prakash			Original Version
+#----------------------------------------------------------------------------------
+<--START
+CHECKSUM="7c3a7cc8e43d75be52d1bc55fb68922a8630e0927d18ac47b7ebe851d6c492fa"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#     	Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","ASTPRV") == 0) THEN
+	#{
+		CREATECLASS("CUST","ASTPRV",5)
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.intSuspb = ""
+	CUST.ASTPRV.errMsg   = ""
+	CUST.ASTPRV.acId     = ""
+	CUST.ASTPRV.acId1    = ""
+	CUST.ASTPRV.crAmt    = ""
+	CUST.ASTPRV.drAmt    = ""
+	CUST.ASTPRV.amt1     = ""
+	CUST.ASTPRV.amt2 	 = ""
+	
+	#PRINT(BANCS.INPUT.lv_acid);
+	#PRINT(BANCS.INPUT.lv_crbacid);
+	#PRINT(BANCS.INPUT.lv_solId);
+	
+	#-------------------------------------------------------------
+	#---------starting for BANCS.INPUT.intSuspAmount
+	#---------------------------------------------------------------
+	
+	BANCS.INPUT.moduleName = "ASTPRV"
+	
+	BANCS.INPUT.parameterId = "INT_SUB"
+	CALL ("getcparamvalue.scr")
+	
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.ASTPRV.intSuspb = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_SetErr("Error: Placeholder setup not done in CPARAM")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	sv_i = CUST.ASTPRV.intSuspb + "|" + BANCS.STDIN.homeCrncyCode + "|" +  BANCS.INPUT.lv_solId
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	IF (sv_u == 1 ) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "acid|SELECT acid "
+	sv_s = sv_s + "FROM TBAADM.GAM "
+	sv_s = sv_s + "WHERE foracid= ?SVAR "
+	sv_s = sv_s + "AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+	sv_s = sv_s + "AND del_flg = 'N'"
+	BANCS.INPARAM.BINDVARS = BANCS.OUTPARAM.AcctId + "|" + BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.acId  = BANCS.OUTPARAM.acid
+	PRINT(CUST.ASTPRV.acId)
+	#---------------------------------------------------------
+	#	sum of cr
+	#----------------------------------------------------------
+	sv_s = "crAmt|SELECT SUM(tran_amt) "
+	sv_s = sv_s + "FROM TBAADM.ACPART "
+	sv_s = sv_s + "WHERE part_tran_type = 'C' "
+	sv_s = sv_s + "AND b2k_type = 'ACCNT' "
+	sv_s = sv_s + "AND b2k_id = ?SVAR "
+	sv_s = sv_s + "AND partitioned_acid = ?SVAR "
+	sv_s = sv_s + "AND pstd_flg != 'N' "
+	sv_s = sv_s + "AND bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.lv_acid + "|" + CUST.ASTPRV.acId + "|" +  BANCS.STDIN.contextBankId
+	
+	PRINT(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.crAmt = BANCS.OUTPARAM.crAmt
+	PRINT(CUST.ASTPRV.crAmt)
+	IF (CUST.ASTPRV.crAmt == "") THEN
+	#{
+		CUST.ASTPRV.crAmt = "0"
+		PRINT(CUST.ASTPRV.crAmt)
+		#}
+	ELSE
+		#{
+		PRINT(CUST.ASTPRV.crAmt)
+		CUST.ASTPRV.amt = CDOUBLE(CUST.ASTPRV.crAmt)
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------
+	#	sum of dr
+	#--------------------------------------------------------------
+	sv_s = "drAmt| SELECT SUM(tran_amt) "
+	sv_s = sv_s + "FROM TBAADM.ACPART "
+	sv_s = sv_s + "WHERE part_tran_type = 'D' "
+	sv_s = sv_s + "AND b2k_type = 'ACCNT' "
+	sv_s = sv_s + "AND b2k_id = ?SVAR "
+	sv_s = sv_s + "AND partitioned_acid = ?SVAR "
+	sv_s = sv_s + "AND pstd_flg != 'N' "
+	sv_s = sv_s + "AND bank_id = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.lv_acid + "|" +  CUST.ASTPRV.acId + "|" +  BANCS.STDIN.contextBankId
+	
+	PRINT(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.drAmt  = BANCS.OUTPARAM.drAmt
+	PRINT(CUST.ASTPRV.drAmt )
+	IF (CUST.ASTPRV.drAmt == "") THEN
+	#{
+		CUST.ASTPRV.drAmt = "0"
+		#}
+	ELSE
+		#{
+		CUST.ASTPRV.drAmt = CDOUBLE(CUST.ASTPRV.drAmt )
+	#}
+	ENDIF
+	
+	PRINT(CUST.ASTPRV.crAmt)
+	PRINT(CUST.ASTPRV.drAmt )
+	
+	BANCS.OUTPUT.newintsusp = CDOUBLE(CUST.ASTPRV.crAmt) - CDOUBLE(CUST.ASTPRV.drAmt)
+	PRINT(BANCS.OUTPUT.newintsusp)
+	
+	#--------------------------------------------------------------------------
+	#	Already provisioned amt
+	#------------------------------------------------------------------------------
+	
+	sv_i = BANCS.INPUT.lv_crbacid + "|" + BANCS.STDIN.homeCrncyCode  + "|" + BANCS.INPUT.lv_solId
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	IF (sv_u == 1 ) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.AcctId)
+	
+	sv_s = "acid|SELECT acid "
+	sv_s = sv_s + "FROM TBAADM.GAM "
+	sv_s = sv_s + "WHERE foracid = ?SVAR "
+	sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+	sv_s = sv_s + "AND del_flg = 'N' "
+	sv_S = sv_s + "AND bank_id = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.OUTPARAM.AcctId  + "|" +  BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	sv_d =  urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.acId1 = BANCS.OUTPARAM.acid
+	PRINT(CUST.ASTPRV.acId1)
+	
+	#--------------------------------------------------------------------------------------
+	#	sum of cr
+	#---------------------------------------------------------------------------------------
+	
+	sv_s = "amt1|SELECT SUM(tran_amt) "
+	sv_s = sv_s + "FROM TBAADM.ACPART "
+	sv_s = sv_s + "WHERE part_tran_type = 'C' "
+	sv_s = sv_s + "AND b2k_type = 'ACCNT' "
+	sv_s = sv_s + "AND b2k_id = ?SVAR "
+	sv_s = sv_s + "AND partitioned_acid = ?SVAR "
+	sv_s = sv_s + "AND pstd_flg != 'N' "
+	sv_S = sv_s + "AND bank_id = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.lv_acid + "|" +  CUST.ASTPRV.acId1 + "|" +  BANCS.STDIN.contextBankId
+	
+	PRINT(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.amt1 = BANCS.OUTPARAM.amt1
+	PRINT(CUST.ASTPRV.amt1 )
+	IF (CUST.ASTPRV.amt1  == "") THEN
+	#{
+		CUST.ASTPRV.amt1  = "0"
+		PRINT(CUST.ASTPRV.amt1 )
+		#}
+	ELSE
+		#{
+		PRINT(CUST.ASTPRV.amt1 )
+		CUST.ASTPRV.amt1 = CDOUBLE(CUST.ASTPRV.amt1)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------------------------
+	#	sum of dr
+	#------------------------------------------------------------------------------
+	sv_s = "amt2|SELECT SUM(tran_amt) "
+	sv_s = sv_s + "FROM TBAADM.ACPART "
+	sv_s = sv_s + "WHERE part_tran_type = 'D' "
+	sv_s = sv_s + "AND b2k_type = 'ACCNT' "
+	sv_s = sv_s + "AND b2k_id = ?SVAR "
+	sv_s = sv_s + "AND partitioned_acid = ?SVAR "
+	sv_s = sv_s + "AND pstd_flg !='N' "
+	sv_S = sv_s + "AND bank_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.lv_acid + "|" +  CUST.ASTPRV.acId1 + "|" +  BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	CUST.ASTPRV.amt2 = BANCS.OUTPARAM.amt2
+	PRINT(CUST.ASTPRV.amt2)
+	IF (CUST.ASTPRV.amt2 == "") THEN
+	#{
+		CUST.ASTPRV.amt2 = "0"
+		PRINT(CUST.ASTPRV.amt2)
+		#}
+	ELSE
+		#{
+		CUST.ASTPRV.amt2 = CDOUBLE(CUST.ASTPRV.amt2)
+		PRINT(CUST.ASTPRV.amt2)
+	#}
+	ENDIF
+	
+	PRINT(CUST.ASTPRV.amt1)
+	PRINT(CUST.ASTPRV.amt2)
+	
+	BANCS.OUTPUT.prvamt = CDOUBLE(CUST.ASTPRV.amt1) - CDOUBLE(CUST.ASTPRV.amt2)
+	PRINT(BANCS.OUTPUT.prvamt)
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Deleting the Class and Repository
+	#-------------------------------------------------------------------------------------------------------
+	IF (CLASSEXISTS("CUST","ASTPRV") == 1) THEN
+	#{
+		DELETECLASS("CUST","ASTPRV")
+	#}
+	ENDIF
+	
+	IF (REPEXISTS("CUST") == 1) THEN
+	#{
+		DELETEREP("CUST")
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+		
+		TRACE OFF
+END-->

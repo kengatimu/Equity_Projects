@@ -1,0 +1,222 @@
+	########################################################################################################
+	#Name               :validateSim.scr
+	#Date               :18-jul-2020
+	#Author             :Timothy Karemeri
+	#Description        :This script is used to fetch values from Finacle tables
+	#Called script      :None
+	#Calling Script     :None
+	#Input              :
+	#Output             :
+	########################################################################################################
+	
+	
+	
+<--START
+CHECKSUM="e66c17c89c9f19a6a585354sas952c2ea3b515819a139d972mnf2f1e997ff85f5"
+	TRACE ON
+	
+	
+	####################################################################
+	#section      :creating new repository if required
+	#Description  :Checks for the existence o the repository STDWFS and
+	#               creates a new one by that name if it does not exist
+	#####################################################################
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	############################################################################
+	#section      :creating new class if required
+	#Desscription :checks for the existence of the class GLBDATA in the
+	#repository
+	#               create a new one if it does not exist
+	##############################################################################
+	
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+
+	#}
+	ENDIF
+	############################################
+	#Assigns the values to the variables
+	############################################
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	sv_y=0
+	
+	CUST.DATA.DccId=""
+	sv_a = urhk_GetChannelInfo("")
+	print(sv_a)
+	IF (sv_a!=0) THEN
+	#{
+		sv_u = urhk_SRV_SetErr("Error: Channel ID is not passed/Incorrect")
+		BANCS.OUTPUT.successOrFailure="F"
+		GOTO ENDOFSCRIPT
+	#}
+	else
+	#{
+		CUST.DATA.DccId = BANCS.OUTPARAM.DccId
+		print(CUST.DATA.DccId)
+
+	ENDIF
+
+	
+	#========================================================
+	# Checking if the Inputs are provided in Resquest
+	#========================================================
+	CUST.DATA.errorMsg =""
+	IF (strlen(BANCS.INPUT.opAcct)=="") THEN
+	#{
+		CUST.DATA.errorMsg = "Enter Customers Operative Account"
+		CUST.DATA.successOrFailure="F"
+		CUST.DATA.errorCode="ERR006"
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		CUST.DATA.opAcct=BANCS.INPUT.opAcct
+		print (CUST.DATA.opAcct)
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.opAcct)
+                PRINT(sv_u)
+		IF(sv_u != 0) THEN
+			CUST.DATA.errorMsg = "Enter A Valid Account Number"
+			CUST.DATA.successOrFailure="F"
+			CUST.DATA.errorCode="ERR006"
+			GOTO ENDOFSCRIPT
+		ENDIF
+			
+	#}
+	ENDIF
+	
+ 
+	IF (strlen(BANCS.INPUT.nationalId)=="") THEN
+	#{
+		
+		CUST.DATA.errorMsg = "Enter Customers National ID"
+		CUST.DATA.successOrFailure="F"
+		CUST.DATA.errorCode="ERR006"
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		CUST.DATA.nationalId=BANCS.INPUT.nationalId
+		print (CUST.DATA.nationalId)
+	#}
+	ENDIF
+
+
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.opAcct + "|" + CUST.DATA.nationalId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.opAcct + "|" + CUST.DATA.nationalId 
+		print (BANCS.INPARAM.BINDVARS)
+
+			sv_s = "totalCount| "
+			sv_s = sv_s + " select count(*) from (SELECT * from tbaadm.dtd where bank_id =?SVAR "
+			sv_s = sv_s + " and acid in (select acid from tbaadm.gam where "
+			sv_s = sv_s + " bank_id = ?SVAR and foracid = ?SVAR "
+			sv_s = sv_s + " and cif_id in (Select cif_id from tbaadm.cmg where "
+			sv_s = sv_s + " NAT_ID_CARD_NUM = ?SVAR )) "
+			sv_s = sv_s + " AND PART_TRAN_TYPE ='D' "
+			sv_s = sv_s + " and TRAN_SUB_TYPE = 'CI' "
+			#sv_s = sv_s + " and  (TRAN_PARTICULAR like '%WITHDRWL%' "
+			#sv_s = sv_s + " or TRAN_PARTICULAR like '%ATM%/CASH/%' ) "
+			sv_s = sv_s + " UNION "
+			sv_s = sv_s + " select * from tbaadm.htd where bank_id =?SVAR "
+			sv_s = sv_s + " and acid in (select acid from tbaadm.gam where "
+			sv_s = sv_s + " bank_id = ?SVAR and foracid = ?SVAR "
+			sv_s = sv_s + " and cif_id in (Select cif_id from tbaadm.cmg where "
+			sv_s = sv_s + " NAT_ID_CARD_NUM = ?SVAR )) "
+			sv_s = sv_s + " AND PART_TRAN_TYPE ='D' "
+			sv_s = sv_s + " and TRAN_SUB_TYPE = 'CI' )"
+			#sv_s = sv_s + " and  (TRAN_PARTICULAR like '%WITHDRWL%' "
+			#sv_s = sv_s + " or TRAN_PARTICULAR like '%ATM%/CASH/%' ) "
+			print(sv_s)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d == 0)THEN
+			#{
+				CUST.DATA.totalCount = BANCS.OUTPARAM.totalCount
+				print (CUST.DATA.totalCount)
+				
+				IF (CINT(CUST.DATA.totalCount) > 0) THEN
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.opAcct + "|" + CUST.DATA.nationalId 
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.opAcct + "|" + CUST.DATA.nationalId 
+					print (BANCS.INPARAM.BINDVARS)
+
+					sv_s = "LastDebitAmt| "
+					sv_s = sv_s + " select tran_amt from ( "
+					sv_s = sv_s + " select max(tran_date), tran_amt from ( "
+					sv_s = sv_s + " select tran_amt,tran_date from ( "
+					sv_s = sv_s + " select tran_amt,tran_date from tbaadm.htd where bank_id =?SVAR " 
+					sv_s = sv_s + " and acid in (select acid from tbaadm.gam where bank_id = ?SVAR and foracid =?SVAR "
+					sv_s = sv_s + " and cif_id in (Select cif_id from tbaadm.cmg  "
+					sv_s = sv_s + " where  NAT_ID_CARD_NUM = ?SVAR ))  AND PART_TRAN_TYPE ='D' "
+					sv_s = sv_s + " and TRAN_SUB_TYPE = 'CI'  group by tran_amt,tran_date order by tran_date desc)where rownum<2  "
+					sv_s = sv_s + " union "
+					sv_s = sv_s + " select tran_amt,tran_date from ( "
+					sv_s = sv_s + " select tran_amt,tran_date from tbaadm.dtd where bank_id =?SVAR "
+					sv_s = sv_s + " and acid in (select acid from tbaadm.gam where bank_id = ?SVAR and foracid =?SVAR " 
+					sv_s = sv_s + " and cif_id in (Select cif_id from tbaadm.cmg  "
+					sv_s = sv_s + " where  NAT_ID_CARD_NUM = ?SVAR ))  AND PART_TRAN_TYPE ='D'  " 
+					sv_s = sv_s + " and TRAN_SUB_TYPE = 'CI'  group by tran_amt,tran_date order by tran_date desc)where rownum<2 )  "
+					sv_s = sv_s + " group by tran_amt,tran_date order by tran_date desc) where rownum<2 "
+
+#					sv_s = sv_s + " select tran_amt from (select tran_amt,max(PSTD_DATE) from tbaadm.dtd where bank_id =?SVAR "
+#					sv_s = sv_s + " and acid in (select acid from tbaadm.gam where bank_id = ?SVAR and foracid = ?SVAR "
+#					sv_s = sv_s + " and cif_id in (Select cif_id from tbaadm.cmg where "
+#					sv_s = sv_s + " NAT_ID_CARD_NUM = ?SVAR )) "
+#					sv_s = sv_s + " AND PART_TRAN_TYPE ='D' "
+#					sv_s = sv_s + " and TRAN_SUB_TYPE = 'CI' "
+#					#sv_s = sv_s + " and  (TRAN_PARTICULAR like '%WITHDRWL%' "
+#					#sv_s = sv_s + " or TRAN_PARTICULAR like '%ATM%/CASH/%' ) "
+#					sv_s = sv_s + " group by tran_amt "
+#					sv_s = sv_s + " order by max(PSTD_DATE) desc ) "
+#					sv_s = sv_s + " where rownum<2 "
+
+						print(sv_s)
+						sv_d = urhk_dbSelectWithBind(sv_s)
+						PRINT(sv_d)
+
+						IF(sv_d == 0)THEN
+						#{
+							CUST.DATA.LastDebitAmt = BANCS.OUTPARAM.LastDebitAmt
+							print (CUST.DATA.LastDebitAmt)
+							sv_z = urhk_SetOrbOut("LASTDEBIT_AMOUNT|"+CUST.DATA.LastDebitAmt)
+							print(sv_z)
+						#}
+						ENDIF
+				#}
+				ELSE
+				#{
+					CUST.DATA.errorMsg =  "No debit transaction for " + CUST.DATA.opAcct
+					CUST.DATA.flag1="0"
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			
+			#}
+			ELSE
+			#{
+				CUST.DATA.errorMsg =  "Unable to find the Parameter value for " + CUST.DATA.opAcct
+				CUST.DATA.flag1="0"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+	ENDOFSCRIPT:
+	IF(CUST.DATA.errorMsg !="")THEN
+		sv_z = urhk_SetOrbOut("code|0")
+		sv_z = urhk_SetOrbOut("Errormsg|" + CUST.DATA.errorMsg)
+		CUST.DATA.successOrFailure="F"
+		CUST.DATA.errorCode="ERR016"
+	ENDIF
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

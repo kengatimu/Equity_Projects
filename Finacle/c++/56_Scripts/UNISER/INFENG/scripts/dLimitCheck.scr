@@ -1,0 +1,352 @@
+#---------------------------------------------------------------
+#######################################################################
+<--start
+
+#===========================================================================================*
+#============================================================================================*
+
+
+TRACE ON
+
+#-----------------------------------------------------------------
+# #-----------------------------------------------------------------
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST", "DATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "DATA", 5)
+	ENDIF
+	
+	IF ( (BANCS.INPUT.DccId == "WPD") AND (BANCS.INPUT.Command == "CWDR") )THEN
+	#{
+	CUST.DATA.limAmt = "12000000"
+	print(CUST.DATA.limAmt)
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "UGX") AND (BANCS.INPUT.TranCrncy == "UGX") )THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.TranCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			CUST.DATA.totamt = cdouble(CUST.DATA.totamt) + cdouble(CUST.DATA.tranAmt)
+			print(CUST.DATA.totamt)
+			
+			IF(CDOUBLE(CUST.DATA.totamt) > CDOUBLE(CUST.DATA.limAmt) )THEN
+			#{
+				BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+			#}
+			ENDIF
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "USD") AND (BANCS.INPUT.TranCrncy == "UGX"))THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.StlmntCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			
+			IF (CUST.DATA.totamt > 0) THEN
+			#{
+				# CONVERSION
+				BANCS.INPARAM.InputAmount  = CUST.DATA.totamt
+				BANCS.INPARAM.FromCurrency = BANCS.INPUT.StlmntCrncy
+				BANCS.INPARAM.ToCurrency   = "UGX"
+				BANCS.INPARAM.RateCode     = "CRC"
+				BANCS.INPARAM.Rate         = ""
+
+				sv_z=urhk_B2k_ConvertAmount("")
+				print(sv_z)
+				
+				IF(sv_z == 0)THEN
+				#{
+					CUST.DATA.convAmt = BANCS.OUTPARAM.OutputAmount
+					print(CUST.DATA.convAmt)
+					
+					CUST.DATA.dailyAmt = CDOUBLE(CUST.DATA.convAmt) + CDOUBLE(CUST.DATA.tranAmt)
+					PRINT(CUST.DATA.dailyAmt)
+				ELSE
+					BANCS.OUTPUT.ReservedField3="Failed To convert Amount Local Currency"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+				#}
+				ENDIF
+			ELSE
+				CUST.DATA.dailyAmt = CUST.DATA.tranAmt
+				PRINT(CUST.DATA.dailyAmt)
+			#}
+			ENDIF
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		IF(CDOUBLE(CUST.DATA.dailyAmt) > CDOUBLE(CUST.DATA.limAmt))THEN
+		#{
+			BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "USD") AND (BANCS.INPUT.TranCrncy == "USD") )THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.TranCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			
+			CUST.DATA.totamt = cdouble(CUST.DATA.totamt) + cdouble(CUST.DATA.tranAmt)
+			print(CUST.DATA.totamt)
+			
+			PRINT("CONVERSION")
+		
+			BANCS.INPARAM.InputAmount  = CUST.DATA.totamt
+			BANCS.INPARAM.FromCurrency = BANCS.INPUT.StlmntCrncy
+			BANCS.INPARAM.ToCurrency   = "UGX"
+			BANCS.INPARAM.RateCode     = "CRC"
+			BANCS.INPARAM.Rate         = ""
+
+			sv_z=urhk_B2k_ConvertAmount("")
+			print(sv_z)
+			
+			IF(sv_z == 0)THEN
+			#{
+				CUST.DATA.convAmt = BANCS.OUTPARAM.OutputAmount
+				print(CUST.DATA.convAmt)
+				
+				IF(CDOUBLE(CUST.DATA.convAmt) > CDOUBLE(CUST.DATA.limAmt))THEN
+				#{
+					BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+				#}
+				ENDIF
+			ELSE
+				BANCS.OUTPUT.ReservedField3="Failed To convert Amount Local Currency"
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+			#}
+			ENDIF
+			
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIf
+	#}
+	ENDIF
+#}
+ENDIF
+
+
+IF ( (BANCS.INPUT.DccId == "SWT") AND (BANCS.INPUT.Command == "CWDR"))THEN
+#{
+	CUST.DATA.limAmt = "2000000"
+	print(CUST.DATA.limAmt)
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "UGX") AND (BANCS.INPUT.TranCrncy == "UGX") )THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.TranCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			CUST.DATA.totamt = cdouble(CUST.DATA.totamt) + cdouble(CUST.DATA.tranAmt)
+			print(CUST.DATA.totamt)
+			
+			IF(CDOUBLE(CUST.DATA.totamt) > CDOUBLE(CUST.DATA.limAmt) )THEN
+			#{
+				BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+			#}
+			ENDIF
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "USD") AND (BANCS.INPUT.TranCrncy == "UGX"))THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.StlmntCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			
+			IF (CUST.DATA.totamt > 0) THEN
+			#{
+				# CONVERSION
+				BANCS.INPARAM.InputAmount  = CUST.DATA.totamt
+				BANCS.INPARAM.FromCurrency = BANCS.INPUT.StlmntCrncy
+				BANCS.INPARAM.ToCurrency   = "UGX"
+				BANCS.INPARAM.RateCode     = "CRC"
+				BANCS.INPARAM.Rate         = ""
+
+				sv_z=urhk_B2k_ConvertAmount("")
+				print(sv_z)
+				
+				IF(sv_z == 0)THEN
+				#{
+					CUST.DATA.convAmt = BANCS.OUTPARAM.OutputAmount
+					print(CUST.DATA.convAmt)
+					
+					CUST.DATA.dailyAmt = CDOUBLE(CUST.DATA.convAmt) + CDOUBLE(CUST.DATA.tranAmt)
+					PRINT(CUST.DATA.dailyAmt)
+				ELSE
+					BANCS.OUTPUT.ReservedField3="Failed To convert Amount Local Currency"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+				#}
+				ENDIF
+			ELSE
+				CUST.DATA.dailyAmt = CUST.DATA.tranAmt
+				PRINT(CUST.DATA.dailyAmt)
+			#}
+			ENDIF
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		IF(CDOUBLE(CUST.DATA.dailyAmt) > CDOUBLE(CUST.DATA.limAmt))THEN
+		#{
+			BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF( (BANCS.INPUT.StlmntCrncy == "USD") AND (BANCS.INPUT.TranCrncy == "USD"))THEN
+	#{
+		sv_q = "totamt |select case when sum(TRAN_AMT) is null then 0 else sum (TRAN_AMT)  end tran_amt  from tbaadm.dtd WHERE"
+		sv_q = sv_q + " TRAN_CRNCY_CODE=?SVAR and tran_date=to_date(?SVAR, 'dd-mm-yy') and bank_id=?SVAR and tran_sub_type ='CI' AND PART_TRAN_TYPE ='D' AND TRAN_TYPE='T' and acid in (select acid from tbaadm.gam  where foracid=?SVAR) "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.TranCrncy +"|"+ BANCS.STDIN.BODDate +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.Foracid
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+		
+		IF(sv_c == 0)THEN
+		#{
+			CUST.DATA.totamt = BANCS.OUTPARAM.totamt
+			print(CUST.DATA.totamt)
+			
+			CUST.DATA.totamt = cdouble(CUST.DATA.totamt) + cdouble(CUST.DATA.tranAmt)
+			print(CUST.DATA.totamt)
+			
+			PRINT("CONVERSION")
+		
+			BANCS.INPARAM.InputAmount  = CUST.DATA.totamt
+			BANCS.INPARAM.FromCurrency = BANCS.INPUT.StlmntCrncy
+			BANCS.INPARAM.ToCurrency   = "UGX"
+			BANCS.INPARAM.RateCode     = "CRC"
+			BANCS.INPARAM.Rate         = ""
+
+			sv_z=urhk_B2k_ConvertAmount("")
+			print(sv_z)
+			
+			IF(sv_z == 0)THEN
+			#{
+				CUST.DATA.convAmt = BANCS.OUTPARAM.OutputAmount
+				print(CUST.DATA.convAmt)
+				
+				IF(CDOUBLE(CUST.DATA.convAmt) > CDOUBLE(CUST.DATA.limAmt))THEN
+				#{
+					BANCS.OUTPUT.ReservedField3="Transaction Amount Exceeds Daily Limit"
+					BANCS.OUTPUT.RespCode = "99"
+					BANCS.OUTPUT.successOrFailure = "F"
+				#}
+				ENDIF
+			ELSE
+				BANCS.OUTPUT.ReservedField3="Failed To convert Amount Local Currency"
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F"
+			#}
+			ENDIF
+			
+		ELSE
+			BANCS.OUTPUT.ReservedField3="Transaction Processing Failed"
+			BANCS.OUTPUT.RespCode = "99"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+
+ENDOFSCRIPT:
+	exitscript
+
+TRACE OFF
+END-->

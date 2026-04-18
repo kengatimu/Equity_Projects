@@ -1,0 +1,202 @@
+#============================================================
+
+# Product: Finacle Core
+# Category: script name based
+# Script: getMaxDPDCount.sscr
+# Type: getMaxDPDCount|NA
+# Description: Not Available
+#============================================================
+
+#-------------------------------------------------------------------------------------
+#                           getMaxDPDCount.sscr
+#
+#A New Script Hook in SASCL which calculates the dpd value.
+#
+#-------------------------------------------------------------------------------------
+# Author : Aarthi Ramachandran
+# Date   : 25-05-2007
+#-------------------------------------------------------------------------------------
+<--START
+trace on
+	
+
+sv_a = BANCS.INPUT.CurrentDpd
+PRINT(sv_a)	
+sv_b = BANCS.INPUT.AcctId
+PRINT(sv_b)	
+sv_c = BANCS.INPUT.BillId
+PRINT(sv_c)	
+sv_d = BANCS.INPUT.CustId
+PRINT(sv_d)	
+sv_e = BANCS.INPUT.SolId
+PRINT(sv_e)	
+sv_f = BANCS.INPUT.SchmCode
+print(sv_f)
+sv_g = BANCS.INPUT.SchmType
+PRINT(sv_g)	
+sv_h = BANCS.INPUT.RegType
+PRINT(sv_h)	
+sv_i = BANCS.INPUT.RegSubType
+PRINT(sv_i)	
+sv_j = BANCS.INPUT.Crncy
+PRINT(sv_j)	
+PRINT(BANCS.STDIN.contextBankId)
+
+sv_n = MID$(BANCS.STDIN.BODDate,0,10)
+print(sv_n)
+
+# Logic to fetch record form custom table to reset DPD #
+# dpd_update_flg will have Y, N, D
+# N signifies – dpd reset not required because there is no overdue demand.
+# Y signifies – dpp reset required because there is overdue demand. 
+# D signifies – dpd update is done.
+
+sv_s = "foracid, processed_date, nxtDmdDate|select FORACID,PROCESSED_ON, to_char(next_demand_date,'dd-mm-yyyy')"
+sv_s = sv_s+" from custom.custom_moratorium where FORACID=?SVAR AND BANK_ID = ?SVAR and dmd_overdue_flg='Y'"
+sv_s = sv_s+" and PROCESSED_ON = (select max(processed_on) from custom.custom_moratorium where FORACID=?SVAR )" 
+
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.AcctId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.AcctId
+
+PRINT(sv_s)
+
+sv_z = urhk_dbSelectWithBind(sv_s)
+	IF(sv_z == 0) THEN
+	#{
+	
+		sv_o = BANCS.OUTPARAM.nxtDmdDate
+		PRINT(sv_o)
+		PRINT(BANCS.OUTPARAM.processed_date)
+		PRINT(sv_n)
+
+		BANCS.INPARAM.date1 = sv_n
+		BANCS.INPARAM.date2 = sv_o
+		print(BANCS.INPARAM.date1)
+		print(BANCS.INPARAM.date2)
+	
+		sv_p = urhk_B2k_dateDiff("")
+		
+		if (sv_p==0) then
+        	PRINT(BANCS.OUTPARAM.dateDiff)
+		sv_u = BANCS.OUTPARAM.dateDiff	
+		endif
+		
+		## In pre holiday time DPD will be zero ##
+		IF(sv_u <= 0) THEN 
+		#{
+			BANCS.OUTPUT.NewDPD = "0"	
+			print(BANCS.OUTPUT.NewDPD)
+		#}
+		ELSE
+		#{			
+			sv_q = "lastPaymentDate,pendDmdDate|select to_char(last_adj_date,'dd-mm-yyyy'),to_char(max_pending_dmd_Date,'dd-mm-yyyy') from tbaadm.lam where acid in "
+			sv_q = sv_q + "(select acid from tbaadm.gam where foracid=?SVAR AND BANK_ID = ?SVAR and acct_cls_flg <> 'Y')"
+		
+			BANCS.INPARAM.BINDVARS = BANCS.INPUT.AcctId +"|"+ BANCS.STDIN.contextBankId
+		
+			PRINT(sv_q)
+		
+			sv_r = urhk_dbSelectWithBind(sv_q)
+			print(sv_r)
+		
+			IF(sv_r == 0) THEN
+			#{
+				sv_k = BANCS.OUTPARAM.lastPaymentDate
+				print(sv_k)
+				sv_v = BANCS.OUTPARAM.pendDmdDate
+				print(sv_v)
+			#}
+			ENDIF
+
+			IF(sv_v == "") THEN
+            #{
+                BANCS.OUTPUT.NewDPD = Format$(cint(sv_a),"%d")
+                print(BANCS.OUTPUT.NewDPD)
+            #}
+			ENDIF
+
+	        BANCS.INPARAM.date1 = sv_k
+        	BANCS.INPARAM.date2 = sv_o
+            print(BANCS.INPARAM.date1)
+            print(BANCS.INPARAM.date2)
+
+			sv_p = urhk_B2k_dateDiff("")
+			
+	        if (sv_p==0) then
+				PRINT(BANCS.OUTPARAM.dateDiff)
+				sv_u = BANCS.OUTPARAM.dateDiff
+            endif
+
+			## If last payment is done on or after holiday ##
+			IF((sv_u >= 0)AND (sv_v != "")) THEN
+			#{
+				BANCS.INPARAM.date1 = sv_v
+        	    BANCS.INPARAM.date2 = sv_o
+               	print(BANCS.INPARAM.date1)
+                print(BANCS.INPARAM.date2)
+
+				sv_p = urhk_B2k_dateDiff("")
+	        	if (sv_p==0) then
+       		        PRINT(BANCS.OUTPARAM.dateDiff)
+               		sv_u = BANCS.OUTPARAM.dateDiff
+                endif
+				
+				## If demand pending date is post holiday date then system will caluclate the dpd ##
+				## In case there is no pending demand post holiday system will calculate dpd ##
+				IF(sv_u > 0) THEN
+				#{
+					BANCS.OUTPUT.NewDPD = Format$(cint(sv_a),"%d")	
+					print(BANCS.OUTPUT.NewDPD)
+				#}
+				ELSE
+				#{
+				## If demand pending date is pre holiday date, newDPD will adjust the number of days from last pending ##
+				## demand date till holiday date ##
+				
+					BANCS.INPARAM.date1 = sv_o
+        	        BANCS.INPARAM.date2 = sv_v
+               		print(BANCS.INPARAM.date1)
+                	print(BANCS.INPARAM.date2)
+
+					sv_p = urhk_B2k_dateDiff("")
+	        	    if (sv_p==0) then
+						PRINT(BANCS.OUTPARAM.dateDiff)
+               		 	sv_u = BANCS.OUTPARAM.dateDiff
+                	endif
+					print(sv_a)
+					print(sv_u)
+					
+					sv_w = CINT(sv_a)-CINT(sv_u)
+					PRINT(sv_w)
+					
+					BANCS.OUTPUT.NewDPD = Format$(sv_w,"%d")
+					print(BANCS.OUTPUT.NewDPD)
+				#}
+				ENDIF
+			#}
+			ENDIF
+				
+		#}
+		ENDIF
+	
+		sv_m = "update custom.custom_moratorium set dpd_update_flg = 'D'"
+		sv_m = sv_m+" where FORACID=?SVAR AND BANK_ID = ?SVAR and dmd_overdue_flg='Y'"
+		sv_m = sv_m+" and dpd_update_flg='Y' and PROCESSED_ON = (select max(processed_on) from custom.custom_moratorium where FORACID=?SVAR)" 
+			
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.AcctId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.INPUT.AcctId
+		print(sv_m)
+			
+		sv_t = urhk_dbSQLWithBind(sv_m)
+		PRINT(sv_t)
+	#}
+	ELSE
+	#{
+		BANCS.OUTPUT.NewDPD = Format$(cint(sv_a),"%d")	
+		print(BANCS.OUTPUT.NewDPD)
+	#}	
+	ENDIF
+
+PRINT(BANCS.OUTPUT.NewDPD)
+
+trace off
+EXITSCRIPT
+END-->

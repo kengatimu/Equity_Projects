@@ -1,0 +1,690 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Name            : cttum_validate.scr
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Description     :
+#  Date            : 30-08-2023
+#  Author          : Harrison Ruiru
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             30-08-2023      Harrison Ruiru          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+<--START
+TRACE ON
+
+
+	sv_u = urhk_B2k_PrintRepos("BANCS")
+	print(sv_u)
+
+	libname CUSTOMSO
+	#======================================================================
+	#       Repository And Class Creation
+	#=====================================================================
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+	CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+	#{
+	CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+
+
+	if(classexists("MTT","InputDetails")==0)then
+		createclass("MTT","InputDetails",5)
+	endif
+	
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+	print(sv_a)
+
+	if(sv_a==0)then
+		CUST.DATA.FilePath= MTT.InputDetails.Argument1
+		print(CUST.DATA.FilePath)
+		CUST.DATA.file_name= MTT.InputDetails.Argument2
+		print(CUST.DATA.file_name)
+		CUST.DATA.path= MTT.InputDetails.Argument3
+		print(CUST.DATA.path)
+		CUST.DATA.RptFileName= MTT.InputDetails.Argument4
+		print(CUST.DATA.RptFileName)
+		CUST.DATA.UserId= MTT.InputDetails.Argument5
+		print(CUST.DATA.UserId)
+
+	sv_z = urhk_dbSelectWithBind("TimeStamp|select to_char(sysdate,'hh24miss') from dual ")
+		CUST.DATA.TimeStamp                =       BANCS.OUTPARAM.TimeStamp
+		CUST.DATA.RptFilePath = CUST.DATA.path +"/"+CUST.DATA.UserId+"/"+CUST.DATA.RptFileName+"_"+CUST.DATA.TimeStamp+"_Upload_Report.TXT"
+
+	else
+		CUST.DATA.FilePath= ""
+	endif
+
+	#==============================================================================
+	#       Intialising Variables
+	#=============================================================================
+
+	CUST.DATA.SOURCEFILE = CUST.DATA.FilePath
+	print(CUST.DATA.SOURCEFILE)
+
+	CUST.DATA.failRpt = "validationReport_"+CUST.DATA.TimeStamp+"_FAI.txt"
+	print(CUST.DATA.failRpt)
+	CUST.DATA.sucRpt = "validationReport_"+CUST.DATA.TimeStamp+"_SUC.txt"
+	print(CUST.DATA.sucRpt)
+
+	lv_l = 0
+	lv_l =format$(lv_l,"%d")
+
+	CUST.DATA.failCnt = lv_l
+	CUST.DATA.sucCnt = lv_l
+	CUST.DATA.valDrAcc = "N"
+
+	lv_b = "*****************************CTTUM VALIDATION REPORT***************************************"
+	sv_u = system("echo '"+lv_b+"' >> '"+CUST.DATA.failRpt +"' ")
+	sv_u = system("echo '"+lv_b+"' >> '"+CUST.DATA.sucRpt +"' ")
+
+	sv_r = urtn_fileAccess(CUST.DATA.SOURCEFILE)
+	print(sv_r)
+	IF ( sv_r != 0 ) THEN
+	#{
+			sv_r = urhk_TBAF_DispMesg("Unable to Access FILE_LIST")
+			sv_v = "UNABLE TO ACCESS THE LIST OF FILES"
+			GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	#--------------------------
+	#        OPENING THE FILE
+	#--------------------------
+
+	sv_t = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	print(sv_t)
+	IF (sv_t < 0) THEN
+	#{
+			print("Unable to open the file")
+			GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		print("File Opened SuccessFully")
+		CUST.DATA.succIndex = sv_t
+	#}
+	ENDIF
+
+
+	#===================================================================================================================
+	#       Read The File Data
+	#===================================================================================================================
+
+	CUST.DATA.fileRec = urtn_fileOpen(CUST.DATA.SOURCEFILE + "|r")
+	PRINT(CUST.DATA.fileRec)
+	sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+	PRINT(sv_t)
+	IF(sv_t != 0) THEN
+	#{
+			sv_z = "SuccessOrFailure|N"
+			sv_u = urhk_SetOrbOut(sv_z)
+			sv_z = "Error_03|ERROR^Upload file is empty^fileName"
+			sv_u = urhk_SetOrbOut(sv_z)
+			GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	sv_z = 0
+	sv_y = 0
+	CUST.DATA.RECCNT = 0
+	#=======================================================================================
+	#       Split And Storage Of data in file
+	#=======================================================================================
+
+	WHILE(sv_t == 0)
+	#{
+
+		sv_y =format$(sv_z,"%d")
+		CUST.DATA.RECCNT = cint(CUST.DATA.RECCNT)+1
+		CUST.DATA.inputRecord         =       TOUPPER(CUST.DATA.inputRecord)
+		sv_k = CUST.DATA.inputRecord
+		print(sv_k)
+		sv_q = getposition(sv_k,",")
+		print(sv_q)
+
+		if(sv_q == 0) then
+		#{
+    		sv_z = "SuccessOrFailure|N"
+    		sv_u = urhk_SetOrbOut(sv_z)
+    		sv_z = "Error_03|ERROR^Enter an Valid file^upldFile"
+    		sv_u = urhk_SetOrbOut(sv_z)
+    		EXITSCRIPT
+		#}
+		ENDIF
+
+		sv_g = 0
+		sv_n = 1
+		
+		lv_y = CUST.DATA.RECCNT
+		print(lv_y)
+
+		sv_v = "valFai_" +sv_y
+		lv_z = "valSuc_" +sv_y
+		
+		("CUST").("DATA").(sv_v) = ""
+		("CUST").("DATA").(lv_z) = ""
+		CUST.DATA.valPassFlg = "Y"
+
+		sv_l = STRLEN (CUST.DATA.inputRecord)
+		sv_c = CUST.DATA.inputRecord
+		print(sv_c)
+		sv_q = getposition(sv_c,",")
+		print(sv_q)
+		CUST.DATA.Dr_account_number= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.Dr_account_number)
+
+        #***VALIDATE DR ACCOUNT***#
+
+        if(CUST.DATA.Dr_account_number != "")then
+        #{
+			lv_d = strlen(CUST.DATA.Dr_account_number)
+			print(lv_d)
+
+			lv_s = trim(CUST.DATA.Dr_account_number)
+			print(lv_s)
+
+			lv_j = strlen(lv_s)
+			print(lv_j)
+
+	    	if(lv_d != lv_j)then
+	    	#{
+	    		print("Account has spaces/blank")
+	    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr account has blank spaces->"+CUST.DATA.Dr_account_number+"|"
+				CUST.DATA.valPassFlg = "N"
+				CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	    	#}
+	    	endif
+
+	    	lv_a = urhk_getAcctDetailsInRepository(CUST.DATA.Dr_account_number)
+	        print(lv_a)
+
+	        if(lv_a == 0)then
+	        #{
+	            print("Valid account")
+	            CUST.DATA.acctClsFlg = BANCS.OUTPARAM.acctCloseflg
+                print(CUST.DATA.acctClsFlg)
+                if(CUST.DATA.acctClsFlg == "Y")then
+                #{
+                    ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Closed->"+CUST.DATA.Dr_account_number+"|"
+                    CUST.DATA.valPassFlg = "N"
+                    CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+                else 
+                	CUST.DATA.valPassFlg = "Y"
+                	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account not Closed->"+CUST.DATA.Dr_account_number+"|"
+                #}
+                endif 
+
+                CUST.DATA.freezCode = BANCS.OUTPARAM.freezeCode
+                print(CUST.DATA.freezCode)
+                if( (CUST.DATA.freezCode == "T") OR (CUST.DATA.freezCode == "C"))then
+                #{
+                    ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Frozen,Freeze Code->"+CUST.DATA.freezCode+"->"+CUST.DATA.Dr_account_number+"|"
+                    CUST.DATA.valPassFlg = "N"
+                    CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+                else 
+                	CUST.DATA.valPassFlg = "Y"
+                	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account not Frozen->"+CUST.DATA.Dr_account_number+"|"
+                #}
+                endif
+
+	            lv_u = urhk_B2k_ForacidToAcid(CUST.DATA.Dr_account_number)
+	            print(lv_u)
+
+	            if(lv_u == 0)then
+	            #{
+	                BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+					print(BANCS.INPARAM.acid)
+
+	                lv_t = urhk_getAcctStatus("")
+	                print(lv_t)
+	                if(lv_t == 0)then
+	                #{
+	                    CUST.DATA.acctStatus = BANCS.OUTPARAM.acctStatus
+	                    print(CUST.DATA.acctStatus)
+
+	                    if(CUST.DATA.acctStatus == "A")then
+	                    #{
+	                        print("active ")
+	                        CUST.DATA.valPassFlg = "Y"
+	                        ("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account Active->"+CUST.DATA.Dr_account_number+"|"
+	                    #}
+	                    endif
+	                    if(CUST.DATA.acctStatus == "D")then
+	                    #{
+	                        ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Dormant->"+CUST.DATA.Dr_account_number+"|"
+	                        CUST.DATA.valPassFlg = "N"
+	                        CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	                    #}
+	                    endif 
+	                    if(CUST.DATA.acctStatus == "I")then
+	                    #{
+	                        ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Inactive->"+CUST.DATA.Dr_account_number+"|"
+	                        CUST.DATA.valPassFlg = "N"
+	                        CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	                    #}
+	                    endif
+	                #}
+	                endif 
+	            #}
+	            endif
+	        else 
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr account Invalid->"+CUST.DATA.Dr_account_number+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	        #}
+	        endif
+	    else 
+	    	print("Cr Account empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Empty->"+CUST.DATA.Dr_account_number+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+        #}
+        endif 
+
+        
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.Dr_account_currency= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.Dr_account_currency)
+
+
+		if(CUST.DATA.Dr_account_currency != "")then
+		#{
+			lv_d = strlen(CUST.DATA.Dr_account_currency)
+			print(lv_d)
+
+			lv_s = trim(CUST.DATA.Dr_account_currency)
+			print(lv_s)
+
+			lv_j = strlen(lv_s)
+			print(lv_j)
+
+	    	if(lv_d != lv_j)then
+	    	#{
+	    		print("Currency has spaces/blank")
+	    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Currency has blanks spaces->"+CUST.DATA.Dr_account_currency+"|"
+				CUST.DATA.valPassFlg = "N"
+				CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	    	#}
+	    	endif
+
+	        #***VALIDATE CURRENCY***#
+	        sv_a=urhk_B2k_valCrncy(CUST.DATA.Dr_account_currency)
+	        print(sv_a)
+
+	        if(sv_a != 0)then
+	        #{
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Dr Currency Invalid->"+CUST.DATA.Dr_account_currency+"->"+CUST.DATA.Dr_account_number+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	         else 
+	         	CUST.DATA.valPassFlg = "Y"
+	         	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Dr Currency OK->"+CUST.DATA.Dr_account_currency+"|"
+	        #}
+	        endif
+		else 
+			print("Currency empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Currency Empty->"+CUST.DATA.Dr_account_currency+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+		#}
+		endif 
+
+        #------------------------------------------
+        #-- CREDIT ACCOUNT VALIDATIONS START
+        #------------------------------------------
+
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.Cr_account_number= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.Cr_account_number)
+
+        #***VALIDATE CR ACCOUNT***#
+
+        if(CUST.DATA.Cr_account_number != "")then
+        #{
+			lv_d = strlen(CUST.DATA.Cr_account_number)
+			print(lv_d)
+
+			lv_s = trim(CUST.DATA.Cr_account_number)
+			print(lv_s)
+
+			lv_j = strlen(lv_s)
+			print(lv_j)
+
+	    	if(lv_d != lv_j)then
+	    	#{
+	    		print("Account has spaces/blank")
+	    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr account has blank spaces->"+CUST.DATA.Cr_account_number+"|"
+				CUST.DATA.valPassFlg = "N"
+				CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	    	#}
+	    	endif
+
+	    	lv_a = urhk_getAcctDetailsInRepository(CUST.DATA.Cr_account_number)
+	        print(lv_a)
+
+	        if(lv_a == 0)then
+	        #{
+	            print("Valid account")
+	            CUST.DATA.acctClsFlg = BANCS.OUTPARAM.acctCloseflg
+                print(CUST.DATA.acctClsFlg)
+                if(CUST.DATA.acctClsFlg == "Y")then
+                #{
+                    ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Closed->"+CUST.DATA.Cr_account_number+"|"
+                    CUST.DATA.valPassFlg = "N"
+                    CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+                else 
+                	CUST.DATA.valPassFlg = "Y"
+                	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account not Closed->"+CUST.DATA.Cr_account_number+"|"
+                #}
+                endif 
+
+                CUST.DATA.freezCode = BANCS.OUTPARAM.freezeCode
+                print(CUST.DATA.freezCode)
+                if( (CUST.DATA.freezCode == "T") OR (CUST.DATA.freezCode == "C"))then
+                #{
+                    ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Frozen,Freeze Code->"+CUST.DATA.freezCode+"->"+CUST.DATA.Cr_account_number+"|"
+                    CUST.DATA.valPassFlg = "N"
+                    CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+                else 
+                	CUST.DATA.valPassFlg = "Y"
+                	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account not Frozen->"+CUST.DATA.Cr_account_number+"|"
+                #}
+                endif
+
+	            lv_u = urhk_B2k_ForacidToAcid(CUST.DATA.Cr_account_number)
+	            print(lv_u)
+
+	            if(lv_u == 0)then
+	            #{
+	                BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+					print(BANCS.INPARAM.acid)
+
+	                lv_t = urhk_getAcctStatus("")
+	                print(lv_t)
+	                if(lv_t == 0)then
+	                #{
+	                    CUST.DATA.acctStatus = BANCS.OUTPARAM.acctStatus
+	                    print(CUST.DATA.acctStatus)
+
+	                    if(CUST.DATA.acctStatus == "A")then
+	                    #{
+	                        print("active ")
+	                        CUST.DATA.valPassFlg = "Y"
+	                        ("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Account Active->"+CUST.DATA.Cr_account_number+"|"
+	                    #}
+	                    endif
+	                    if(CUST.DATA.acctStatus == "D")then
+	                    #{
+	                        ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Dormant->"+CUST.DATA.Cr_account_number+"|"
+	                        CUST.DATA.valPassFlg = "N"
+	                        CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	                    #}
+	                    endif 
+	                    if(CUST.DATA.acctStatus == "I")then
+	                    #{
+	                        ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Inactive->"+CUST.DATA.Cr_account_number+"|"
+	                        CUST.DATA.valPassFlg = "N"
+	                        CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	                    #}
+	                    endif
+	                #}
+	                endif 
+	            #}
+	            endif
+	        else 
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr account Invalid->"+CUST.DATA.Cr_account_number+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	        #}
+	        endif
+	    else 
+	    	print("Cr Account empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Account Empty->"+CUST.DATA.Cr_account_number+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+        #}
+        endif 
+
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.Cr_account_currency= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.Cr_account_currency)
+
+		if(CUST.DATA.Cr_account_currency != "")then
+		#{
+			#***VALIDATE CURRENCY***#
+
+			lv_d = strlen(CUST.DATA.Cr_account_currency)
+			print(lv_d)
+
+			lv_s = trim(CUST.DATA.Cr_account_currency)
+			print(lv_s)
+
+			lv_j = strlen(lv_s)
+			print(lv_j)
+
+	    	if(lv_d != lv_j)then
+	    	#{
+	    		print("Currency has spaces/blank")
+	    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr currency has blank spaces->"+CUST.DATA.Cr_account_currency+"|"
+				CUST.DATA.valPassFlg = "N"
+				CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	    	#}
+	    	endif
+
+	        lv_a=urhk_B2k_valCrncy(CUST.DATA.Cr_account_currency)
+	        print(lv_a)
+
+	        if(lv_a != 0)then
+	        #{
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Currency Invalid->"+CUST.DATA.Cr_account_currency+"->"+CUST.DATA.Cr_account_number+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	        else 
+	        	CUST.DATA.valPassFlg = "Y"
+	        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Cr Currency OK->"+CUST.DATA.Cr_account_currency+"|"
+	        #}
+	        endif
+	    else 
+	    	print("Cr Currency empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Cr Currency Empty->"+CUST.DATA.Cr_account_currency+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+		#}
+		endif 
+
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.amount= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.amount)
+
+		if(CUST.DATA.amount !="")then
+		#{
+			lv_m = CUST.DATA.amount+"|"+CUST.DATA.Dr_account_currency
+	        lv_a=urhk_B2k_validateAmtWithCrncy(lv_m)
+	        print(lv_a)
+	        if(lv_a != 0)then
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Invalid Amount->"+CUST.DATA.amount+"->"+CUST.DATA.Cr_account_number+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	        else 
+	        	CUST.DATA.valPassFlg = "Y"
+	        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Amount OK->"+CUST.DATA.amount+"|"
+
+	        	if(CUST.DATA.valDrAcc == "Y")then
+	        	#{
+		        	if(CDOUBLE(CUST.DATA.availBal) < CDOUBLE(CUST.DATA.amount) )then
+		        	#{
+		        		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Insufficient Balance. Available Balance->"+trim(CUST.DATA.availBal)+",Debit Amount->"+CUST.DATA.amount+"->"+CUST.DATA.Dr_account_number+"|"
+			            CUST.DATA.valPassFlg = "N"
+			            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+		        	#}
+		        	endif 
+	        	#}
+	        	endif 
+	        endif 
+		else 
+			print("Amount empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Amount Empty->"+CUST.DATA.amount+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+		#}
+		endif 
+        
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.tran_details= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.tran_details)
+
+        if(CUST.DATA.tran_details == "")then
+        #{
+            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Tran Details Empty->"+CUST.DATA.Cr_account_number+"|"
+            CUST.DATA.valPassFlg = "N"
+            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+        else 
+        	CUST.DATA.valPassFlg = "Y"
+        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Tran Details OK.|"
+        #}
+        endif
+
+		sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		CUST.DATA.tran_particular_code= Left$(sv_c,sv_q - 1)
+		print(CUST.DATA.tran_particular_code)
+
+        if(CUST.DATA.tran_particular_code == "")then
+        #{
+            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Tran Particulars Code Empty->"+CUST.DATA.Cr_account_number+"|"
+            CUST.DATA.valPassFlg = "N"
+            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+        else 
+        	CUST.DATA.valPassFlg = "Y"
+        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Tran Particulars Code OK|"
+        #}
+        endif
+
+        sv_l = sv_l - sv_q
+		sv_c = mid$(sv_c,sv_q,sv_l)
+		sv_q = getposition(sv_c,",")
+		print(sv_q)
+
+		if(sv_q > 0)then
+		#{
+			CUST.DATA.tran_date = Left$(sv_c,sv_q - 1)
+			print(CUST.DATA.tran_date)
+		else 
+			sv_l = STRLEN(sv_c)
+	        CUST.DATA.tran_date= MID$(sv_c,sv_q ,sv_l)
+	        print(CUST.DATA.tran_date)
+		#}
+		endif 
+
+		
+
+		if(CUST.DATA.tran_date != "")then
+		#{
+			lv_a = urhk_B2k_valDate(CUST.DATA.tran_date)
+	        print(lv_a)
+
+	        if(lv_a != 0)then
+	        #{
+	            ("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Invalid Date->"+CUST.DATA.tran_date+"|"
+	            CUST.DATA.valPassFlg = "N"
+	            CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+	        else 
+	        	CUST.DATA.valPassFlg = "Y"
+	        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +"Date OK "+CUST.DATA.tran_date+"|"
+	        #}
+	        endif
+	    else 
+	    	print("Date empty")
+    		("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +"Date Empty->"+CUST.DATA.tran_date+"|"
+			CUST.DATA.valPassFlg = "N"
+			CUST.DATA.failCnt = cint(CUST.DATA.failCnt) + 1
+		#}
+		endif 
+
+        
+        if(("CUST").("DATA").(lv_z) != "")then
+        #{
+        	("CUST").("DATA").(lv_z) = ("CUST").("DATA").(lv_z) +" Line->"+lv_y
+        	sv_u = system("echo '"+("CUST").("DATA").(lv_z)+"' >> '"+CUST.DATA.sucRpt +"' ")
+        #}
+        endif 
+
+        if(("CUST").("DATA").(sv_v) != "")then
+        #{
+        	("CUST").("DATA").(sv_v) = ("CUST").("DATA").(sv_v) +" Line->"+lv_y
+        	sv_u = system("echo '"+("CUST").("DATA").(sv_v)+"' >> '"+CUST.DATA.failRpt +"' ")
+        #}
+        endif
+
+		NEXTREC1:
+		sv_t = urtn_fileRead(CUST.DATA.fileRec + "|CUST.DATA.inputRecord")
+		PRINT(sv_t)
+		sv_z = sv_z + 1
+
+		CUST.DATA.recCount = sv_z
+		print(CUST.DATA.recCount)
+		sv_y = format$(sv_z,"%d")
+		PRINT(sv_y)
+	#}
+	DO
+	
+	
+	#===================================================================================#
+	# Closing the files                                                                 #
+	#===================================================================================#
+	sv_j = urtn_fileClose(CUST.DATA.SOURCEFILE)
+	print(sv_j)
+
+	sv_t = urtn_fileClose(CUST.DATA.fileRec)
+	PRINT(sv_t)
+sv_r = system("sleep 10")
+	print(CUST.DATA.failCnt)
+	print("Fail Report")
+	sv_u = system("echo >> '"+CUST.DATA.failRpt +"' ")
+	sv_u = system("echo TOTAL ERRORS FOUND::'"+CUST.DATA.failCnt+"' >> '"+CUST.DATA.failRpt +"' ")
+	print(sv_u)
+
+	lv_b = "*****************************CTTUM END REPORT**********************************************"
+	sv_u = system("echo '"+lv_b+"' >> '"+CUST.DATA.failRpt +"' ")
+	lv_a = "exebatch babx4040 $B2K_SESSION_ID "+ CUST.DATA.failRpt +" 'CTTUM FAIL REPORT' '"+BANCS.STDIN.userId+"' '1' N"
+	print(lv_a)
+	lv_x = system(lv_a)
+	print(lv_x)
+
+	print("Success Report")
+	sv_u = system("echo '"+lv_b+"' >> '"+CUST.DATA.sucRpt +"' ")
+	lv_a = "exebatch babx4040 $B2K_SESSION_ID "+ CUST.DATA.sucRpt +" 'CTTUM SUCCESS REPORT' '"+BANCS.STDIN.userId+"' '1' N"
+	print(lv_a)
+	lv_x = system(lv_a)
+	print(lv_x)
+
+	if(lv_x == 0)then
+	#{
+		print("Check HPR for the report")
+	#}
+	endif 
+
+	sv_e = system("mv "+CUST.DATA.FilePath+" "+CUST.DATA.FilePath+"_validated")
+
+
+ENDOFSCRIPT:
+EXITSCRIPT
+TRACE OFF
+END-->

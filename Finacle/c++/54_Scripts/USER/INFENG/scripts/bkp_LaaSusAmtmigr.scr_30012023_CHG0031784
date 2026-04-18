@@ -1,0 +1,186 @@
+
+<--START
+TRACE ON
+        sv_r = REPEXISTS("CUST")
+
+	IF(sv_r == 0) THEN
+		CREATEREP ("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST","DATA")
+
+	IF(sv_r == 0) THEN
+		CREATECLASS ("CUST","DATA",5)
+	ENDIF
+		
+	sv_s = "DrAcct,  CrAcct,Crncy, Amt, AccntAcct |select foracid , CUST_PREF,  ACCT_PREF, FREE_TEXT1, FREE_TEXT2 from "
+	sv_s =  sv_s + " custom.int_change where bank_id  ='"+BANCS.STDIN.contextBankId+"' and ENTITY_CRE_FLG ='MIGR' "
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+	IF(sv_e == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			CUST.WITH.errMsg ="No Data."
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg )
+			EXITSCRIPT
+		#}
+		ENDIF
+		print(sv_q)
+
+		WHILE (sv_q==0)
+			CUST.DATA.AccntAcct  = ""
+
+			CUST.DATA.DrAcct = BANCS.OUTPARAM.DrAcct
+			print(CUST.DATA.DrAcct)
+			CUST.DATA.CrAcct = BANCS.OUTPARAM.CrAcct
+			print(CUST.DATA.CrAcct)
+			CUST.DATA.Amt = BANCS.OUTPARAM.Amt
+			print(CUST.DATA.Amt)
+			CUST.DATA.AccntAcct = BANCS.OUTPARAM.AccntAcct
+			print(CUST.DATA.AccntAcct)
+			CUST.DATA.Crncy = BANCS.OUTPARAM.Crncy
+			print(CUST.DATA.Crncy)
+
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+
+			BANCS.INPARAM.PostTranFlg = "Y"
+			BANCS.INPARAM.CommitFlg = "N"
+			BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+			BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw = "Y"
+			BANCS.INPARAM.CheckExceptions = "Y"
+			sv_r = urhk_MTTS_Initialize("")
+			PRINT(sv_r)
+			IF(sv_r != 0)THEN
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.DATA.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.DATA.ErrorMessage)
+			ENDIF
+			############################################
+			#Define Debit Transaction
+			#############################################
+			MTT.TranDetails.TranID                                  = ""
+			MTT.TranDetails.TranDate                = "0"
+			MTT.TranDetails.TranType                = "T"
+			MTT.TranDetails.PostFlag                = "Y"
+			MTT.TranDetails.TranSubType            = "BI"
+			#MTT.TranDetails.TranSubType             = "CI"
+			MTT.TranDetails.ReversalFlag            = "N"
+			MTT.TranDetails.IgnoreExcp              = "I"
+			MTT.TranDetails.ReversalFlg             = "N"
+			MTT.TranDetails.Consolidate             = "N"
+			MTT.TranDetails.Remarks                 = "Interest Sus Spire Migr"
+			sv_t = urhk_MTTS_DefineTransaction("IntSus_Tran")
+
+			IF(sv_t != 0) THEN
+				PRINT(MTT.Error.Description)
+				CUST.DATA.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.DATA.ErrorMessage)           
+				GOTO NEXTREC
+			ENDIF
+
+			MTT.PartTranDetails.Account     = CUST.DATA.DrAcct
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.Crncy
+			MTT.PartTranDetails.Particulars = CUST.DATA.AccntAcct+" Suspended Interest Posting"		
+			MTT.PartTranDetails.Remarks = MTT.TranDetails.Remarks
+			MTT.PartTranDetails.RateCode= ""
+			#MTT.PartTranDetails.Rate = ""
+			MTT.PartTranDetails.RefAmount = -cdouble(CUST.DATA.Amt)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "IntSus_Tran"
+			MTT.PartTranDetails.CarveAmtFlg="N"
+			#MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+			#MTT.PartTranDetails.ACPARTB2kId=CUST.DATA.AccntAcct
+
+			#----------------------------------------------------------------------------------
+			# Defining the .Debit Part Tran for Charge amount
+			#----------------------------------------------------------------------------------
+			sv_u = urhk_MTTS_DefinePartTran("IntSus_debit_Tran")
+			PRINT(sv_u)
+			IF (sv_u != 0) THEN
+				CUST.DATA.errMsg = "020127807120089 Error in Defining Debit part Transaction"
+				PRINT(CUST.DATA.errMsg)
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.DATA.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.DATA.ErrorMessage)           
+				GOTO NEXTREC
+			ENDIF
+
+			MTT.PartTranDetails.Account     = CUST.DATA.CrAcct
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.Crncy
+			MTT.PartTranDetails.Particulars = CUST.DATA.AccntAcct+" Suspended Interest Posting"		
+			MTT.PartTranDetails.Remarks = MTT.TranDetails.Remarks
+			MTT.PartTranDetails.RateCode= ""
+			#MTT.PartTranDetails.Rate = ""
+			MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.Amt)
+			PRINT(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "IntSus_Tran"
+			MTT.PartTranDetails.CarveAmtFlg="N"
+			MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+			MTT.PartTranDetails.ACPARTB2kId=CUST.DATA.AccntAcct
+
+			#----------------------------------------------------------------------------------
+			# Defining the Credit Part Tran for Charge amount
+			#----------------------------------------------------------------------------------
+			sv_u = urhk_MTTS_DefinePartTran("IntSus_credit_Tran")
+			PRINT(sv_u)
+
+			IF (sv_u != 0) THEN
+				CUST.DATA.errMsg = "020127807120089 Error in Defining Credit part Transaction"
+				PRINT(CUST.DATA.errMsg)
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.DATA.ErrorMessage=MTT.Error.Description
+				PRINT(CUST.DATA.ErrorMessage)
+				CUST.DATA.remark = CUST.DATA.ErrorMessage
+
+				PRINT(sv_b)
+				GOTO NEXTREC
+			ENDIF
+
+				sv_r = urhk_MTTS_EndDefinition("")
+				PRINT(sv_r)
+				PRINT(BANCS.OUTPARAM.MTTTranId)
+				CUST.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+				IF(CUST.DATA.tranid == "" )THEN
+					CUST.DATA.tranFlg = "N"
+					CUST.DATA.BODDate = ""
+				ELSE
+					CUST.DATA.tranFlg = "Y"
+
+					sv_s = " UPDATE custom.int_change  SET ENTITY_CRE_FLG = 'OK', sol_id  = trim (?SVAR) WHERE FREE_TEXT2 = ?SVAR  and bank_id  ='"+BANCS.STDIN.contextBankId+"'  "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.DATA.tranid + "|" + CUST.DATA.AccntAcct 
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					IF (sv_d == 0)  THEN
+						sv_d = urhk_dbSQLWithBind("COMMIT")
+					ENDIF
+
+				ENDIF
+			sv_z = urhk_MTTS_Close("")
+
+			sv_q = urhk_dbSQLWithBind("COMMIT")
+			PRINT(sv_q)
+		
+			NEXTREC:
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+		DO
+
+	ENDIF
+TRACE OFF
+END-->

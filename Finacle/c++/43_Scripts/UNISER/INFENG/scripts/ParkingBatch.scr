@@ -1,0 +1,288 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ParkingBatch.scr
+# Author                :       Irungu James
+# Description           :       This script Split Parking Fees
+# Calling Script        :       HBJSTM
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           09-05-2022         Irungu	    original Version		1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="1aa54181614143a1a3339b3f3aa79e09ffcbd529c404aa1c4e796c008ac5fe80"
+	TRACE ON
+	
+	#--------------------------------------------------------------------------
+	#  Creation of MISS repository and CHRG class
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("BANCS")
+	IF (sv_r == 0) THEN
+		CREATEREP("BANCS")
+	ENDIF	
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF	
+	sv_r = CLASSEXISTS("CUST", "DATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "DATA", 5)
+	ENDIF
+	
+		CUST.DATA.debitAcct = "577200024337183"
+
+		sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.debitAcct)
+		IF (sv_n == 0)THEN
+			CUST.DATA.crncy = BANCS.OUTPARAM.acctCrncyCode
+		ENDIF
+
+	#Bank
+	CUST.DATA.BankAcct = "15057657070004"
+	sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.BankAcct)
+	IF (sv_n == 0)THEN
+		CUST.DATA.crncyBank = BANCS.OUTPARAM.acctCrncyCode
+	ENDIF
+
+	#Cust1
+	CUST.DATA.CustAcctOne ="577200024338250"
+	sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.CustAcctOne)
+	IF (sv_n == 0)THEN
+		CUST.DATA.crncyOne = BANCS.OUTPARAM.acctCrncyCode
+	ENDIF
+
+	#Cust2
+	CUST.DATA.CustAcctTwo = "555200007667572"
+	sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.CustAcctTwo)
+	IF (sv_n == 0)THEN
+		CUST.DATA.crncyTwo = BANCS.OUTPARAM.acctCrncyCode
+	ENDIF
+
+
+	#--------------------------------------------------------------------------
+	# Selecting total number of accounts which are not charged
+	#--------------------------------------------------------------------------
+	
+		sv_s = "Cnt, SUM_AMT |"
+		sv_s = sv_s + " SELECT count(*), sum (TRAN_AMT)  from  tbaadm.dtd where  BANK_ID=?SVAR  and pstd_flg='Y' AND PART_TRAN_TYPE ='C' " 
+		sv_s = sv_s + " and acid = (select acid from tbaadm.gam where foracid =?SVAR  and  BANK_ID=?SVAR )  "
+		#sv_s = sv_s + " and tran_date ='23-mar-2022' "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId  + "|" + CUST.DATA.debitAcct + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != "0") THEN
+			GOTO Finish			
+		ELSE		
+			CUST.DATA.Cnt =BANCS.OUTPARAM.Cnt
+			CUST.DATA.SUM_AMT =BANCS.OUTPARAM.SUM_AMT
+
+			Print (CUST.DATA.Cnt)
+			Print (CUST.DATA.SUM_AMT)
+
+			IF (CUST.DATA.Cnt == "0") then
+				GOTO Finish
+			ENDIF
+		ENDIF
+		#--------------------------------------------------------------------------
+		# Selecting accounts from DTD
+		#--------------------------------------------------------------------------
+		
+
+		CUST.DATA.Bank_AMT = cdouble ("1.5") * cdouble(CUST.DATA.Cnt)
+		Print (CUST.DATA.Bank_AMT)
+
+		CUST.DATA.Split_AMT =  cdouble(CUST.DATA.SUM_AMT)  - cdouble (CUST.DATA.Bank_AMT)
+		Print (CUST.DATA.Split_AMT)
+
+		CUST.DATA.Split_AMT_Each = cdouble(CUST.DATA.Split_AMT)/2
+		Print (CUST.DATA.Split_AMT_Each)
+
+		
+CUST.DATA.BodDate =  mid$(BANCS.STDIN.BODDate,0,10)
+print(CUST.DATA.BodDate)
+	
+sv_d = "StartDate|select to_char (to_date(?SVAR,'DD-MM-YYYY') - 0,'DD/MM/YYYY')  as StartDate FROM dual"
+BANCS.INPARAM.BINDVARS = CUST.DATA.BodDate
+print(sv_d)
+print(BANCS.INPARAM.BINDVARS)
+sv_u = urhk_dbSelectWithBind(sv_d)
+if(sv_u==0)then
+#{
+    CUST.DATA.StartDate =BANCS.OUTPARAM.StartDate
+    print(CUST.DATA.StartDate)
+#}
+endif
+
+			sv_r = REPEXISTS("MTT")
+			IF (sv_r == 0) THEN
+					CREATEREP("MTT")
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","TranDetails")
+			IF (sv_r == 0) THEN
+					CREATECLASS("MTT","TranDetails",5)
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","PartTranDetails")
+			IF (sv_r == 0) THEN
+					CREATECLASS("MTT","PartTranDetails",5)
+			ENDIF
+
+			sv_r = CLASSEXISTS("MTT","InputDetails")
+			IF (sv_r == 0) THEN
+					CREATECLASS("MTT","InputDetails",5)
+			ENDIF
+			sv_r = CLASSEXISTS("MTT","Error")
+			IF (sv_r == 0) THEN
+					CREATECLASS("MTT","Error",5)
+			ENDIF
+			sv_r = CLASSEXISTS("BANCS","INPARAM")
+			IF (sv_r == 0) THEN
+				CREATECLASS("BANCS","INPARAM",5)
+			ENDIF
+
+			#===================================
+			# STEP 1 : INITIALIZE THE MTT
+			#===================================
+
+			BANCS.INPARAM.PostTranFlg               = "Y"
+			BANCS.INPARAM.CommitFlg                 = "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+			BANCS.INPARAM.ValidationFlag            = "Y"
+			BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+			BANCS.INPARAM.CheckExceptions           = "N"
+
+			sv_a = urhk_MTTS_PopulateInputDetails("")
+			print(sv_a)
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = "PARKING FEE"
+			sv_a = urhk_MTTS_PopulateInputDetails("")
+			sv_r = urhk_MTTS_DefineTransaction("WITHTran")
+			sv_v = "WITHTran"
+
+
+			CUST.DATA.NARRATION =  "QUOTE PART RECETTES PARKING DU" + CUST.DATA.StartDate
+			CUST.DATA.Rmks = "Parking Slit"
+		
+			MTT.PartTranDetails.Account     = CUST.DATA.debitAcct	  
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.crncy
+			MTT.PartTranDetails.Rate        = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars =  CUST.DATA.NARRATION
+			MTT.PartTranDetails.RefAmount = -(cdouble(CUST.DATA.SUM_AMT))
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.DATA.Rmks
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_r = urhk_MTTS_DefinePartTran("CustDr")
+			print(sv_r)
+			IF(fieldexists(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.DATA.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+
+			# Credit bank Acct
+
+			MTT.PartTranDetails.Account     = CUST.DATA.BankAcct
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.crncy
+			if (CUST.DATA.crncyBank !=CUST.DATA.crncy)then
+				MTT.PartTranDetails.RateCode ="TTB"
+			else
+				MTT.PartTranDetails.RateCode ="MEAN"
+			endif
+			MTT.PartTranDetails.Rate        = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.DATA.NARRATION
+			MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.Bank_AMT)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks =  CUST.DATA.Rmks
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+			print(sv_r)
+			IF(fieldexists(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.WITH.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+			
+			# Credit Customer 1
+
+			MTT.PartTranDetails.Account     = CUST.DATA.CustAcctOne
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.crncy
+			if (CUST.DATA.crncyOne != CUST.DATA.crncy)then
+				MTT.PartTranDetails.RateCode ="TTB"
+			else
+				MTT.PartTranDetails.RateCode ="MEAN"
+			endif
+			MTT.PartTranDetails.Rate        = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.DATA.NARRATION
+			MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.Split_AMT_Each)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.DATA.Rmks
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+			print(sv_r)
+			IF(fieldexists(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.WITH.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+			
+			# Credit Customer 2
+
+			MTT.PartTranDetails.Account     = CUST.DATA.CustAcctTwo
+			MTT.PartTranDetails.RefCurrency = CUST.DATA.crncy
+			if (CUST.DATA.crncyTwo != CUST.DATA.crncy)then
+				MTT.PartTranDetails.RateCode ="TTB"
+			else
+				MTT.PartTranDetails.RateCode ="MEAN"
+			endif
+			MTT.PartTranDetails.Rate        = "0"
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.DATA.NARRATION
+			MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.Split_AMT_Each)
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = CUST.DATA.Rmks
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+			print(sv_r)
+			IF(fieldexists(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.WITH.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+
+			
+			sv_r = urhk_MTTS_EndDefinition("")
+			print(sv_r)
+			IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+			#{
+				print(BANCS.OUTPARAM.MTTTranId)
+				CUST.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+				print(CUST.DATA.tranid)
+			#}
+			ENDIF
+
+
+EXITSCRIPT
+END-->

@@ -1,0 +1,283 @@
+##########################################################################################
+# Source Name           : cierevdp007.scr
+# Date                  : 13-Mar-2013
+# Description           : Charge Transaction Reversal
+# Author                :  Priyanka T02
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        13-Mar-2013    Priyanka T02               Base Version
+###########################################################################################
+
+<--START
+CHECKSUM="5cc152d114ba16d5f933846a66076a35e02d3288f624743fb869f6ecd51614be"
+	TRACE ON
+	
+	PRINT(CUST.CIEREV.chargeEventId)
+	PRINT(CUST.CIEREV.chargeAmtCcy)
+	PRINT(CUST.CIEREV.chargeTranId)
+	PRINT(CUST.CIEREV.chargeTranDate)
+	
+	CUST.CIEREV.drChrgAc = ""
+	CUST.CIEREV.crChrgAc = ""
+	CUST.CIEREV.scriptSuccess = "Y"
+	CUST.CIEREV.chargeTranDate = CUST.CIEREV.chargeTranDate + " 00:00:00"
+	
+	###########################################################################################
+	# Get the GCHSRLNUM
+	###########################################################################################
+	
+	sv_s = "gchSrlNum,tranType,tranSubType,drAcid|SELECT A.GCH_SRL_NUM,A.TRAN_TYPE,A.TRAN_SUB_TYPE,A.DR_ACID FROM  GCH A, CXL B"
+	sv_s = sv_s + " WHERE A.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND B.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND (A.GCH_SRL_NUM = B.COMP_B2KID)"
+	sv_s = sv_s + " AND (B.COMP_B2KID_TYPE = 'GECHG')"
+	sv_s = sv_s + " AND (A.EVENT_ID = B.EVENT_ID)"
+	sv_s = sv_s + " AND B.CHRG_TRAN_ID = ?SVAR"
+	sv_s = sv_s + " AND B.CHRG_TRAN_DATE = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')"
+	sv_s = sv_s + " AND A.ENTITY_CRE_FLG = 'Y'"
+	#sv_s = sv_s + " AND A.REVERSAL_KEY IS NULL"
+	sv_s = sv_s + " AND ROWNUM = 1"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		
+		
+		sv_s = " crChrgAc|select foracid from tbaadm.gam where acid in"
+		sv_s = sv_s + " (select acid from tbaadm.ctd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='C' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR) AND bank_id = ?SVAR"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_a = urhk_dbSelectWithBind(sv_s)
+		print(sv_a)
+		
+		IF(sv_a == 0)THEN
+		#{
+			
+			CUST.CIEREV.crChrgAc = BANCS.OUTPARAM.crChrgAc
+			PRINT(CUST.CIEREV.crChrgAc)
+		#}
+		ENDIF
+		
+		sv_s = " drChrgAc|select foracid from tbaadm.gam where acid in"
+		sv_s = sv_s + " (select acid from tbaadm.ctd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='D' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR) AND bank_id = ?SVAR"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_b = urhk_dbSelectWithBind(sv_s)
+		print(sv_b)
+		
+		IF(sv_b == 0)THEN
+		#{
+			
+			CUST.CIEREV.drChrgAc = BANCS.OUTPARAM.drChrgAc
+			PRINT(CUST.CIEREV.drChrgAc)
+		#}
+		ENDIF
+		
+		IF((CUST.CIEREV.drChrgAc !="") AND (CUST.CIEREV.crChrgAc != "")) THEN
+		#{
+			CALL("cierev_chrg_mtt.scr")
+			print(CUST.CIEREV.TranId)
+			CUST.CIEREV.revChargeTranId = CUST.CIEREV.TranId
+			PRINT(CUST.CIEREV.revChargeTranId)
+			CUST.CIEREV.revChargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+			PRINT(CUST.CIEREV.revChargeTranDate)
+			CUST.CIEREV.chargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+		
+		sv_s = " crChrgAc|select foracid from tbaadm.gam where acid in"
+		sv_s = sv_s + " (select acid from tbaadm.dtd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='C' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR"
+		sv_s = sv_s + " union "
+		sv_s = sv_s + " select acid from tbaadm.htd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='C' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR) AND bank_id = ?SVAR"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_a = urhk_dbSelectWithBind(sv_s)
+		print(sv_a)
+		
+		IF(sv_a == 0)THEN
+		#{
+			
+			CUST.CIEREV.crChrgAc = BANCS.OUTPARAM.crChrgAc
+			PRINT(CUST.CIEREV.crChrgAc)
+		#}
+		ENDIF
+		
+		sv_s = " drChrgAc|select foracid from tbaadm.gam where acid in"
+		sv_s = sv_s + " (select acid from tbaadm.dtd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='D' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR"
+		sv_s = sv_s + " union "
+		sv_s = sv_s + " select acid from tbaadm.htd where tran_id = ?SVAR"
+		sv_s = sv_s + " AND tran_date = TO_DATE(?SVAR, 'DD-MM-YYYY HH24:MI:SS')  AND part_tran_type ='D' AND PSTD_FLG ='Y'"
+		sv_s = sv_s + " AND DEL_FLG = 'N' AND tran_amt = ?SVAR AND bank_id = ?SVAR) AND bank_id = ?SVAR"
+		
+		print(sv_s)
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CIEREV.chargeTranId + "|" + CUST.CIEREV.chargeTranDate + "|" + CUST.CIEREV.chrgAmtTran + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_b = urhk_dbSelectWithBind(sv_s)
+		print(sv_b)
+		
+		IF(sv_b == 0)THEN
+		#{
+			
+			CUST.CIEREV.drChrgAc = BANCS.OUTPARAM.drChrgAc
+			PRINT(CUST.CIEREV.drChrgAc)
+		#}
+		ENDIF
+		
+		IF((CUST.CIEREV.drChrgAc !="") AND (CUST.CIEREV.crChrgAc != "")) THEN
+		#{
+			CALL("cierev_chrg_mtt.scr")
+			print(CUST.CIEREV.TranId)
+			CUST.CIEREV.revChargeTranId = CUST.CIEREV.TranId
+			PRINT(CUST.CIEREV.revChargeTranId)
+			CUST.CIEREV.revChargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+			PRINT(CUST.CIEREV.revChargeTranDate)
+			CUST.CIEREV.chargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+		
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		print(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Couldnt retrieve the Charge TranId for reversal^prodCode")
+		print(sv_u)
+		
+		CUST.CIEREV.scriptSuccess = "N"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIEREV.gchSrlNum = BANCS.OUTPARAM.gchSrlNum
+	PRINT(CUST.CIEREV.gchSrlNum)
+	CUST.CIEREV.tranType = BANCS.OUTPARAM.tranType
+	PRINT(CUST.CIEREV.tranType)
+	CUST.CIEREV.tranSubType = BANCS.OUTPARAM.tranSubType
+	PRINT(CUST.CIEREV.tranSubType)
+	CUST.CIEREV.drAcid = BANCS.OUTPARAM.drAcid
+	PRINT(CUST.CIEREV.drAcid)
+	CUST.CIEREV.drForacid = ""
+	
+	IF(CUST.CIEREV.drAcid != "")THEN
+	#{
+		sv_u = urhk_B2k_AcidToForacid(CUST.CIEREV.drAcid)
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			CUST.CIEREV.drForacid = BANCS.OUTPARAM.Foracid
+			PRINT(CUST.CIEREV.drForacid)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Charge Transaction Reversal Service
+	###########################################################################################
+	
+	sv_a = urhk_SetUrhkInp("genChrgCrit.tranType.tranType|"+CUST.CIEREV.tranType)
+	sv_a = urhk_SetUrhkInp("genChrgCrit.tranType.tranSubType|"+CUST.CIEREV.tranSubType)
+	sv_a = urhk_SetUrhkInp("genChrgCrit.tranId|" + CUST.CIEREV.chargeTranId)
+	sv_a = urhk_SetUrhkInp("genChrgCrit.tranDate|" + CUST.CIEREV.chargeTranDate)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.eventId.eventId|" + CUST.CIEREV.chargeEventId)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.chrgDrCrncy.crncyCode|" + CUST.CIEREV.chargeAmtCcy)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.contextChrgCrncy.crncyCode|" + CUST.CIEREV.chargeAmtCcy)
+	sv_u = urhk_SetUrhkInp("genChrgCrit.gchSrlNum|" + CUST.CIEREV.gchSrlNum)
+	
+	IF(CUST.CIEREV.drForacid != "")THEN
+	#{
+		sv_u = urhk_SetUrhkInp("genChrgCrit.drAcct.foracid|" + CUST.CIEREV.drForacid)
+		print(sv_u)
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Fetch Service
+	###########################################################################################
+	
+	sv_u = urhk_execSrvNoCommit("SRV_FetchGenChrgDtlForReversal|same_user_verify = Y|retain_all_output = Y")
+	PRINT(sv_u)
+	
+	IF(sv_u != 0)THEN
+	#{
+		CALL("cierevdp006.scr")
+		
+		IF(CUST.CIEREV.srvError == "Y")THEN
+		#{
+			CUST.CIEREV.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_u = urhk_CopyOutToIn("")
+	print(sv_u)
+	
+	###########################################################################################
+	# Reverse Service
+	###########################################################################################
+	
+	sv_a = urhk_SetUrhkOut("genChrgCrit.tranId|revChargeTranId")
+	sv_u = urhk_execSrvNoCommit("SRV_ReverseGenChrgDtlAndVerify|same_user_verify = Y|retain_all_output = Y")
+	PRINT(sv_u)
+	
+	IF(sv_u != 0)THEN
+	#{
+		CALL("cierevdp006.scr")
+		
+		IF(CUST.CIEREV.srvError == "Y")THEN
+		#{
+			CUST.CIEREV.scriptSuccess = "N"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.revChargeTranId)
+	CUST.CIEREV.revChargeTranId = BANCS.OUTPARAM.revChargeTranId
+	PRINT(CUST.CIEREV.revChargeTranId)
+	CUST.CIEREV.revChargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+	PRINT(CUST.CIEREV.revChargeTranDate)
+	CUST.CIEREV.chargeTranDate = MID$(CUST.CIEREV.chargeTranDate,0,10)
+	
+	
+	
+	ENDOFSCRIPT:
+		
+		EXITSCRIPT
+		
+END-->

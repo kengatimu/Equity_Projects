@@ -1,0 +1,214 @@
+<--START
+TRACE ON
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST","CLA")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CLA",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","RATE")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","RATE",5)
+	#}
+	ENDIF
+	
+	CUST.CLA.acctId = BANCS.INPUT.acctId
+	CUST.CLA.intdracnt = ""
+	CUST.CLA.errFlg = "N"
+	CUST.CLA.errMsg = " "
+	CUST.CLA.avlbalAmt = "0"
+	CUST.CLA.sanclmt = "0"
+        sv_a = ""
+
+	sv_a = "schmCode|SELECT SCHM_CODE FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR"
+ 	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.acctId
+
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+		CUST.CLA.schmCode = BANCS.OUTPARAM.schmCode
+		PRINT(CUST.CLA.schmCode)
+	#}
+	ENDIF
+	
+        #CUST.CLA.parameterId = "CREDITLINE_SCHEMES"
+        CUST.CLA.parameterId = "DISBCHRG_SCHEMES"
+        CUST.CLA.moduleName = "OT"
+
+        PRINT(BANCS.STDIN.contextBankId)
+        PRINT(CUST.CLA.moduleName)
+        PRINT(CUST.CLA.parameterId)
+
+        sv_a = ""
+
+        sv_a = sv_a + "paramVal|select parameter_value FROM CUSTOM.C_CPVALUE , CUSTOM.C_CPMASTER "
+        sv_a = sv_a + " WHERE C_CPMASTER.bank_id = C_CPVALUE.bank_id  AND "
+        sv_a = sv_a + " C_CPMASTER.module_name = C_CPVALUE.module_name  AND "
+        sv_a = sv_a + " C_CPMASTER.parameter_id = C_CPVALUE.parameter_id AND "
+        sv_a = sv_a + " C_CPVALUE.del_flg != 'Y' AND "
+        sv_a = sv_a + " C_CPVALUE.entity_cre_flg = 'Y' AND "
+        sv_a = sv_a + " C_CPMASTER.bank_id = ?SVAR AND "
+        sv_a = sv_a + " C_CPMASTER.module_name = ?SVAR AND "
+        sv_a = sv_a + " C_CPVALUE.parameter_id = ?SVAR "
+
+        PRINT(sv_a)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.moduleName + "|" + CUST.CLA.parameterId
+
+        sv_d = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_a)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+                PRINT(BANCS.OUTPARAM.paramVal)
+                CUST.CLA.paramVal = BANCS.OUTPARAM.paramVal
+                #}
+        ELSE
+                #{
+                CUST.CLA.errorMsg = "CPARAM set up not available for "+CUST.CLA.parameterId
+                sv_u = urhk_SRV_SetErr(CUST.CLA.errorMsg)
+                EXITSCRIPT
+	ENDIF
+
+        sv_c = "avail|select decode(count(1),0,'N','Y') from dual where INSTR(?SVAR,?SVAR) != 0"
+
+        PRINT(sv_c)
+        BANCS.INPARAM.BINDVARS = CUST.CLA.paramVal + "|" + CUST.CLA.schmCode
+
+        sv_l = urhk_dbSelectWithBind(sv_c)
+
+        PRINT(sv_l)
+
+        IF(sv_l != 0)THEN
+        #{
+                  PRINT("Error in query")
+        #}
+        ENDIF
+
+        PRINT(BANCS.OUTPARAM.avail)
+
+        IF(BANCS.OUTPARAM.avail == "N")THEN
+        #{
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        sv_a = "intdracnt|SELECT FORACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND ACID=(SELECT INT_DR_ACID FROM TBAADM.GAM,TBAADM.GAC WHERE GAM.BANK_ID=?SVAR"
+	sv_a = sv_a + " AND GAC.ACID = GAM.ACID AND GAM.FORACID=?SVAR AND GAM.BANK_ID=GAC.BANK_ID)"
+        PRINT(sv_a)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.CLA.acctId
+	PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+                PRINT(BANCS.OUTPARAM.intdracnt)
+                CUST.CLA.intdracnt = BANCS.OUTPARAM.intdracnt
+        #}
+        ENDIF
+
+	IF(TRIM(CUST.CLA.intdracnt) != "")THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.CLA.intdracnt)
+		IF(sv_u == "0")THEN
+		#{
+			CUST.CLA.avlbalAmt = BANCS.OUTPARAM.EffAvailableAmt
+			PRINT(CUST.CLA.avlbalAmt)
+			CUST.CLA.intcrncy = BANCS.OUTPARAM.acctCrncyCode
+			PRINT(CUST.CLA.intcrncy)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+        sv_a = "sanclmt,acctCrncy|SELECT LHT.SANCT_LIM,GAM.ACCT_CRNCY_CODE FROM TBAADM.LHT,TBAADM.GAM WHERE GAM.BANK_ID=?SVAR AND LHT.ACID = GAM.ACID AND GAM.FORACID=?SVAR AND GAM.BANK_ID=LHT.BANK_ID"
+        PRINT(sv_a)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.acctId
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+                PRINT(BANCS.OUTPARAM.sanclmt)
+                CUST.CLA.sanclmt = BANCS.OUTPARAM.sanclmt
+                PRINT(BANCS.OUTPARAM.acctCrncy)
+                CUST.CLA.acctCrncy = BANCS.OUTPARAM.acctCrncy
+        #}
+        ENDIF
+
+        sv_a = "chrgPcnt|SELECT FREE_CODE_5 FROM TBAADM.FCFTT,TBAADM.GAM WHERE GAM.BANK_ID=?SVAR AND FCFTT.ACID=GAM.ACID AND GAM.FORACID=?SVAR AND GAM.BANK_ID=FCFTT.BANK_ID"
+        PRINT(sv_a)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLA.acctId
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+                PRINT(BANCS.OUTPARAM.chrgPcnt)
+                CUST.CLA.chrgPcnt = BANCS.OUTPARAM.chrgPcnt
+        #}
+        ENDIF
+	CUST.CLA.sanclmt = CDOUBLE(CUST.CLA.sanclmt)*CDOUBLE(CUST.CLA.chrgPcnt)*(0.01)
+
+	IF(CUST.CLA.intcrncy != CUST.CLA.acctCrncy)THEN
+	#{
+                                CUST.RATE.acctCrncy = CUST.CLA.acctCrncy
+                                CUST.RATE.refCrncy = CUST.CLA.intcrncy
+                                CUST.RATE.TranType = "T"
+                                CALL("fetchRateCode.scr")
+
+                                IF(CUST.RATE.errorFlg != "Y")THEN
+                                #{
+                                        CUST.CLA.RateCode = CUST.RATE.rateCode
+                                #}
+                                ENDIF
+
+                                BANCS.INPARAM.InputAmount       = CUST.CLA.sanclmt
+                                BANCS.INPARAM.FromCurrency      = CUST.CLA.acctCrncy
+                                BANCS.INPARAM.ToCurrency        = CUST.CLA.intcrncy
+                                BANCS.INPARAM.RateCode          = CUST.CLA.RateCode
+                                BANCS.INPARAM.Rate                      = 0.00
+                                BANCS.INPARAM.CustId            = ""
+
+                                sv_u = urhk_B2k_ConvertAmount("")
+                                PRINT(sv_u)
+
+                                IF(sv_u == 0)THEN
+                                #{
+                                        CUST.CLA.sanclmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+                                        PRINT(CUST.CLA.sanclmt)
+				#}
+				ENDIF
+	#}
+	ENDIF
+
+
+	IF(CDOUBLE(CUST.CLA.avlbalAmt) < CDOUBLE(CUST.CLA.sanclmt))THEN
+	#{
+		CUST.CLA.errFlg = "Y"
+		CUST.CLA.errMsg = " Available Amount is less than the Charge Amount"
+	#}
+	ENDIF
+	
+ENDOFSCRIPT:
+	sv_u = urhk_SetOrbOut("errFlg|"+CUST.CLA.errFlg)
+	sv_u = urhk_SetOrbOut("errMsg|"+CUST.CLA.errMsg)
+
+TRACE OFF
+END-->
+

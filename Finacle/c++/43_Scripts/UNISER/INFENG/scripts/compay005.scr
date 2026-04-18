@@ -1,0 +1,375 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: compay005.scr
+# Type: NA|default
+# Description: Commission Payment Script
+# Author: Anshul_Singh04
+# Date: 6/7/18 11:26 AM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="9ddd60b60dda31d55ddf3bb09e33e548a031513ba9b752866414afe41a4665c9"
+	# Script body goes here
+	TRACE ON
+	
+        sv_r = REPEXISTS("CUST")
+        IF(sv_r == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        sv_c = CLASSEXISTS("CUST", "RATE")
+        IF(sv_c == 0) THEN
+        #{
+                CREATECLASS("CUST", "RATE", 5)
+        #}
+        ENDIF
+
+	sv_u = urhk_b2k_printrepos("EQT")
+	PRINT(sv_u)
+	
+	sv_u = urhk_b2k_printrepos("BANCS")
+	PRINT(sv_u)
+	
+	PRINT(BANCS.INPUT.crAcctCrncy)
+	PRINT(BANCS.INPUT.pmntPrps)
+	PRINT(BANCS.INPUT.drAcctNum)
+	PRINT(BANCS.INPUT.srvcallmode)
+	
+	IF(FIELDEXISTS(BANCS.INPUT.ratecode)==0)THEN
+	#{
+		BANCS.INPUT.ratecode= ""
+		BANCS.INPUT.rate = ""
+	#}
+	ENDIF
+	
+	PRINT(BANCS.INPUT.ratecode)
+	PRINT(BANCS.INPUT.rate)
+	
+	PRINT(BANCS.INPUT.vatAmt)
+	PRINT(BANCS.INPUT.commAmt)
+	PRINT(BANCS.INPUT.crAcctNum)
+	PRINT(BANCS.INPUT.taxAcctNum)
+	
+	EQT.COMM.crAcctCrncy = BANCS.INPUT.crAcctCrncy
+	EQT.COMM.commCrncy = BANCS.INPUT.commCrncy
+	EQT.COMM.ratecode=BANCS.INPUT.ratecode
+	EQT.COMM.rate=BANCS.INPUT.rate
+	EQT.COMM.drAcctNum = BANCS.INPUT.drAcctNum
+	EQT.COMM.srvcallmode = BANCS.INPUT.srvcallmode
+	
+	EQT.COMM.taxAcctNum = BANCS.INPUT.taxAcctNum
+	EQT.COMM.commAcctNum = BANCS.INPUT.crAcctNum
+	
+	EQT.COMM.tranRmks1 = "Commision Payment"
+	EQT.COMM.tranRmks2 = "VAT Payment for Commission"
+	
+	EQT.COMM.vatAmt = BANCS.INPUT.vatAmt
+	EQT.COMM.commAmt = BANCS.INPUT.commAmt
+	EQT.COMM.commAcctNum =  BANCS.INPUT.crAcctNum
+	EQT.COMM.taxAcctNum = BANCS.INPUT.taxAcctNum
+	
+	EQT.COMM.tranParticular = MID$(BANCS.INPUT.pmntPrps,0,50)
+	PRINT(EQT.COMM.tranParticular)
+	EQT.COMM.tranParticular1 = "VAT FOR "+EQT.COMM.tranParticular
+	
+	EQT.COMM.acctCrncy = BANCS.INPUT.acctCrncy
+	PRINT(EQT.COMM.acctCrncy)
+
+	########## Checking if VAT is waived off for the account ################
+
+		sv_s = "count|select count(1) from TBAADM.FCFTT where ACID IN (SELECT ACID FROM TBAADM.GAM WHERE foracid=?SVAR AND BANK_ID=?SVAR) AND FREE_CODE_2='N' "
+		sv_s = sv_s+ "AND bank_id=?SVAR "
+		sv_s = sv_s+ "AND del_flg='N' "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS=EQT.COMM.drAcctNum + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+
+		IF(sv_d == 0) THEN
+		#{
+			EQT.COMM.vatNCount = BANCS.OUTPARAM.count
+			PRINT(EQT.COMM.vatNCount)
+
+				IF(EQT.COMM.vatNCount > 0) THEN
+				#{
+					EQT.COMM.vatAmt="0"
+				#}
+				ENDIF
+		#}
+		ENDIF
+	########## Checking if VAT is waived off for the account ################
+
+
+	IF(EQT.COMM.acctCrncy!=EQT.COMM.commCrncy)THEN
+	#{
+		EQT.COMM.errFlg="Y"
+		EQT.COMM.msg="Debit account currency AND Commission currency should be same!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(EQT.COMM.commCrncy!=EQT.COMM.crAcctCrncy)THEN
+	#{
+		IF(TRIM(EQT.COMM.ratecode)=="") THEN
+		#{
+			EQT.COMM.errFlg="Y"
+			EQT.COMM.msg="Ratecode is not entered!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		IF(TRIM(EQT.COMM.rate)=="") THEN
+		#{
+			EQT.COMM.errFlg="Y"
+			EQT.COMM.msg="Rate is not entered!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	        CUST.RATE.acctCrncy = EQT.COMM.crAcctCrncy
+                CUST.RATE.refCrncy = EQT.COMM.acctCrncy
+                CUST.RATE.TranType = "T"
+                CALL("fetchRateCode.scr")
+                EQT.COMM.treaRate = CUST.RATE.treaRate
+                PRINT(EQT.COMM.treaRate)
+	#}
+	ENDIF
+	
+	### Checking for the available balance in account
+
+	sv_u = urhk_getAcctDetailsInRepository(EQT.COMM.drAcctNum)
+	IF(sv_u == "0")THEN
+	#{
+		EQT.COMM.avlblbal = BANCS.OUTPARAM.EffAvailableAmt
+		PRINT(EQT.COMM.avlblbal)
+		EQT.COMM.drCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		PRINT(EQT.COMM.drCrncyCode)
+
+	#}
+	ENDIF
+
+	IF(EQT.COMM.drCrncyCode != EQT.COMM.commCrncy)THEN
+	#{
+		BANCS.INPARAM.InputAmount = EQT.COMM.avlblbal
+		BANCS.INPARAM.FromCurrency = EQT.COMM.drCrncyCode
+		BANCS.INPARAM.ToCurrency = EQT.COMM.commCrncy
+		BANCS.INPARAM.RateCode = EQT.COMM.ratecode
+		BANCS.INPARAM.Rate = CDOUBLE("0.0")
+
+		sv_u = urhk_B2k_ConvertAmount("")
+		EQT.COMM.avlblbal = BANCS.OUTPARAM.OutputAmount
+		PRINT(EQT.COMM.avlblbal)
+	#}
+	ENDIF
+	
+	EQT.COMM.totalAmt = CDOUBLE(EQT.COMM.commAmt) + CDOUBLE(EQT.COMM.vatAmt)
+	PRINT(EQT.COMM.totalAmt)
+
+	IF(EQT.COMM.totalAmt > CDOUBLE(EQT.COMM.avlblbal))THEN
+	#{
+		EQT.COMM.errFlg="Y"
+                EQT.COMM.msg="Account balance is not sufficient to collect the charges"
+                GOTO ENDOFSCRIPT
+	#}
+	ENDIF	
+
+	### Transaction ##
+	
+	sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+	sv_a = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+	sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|I")
+        sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+
+	
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_0>.pTranIdentifier.partTranSrlNum|1")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|C")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|"+EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|"+EQT.COMM.commAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|"+EQT.COMM.commAcctNum)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+	IF(TRIM(EQT.COMM.ratecode) != "")THEN
+	#{
+		sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.rateCode.refCode|"+EQT.COMM.ratecode)
+		sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.rate|"+EQT.COMM.rate)
+                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.treaRate|"+EQT.COMM.treaRate)				
+	#}
+	ENDIF
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refNum|"+EQT.COMM.refNoCr)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranCode.refCode|"+EQT.COMM.tranParticularsCode)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|"+EQT.COMM.tranParticular)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranRmks|"+EQT.COMM.tranRmks1)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars2|"+EQT.COMM.tranRmks2)
+	
+	EQT.COMM.tranAmt = CDOUBLE(EQT.COMM.commAmt) + CDOUBLE(EQT.COMM.vatAmt)
+	PRINT(EQT.COMM.tranAmt)
+	
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_1>.pTranIdentifier.partTranSrlNum|2")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|D")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|"+EQT.COMM.commCrncy)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+EQT.COMM.tranAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+EQT.COMM.commAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|"+EQT.COMM.drAcctNum)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|"+BANCS.STDIN.BODDate)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rateCode.refCode|"+EQT.COMM.rateCodeDr)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rate|"+EQT.COMM.rate)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refNum|"+EQT.COMM.refNoDr)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranCode.refCode|"+EQT.COMM.tranParticularsCode)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|"+EQT.COMM.tranParticular)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranRmks|"+EQT.COMM.tranRmks1)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars2|"+EQT.COMM.tranRmks2)
+	
+	IF(EQT.COMM.vatAmt == 0)THEN
+	#{
+		PRINT("NO TAX")
+		GOTO NO_TAX
+	#}
+	ENDIF
+	
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.key.serial_num|3")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_2>.pTranIdentifier.partTranSrlNum|3")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.partTranType.code|C")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.refCrncyCode.crncyCode|"+EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.refAmt|"+EQT.COMM.vatAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.acctId.foracid|"+EQT.COMM.taxAcctNum)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.glDate|"+BANCS.STDIN.BODDate)
+	IF(TRIM(EQT.COMM.ratecode) != "")THEN
+	#{
+		sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.rateCode.refCode|"+EQT.COMM.ratecode)
+		sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.rate|"+EQT.COMM.rate)
+                sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.treaRate|"+EQT.COMM.treaRate)				
+	#}
+	ENDIF
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.tranParticulars|"+EQT.COMM.tranParticular1)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_2>.tranRmks|"+EQT.COMM.tranRmks2)
+	
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.key.serial_num|4")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.pTranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_u = urhk_setUrhkInp("tranDtl.partTranDetailLL.<rec_3>.pTranIdentifier.partTranSrlNum|4")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.partTranType.code|D")
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.refCrncyCode.crncyCode|"+EQT.COMM.commCrncy)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.refAmt|"+EQT.COMM.tranAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.refAmt|"+EQT.COMM.vatAmt+"|"+ EQT.COMM.commCrncy)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.acctId.foracid|"+EQT.COMM.drAcctNum)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.glDate|"+BANCS.STDIN.BODDate)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.rateCode.refCode|"+EQT.COMM.rateCodeDr)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.rate|"+EQT.COMM.rate)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.refNum|"+EQT.COMM.refNoDr)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.tranCode.refCode|"+EQT.COMM.tranParticularsCode)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.tranParticulars|"+EQT.COMM.tranParticular1)
+	sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.tranRmks|"+EQT.COMM.tranRmks2)
+	#sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_3>.tranParticulars2|"+EQT.COMM.tranRmks2)
+
+	NO_TAX:
+		sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+		sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+		
+		IF(EQT.COMM.srvcallmode == "E")THEN
+		#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_AddXferTran|same_user_verify = Y|retain_all_output = Y")
+			PRINT(sv_u)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_AddXferTran|same_user_verify = Y|retain_all_output = Y")
+			PRINT(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_AddXferTran|same_user_verify = Y|retain_all_output = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF(sv_u != 0)THEN
+		#{
+			CALL("compay007.scr")
+			
+			IF(EQT.COMM.srvError == "Y")THEN
+			#{
+				EQT.COMM.scriptSuccess = "N"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		PRINT(BANCS.OUTPARAM.tranId)
+		PRINT(BANCS.OUTPARAM.tranDate)
+		EQT.COMM.tranId = BANCS.OUTPARAM.tranId
+		EQT.COMM.tranDate = BANCS.OUTPARAM.tranDate
+		
+		sv_u = urhk_CopyOutToIn("")
+		PRINT(sv_u)
+		
+		#sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+		#sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+		
+		#IF(EQT.COMM.srvcallmode == "E")THEN
+		#{
+		#	sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+		#	PRINT(sv_u)
+			#}
+		#ELSE
+			#{
+			sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+			PRINT(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				#sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+				#sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+				
+				sv_u = urhk_ExecSrvNoCommit("SRV_PostTran|same_user_verify = Y|retain_all_output = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+		#}
+		#ENDIF
+		
+		IF(sv_u != 0)THEN
+		#{
+			CALL("compay007.scr")
+			
+			IF(EQT.COMM.srvError == "Y")THEN
+			#{
+				EQT.COMM.scriptSuccess = "N"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#PRINT(BANCS.OUTPARAM.tranId)
+		#PRINT(BANCS.OUTPARAM.tranDate)
+		
+		#EQT.COMM.tranId = BANCS.OUTPARAM.tranId
+		#EQT.COMM.tranDate = BANCS.OUTPARAM.tranDate
+		
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

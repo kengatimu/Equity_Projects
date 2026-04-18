@@ -1,0 +1,321 @@
+#---------------------------------------------------------------
+# DEVELEOPED BY ERIC KAROBIA  on 13-nov-2008 FOR EQUITY BANK
+# The MTT script is used for generating Eazzy24/7 ministatement charges 
+#######################################################################
+<--start
+
+#===========================================================================================*
+# Name                         	:   .scr
+# Date                         	:   13-nov-2008
+# Description                   :   The MTT script is used for generating Eazzy24/7 ministatement charges 
+# Author                       	:   Revathi Duraisamy
+# Called Scripts                :    <none>
+# Calling Script                :    <none>
+# Reference                    	:
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>          	<Description>
+#--------------------------------------------------------------------------
+# 	1			13-11-2008		ERIC KAROBIA 			Original version
+# 	1       	12-02-2013    	Chethan.S  				Modified according to 10x standards.
+#============================================================================================*
+
+
+TRACE ON
+
+#-----------------------------------------------------------------
+# Initialise is used to Check whether Class ATM exists.
+# If not then creates that class.
+# 5 stands for String Type data.
+#-----------------------------------------------------------------
+Initialise:
+#{
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST", "ATM")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST", "ATM", 5)
+	ENDIF
+#{
+#------------------------------------------------------------------
+#  Getting account to debit
+# 
+#------------------------------------------------------------------
+print(BANCS.OUTPUT.CrForacid)
+print(BANCS.OUTPUT.Foracid)
+CUST.ATM.crAccount=BANCS.OUTPUT.CrForacid
+CUST.ATM.drAccount=BANCS.OUTPUT.Foracid
+CUST.ATM.DccId=BANCS.OUTPUT.DccId
+CUST.ATM.narr1="MINISTATEMENT-CHARGE"
+
+
+IF (BANCS.OUTPUT.CrForacid == "") THEN
+	CUST.ATM.Amount = "0"   		
+	GOTO ENDOFSCRIPT
+ELSE
+
+print(BANCS.INPUT.Command)
+
+IF (BANCS.INPUT.Command == "") THEN
+	CUST.ATM.Amount = "0"   		
+	GOTO ENDOFSCRIPT
+ELSE
+
+	CUST.ATM.cmd=BANCS.INPUT.Command 
+	
+ENDIF
+
+BANCS.INPUT.moduleName = "ATM"
+BANCS.INPUT.parameterId = "EVENT_ID"
+CALL ("atmgetcparamvalue.scr")
+print(BANCS.OUTPUT.parameterVal)
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.eventId= BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "eventid setup not done in CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "EVENT_TYPE_1"
+CALL ("atmgetcparamvalue.scr")
+print(BANCS.OUTPUT.parameterVal)
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.eventType = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "eventid setup not done in CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+#--------------------------------------------------------------------------
+# getting the amount to split
+#--------------------------------------------------------------------------
+BANCS.INPUT.TranAmt=cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+print(BANCS.INPUT.TranAmt)
+PRINT(BANCS.INPUT.SerialNum)
+
+CUST.ATM.serialrrn=""
+print(CUST.ATM.serialrrn)
+
+CUST.ATM.serialauthcode= LTRIM(BANCS.INPUT.SerialNum,'0') 
+print(CUST.ATM.serialauthcode)
+
+IF (BANCS.INPUT.TranAmt == "0") THEN
+	CUST.ATM.Amount = "0"   		
+	GOTO ENDOFSCRIPT
+ELSE
+	CUST.ATM.Amount=BANCS.INPUT.TranAmt
+	print(CUST.ATM.Amount)
+
+	IF (CUST.ATM.DccId=="KEN") THEN
+		IF (FIELDEXISTS(CUST.ATM.FeeAmount)) THEN
+			print(CUST.ATM.FeeAmount)
+			CUST.ATM.Amount=CUST.ATM.FeeAmount
+			print(CUST.ATM.Amount)
+		ENDIF
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Create the narration
+	#--------------------------------------------------------------------------
+	sv_e = MID$(BANCS.STDIN.BODDate,0,10)
+	print(sv_e)
+	sv_s = "sysdate "
+	sv_s = sv_s + " | "
+	sv_s = sv_s + " SELECT TO_CHAR((TO_DATE(?SVAR,'DD-MM-YYYY')),'DD-MM-YYYY') "
+	sv_s = sv_s + " FROM DUAL"
+	BANCS.INPARAM.BINDVARS = sv_e
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d =="0") THEN
+		CUST.ATM.sysdate = BANCS.OUTPARAM.sysdate
+		IF (CUST.ATM.DccId=="SMS") THEN 
+			CUST.ATM.narr1 ="M-KESHO MINISTATEMENT CHARGE" + "/" + CUST.ATM.serialauthcode + "/" + CUST.ATM.sysdate
+		ENDIF
+		IF (CUST.ATM.DccId=="EAZ") THEN 
+			CUST.ATM.narr1 ="EAZZY-MINISTATEMENT-CHARGE" + "/" + CUST.ATM.serialauthcode + "/" + CUST.ATM.sysdate
+		ENDIF
+		IF (CUST.ATM.DccId=="OMK") THEN 
+			CUST.ATM.narr1 ="ORANGEM-MINISTATEMENT-CHARGE" + "/" + CUST.ATM.serialauthcode + "/" + CUST.ATM.sysdate
+		ENDIF
+		IF (BANCS.INPUT.ReservedField3 != "") THEN 
+			CUST.ATM.serialrrn = ltrim(BANCS.INPUT.ReservedField3,'0')
+			print(CUST.ATM.serialrrn)
+		ENDIF
+
+		IF (CUST.ATM.DccId=="KEN") THEN 
+			IF (BANCS.INPUT.Command == "MSIR") THEN
+				CUST.ATM.narr1 ="INT-MINIST-CHARGE" + "/" + CUST.ATM.serialrrn + "/" + CUST.ATM.serialauthcode + "/" +  CUST.ATM.sysdate 
+				print(CUST.ATM.narr1)
+			ENDIF
+			IF (BANCS.INPUT.Command == "BLIR") THEN
+				CUST.ATM.narr1 ="INT-BAL_INQ-CHARGE" + "/" + CUST.ATM.serialrrn + "/" + CUST.ATM.serialauthcode + "/" +  CUST.ATM.sysdate
+				print(CUST.ATM.narr1)
+			ENDIF
+		ENDIF
+	ELSE
+	 GOTO ENDOFSCRIPT
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+			CREATEREP("BANCS")
+		ENDIF
+
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+			CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+		IF(REPEXISTS("CUST") == 0 ) THEN
+                        CREATEREP("CUST")
+                ENDIF
+
+                IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+                        CREATECLASS("CUST","ATM",5)
+                ENDIF
+
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType="T"
+		MTT.TranDetails.TranSubType="BI"
+
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+		BANCS.INPARAM.CommitFlg="N"
+		BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw="Y"
+		BANCS.INPARAM.CheckExceptions="N"
+
+		sv_u = urhk_MTTS_Initialize("")
+		print(sv_u)
+
+
+		sv_v = "PurchaseComm"
+		print(sv_v)
+
+		sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+
+		sv_u = urhk_MTTS_PopulateInputDetails("")
+		
+		sv_b = BANCS.INPUT.TranAmt
+		print(sv_b)
+		IF (CUST.ATM.DccId=="KEN") THEN
+			IF (FIELDEXISTS(CUST.ATM.FeeAmount)) THEN
+				print(CUST.ATM.FeeAmount)
+				sv_b=CUST.ATM.FeeAmount
+				print(sv_b)
+			ENDIF
+		ENDIF
+		#--------------------------------------------------
+		# Income To EQUITY PURCHASES COMM A/C
+		#--------------------------------------------------
+
+			MTT.PartTranDetails.Account = CUST.ATM.crAccount
+			MTT.PartTranDetails.RefCurrency = BANCS.OUTPUT.TranCrncy
+			print(BANCS.OUTPUT.TranCrncy)
+			print(BANCS.STDIN.homeCrncyCode)
+		#---------------------------------------------------------------------------------Edwin For statement FX
+			#if(BANCS.OUTPUT.TranCrncy=="USD")then
+			#	MTT.PartTranDetails.RateCode ="TTB"
+			#endif
+			if((BANCS.OUTPUT.TranCrncy) != (BANCS.STDIN.homeCrncyCode))then
+                                CUST.ATM.transactiontype="T"
+                                sv_q = " FXratecode| select CUSTOM.RETURN_FX_RATE_CODE(?SVAR,?SVAR,?SVAR,?SVAR) from dual"
+                                print(sv_q)
+                                BANCS.INPARAM.BINDVARS=MTT.PartTranDetails.RefCurrency + "|" + BANCS.STDIN.homeCrncyCode + "|" + CUST.ATM.transactiontype + "|" + BANCS.STDIN.contextBankId
+                                print(BANCS.INPARAM.BINDVARS)
+                                sv_w=urhk_dbSelectWithBind(sv_q)
+                                print(sv_w)
+                                if( sv_w != 0 )then
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        BANCS.OUTPUT.ReservedField3 = "RATE MATRIX NOT MAINTAINED"
+                                        print(BANCS.OUTPUT.ReservedField3)
+                                        BANCS.OUTPUT.successOrFailure="F"
+                                        exitscript
+                                else
+                                        CUST.ATM.FXratecode = BANCS.OUTPARAM.FXratecode
+                                        print(CUST.ATM.FXratecode)
+                                        if (CUST.ATM.FXratecode=="") THEN
+                                                BANCS.OUTPUT.ReservedField3 = "RATE MATRIX NOT MAINTAINED"
+                                                print(BANCS.OUTPUT.ReservedField3)
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                exitscript
+                                        else
+                                                MTT.PartTranDetails.RateCode = CUST.ATM.FXratecode
+                                                print(MTT.PartTranDetails.RateCode)
+                                        endif
+                                endif
+                        endif
+		#------------------------------------------------------End	
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+			MTT.PartTranDetails.RefAmount = sv_b
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Remarks = ""
+			MTT.PartTranDetails.RefNum = ""
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			MTT.ChargeDetails.EventType = CUST.ATM.eventType
+			MTT.ChargeDetails.EventId = CUST.ATM.eventId
+			sv_e = "PurchaseIncome"
+			sv_u = urhk_MTTS_DefineChargePartTran(sv_e)
+			print(sv_u)
+
+		#------------------------------------------------------------------
+		# Debit Partran To MERCHANT PURCHASES COMM A/C
+		#------------------------------------------------------------------
+
+			MTT.PartTranDetails.Account = CUST.ATM.drAccount
+			MTT.PartTranDetails.RefCurrency = BANCS.OUTPUT.TranCrncy
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+			MTT.PartTranDetails.RefAmount = -1 * CDOUBLE(sv_b)
+			MTT.PartTranDetails.Remarks = "" 
+			MTT.PartTranDetails.RefNum = "" 
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_h = "D" + CUST.ATM.drAccount
+			sv_u = urhk_MTTS_definePartTran(sv_h)
+			sv_u = urhk_MTTS_EndDefinition("")
+			print(sv_u)
+			sv_u = urhk_MTTS_Close("")
+		        print(sv_u)
+
+			print(BANCS.OUTPARAM.MTTTranId)
+ENDIF
+ENDOFSCRIPT:
+
+exitscript
+TRACE OFF
+END-->

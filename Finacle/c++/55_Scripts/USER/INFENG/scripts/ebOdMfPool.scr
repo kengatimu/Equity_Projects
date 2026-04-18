@@ -1,0 +1,127 @@
+#ebOdMfPool.scr
+<--start
+trace on
+#Reps/Class
+#++++++++++
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+	EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+	EQSRV.GLBDATA.PoolAcct	= ""
+        sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+        if(sv_u == 0)then
+                EQSRV.GLBDATA.PoolCust = trim(MTT.InputDetails.Argument1)
+                EQSRV.GLBDATA.poolAccts = trim(MTT.InputDetails.Argument2)
+        else
+                sv_u = urhk_MTTS_Close("")
+                print(sv_u)
+                goto VAYU
+        endif
+	sv_d = "PoolAcct | select foracid from tbaadm.gam where bank_id=?SVAR and cif_id=?SVAR and entity_cre_flg='Y' "
+	sv_d = sv_d + " and del_flg='N' and acct_cls_flg<>'Y' and foracid in(?SVAR) " 
+	sv_d = sv_d + " and rownum<=1"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.PoolCust + "|" + EQSRV.GLBDATA.poolAccts 
+	print(BANCS.INPARAM.BINDVARS)
+	print(sv_d)
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	if(sv_u==0)then
+		EQSRV.GLBDATA.PoolAcct = BANCS.OUTPARAM.PoolAcct
+	else
+		EQSRV.GLBDATA.PoolAcct = ""
+		goto VAYU
+	endif
+	sv_o= ""
+	sv_t= ""
+	sv_r= ""
+	sv_f= ""
+	sv_a=urhk_SetUrhkInp("poolInfo.pool.ptype|S")
+	######sv_a=urhk_SetUrhkInp("poolInfo.pool.reglflag|Y")
+	sv_a=urhk_SetUrhkInp("poolInfo.pool.reglflag|N")
+	sv_a=urhk_SetUrhkInp("poolInfo.poolDesc|Merchant Pool")
+	sv_a=urhk_SetUrhkInp("poolInfo.acct.foracid|" +EQSRV.GLBDATA.PoolAcct )
+	sv_u = urhk_ExecSrvNoCommit("SRV_FetchPoolForCreate|same_user_verify = Y|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        else
+                sv_s = "X"
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+		#loop	
+                sv_u = urhk_GetUrhkNum("poolLL")
+                if(sv_u != 0)then
+                        goto VAYU
+                endif
+                sv_j = cint(BANCS.OUTPARAM.srvValue)
+                print(sv_j)
+                sv_b = 0
+                while(sv_b < sv_j)
+                #{
+                        sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.acct.foracid"
+                        sv_u = urhk_GetUrhkOut(sv_d)
+			EQSRV.GLBDATA.swpAcctO = BANCS.OUTPARAM.srvValue
+			print(EQSRV.GLBDATA.swpAcctO)
+                        sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.scheme.schmCode"
+                        sv_u = urhk_GetUrhkOut(sv_d)
+			EQSRV.GLBDATA.swpAcctOSchm = BANCS.OUTPARAM.srvValue
+			print(EQSRV.GLBDATA.swpAcctOSchm)
+			sv_b = sv_b + 1	
+		#}
+		do
+        else
+                EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.PoolAcct 
+                callscriptifexist("ebsrvHandler.scr")
+                EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+                EQSRV.GLBDATA.srvErrCode = "SRV_FetchDfltODAcctDtls"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        #}
+        endif
+	sv_u = urhk_CopyOutToIn("")
+	sv_a = urhk_SetUrhkOut("poolInfo.pool.id|PoolId")
+	sv_b = 0
+	while(sv_b < sv_j)
+	#{
+		sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.allowSweeps|Y")
+		sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.delFlg|N")
+		sv_b = sv_b + 1
+	#}
+	do
+	sv_u = urhk_ExecSrvNoCommit("SRV_CreatePoolAndVerify|same_user_verify = Y|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        else
+                sv_s = "X"
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+		EQSRV.GLBDATA.PoolId = BANCS.OUTPARAM.PoolId
+		EQSRV.GLBDATA.srvErrMsg = "ODA Merchant Pool Created Successfully : " + EQSRV.GLBDATA.PoolId
+		EQSRV.GLBDATA.srvSucFail = "S"
+	else
+                EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.PoolAcct 
+                callscriptifexist("ebsrvHandler.scr")
+                EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+                EQSRV.GLBDATA.srvErrCode = "SRV_CreatePoolAndVerify"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+	#}
+	endif
+VAYU:
+	print(EQSRV.GLBDATA.srvErrMsg) 
+	print(EQSRV.GLBDATA.srvErrCode)
+	print(EQSRV.GLBDATA.srvSucFail)
+trace off
+end-->

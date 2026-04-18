@@ -1,0 +1,233 @@
+#####---------------------------------------------------------------------------------------------------
+#  Name            : odfdrBatchCloseAcct.scr
+#  Description     : Close accounts after full payment and maturity of FD
+#  Date            : 17-03-2025
+#  Author	   : Dennis Chirchir
+#####---------------------------------------------------------------------------------------------------
+<--start
+trace on
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF	
+	sv_r = CLASSEXISTS("CUST", "CLS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "CLS", 5)
+	#}
+	ENDIF
+	CUST.CLS.SourceAcct = ""
+        CUST.CLS.srvErrMsg = ""
+        CUST.CLS.srvErrCode = ""
+        CUST.CLS.srvSucFail = ""
+	#----------------------------------------------------------------------
+	# STEP2: Pick accounts to close
+	#----------------------------------------------------------------------
+	lv_a = "clsAcct,lAcid|select distinct foracid,LIEN_ACID from tbaadm.gam, tbaadm.sdr b where schm_code in ('ODFDR') "
+	lv_a = lv_a + " and clr_bal_amt='0' and acct_cls_flg='N' and gam.bank_id= ?SVAR and b.acid=gam.acid and b.bank_id=gam.bank_id "
+	lv_a = lv_a + " and gam.acid in(select acid from tbaadm.gac where chrge_off_flg != 'Y' and bank_id = gam.bank_id) "
+	lv_a = lv_a + " and gam.acid not in(select od_acid from custom.odfdr_dmd_tbl a where dmd_amt-tot_adj_amt != '0' and del_flg='N' and a.od_acid=gam.acid and bank_id=?SVAR) "
+	lv_a = lv_a + " and sol_id = ?SVAR "
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+
+        sv_u = urhk_dbCursorOpenWithBind(lv_a)
+        if(sv_u==0)then
+        #{
+                CUST.CLS.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                CUST.CLS.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                CUST.CLS.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                CUST.CLS.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        CUST.CLS.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(CUST.CLS.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                CUST.CLS.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                CUST.CLS.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                CUST.CLS.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+
+        while(sv_z ==0)
+	#{
+	CUST.CLS.clsAcct = BANCS.OUTPARAM.clsAcct
+	print(CUST.CLS.clsAcct)
+	CUST.CLS.lAcid = BANCS.OUTPARAM.lAcid
+	print(CUST.CLS.lAcid)
+	sv_a = urhk_getAcctDetailsInRepository(CUST.CLS.clsAcct)
+	print(sv_a)
+	IF(sv_a == 0) THEN
+	#{
+		CUST.CLS.sourceclsflg = BANCS.OUTPARAM.acctCloseflg
+		print(CUST.CLS.sourceclsflg )
+		CUST.CLS.schmcode = BANCS.OUTPARAM.schmCode
+		print(CUST.CLS.schmcode)
+		CUST.CLS.solid = BANCS.OUTPARAM.acctSolId
+		print(CUST.CLS.solid)
+		CUST.CLS.acid = BANCS.OUTPARAM.acid
+		print(CUST.CLS.acid)
+	#}
+	ELSE
+	#{
+		CUST.CLS.srvErrMsg = "Acount Invalid"
+   		GOTO NXTREC
+	#}
+	ENDIF
+	print(CUST.CLS.SourceAcct)				
+	sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.clsAcct)
+	sv_a= urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+	sv_a= urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+
+	sv_u = urhk_ExecSrv("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y")
+	print(sv_u)					
+	IF (sv_u == 0 ) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.clsAcct)
+		sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.CLS.acid)
+		sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.CLS.schmcode)
+		sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+		sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+		sv_u = urhk_SetUrhkInp("intCalcReqd|Y")
+
+		sv_u = urhk_ExecSrv("NAPI_CloseOperAcct|retain_all_output = Y")
+		PRINT(sv_u)			
+		IF(sv_u == 0)THEN
+		#{
+			sv_u=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.clsAcct)
+			sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+			sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")					
+					
+			sv_u = urhk_ExecSrv("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+			print(sv_u)			
+			IF (sv_u == 0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.clsAcct)
+				sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.CLS.acid)
+				sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.CLS.schmcode)
+				sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+				sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+						
+				sv_u = urhk_ExecSrv("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				IF(sv_u == 0) THEN
+				#{
+						CUST.CLS.MSG = "A/c. ID "+ CUST.CLS.clsAcct +" Closed Successfully"
+						sv_z = urhk_SetOrbOut("SuccessOrFailure|S")
+						sv_t = "Msg| " + CUST.CLS.MSG
+						sv_u = urhk_SetOrbOut(sv_t)
+						##########Check if FD has not been withdrawn by closure
+						call("ODFDRCollateralWithdraw.scr")
+						##########################
+						GOTO NXTREC	
+				#}
+				ELSE
+				#{
+					GOTO CHECKERROR
+				#}
+				ENDIF
+
+			#}
+			ELSE
+			#{
+				GOTO CHECKERROR
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			GOTO CHECKERROR
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		GOTO CHECKERROR
+	#}
+	ENDIF
+
+	CHECKERROR:
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) then
+		#{
+			sv_u = system("echo 'Error '")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>acctclose.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "Msg| " +sv_e
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|F")
+				sv_u = urhk_SetOrbOut(sv_t)
+				GOTO NXTREC
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+
+        NXTREC:
+                        print(CUST.CLS.srvErrMsg)
+                        print(CUST.CLS.srvErrCode)
+                        print(CUST.CLS.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(CUST.CLS.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(CUST.CLS.schdlcurNum)
+                                print(sv_u)
+                                CUST.CLS.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                CUST.CLS.srvErrCode = "DBCursor"
+                                CUST.CLS.srvSucFail = "F"
+                                goto Endofscript
+                        #}
+                        endif
+                        CUST.CLS.ddaRec = cint(CUST.CLS.ddaRec) + 1
+                        CUST.CLS.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + CUST.CLS.ddaRec
+                        print(CUST.CLS.recmsg)
+        #}
+        do
+        sv_u = urhk_dbCursorClose(CUST.CLS.schdlcurNum)
+        print(sv_u)
+
+endofscript:
+trace off
+end-->

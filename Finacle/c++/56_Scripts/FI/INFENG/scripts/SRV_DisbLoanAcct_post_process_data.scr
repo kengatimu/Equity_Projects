@@ -1,0 +1,153 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: SRV_DisbLoanAcct_post_process_data.scr
+#   Description		: Share Investment account id is inserted into custom table
+#					: and this SRV is Used to insert the previous outstanding loan accounts into LADISB_PAYOFF_OLDLOAN custom table
+#   Date			: 08-07-2013
+#   Author			: Bharath Reddy
+#   Input			: NA
+#   Output			: NA
+#   Called Script	:
+#   Calling Script	: s_laadisbmn009.scr,s_ast0057mn004.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#	1.0             10-07-2013      Bharath				Original Version
+#   2.0             17-07-2013      Bharath				Added menuId condition
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0c43e070bc3355008a0ec8ca83f506561634a4ece39206a82d78a5905d288f65"
+	#TRACE ON
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUST")
+	ENDIF
+
+	sv_r = CLASSEXISTS("CUST","LADIS")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUST","LADIS",5)
+	ENDIF
+
+		sv_a = urhk_GetChannelInfo("")
+		print(sv_a)
+		IF (sv_a==0) THEN
+		#{
+			sv_v = BANCS.OUTPARAM.DccId
+			print(sv_v)
+		#}
+		ENDIF
+	IF(FIELDEXISTS(BANCS.STDIN.menuId))THEN
+	#{
+		IF(BANCS.STDIN.menuId == "HLADISB")THEN
+		#{
+			CALL("ladisbchrgmn001.scr")
+			CALL("s_laadisbdp007.scr")
+			CALL("s_ast0057mn004.scr")
+			CALL("s_ast0057mn002.scr")
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (BANCS.STDIN.moduleIdentity == "FI") THEN
+	#{
+		sv_a = urhk_SRV_GetVal("acctDisburseTranLA.schmCode.schmCode")
+		sv_b=BANCS.OUTPARAM.srvValue
+		print(sv_b)
+		CUST.LADIS.schmexpswe = sv_b
+		print(CUST.LADIS.schmexpswe)
+
+		###### Mawazo EXEMPT LA508 FROM CHARGES #####
+		if(BANCS.STDIN.contextBankId=="56")then
+			if(CUST.LADIS.schmexpswe=="LA508")then
+				exitscript
+			endif
+		endif
+		###### END Mawazo EXEMPT LA508 FROM CHARGES #####
+
+
+		IF ((sv_b!="LA592") AND (sv_b!="LA527") AND (sv_b!="LA529") ) THEN
+			
+			sv_p=urhk_B2k_printRepos("BANCS")
+			print(sv_p)
+
+			#CALL("CollectLoanCharge.scr")
+			sv_u = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+			sv_k = BANCS.OUTPARAM.srvValue
+			BANCS.INPARAM.BINDVARS = sv_k + "|" + BANCS.STDIN.contextBankId
+			sv_s = "laAcidfx,laSolIdfx,laCifIdfx,laCrncyCodefx,laSchmCodefx,laClrBalAmtfx|SELECT  "
+			sv_s = sv_s + " ACID,SOL_ID,CIF_ID,ACCT_CRNCY_CODE,SCHM_CODE,CLR_BAL_AMT "
+			sv_s = sv_s + " FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+			print(sv_s)
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+			#{
+				CUST.LADIS.laAcidfx = BANCS.OUTPARAM.laAcidfx
+				CUST.LADIS.laSolIdfx = BANCS.OUTPARAM.laSolIdfx
+				CUST.LADIS.laCifIdfx = BANCS.OUTPARAM.laCifIdfx
+				CUST.LADIS.laCrncyCodefx = BANCS.OUTPARAM.laCrncyCodefx
+				print(CUST.LADIS.laCrncyCodefx)
+				CUST.LADIS.laSchmCodefx = BANCS.OUTPARAM.laSchmCodefx
+				print(BANCS.STDIN.homeCrncyCode)
+				IF (BANCS.STDIN.homeCrncyCode==CUST.LADIS.laCrncyCodefx) THEN
+					IF(sv_v == "NGN")THEN
+						CALL("NGN_CollectLoanCharge.scr")
+					ELSE
+					
+					CALL("CollectLoanCharge.scr")
+					ENDIF
+					#}
+				ELSE
+					#{
+					CALL("CollectLoanChargefox.scr")
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				sv_u = urhk_SRV_SetErr("Invalid Account Number ["+ sv_k + "]")
+				exitscript
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		IF (sv_v =="EXP") THEN
+		#{
+			IF (CUST.LADIS.schmexpswe=="LA527") THEN
+			#{
+				CALL("expsms_ug.scr")
+			#}
+			ENDIF
+		#}
+		ENDIF
+		IF ((sv_v =="RLS") OR (sv_v =="EAZ") OR (sv_v =="NGN") OR (sv_v =="SME"))  THEN
+		#{
+			########### SKIP SWEEP IF THIS IS NOT FIRST TIME LOAN DISB START ##################
+			sv_u = urhk_SRV_GetVal("acctDisburseTranLA.amtAlreadyDisbursed")
+			CUST.LADIS.amtAlreadyDisbursed= BANCS.OUTPARAM.srvValue
+			print(CINT(CUST.LADIS.amtAlreadyDisbursed))
+
+			IF(CINT(CUST.LADIS.amtAlreadyDisbursed) != 0)THEN
+			#{
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			########### SKIP SWEEP IF THIS IS NOT FIRST TIME LOAN DISB END  ##################
+		CALL("expsweep.scr")
+		#}
+		ENDIF
+
+		#----------Edwin Zico for Echosystem sweep
+		if (CUST.LADIS.schmexpswe =="LA571") then
+		#{
+			callscriptifexist("EcoLoanSweep.scr")
+		#}
+		endif
+		#----------Edwin End
+
+	#}
+	ENDIF
+	
+	EXITSCRIPT
+END-->

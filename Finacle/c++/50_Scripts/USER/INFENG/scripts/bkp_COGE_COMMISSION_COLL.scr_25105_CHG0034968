@@ -1,0 +1,514 @@
+#
+<--START
+TRACE ON
+        #--------------------------------------------------------
+        #create repository
+        #--------------------------------------------------------
+
+        IF (REPEXISTS("CUST") == 0 ) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+        IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+        #{
+                CREATECLASS("CUST","DATA",5)
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUST","CIETXN") == 0) THEN
+        #{
+                CREATECLASS("CUST","CIETXN",5)
+        #}
+        ENDIF
+
+	IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+        #{
+                CREATECLASS("CUST","GCHRG",5)
+        #}
+        ENDIF
+
+        #----------------------------------------------------------------------
+        # Printing Bancs Repository
+        #----------------------------------------------------------------------
+
+        CUST.DATA.period = ""
+        CUST.DATA.acctNum = ""
+        CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+        PRINT(CUST.DATA.BODDate)
+	CUST.DATA.lienSerialNum = ""
+        CUST.DATA.tranDate = BANCS.STDIN.BODDate
+        CUST.DATA.tranType = "T"
+        CUST.DATA.tranSubType ="BI"
+
+        CUST.DATA.glDate = BANCS.STDIN.BODDate
+        CUST.DATA.valueDate = BANCS.STDIN.BODDate
+
+        CUST.DATA.dbSerial_num ="1"
+        CUST.DATA.debitPartTranType="D"
+        CUST.DATA.laAcct = ""
+        CUST.DATA.opCrncy= ""
+
+        CUST.DATA.crSerial_num ="2"
+        CUST.DATA.creditPartTranType ="C"
+        CUST.DATA.opAcct = ""
+        CUST.DATA.creditRefCrncy=""
+        CUST.DATA.creditTranParticular="Commission And Anual Fee"
+        CUST.DATA.tranId=""
+        CUST.DATA.refCrncy = "RWF"
+
+	CUST.DATA.balAmt = "0.00"
+	CUST.DATA.taxAmt = "0.00"
+        CUST.DATA.tranAmt = ""
+	CUST.GCHRG.chargeTranId = ""
+        CUST.DATA.rate = "1"
+        #---------------------------------------------------------------------
+        #Operative Account
+        #---------------------------------------------------------------------
+
+	lv_q = "opCgForacid,laCgForacid,chgDate,commAmt | select FORACID,LOAN_ACCOUNT,TO_CHAR(DVA,'DD-MM-RRRR'),(COMMISSIONS + TAX) AS COMM from custom.coge_comm_coll_new where CHARGED_FLG = 'N' AND DVA = TO_DATE(?SVAR,'DD-MM-YYYY') AND FORACID IN (SELECT IBAN_NUMBER FROM TBAADM.GAM WHERE SOL_ID = ?SVAR) "
+	lv_q = lv_q +" UNION "
+	lv_q = lv_q +" select FORACID,LOAN_ACCOUNT,TO_CHAR(DVA,'DD-MM-RRRR'),(COMMISSIONS + TAX) AS COMM from custom.coge_comm_coll_new where CHARGED_FLG = 'N' AND DVA = TO_DATE(?SVAR,'DD-MM-YYYY') AND FORACID IN (SELECT FORACID FROM TBAADM.GAM WHERE SOL_ID = ?SVAR) "
+        PRINT(lv_q)
+        BANCS.INPARAM.BINDVARS = CUST.DATA.BODDate +"|"+ BANCS.STDIN.mySolId +"|"+ CUST.DATA.BODDate +"|"+ BANCS.STDIN.mySolId
+
+        lv_u = urhk_dbCursorOpenWithBind(lv_q)
+        PRINT(lv_u)
+
+        if(lv_u == 0)then
+        #{
+                CUST.DATA.CursorNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                print(CUST.DATA.CursorNum)
+
+                sv_c=urhk_dbCursorFetch(CUST.DATA.CursorNum)
+
+                WHILE(sv_c==0)
+                #{
+                        CUST.DATA.opCgForacid = BANCS.OUTPARAM.opCgForacid
+                        PRINT(CUST.DATA.opCgForacid)
+                        CUST.DATA.laCgForacid = BANCS.OUTPARAM.laCgForacid
+                        PRINT(CUST.DATA.laCgForacid)
+                        CUST.DATA.chgDate = BANCS.OUTPARAM.chgDate
+                        PRINT(CUST.DATA.chgDate)
+                        CUST.DATA.commAmt = BANCS.OUTPARAM.commAmt
+                        PRINT(CUST.DATA.commAmt)
+                        CUST.DATA.tranAmt = CUST.DATA.commAmt
+
+		IF(STRLEN(CUST.DATA.laCgForacid) > 16)THEN
+		#{
+                        IF(CUST.DATA.opCgForacid != "") THEN
+                        #{
+                                BANCS.INPARAM.iban_number =CUST.DATA.opCgForacid
+                                sv_u = urhk_getForacidFromIBANnumber("")
+                                PRINT(sv_u)
+                                IF(sv_u!=0) THEN
+                                        sv_r = "ERROR| Invalid Coge DrAcct "
+                                        sv_u = urhk_SetOrbOut(sv_r)
+                                        exitscript
+                                ELSE
+                                        CUST.DATA.opForacid = BANCS.OUTPARAM.foracid
+                                        print (CUST.DATA.opForacid)
+
+					lv_q = " acctStatus | SELECT ACCT_STATUS FROM TBAADM.SMT WHERE ACID = ( SELECT ACID FROM TBAADM.GAM WHERE FORACID = ?SVAR ) "
+					PRINT(lv_q)
+
+					BANCS.INPARAM.BINDVARS = CUST.DATA.opForacid
+					PRINT(BANCS.INPARAM.BINDVARS)
+
+					lv_u = urhk_dbSelectWithBind(lv_q)
+					PRINT(lv_u)
+
+					IF(lv_u == 0)THEN
+					#{
+						CUST.DATA.acctStatus = BANCS.OUTPARAM.acctStatus
+						PRINT(CUST.DATA.acctStatus)
+					#}
+					ELSE
+					#{
+						CUST.DATA.acctStatus = ""
+					#}
+					ENDIF
+                                ENDIF
+                        #}
+                        ENDIF
+
+			IF(CUST.DATA.laCgForacid != "") THEN
+                        #{
+                                BANCS.INPARAM.iban_number = CUST.DATA.laCgForacid
+                                sv_u = urhk_getForacidFromIBANnumber("")
+                                PRINT(sv_u)
+                                IF(sv_u!=0) THEN
+                                #{
+                                        sv_r = "ERROR| Invalid Coge DrAcct "
+                                        sv_u = urhk_SetOrbOut(sv_r)
+                                        exitscript
+                                #}
+                                ELSE
+                                #{
+                                        CUST.DATA.laForacid = BANCS.OUTPARAM.foracid
+                                        print (CUST.DATA.laForacid)
+
+                                        IF(CUST.DATA.laForacid == "")THEN
+                                        #{
+                                                lv_q = "acctNum,schmCode | SELECT FORACID,SCHM_CODE FROM TBAADM.GAM WHERE substr(iban_number,0,18) = ?SVAR "
+                                                PRINT(lv_q)
+
+                                                BANCS.INPARAM.BINDVARS = CUST.DATA.laCgForacid 
+                                                print(BANCS.INPARAM.BINDVARS)
+
+                                                lv_u = urhk_dbSelectWithBind(lv_q)
+                                                PRINT(lv_u)
+
+                                                IF(lv_u ==0 )THEN
+                                                #{
+                                                        CUST.DATA.laForacid = BANCS.OUTPARAM.acctNum
+							CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+                                                #}
+                                                ELSE
+                                                #{
+                                                        PRINT("INVALID ACCOUNT")
+							GOTO NEXTREC2
+                                                #}
+                                                ENDIF
+                                        #}
+					ELSE
+					#{
+						lv_q = "acctNum,schmCode | SELECT FORACID,SCHM_CODE FROM TBAADM.GAM WHERE FORACID = ?SVAR "
+                                                PRINT(lv_q)
+
+                                                BANCS.INPARAM.BINDVARS = CUST.DATA.laForacid
+                                                print(BANCS.INPARAM.BINDVARS)
+
+                                                lv_u = urhk_dbSelectWithBind(lv_q)
+                                                PRINT(lv_u)
+
+                                                IF(lv_u ==0 )THEN
+                                                #{
+                                                        CUST.DATA.laForacid = BANCS.OUTPARAM.acctNum
+                                                        CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+                                                #}
+						ENDIF
+					#}
+                                        ENDIF
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+		#}
+		ELSE
+		#{
+			lv_q = "clr_bal_amt,schmCode,lacrncyCode | SELECT (-(CLR_BAL_AMT)),SCHM_CODE,ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE FORACID = ?SVAR "
+			PRINT(lv_q)
+
+			BANCS.INPARAM.BINDVARS = CUST.DATA.laCgForacid
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			lv_u = urhk_dbSelectWithBind(lv_q)
+			PRINT(lv_u)
+
+			IF(lv_u ==0 )THEN
+			#{
+				CUST.DATA.clr_bal_amt = BANCS.OUTPARAM.clr_bal_amt
+				CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+				CUST.DATA.lacrncyCode = BANCS.OUTPARAM.lacrncyCode
+			#}
+			ENDIF
+
+			lv_q = "managementFeePercent | SELECT MANAGEMENT_FEE_PERCENT FROM CUSTOM.EQPR_MANAGEMENT_FEE_MAIN WHERE LA_ACCOUNT_NUMBER = ?SVAR "
+			PRINT(lv_q)
+
+			BANCS.INPARAM.BINDVARS = CUST.DATA.laCgForacid 
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			lv_u = urhk_dbSelectWithBind(lv_q)
+			PRINT(lv_u)
+
+			IF(lv_u == 0)THEN
+			#{
+				CUST.DATA.managementFeePercent = BANCS.OUTPARAM.managementFeePercent
+			#}
+			ELSE
+			#{
+				PRINT("ERROR")
+				GOTO NEXTREC2
+			#}
+			ENDIF	
+
+			lv_q = "chargeAmt | select ((?SVAR * ?SVAR)/100) as chgAmt from dual "
+			PRINT(lv_q)
+
+			BANCS.INPARAM.BINDVARS = CUST.DATA.clr_bal_amt  +"|"+ CUST.DATA.managementFeePercent
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			lv_u = urhk_dbSelectWithBind(lv_q)
+			PRINT(lv_u)
+
+			IF(lv_u == 0)THEN
+			#{
+				CUST.DATA.chargeAmt = BANCS.OUTPARAM.chargeAmt
+				PRINT(CUST.DATA.chargeAmt)
+			#}
+			endif
+			
+			IF(CUST.DATA.lacrncyCode != "RWF")THEN
+			#{
+				CUST.DATA.rateCode = "TTB"
+				sv_s = " Rate|"
+				sv_s = sv_s + "select VAR_CRNCY_UNITS "
+				sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR  "
+				sv_s = sv_s + "AND VAR_CRNCY_CODE = 'RWF' AND RATECODE =?SVAR  AND bank_id = ?SVAR "
+				print (sv_s)
+				BANCS.INPARAM.BINDVARS = CUST.DATA.lacrncyCode + "|" + CUST.DATA.rateCode + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					CUST.DATA.Rate = BANCS.OUTPARAM.Rate
+					PRINT(CUST.DATA.Rate)
+				#}
+				ENDIF
+				BANCS.INPARAM.InputAmount  = CUST.DATA.chargeAmt 
+				BANCS.INPARAM.FromCurrency = CUST.DATA.lacrncyCode 
+				BANCS.INPARAM.ToCurrency   = "RWF"
+				BANCS.INPARAM.RateCode     = CUST.DATA.rateCode
+				BANCS.INPARAM.Rate         = cdouble(CUST.DATA.Rate)
+
+				sv_u = urhk_B2k_ConvertAmount("")
+				CUST.DATA.chargeAmt = BANCS.OUTPARAM.OutputAmount
+				print(CUST.DATA.chargeAmt)
+			#}
+			ENDIF
+
+			IF(CDOUBLE(CUST.DATA.chargeAmt) > CDOUBLE(CUST.DATA.tranAmt))THEN
+                        #{
+                                CUST.DATA.tranAmt = CUST.DATA.chargeAmt
+                        #}
+                        ELSE
+                        #{
+                                PRINT(CUST.DATA.tranAmt)
+                        #}
+                        endif
+
+			CUST.DATA.opForacid = CUST.DATA.opCgForacid
+			CUST.DATA.laForacid = CUST.DATA.laCgForacid	
+		#}
+		endif
+
+                        sv_n = urhk_getAcctDetailsInRepository(CUST.DATA.opForacid)
+                        IF (sv_n != 0)THEN
+                                PRINT("INVALID ACCOUNT")
+                        ELSE
+                                CUST.DATA.clrBalAmt = BANCS.OUTPARAM.clearBalance
+                                CUST.DATA.crncyCode = BANCS.OUTPARAM.acctCrncyCode
+				CUST.DATA.freezeCode = TRIM(BANCS.OUTPARAM.freezeCode)
+
+				IF(CUST.DATA.crncyCode != "RWF")THEN
+				#{
+					CUST.DATA.rateCode = "TTB"
+					sv_s = " Rate|"
+					sv_s = sv_s + "select VAR_CRNCY_UNITS "
+					sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR  "
+					sv_s = sv_s + "AND VAR_CRNCY_CODE = 'RWF' AND RATECODE =?SVAR  AND bank_id = ?SVAR "
+					print (sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.DATA.crncyCode + "|" + CUST.DATA.rateCode + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						CUST.DATA.Rate = BANCS.OUTPARAM.Rate
+						PRINT(CUST.DATA.Rate)
+					#}
+					ENDIF
+					BANCS.INPARAM.InputAmount  = CUST.DATA.tranAmt 
+					BANCS.INPARAM.FromCurrency = CUST.DATA.crncyCode 
+					BANCS.INPARAM.ToCurrency   = "RWF" 
+					BANCS.INPARAM.RateCode     = CUST.DATA.rateCode
+					BANCS.INPARAM.Rate         = cdouble(CUST.DATA.Rate)
+
+					sv_u = urhk_B2k_ConvertAmount("")
+					CUST.DATA.tranAmt = BANCS.OUTPARAM.OutputAmount
+					print(CUST.DATA.tranAmt)
+					CUST.DATA.crncyCode = "RWF"
+				#}
+				ENDIF
+                        endif
+
+			CUST.DATA.eventId = "MANAGEMENT-FEE-"+CUST.DATA.schmCode
+			PRINT(CUST.DATA.eventId)
+			CUST.GCHRG.tranType = "T" 
+			CUST.GCHRG.tranSubType = "BI"
+			CUST.GCHRG.drAcctId = CUST.DATA.opForacid
+			CUST.GCHRG.acctCrncyCode = CUST.DATA.crncyCode
+			CUST.GCHRG.eventId = CUST.DATA.eventId 
+			CUST.GCHRG.chrgAmt = CUST.DATA.tranAmt+"|"+CUST.DATA.crncyCode
+			CALL("CogeChgCollgchrg.scr")
+
+			IF(CUST.GCHRG.chargeTranId != "")THEN
+			#{
+				lv_q = "tranAmt | SELECT TRAN_AMT FROM TBAADM.DTD WHERE TRAN_ID = ?SVAR AND TRAN_DATE = TO_DATE(?SVAR,'DD-MM-YYYY') AND PSTD_FLG = 'Y' AND PART_TRAN_TYPE = 'D' AND TRAN_PARTICULAR = 'COGE COMMISSION CHRGE' "
+				PRINT(lv_q)
+
+				BANCS.INPARAM.BINDVARS = CUST.GCHRG.chargeTranId +"|"+ CUST.GCHRG.chargeTranDate
+				PRINT(BANCS.INPARAM.BINDVARS)
+
+				lv_u = urhk_dbSelectWithBind(lv_q)
+				PRINT(lv_u)
+
+				IF(lv_u == 0)THEN
+				#{
+					CUST.GCHRG.tranAmt = BANCS.OUTPARAM.tranAmt
+					PRINT(CUST.GCHRG.tranAmt)
+
+					IF(CDOUBLE(CUST.GCHRG.tranAmt) == CDOUBLE(CUST.DATA.commAmt))THEN
+					#{
+						CUST.DATA.balAmt = "0.00"
+						CUST.DATA.lienSerialNum = ""
+						CUST.DATA.chgdFlg = "F"
+					#}
+					ELSE
+					#{
+						lv_q = "lienSerialNum | SELECT B2K_ID FROM TBAADM.ALT WHERE ACID = (SELECT ACID FROM TBAADM.GAM WHERE IBAN_NUMBER = ?SVAR) AND LIEN_START_DATE = TO_DATE(?SVAR,'DD-MM-YYYY') AND B2K_TYPE = 'PCRLN' "
+						PRINT(lv_q)
+
+						BANCS.INPARAM.BINDVARS = CUST.DATA.opCgForacid +"|"+ CUST.GCHRG.chargeTranDate 
+						PRINT(BANCS.INPARAM.BINDVARS)
+
+						lv_u = urhk_dbCursorOpenWithBind(lv_q)
+						PRINT(lv_u)
+
+						if(lv_u == 0)then
+						#{
+							CUST.DATA.CursNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+							print(CUST.DATA.CursNum)
+
+							sv_c=urhk_dbCursorFetch(CUST.DATA.CursNum)
+							PRINT(sv_c)
+							WHILE(sv_c==0)
+							#{
+								CUST.DATA.lienSerialNum = BANCS.OUTPARAM.lienSerialNum
+								PRINT(CUST.DATA.lienSerialNum)
+								
+								lv_q = "count | SELECT COUNT(1) FROM CUSTOM.COGE_COMM_COLL_NEW WHERE LIEN_B2K_ID = ?SVAR AND FORACID = ?SVAR AND LOAN_ACCOUNT = ?SVAR"
+								BANCS.INPARAM.BINDVARS = CUST.DATA.lienSerialNum +"|"+ CUST.DATA.opCgForacid +"|"+ CUST.DATA.laCgForacid
+								PRINT(BANCS.INPARAM.BINDVARS)
+
+								lv_u = urhk_dbSelectWithBind(lv_q)
+								print(lv_u)
+
+								IF(lv_u == 0)THEN
+								#{
+									CUST.DATA.count = BANCS.OUTPARAM.count
+									PRINT(CUST.DATA.count)
+
+									IF(CUST.DATA.count > 1)THEN
+									#{
+										GOTO NEXTREC
+									#}
+									ENDIF
+								#}
+								ENDIF
+NEXTREC:
+								sv_c=urhk_dbCursorFetch(CUST.DATA.CursNum)
+							#}
+							DO
+							sv_u = urhk_dbCursorClose(CUST.DATA.CursNum)
+							print(sv_u)
+						#}
+						ENDIF
+						CUST.GCHRG.tranAmt = "0.00"	
+						CUST.DATA.chgdFlg = "L"
+						CUST.DATA.balAmt = CDOUBLE(CUST.DATA.commAmt) - CDOUBLE(CUST.GCHRG.tranAmt)
+					#}
+					ENDIF
+
+				#}
+				ELSE
+				#{
+					lv_q = "lienSerialNum | SELECT B2K_ID FROM TBAADM.ALT WHERE ACID = (SELECT ACID FROM TBAADM.GAM WHERE IBAN_NUMBER = ?SVAR) AND LIEN_START_DATE = TO_DATE(?SVAR,'DD-MM-YYYY') AND B2K_TYPE = 'PCRLN' "
+					PRINT(lv_q)
+
+					BANCS.INPARAM.BINDVARS = CUST.DATA.opCgForacid +"|"+ CUST.GCHRG.chargeTranDate 
+					PRINT(BANCS.INPARAM.BINDVARS)
+
+					lv_u = urhk_dbCursorOpenWithBind(lv_q)
+					PRINT(lv_u)
+
+					if(lv_u == 0)then
+					#{
+						CUST.DATA.CursNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+						print(CUST.DATA.CursNum)
+
+						sv_c=urhk_dbCursorFetch(CUST.DATA.CursNum)
+						PRINT(sv_c)
+						WHILE(sv_c==0)
+						#{
+							CUST.DATA.lienSerialNum = BANCS.OUTPARAM.lienSerialNum
+							PRINT(CUST.DATA.lienSerialNum)
+
+							lv_q = " count | SELECT COUNT(1) FROM CUSTOM.COGE_COMM_COLL_NEW WHERE LIEN_B2K_ID = ?SVAR AND FORACID = ?SVAR AND LOAN_ACCOUNT = ?SVAR  "
+							BANCS.INPARAM.BINDVARS = CUST.DATA.lienSerialNum +"|"+ CUST.DATA.opCgForacid +"|"+ CUST.DATA.laCgForacid
+							PRINT(BANCS.INPARAM.BINDVARS)
+
+							lv_u = urhk_dbSelectWithBind(lv_q)
+							print(lv_u)
+
+							IF(lv_u == 0)THEN
+							#{
+								CUST.DATA.count = BANCS.OUTPARAM.count
+								PRINT(CUST.DATA.count)
+
+								IF(CUST.DATA.count > 1)THEN
+								#{
+									GOTO NEXTREC1
+								#}
+								ENDIF
+							#}
+							ENDIF
+NEXTREC1:
+							sv_c=urhk_dbCursorFetch(CUST.DATA.CursNum)
+						#}
+						DO
+						sv_u = urhk_dbCursorClose(CUST.DATA.CursNum)
+						print(sv_u)
+					#}
+					ENDIF
+					
+					CUST.GCHRG.tranAmt = "0.00"
+					CUST.DATA.chgdFlg = "L"
+					CUST.DATA.balAmt = CDOUBLE(CUST.DATA.commAmt) - CDOUBLE(CUST.GCHRG.tranAmt)
+				#}
+				endif
+
+					lv_q = " UPDATE custom.coge_comm_coll_new SET CHARGED_FLG = ?SVAR , TRAN_ID = ?SVAR , TRAN_DATE = TO_DATE(?SVAR,'DD-MM-YYYY') ,COLLECTED_AMT = ?SVAR,  "
+					lv_q = lv_q + " COMMISSIONS = ?SVAR,TAX = ?SVAR,LIEN_MARKED_AMT = ?SVAR , LIEN_B2K_ID = ?SVAR WHERE FORACID = ?SVAR AND LOAN_ACCOUNT = ?SVAR "
+					lv_q = lv_q + " AND DVA = TO_DATE(?SVAR,'DD-MM-YYYY') AND (COMMISSIONS + TAX) = ?SVAR "
+					print(lv_q)
+
+					BANCS.INPARAM.BINDVARS = CUST.DATA.chgdFlg +"|"+ CUST.GCHRG.chargeTranId +"|"+ CUST.GCHRG.chargeTranDate +"|"+ CUST.GCHRG.tranAmt +"|"+ CUST.DATA.commAmt +"|"+ CUST.DATA.taxAmt +"|"+ CUST.DATA.balAmt +"|"+ CUST.DATA.lienSerialNum +"|"+ CUST.DATA.opCgForacid +"|"+ CUST.DATA.laCgForacid +"|"+ CUST.DATA.chgDate +"|"+ CUST.DATA.commAmt
+					PRINT(BANCS.INPARAM.BINDVARS)
+
+					lv_u = urhk_dbSQLWithBind(lv_q)
+					PRINT(lv_u)
+
+					IF(lv_u == 0)THEN
+					#{
+						lv_u = urhk_dbSQLWithBind("COMMIT")
+					#}
+					ELSE
+					#{
+						PRINT("FAILED TO UPDATE")
+					#}
+					ENDIF
+			#}
+			ENDIF
+NEXTREC2:
+			sv_c=urhk_dbCursorFetch(CUST.DATA.CursorNum)
+                #}
+                DO
+	
+		sv_u = urhk_dbCursorClose(CUST.DATA.CursorNum)
+		print(sv_u)
+        #}
+        ENDIF
+TRACE OFF
+END-->

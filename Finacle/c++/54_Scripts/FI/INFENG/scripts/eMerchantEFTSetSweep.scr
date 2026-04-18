@@ -1,0 +1,201 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : eMerchantEFTSetSweep.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 15-03-2022
+#  Author          : Edwin Zico
+#  job             : MSET 
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             15-03-2022     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2f2d9b88241d43c8b9e7a945546318e708c02810a81c95150a17656fe02280c1"
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","WITH") == 0) THEN
+#{
+	CREATECLASS("CUST","WITH",5)
+#}
+ENDIF
+
+CUST.WITH.errMsg = ""
+CUST.WITH.foracid ="0003000106511"
+CUST.WITH.CrAcct = "0003001102700"
+
+
+sv_u = urhk_getAcctDetailsInRepository(CUST.WITH.foracid)
+IF (sv_u != 0)THEN
+#{
+	CUST.WITH.errMsg ="Invalid account"
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.WITH.errMsg )
+	exitscript
+#}
+ELSE
+#{
+	#CUST.WITH.AcctBal = BANCS.OUTPARAM.clearBalance
+	CUST.WITH.AcctBal = BANCS.OUTPARAM.EffAvailableAmt
+	print(CUST.WITH.AcctBal)
+	CUST.WITH.acid = BANCS.OUTPARAM.acid
+	print(CUST.WITH.acid)
+	CUST.WITH.Crncy= BANCS.OUTPARAM.acctCrncyCode
+	Print(CUST.WITH.Crncy)
+#}
+ENDIF				
+
+
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+	sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+		CREATEREP("MTT")
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","TranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","PartTranDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","PartTranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","InputDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","InputDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","Error")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","Error",5)
+	ENDIF
+	sv_r = CLASSEXISTS("BANCS","INPARAM")
+	IF (sv_r == 0) THEN
+	CREATECLASS("BANCS","INPARAM",5)
+	ENDIF
+
+#===================================
+# STEP 1 : INITIALIZE THE MTT
+#===================================
+
+	BANCS.INPARAM.PostTranFlg 		= "Y"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+	BANCS.INPARAM.ValidationFlag 		= "Y"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "N"			
+
+
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+	print(sv_a)
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.IgnoreExcp = "I"
+	MTT.TranDetails.Consolidate = "N"
+	MTT.TranDetails.Remarks = "Merchant Settlement EFT"
+
+	print(CUST.WITH.CrAcct)
+	print(CUST.WITH.foracid)
+	print(CUST.WITH.AcctBal)		
+	sv_v = "WITHTran"
+	print(sv_v)
+
+	sv_r = urhk_MTTS_DefineTransaction("WITHTran")
+
+	IF(CUST.WITH.AcctBal> 0)THEN
+	#{		
+	#Debit Leg
+		MTT.PartTranDetails.Account 	= CUST.WITH.foracid
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode 	="MEAN"
+		MTT.PartTranDetails.Rate 	= "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "Merchant Settlement EFT/"+ CUST.WITH.CrAcct 
+		MTT.PartTranDetails.RefAmount = -(cdouble(CUST.WITH.AcctBal))
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = "Dr.Merchant Settlement EFT" 
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "CustDr"
+		print(sv_e)
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+	#WITH Credit
+		MTT.PartTranDetails.Account 	= CUST.WITH.CrAcct
+		MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+		MTT.PartTranDetails.RateCode 	="MEAN"
+		MTT.PartTranDetails.Rate 	= "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "Merchant Settlement EFT REF/" + CUST.WITH.foracid
+		MTT.PartTranDetails.RefAmount = (cdouble(CUST.WITH.AcctBal))
+		print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = "Cr from:" + CUST.WITH.foracid
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "WITHIncome"
+		print(sv_e)
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+		
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.WITH.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.WITH.tranid)
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)			
+		exitscript
+	#}
+	ENDIF
+
+EXITSCRIPT
+
+trace off
+end-->
+	
+
+
+
+

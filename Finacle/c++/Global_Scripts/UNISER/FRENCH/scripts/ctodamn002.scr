@@ -1,0 +1,206 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodamn002.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script for validating and calling script to fetch data from DB
+#                               and set it to FE fields of detail page for modify mode.
+# Input                 :       func Code,Account Id,Availment request Id
+# Output                :       Details page field values
+# Called Script         :       ctodadp002.scr, ctodadp004.scr
+# Calling Script        :       None
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           01-04-2013         Nitin Prabhakar   original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="35c6477a41847b2f6b7a66b91a6b7d6d739911b6b5ef9ca749131786b7341b8b"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	# Creation of  repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "CTODA") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CTODA", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+	#{
+		CREATECLASS("CUST", "INTERFACE", 5)
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#  Declaration of variables used in script
+	#------------------------------------------------------------------------------
+	CUST.CTODA.userId = TRIM(BANCS.STDIN.userId)
+	print(CUST.CTODA.userId)
+	CUST.CTODA.bankId = TRIM(BANCS.STDIN.contextBankId)
+	print(CUST.CTODA.bankId)
+	CUST.CTODA.funcCode = TRIM(BANCS.INPUT.funcCode)
+	print(CUST.CTODA.funcCode)
+	CUST.CTODA.accNum = TRIM(BANCS.INPUT.accNum)
+	print(CUST.CTODA.accNum)
+	CUST.CTODA.availReqId = TRIM(BANCS.INPUT.availReqId)
+	print(CUST.CTODA.availReqId)
+	
+	CUST.CTODA.solId = TRIM(BANCS.STDIN.mySolId)
+	CUST.CTODA.successFlg = "S"
+	
+	#------------------------------------------------------------------------------
+	#  Validating entered Account Id.
+	#------------------------------------------------------------------------------
+	sv_u = urhk_valAcctNumber(CUST.CTODA.accNum)
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_001"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "accNum"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Changes done by Pankaj
+	# Checking user sold id with account sol id
+	#------------------------------------------------------------------------------
+	
+	IF(CUST.CTODA.funcCode != "I") THEN
+	#{
+		CUST.CTODA.acctsolId = ""
+		
+		BANCS.INPARAM.BINDVARS =CUST.CTODA.accNum + "|" + "N" + "|" + "Y"
+		
+		sv_s ="solId|"
+		sv_s = sv_s + " SELECT SOL_ID "
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE  FORACID = ?SVAR "
+		sv_s = sv_s + " AND DEL_FLG = ?SVAR "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR"
+		
+		PRINT(sv_s)
+		sv_u= urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_u)
+		
+		IF (sv_u == 0) THEN
+		#{
+			CUST.CTODA.acctsolId=BANCS.OUTPARAM.solId
+			IF(CUST.CTODA.acctsolId != CUST.CTODA.solId) THEN
+			#{
+				CUST.INTERFACE.errorCode = "CTODA_ERR_025"
+				CALL("Common_Interface_GetErrorDesc.scr")
+				CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+				CUST.CTODA.fieldName = "accNum"
+				CUST.CTODA.successFlg = "F"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#  Fetching Last Change User Id from table C_TODA.
+	#  For validating user Id as per mode.
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.bankId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "lchgUser,verifyUser|"
+	sv_s = sv_s + " SELECT LCHG_USER,VERIFY_BY"
+	sv_s = sv_s + " FROM CUSTOM.C_TODA "
+	sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+	sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_004"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.lchgUser = TRIM(BANCS.OUTPARAM.lchgUser)
+		print(CUST.CTODA.lchgUser)
+		CUST.CTODA.verifyUser = TRIM(BANCS.OUTPARAM.verifyUser)
+		print(CUST.CTODA.verifyUser)
+	#}
+	ENDIF
+	# Only same user can modify the record.
+	IF(CUST.CTODA.lchgUser != CUST.CTODA.userId)THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_022"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#  calling script to fetch data from database.
+	#------------------------------------------------------------------------------
+	CALL("ctodadp002.scr")
+	IF (CUST.CTODA.successFlg == "F") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#  calling script to set fetched data into front end.
+	#------------------------------------------------------------------------------
+	CALL("ctodadp004.scr")
+	IF (CUST.CTODA.successFlg == "F") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.SuccessOrFailure = "S"
+	sv_w = ""
+	sv_w = "SuccessOrFailure|Y"
+	sv_u = urhk_SetOrbOut(sv_w)
+	ENDOFSCRIPT:
+		IF (CUST.CTODA.successFlg == "F") THEN
+		#{
+			sv_w = "SUCCESSORFAILURE|N"
+			sv_u = urhk_SetOrbOut(sv_w)
+			sv_z = "Error_0|ERROR^" + CUST.CTODA.errorMsg + "^" + CUST.CTODA.fieldName
+			sv_u = urhk_SetOrbOut(sv_z)
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#----------------------------------------
+		# deleting repositories and calsses.
+		#----------------------------------------
+		IF (CLASSEXISTS("CUST","CTODA") != 0) THEN
+		#{
+			DELETECLASS ("CUST","CTODA")
+		#}
+		ENDIF
+		IF (REPEXISTS ("CUST") != 0) THEN
+		#{
+			DELETEREP ("CUST")
+		#}
+		ENDIF
+		EXITSCRIPT
+		TRACE OFF
+END-->

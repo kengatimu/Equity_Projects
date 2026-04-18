@@ -1,0 +1,838 @@
+#===============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: MT202EventMapping.scr
+# event: NA
+# description: Form MT202 Swift Message
+# Change Tracker : 	HREBC0001
+#===============================================================
+#-------------------------------------------------------------------------------------
+# 							MT202EventMapping.scr
+#
+# Script to map and concatenate the repository values sent by the calling program (ORM)
+# and form the MT202 swift message.
+#
+# The calling program will pass a repository BankRemittance which has values
+# 'Y' or 'N'. Y --> Direct 202 and N --> Cover 202 message.
+#-------------------------------------------------------------------------------------
+#
+# Author : Rajashekar Kodancha
+# Date   : 30-07-2002
+#-------------------------------------------------------------------------------------
+<--start
+trace on
+#sv_m = ""
+#
+#	sv_m = sv_m + ":201:E:" + BANCS.INPUT.TransactionReferenceNo + "|"
+#print(BANCS.INPUT.TransactionReferenceNo)
+
+sv_a = urhk_B2k_PrintRepos("BANCS")
+PRINT(sv_a)
+
+
+sv_m = ""
+#-------------------------------------------------------------------------------------
+#-Saby added chcek for message derivation
+
+sv_e = " Refnum|Select FREE_TEXT  FROM TBAADM.PORD " 
+sv_e = sv_e + " WHERE PYMT_REF_NUM = ?SVAR "
+sv_e = sv_e + " AND BANK_ID  = ?SVAR "
+
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.TransactionReferenceNo + "|" + BANCS.STDIN.contextBankId 
+sv_d =  urhk_dbSelectWithBind(sv_e)
+IF (sv_d == 0 ) THEN
+#{
+	sv_c = BANCS.OUTPARAM.Refnum
+	print(sv_c)
+		sv_m = sv_m + ":201:E:" + sv_c + "|"
+	print(sv_m)
+
+#}
+ELSE
+#{
+
+	sv_m = sv_m + ":201:E:" + BANCS.INPUT.TransactionReferenceNo + "|"
+#}
+ENDIF
+
+#
+#print (BANCS.INPUT.PresentingBanksReference)
+#   In MT202 when no value is present for Tag20 then by default we will first populate 
+#   Tag20 with ZZZZZ-99999 (BANCS.INPUT.TransactionReferenceNo). This will be populated
+#   in the message screen. Logic is written in code, that when Tag20 field is found to have value 
+#   ZZZZZ-99999 then Tag 20 will be populated with Tag21 field value
+
+#	if(BANCS.INPUT.PresentingBanksReference == "") then
+#		BANCS.INPUT.PresentingBanksReference = BANCS.INPUT.TransactionReferenceNo
+#	endif
+
+    if(BANCS.INPUT.PresentingBanksReference != "") then
+        sv_m = sv_m + ":211:E:" + BANCS.INPUT.PresentingBanksReference + "|"
+	else
+	    sv_m = sv_m + ":211:E:" + "NONREF" + "|"
+	endif	
+#
+	if(BANCS.INPUT.NostroValueDate !="") then
+		sv_m = sv_m + ":32a1:E:"  +BANCS.INPUT.NostroValueDate + "|"
+	else
+		sv_m = sv_m + ":32a1:E:" + BANCS.INPUT.ValueDate + "|"
+	endif
+#
+	sv_m = sv_m + ":32a2:E:" + BANCS.INPUT.CurrencyCode + "|"
+#
+	sv_m = sv_m + ":32a3:E:" + BANCS.INPUT.Amount + "|"
+
+#--- Fetch the BIC HREBC0001 start ---#
+
+if(BANCS.INPUT.OrderingInstitutionBIC == "") then
+#{
+	print("Fetch the BIC")
+	sv_e = " senderBIC|Select SENDER_BIC  FROM TBAADM.PORD " 
+	sv_e = sv_e + " WHERE PYMT_REF_NUM = ?SVAR "
+	sv_e = sv_e + " AND BANK_ID  = ?SVAR and rownum < 2"
+	print(sv_e)
+
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.TransactionReferenceNo + "|" + BANCS.STDIN.contextBankId 
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d =  urhk_dbSelectWithBind(sv_e)
+	print(sv_d)
+	IF (sv_d == 0 ) THEN
+	#{
+		BANCS.INPUT.OrderingInstitutionBIC = BANCS.OUTPARAM.senderBIC
+		print(BANCS.INPUT.OrderingInstitutionBIC)
+
+		IF(BANCS.INPUT.OrderingInstitutionBIC == "")THEN
+		#{
+			BANCS.INPUT.OrderingInstitutionBIC = "BCDCCDKIXXX"
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		BANCS.INPUT.OrderingInstitutionBIC = "BCDCCDKIXXX"
+	#}
+	ENDIF
+#}
+endif
+
+#--- Fetch the BIC HREBC0001 end ---#
+
+#Ordering Institution details will be populated : Tag 52a or 52d
+if(BANCS.INPUT.OrderingInstitutionBIC != "") then
+    sv_m = sv_m + ":52a2:E:" +BANCS.INPUT.OrderingInstitutionBIC + "|"
+else
+	if(BANCS.INPUT.OrderingInstitutionName != "") then
+        sv_o = mid$(BANCS.INPUT.OrderingInstitutionName,0,35)
+        sv_m = sv_m + ":52d2:E:" +sv_o + "|"
+
+        sv_p = strlen(BANCS.INPUT.OrderingInstitutionAddress1)
+        sv_q = strlen(BANCS.INPUT.OrderingInstitutionAddress2)
+        sv_r = strlen(BANCS.INPUT.OrderingInstitutionAddress3)
+        if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_r <= 35) ) then
+            sv_m = sv_m + ":52d3:E:" +BANCS.INPUT.OrderingInstitutionAddress1 + "|"
+            sv_m = sv_m + ":52d4:E:" +BANCS.INPUT.OrderingInstitutionAddress2 + "|"
+            sv_m = sv_m + ":52d5:E:" +BANCS.INPUT.OrderingInstitutionAddress3 + "|"
+        else
+            sv_s = ""
+            sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.OrderingInstitutionAddress1)) + " "
+            sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.OrderingInstitutionAddress2)) + " "
+            sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.OrderingInstitutionAddress3)) + " "
+            sv_t = mid$(sv_s,0,35)
+            sv_m = sv_m + ":52d3:E:" +sv_t + "|"
+            sv_u = mid$(sv_s,35,35)
+            sv_m = sv_m + ":52d4:E:" +sv_u + "|"
+            sv_v = mid$(sv_s,70,35)
+            sv_m = sv_m + ":52d5:E:" +sv_v + "|"
+        endif
+	endif
+endif
+#End of Ordering Institution details
+
+
+
+if(BANCS.INPUT.BankRemittance == "Y") then
+#{
+	#--- Fetch nostro a/c HREBC0001 start ---#
+
+	if( (BANCS.STDIN.contextBankId == "43") AND (BANCS.STDIN.menuId == "HPORDM"))then
+	#{
+		if( (BANCS.INPUT.SendersCorrespondentBank != "") AND (BANCS.INPUT.SendersCorrespondentBranch != "") AND (BANCS.INPUT.CurrencyCode != "") AND (BANCS.INPUT.ReceiverBIC !="") )then
+		#{
+			sv_e = " nostroAc|SELECT NOSTRO_ACCT FROM NAMT " 
+			sv_e = sv_e + " WHERE NAMT.BANK_ID = ?SVAR AND BANK_CODE = ?SVAR AND BR_CODE = ?SVAR AND CRNCY_CODE = ?SVAR AND DEL_FLG = 'N' AND DEFAULT_FLG = 'Y' "
+			print(sv_e)
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.SendersCorrespondentBank +"|" + BANCS.INPUT.SendersCorrespondentBranch +"|"+ BANCS.INPUT.CurrencyCode
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d =  urhk_dbSelectWithBind(sv_e)
+			print(sv_d)
+
+			IF (sv_d == 0 ) THEN
+			#{
+				lv_a = BANCS.OUTPARAM.nostroAc
+				print(lv_a)
+			ELSE
+				lv_a = ""
+				print("Error")
+			#}
+			ENDIF
+
+			BANCS.INPUT.SendersCorrespondentBIC =  BANCS.INPUT.ReceiverBIC
+			print(BANCS.INPUT.SendersCorrespondentBIC)
+			BANCS.INPUT.SendersCorrespondentPartyId = lv_a
+			print(BANCS.INPUT.SendersCorrespondentPartyId)
+		#}
+		endif
+
+	#}
+	endif
+
+	#--- Fetch nostro a/c HREBC0001 end ---#
+
+	if(BANCS.INPUT.SendersCorrespondentBIC != "") then
+		if(BANCS.INPUT.SendersCorrespondentPartyId != "") then
+			sv_m = sv_m + ":53a1:E:/" + BANCS.INPUT.SendersCorrespondentPartyId + "|"
+		endif
+		sv_m = sv_m + ":53a2:E:" + BANCS.INPUT.SendersCorrespondentBIC + "|"
+		
+		if(BANCS.INPUT.SendersCorrespondentLocation != "") then 
+			if(BANCS.INPUT.SendersCorrespondentPartyId != "") then 
+				sv_m = sv_m + ":53b1:E:" + BANCS.INPUT.SendersCorrespondentPartyId + "|" 
+			endif 
+			sv_m = sv_m + ":53b2:E:" + BANCS.INPUT.SendersCorrespondentLocation + "|" 
+		endif 
+	else 
+		sv_m = sv_m + ":53a2:" + "" + "|"
+		if(BANCS.INPUT.SendersCorrespondentLocation != "") then
+			if(BANCS.INPUT.SendersCorrespondentPartyId != "") then
+				sv_m = sv_m + ":53b1:E:" + BANCS.INPUT.SendersCorrespondentPartyId + "|"
+			endif
+			sv_m = sv_m + ":53b2:E:" + BANCS.INPUT.SendersCorrespondentLocation + "|"
+		else
+			if(BANCS.INPUT.SendersCorrespondentPartyId != "") then 
+				sv_m = sv_m + ":53d1:E:" + BANCS.INPUT.SendersCorrespondentPartyId + "|"
+			endif
+			if(BANCS.INPUT.SendersCorrespondentName != "") then
+				sv_o = mid$(BANCS.INPUT.SendersCorrespondentName,0,35)
+				sv_m = sv_m + ":53d2:E:" + sv_o + "|"
+			endif
+			sv_p = strlen(BANCS.INPUT.SendersCorrespondentAddress1)	
+			sv_q = strlen(BANCS.INPUT.SendersCorrespondentAddress2)
+			sv_r = strlen(BANCS.INPUT.SendersCorrespondentAddress3)
+
+			if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_r <= 35) ) then
+				if(BANCS.INPUT.SendersCorrespondentAddress1 != "") then
+					sv_m = sv_m + ":53d3:E:" + BANCS.INPUT.SendersCorrespondentAddress1 + "|"
+				endif
+				if(BANCS.INPUT.SendersCorrespondentAddress2 != "") then
+					sv_m = sv_m + ":53d4:E:" + BANCS.INPUT.SendersCorrespondentAddress2 + "|"
+				endif
+				if(BANCS.INPUT.SendersCorrespondentAddress3 != "") then
+					sv_m = sv_m + ":53d5:E:" + BANCS.INPUT.SendersCorrespondentAddress3 + "|"
+				endif
+			else
+				sv_s = ""
+				if(BANCS.INPUT.SendersCorrespondentAddress1 != "") then
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.SendersCorrespondentAddress1)) + " "
+				endif
+				if(BANCS.INPUT.SendersCorrespondentAddress2 != "") then
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.SendersCorrespondentAddress2)) + " " 
+				endif
+				if(BANCS.INPUT.SendersCorrespondentAddress3 != "") then
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.SendersCorrespondentAddress3)) + " " 
+				endif
+				if(sv_s != "") then
+					sv_t = mid$(sv_s,0,35)
+					if(sv_t != "") then
+						sv_m = sv_m + ":53d3:E:" + sv_t + "|"
+					endif
+
+					sv_u = mid$(sv_s,35,35)
+					if(sv_u != "") then
+						sv_m = sv_m + ":53d4:E:" + sv_u + "|"
+					endif
+					sv_v = mid$(sv_s,70,35)
+					if(sv_v != "") then
+						sv_m = sv_m + ":53d5:E:" + sv_v + "|"
+					endif
+				endif
+			endif				
+		endif
+	endif
+	#
+	if(BANCS.INPUT.ReceiversCorrespondentBIC != "") then
+		if(BANCS.INPUT.ReceiversCorrespondentPartyId != "") then
+			sv_m = sv_m + ":54a1:E:" + BANCS.INPUT.ReceiversCorrespondentPartyId + "|"
+		endif
+		sv_m = sv_m + ":54a2:E:" + BANCS.INPUT.ReceiversCorrespondentBIC + "|"
+	else 
+		if(BANCS.INPUT.ReceiversCorrespondentLocation != "") then
+			if(BANCS.INPUT.ReceiversCorrespondentPartyId != "") then
+				sv_m = sv_m + ":54b1:E:" + BANCS.INPUT.ReceiversCorrespondentPartyId + "|"
+			endif
+			sv_m = sv_m + ":54b2:E:" + BANCS.INPUT.ReceiversCorrespondentLocation + "|"
+		else
+			if(BANCS.INPUT.ReceiversCorrespondentPartyId != "") then
+				sv_m = sv_m + ":54d1:E:" + BANCS.INPUT.ReceiversCorrespondentPartyId + "|"
+			endif
+			if(BANCS.INPUT.ReceiversCorrespondentName != "") then
+				sv_o = mid$(BANCS.INPUT.ReceiversCorrespondentName,0,35)
+				sv_m = sv_m + ":54d2:E:" + sv_o + "|"
+			sv_p = strlen(BANCS.INPUT.ReceiversCorrespondentAddress1)	
+			sv_q = strlen(BANCS.INPUT.ReceiversCorrespondentAddress2)
+			sv_r = strlen(BANCS.INPUT.ReceiversCorrespondentAddress3)
+			sv_w = strlen(BANCS.INPUT.ReceiversCorrespondentCntryName)
+			sv_x = sv_w + sv_r
+
+			if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_w <= 35) ) then
+					sv_m = sv_m + ":54d3:E:" + BANCS.INPUT.ReceiversCorrespondentAddress1 + "|"
+					sv_m = sv_m + ":54d4:E:" + BANCS.INPUT.ReceiversCorrespondentAddress2 + "|"
+					sv_m = sv_m + ":54d5:E:" + BANCS.INPUT.ReceiversCorrespondentAddress3 +BANCS.INPUT.ReceiversCorrespondentCntryName +  "|"
+			else
+				sv_s = ""
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.ReceiversCorrespondentAddress1)) + " "
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.ReceiversCorrespondentAddress2)) + " " 
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.ReceiversCorrespondentAddress3)) + " " 
+					sv_s = sv_s + ltrim(rtrim(BANCS.INPUT.ReceiversCorrespondentCntryName)) + " " 
+					sv_t = mid$(sv_s,0,35)
+					sv_m = sv_m + ":54d3:E:" + sv_t + "|"	
+
+					sv_u = mid$(sv_s,35,35)
+					sv_m = sv_m + ":54d4:E:" + sv_u + "|"	
+
+					sv_v = mid$(sv_s,70,35)
+					sv_m = sv_m + ":54d5:E:" + sv_v + "|"	
+			endif		
+			endif
+		endif
+	endif
+
+	#--- Fetch the AccountWithInstitutionBIC HREBC0001 start ---#
+
+	if(BANCS.INPUT.AccountWithInstitutionBIC == "") then
+	#{
+		print("Fetch the BIC")
+		sv_e = " awiBIC|Select AWI_BIC FROM TBAADM.PORD " 
+		sv_e = sv_e + " WHERE PYMT_REF_NUM = ?SVAR "
+		sv_e = sv_e + " AND BANK_ID  = ?SVAR and rownum < 2"
+		print(sv_e)
+
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.TransactionReferenceNo + "|" + BANCS.STDIN.contextBankId 
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_d =  urhk_dbSelectWithBind(sv_e)
+		print(sv_d)
+		IF (sv_d == 0 ) THEN
+		#{
+			BANCS.INPUT.AccountWithInstitutionBIC = BANCS.OUTPARAM.awiBIC
+			print(BANCS.INPUT.AccountWithInstitutionBIC)
+		#}
+		ELSE
+		#{
+			BANCS.INPUT.AccountWithInstitutionBIC = ""
+		#}
+		ENDIF
+	#}
+	endif
+
+	#--- Fetch the AccountWithInstitutionBIC HREBC0001 end ---#
+
+
+	#tag56 population
+	# Query to fecth Intermediary details from PORD
+
+	if(BANCS.INPUT.InterMediaryBIC != "") then
+		if(BANCS.INPUT.InterMediaryPartyId != "") then
+			sv_g = MID$(BANCS.INPUT.InterMediaryPartyId, 0,1)
+			if(sv_g != "/") then
+				sv_m = sv_m + ":56a1:" +BANCS.INPUT.InterMediaryPartyId + "|"
+			endif
+		endif
+
+		sv_m = sv_m + ":56a2:" +BANCS.INPUT.InterMediaryBIC + "|"
+	else
+		if(BANCS.INPUT.InterMediaryPartyId != "") then
+			sv_g = MID$(BANCS.INPUT.InterMediaryPartyId, 0,1)
+			if(sv_g != "/") then
+				sv_m = sv_m + ":56d1:/" +BANCS.INPUT.InterMediaryPartyId + "|"
+			else
+				sv_m = sv_m + ":56d1:" +BANCS.INPUT.InterMediaryPartyId + "|"
+			endif
+		endif
+
+		sv_o = mid$(BANCS.INPUT.InterMediaryName,0,35)
+		if(sv_o !="") then
+			sv_m = sv_m + ":56d2:" +sv_o + "|"
+			sv_p = strlen(BANCS.INPUT.InterMediaryAddress1)
+			sv_q = strlen(BANCS.INPUT.InterMediaryAddress2)
+			sv_r = strlen(BANCS.INPUT.InterMediaryAddress3)
+			sv_w = strlen(BANCS.INPUT.InterMediaryCntryName)
+			sv_x = sv_w + sv_r
+
+			if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_x <= 35) ) then
+				if(BANCS.INPUT.InterMediaryAddress1 !="") then
+					sv_m = sv_m + ":56d3:"+BANCS.INPUT.InterMediaryAddress1 + "|"
+				endif
+
+				if(BANCS.INPUT.InterMediaryAddress2 !="") then
+					sv_m = sv_m + ":56d4:"+BANCS.INPUT.InterMediaryAddress2 + "|"
+				endif
+
+				if(BANCS.INPUT.InterMediaryAddress3 !="") then
+					sv_m = sv_m + ":56d5:"+BANCS.INPUT.InterMediaryAddress3 +  BANCS.INPUT.InterMediaryCntryName + "|"
+				endif
+
+			else
+				sv_s = ""
+				sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress1))+" "
+				sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress2))+" "
+				sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress3))+" "
+				sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryCntryName))+" "
+
+				sv_t = mid$(sv_s,0,35)
+				if(sv_t !="") then
+					sv_m = sv_m + ":56d3:" +sv_t + "|"
+				endif
+
+				sv_u = mid$(sv_s,35,35)
+				if(sv_u !="") then
+					sv_m = sv_m + ":56d4:" +sv_u + "|"
+				endif
+
+				sv_v = mid$(sv_s,70,35)
+				if(sv_v !="") then
+					sv_m = sv_m + ":56d5:" +sv_v + "|"
+				endif
+			endif
+		endif
+	endif
+
+	#tag56 end
+
+	#-- Tag 57 start --#
+
+	if(BANCS.INPUT.AccountWithInstitutionBIC != "") then
+		if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+			sv_m = sv_m + ":57a1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+		endif
+		sv_m = sv_m + ":57a2:E:" + BANCS.INPUT.AccountWithInstitutionBIC + "|"
+	else 
+		if(BANCS.INPUT.AccountWithInstitutionLocation != "") then
+			if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+				sv_m = sv_m + ":57b1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+			endif
+		sv_m = sv_m + ":57b2:E:" + BANCS.INPUT.AccountWithInstitutionLocation + "|"
+		else
+			if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+				sv_m = sv_m + ":57d1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+			endif
+			if(BANCS.INPUT.AccountWithInstitutionName != "") then
+				sv_o = mid$(BANCS.INPUT.AccountWithInstitutionName,0,35)
+				sv_m = sv_m + ":57d2:E:" + sv_o + "|"
+			endif
+			sv_p = strlen(BANCS.INPUT.AccountWithInstitutionAddress1)	
+			sv_q = strlen(BANCS.INPUT.AccountWithInstitutionAddress2)
+			sv_r = strlen(BANCS.INPUT.AccountWithInstitutionAddress3)
+			sv_w = strlen(BANCS.INPUT.AccountWithInstitutionCntryName)
+			sv_x = sv_w + sv_r
+
+			if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_x <= 35) ) then
+				if(BANCS.INPUT.AccountWithInstitutionAddress1 != "") then
+					sv_m = sv_m + ":57d3:E:" + BANCS.INPUT.AccountWithInstitutionAddress1 + "|"
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress2 != "") then
+					sv_m = sv_m + ":57d4:E:" + BANCS.INPUT.AccountWithInstitutionAddress2 + "|"
+				endif
+				if( (BANCS.INPUT.AccountWithInstitutionAddress3 != "")  OR (BANCS.INPUT.AccountWithInstitutionCntryName)) then
+					sv_m = sv_m + ":57d5:E:" + BANCS.INPUT.AccountWithInstitutionAddress3 + BANCS.INPUT.AccountWithInstitutionCntryName + "|"
+				endif
+			else
+				sv_s = ""
+				if(BANCS.INPUT.AccountWithInstitutionAddress1 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress1))+" "
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress2 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress2))+" " 
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress3 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress3))+" " 
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionCntryName != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionCntryName))+" " 
+				endif
+				if(sv_s != "") then
+					sv_t = mid$(sv_s,0,35)
+					if(sv_t != "") then
+						sv_m = sv_m + ":57d3:E:" + sv_t + "|"	
+					endif
+
+					sv_u = mid$(sv_s,35,35)
+					if(sv_u != "") then
+						sv_m = sv_m + ":57d4:E:" + sv_u + "|"	
+					endif
+
+					sv_v = mid$(sv_s,70,35)
+					if(sv_v != "") then
+						sv_m = sv_m + ":57d5:E:" + sv_v + "|"
+					endif
+				endif
+			endif
+		endif
+	endif
+
+	#-- Tag 57 end --#
+
+#} Ends the case of direct 202
+else
+#{ Starts the case of cover 202
+
+	# Populate the intermediary details incase of Cover Payment 
+
+	#-- Tag56 start --#
+    
+	if(BANCS.INPUT.InterMediaryBIC != "") then 
+   #{ 
+       if(BANCS.INPUT.InterMediaryPartyId != "") then 
+           sv_m = sv_m + ":56a1:E" +BANCS.INPUT.InterMediaryPartyId + "|"
+       endif 
+	   if(BANCS.INPUT.InterMediaryBIC != "") then
+    		sv_m = sv_m + ":56a2:E:" +BANCS.INPUT.InterMediaryBIC + "|" 
+		endif
+   #} 
+   else 
+   #{ 
+       if(BANCS.INPUT.InterMediaryPartyId != "") then 
+       #{ 
+           sv_m = sv_m + ":56c1:E:" +BANCS.INPUT.InterMediaryPartyId + "|" 
+       #} 
+       else 
+       #{ 
+           if(BANCS.INPUT.InterMediaryPartyId != "") then 
+               sv_m = sv_m + ":56d1:E:"+BANCS.INPUT.InterMediaryPartyId + "|" 
+           endif 
+
+           sv_o = mid$(BANCS.INPUT.InterMediaryName,0,35) 
+           if(sv_o !="") then 
+           #{ 
+               sv_m = sv_m + ":56d2:" +sv_o + "|" 
+
+               sv_p = strlen(BANCS.INPUT.InterMediaryAddress1) 
+               sv_q = strlen(BANCS.INPUT.InterMediaryAddress2) 
+               sv_r = strlen(BANCS.INPUT.InterMediaryAddress3) 
+               sv_w = strlen(BANCS.INPUT.InterMediaryCntryName) 
+               sv_x = sv_w + sv_r 
+
+               if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_x <= 35) ) then 
+               #{ 
+            		if(BANCS.INPUT.InterMediaryAddress1 !="") then 
+				   		sv_m = sv_m + ":56d3:E:"+BANCS.INPUT.InterMediaryAddress1 + "|" 
+					endif 
+
+                   	if(BANCS.INPUT.InterMediaryAddress2 !="") then 
+                   		sv_m = sv_m + ":56d4:E:"+BANCS.INPUT.InterMediaryAddress2 + "|" 
+					endif 
+                   if(BANCS.INPUT.InterMediaryAddress3 !="") then 
+                   		sv_m = sv_m + ":56d5:E:"+BANCS.INPUT.InterMediaryAddress3 +  BANCS.INPUT.InterMediaryCntryName + "|" 	
+					endif 
+               #} 
+               else 
+               #{ 
+                   sv_s = "" 
+                   sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress1))+" " 
+                   sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress2))+" " 
+                   sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryAddress3))+" " 
+                   sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.InterMediaryCntryName))+" " 
+
+                   sv_t = mid$(sv_s,0,35) 
+                   if(sv_t !="") then 
+                    	sv_m = sv_m + ":56d3:E:" +sv_t + "|"
+                   endif 
+
+                   sv_u = mid$(sv_s,35,35) 
+                   if(sv_u !="") then 
+                       sv_m = sv_m + ":56d4:E:" +sv_u + "|" 
+                   endif 
+                   sv_v = mid$(sv_s,70,35) 
+                   if(sv_v !="") then 
+                   	sv_m = sv_m + ":56d5:E:" +sv_v + "|"
+                   endif 
+               #} 
+               endif 
+           #} 
+           endif 
+       #} 
+       endif 
+   #} 
+   endif
+
+   #-- Tag56 end --#
+	
+
+	#-- Tag57 start --#
+	if(BANCS.INPUT.AccountWithInstitutionBIC != "") then
+		if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+			sv_m = sv_m + ":57a1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+		endif
+		sv_m = sv_m + ":57a2:E:" + BANCS.INPUT.AccountWithInstitutionBIC + "|"
+	else 
+		if(BANCS.INPUT.AccountWithInstitutionLocation != "") then
+			if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+				sv_m = sv_m + ":57b1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+			endif
+			sv_m = sv_m + ":57b2:E:" + BANCS.INPUT.AccountWithInstitutionLocation + "|"
+		else
+			if(BANCS.INPUT.AccountWithInstitutionPartyId != "") then
+				sv_m = sv_m + ":57d1:E:" + BANCS.INPUT.AccountWithInstitutionPartyId + "|"
+			endif
+			if(BANCS.INPUT.AccountWithInstitutionName != "") then
+				sv_o = mid$(BANCS.INPUT.AccountWithInstitutionName,0,35)
+				sv_m = sv_m + ":57d2:E:" + sv_o + "|"
+			endif
+			sv_p = strlen(BANCS.INPUT.AccountWithInstitutionAddress1)	
+			sv_q = strlen(BANCS.INPUT.AccountWithInstitutionAddress2)
+			sv_r = strlen(BANCS.INPUT.AccountWithInstitutionAddress3)
+			sv_w = strlen(BANCS.INPUT.AccountWithInstitutionCntryName)
+			sv_x = sv_w + sv_r
+
+			if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_x <= 35) ) then
+				if(BANCS.INPUT.AccountWithInstitutionAddress1 != "") then
+					sv_m = sv_m + ":57d3:E:" + BANCS.INPUT.AccountWithInstitutionAddress1 + "|"
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress2 != "") then
+					sv_m = sv_m + ":57d4:E:" + BANCS.INPUT.AccountWithInstitutionAddress2 + "|"
+				endif
+				if( (BANCS.INPUT.AccountWithInstitutionAddress3 != "")  OR (BANCS.INPUT.AccountWithInstitutionCntryName)) then
+					sv_m = sv_m + ":57d5:E:" + BANCS.INPUT.AccountWithInstitutionAddress3 + BANCS.INPUT.AccountWithInstitutionCntryName + "|"
+				endif
+			else
+				sv_s = ""
+				if(BANCS.INPUT.AccountWithInstitutionAddress1 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress1))+" "
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress2 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress2))+" " 
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionAddress3 != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionAddress3))+" " 
+				endif
+				if(BANCS.INPUT.AccountWithInstitutionCntryName != "") then
+					sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.AccountWithInstitutionCntryName))+" " 
+				endif
+				if(sv_s != "") then
+					sv_t = mid$(sv_s,0,35)
+					if(sv_t != "") then
+						sv_m = sv_m + ":57d3:E:" + sv_t + "|"	
+					endif
+
+					sv_u = mid$(sv_s,35,35)
+					if(sv_u != "") then
+						sv_m = sv_m + ":57d4:E:" + sv_u + "|"
+					endif
+
+					sv_v = mid$(sv_s,70,35)
+					if(sv_v != "") then
+						sv_m = sv_m + ":57d5:E:" + sv_v + "|"
+					endif
+				endif
+			endif
+		endif
+	endif
+
+	#-- Tag57 end --#
+
+#}ends the else of cover 202
+endif
+#
+# If Bank Remmitance, then populate tag 58-Beneficiary institution as Other Party Details
+# In case of 202 as cover message popualte payee bank details as 58B- Beneficiary Institution
+
+
+
+if(BANCS.INPUT.BeneficiaryInstitutionBIC != "") then
+	if(BANCS.INPUT.BeneficiaryInstitutionPartyId != "") then
+		sv_g = MID$(BANCS.INPUT.BeneficiaryInstitutionPartyId, 0,13) 
+		if(sv_g != "/") then
+			sv_m = sv_m + ":58a1:" + "E:/" + BANCS.INPUT.BeneficiaryInstitutionPartyId + "|"
+		else
+			sv_m = sv_m + ":58a1:" + "E:" + BANCS.INPUT.BeneficiaryInstitutionPartyId + "|"
+		endif
+	endif
+	sv_m = sv_m + ":58a2:" + BANCS.INPUT.BeneficiaryInstitutionBIC + "|"
+else 
+	if(BANCS.INPUT.BeneficiaryInstitutionPartyId != "") then
+		sv_g = MID$(BANCS.INPUT.BeneficiaryInstitutionPartyId, 0,1)
+		if(sv_g != "/") then
+            sv_m = sv_m + ":58a1:" + "E:/" + BANCS.INPUT.BeneficiaryInstitutionPartyId + "|"
+        else
+            sv_m = sv_m + ":58a1:" + "E:" + BANCS.INPUT.BeneficiaryInstitutionPartyId + "|"
+        endif
+	endif
+		sv_o = mid$(BANCS.INPUT.BeneficiaryInstitutionName,0,35)
+		sv_m = sv_m + ":58a2:" + sv_o + "|"
+	sv_p = strlen(BANCS.INPUT.BeneficiaryInstitutionAddress1)	
+	sv_q = strlen(BANCS.INPUT.BeneficiaryInstitutionAddress2)
+	sv_r = strlen(BANCS.INPUT.BeneficiaryInstitutionAddress3)
+	sv_w = strlen(BANCS.INPUT.BeneficiaryInstitutionCountryName)
+	sv_x = sv_r + sv_w
+
+	if( (sv_p <= 35) AND (sv_q <= 35) AND (sv_x <= 35) ) then
+			sv_m = sv_m + ":58a3:" + BANCS.INPUT.BeneficiaryInstitutionAddress1 + "|"
+			sv_m = sv_m + ":58a4:" + BANCS.INPUT.BeneficiaryInstitutionAddress2 + "|"
+			sv_m = sv_m + ":58a5:" + BANCS.INPUT.BeneficiaryInstitutionAddress3 +BANCS.INPUT.BeneficiaryInstitutionCountryName +  "|"
+	else
+			sv_s = ""
+			sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.BeneficiaryInstitutionAddress1))
+			sv_t = mid$(sv_s,0,35)
+			sv_m = sv_m + ":58a3:" + sv_t + "|"	
+			sv_s = ""
+			sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.BeneficiaryInstitutionAddress2))
+			sv_u = mid$(sv_s,0,35)
+			sv_m = sv_m + ":58a4:" + sv_u + "|"	
+			sv_s = ""
+			sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.BeneficiaryInstitutionAddress3))
+			sv_s = sv_s+ltrim(rtrim(BANCS.INPUT.BeneficiaryInstitutionCountryName))
+			sv_v = mid$(sv_s,0,35)
+			sv_m = sv_m + ":58a5:" + sv_v + "|"	
+	endif
+endif
+#
+
+if( (BANCS.STDIN.menuId == "HPORDM") AND (BANCS.STDIN.contextBankId == "43") )then
+#{
+	sv_e = " purposeCode,remitInfo|SELECT PURPOSE_CODE,REMIT_INFO FROM TBAADM.PORD " 
+	sv_e = sv_e + " WHERE BANK_ID=?SVAR AND PYMT_REF_NUM = ?SVAR "
+	print(sv_e)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.PymtReferenceNum
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d =  urhk_dbSelectWithBind(sv_e)
+	print(sv_d)
+
+	IF (sv_d == 0 ) THEN
+	#{
+		lv_x = BANCS.OUTPARAM.purposeCode
+		print(lv_x)
+		lv_a = BANCS.OUTPARAM.remitInfo
+		print(lv_a)
+
+		#lv_a = "MONEYCORP KIN~A RECEVOIR 20-12-2022~ ~"
+		#print(lv_a)
+
+		lv_b =  GETPOSITION(lv_a,"~")
+		print(lv_b)
+		#--Remit info1
+		sv_a = MID$(lv_a,0,lv_b-1)
+		print(sv_a)
+		BANCS.INPUT.SenderToReceiverInfo1 = sv_a
+		lv_a = MID$(lv_a,lv_b,STRLEN(lv_a))
+		print(lv_a)
+
+		#--Remit info2
+		lv_b =  GETPOSITION(lv_a,"~")
+		print(lv_b)
+		sv_b = MID$(lv_a,0,lv_b-1)
+		print(sv_b)
+		BANCS.INPUT.SenderToReceiverInfo2 = sv_b
+		lv_a = MID$(lv_a,lv_b,STRLEN(lv_a))
+		print(lv_a)
+
+		lv_b =  GETPOSITION(lv_a,"~")
+		print(lv_b)
+		sv_c = MID$(lv_a,0,lv_b-1)
+		print(sv_c)
+		BANCS.INPUT.SenderToReceiverInfo3 = sv_c
+		lv_a = MID$(lv_a,lv_b,STRLEN(lv_a))
+		print(lv_a)
+
+		lv_b =  GETPOSITION(lv_a,"~")
+		print(lv_b)
+		sv_d = MID$(lv_a,0,lv_b-1)
+		print(sv_d)
+		BANCS.INPUT.SenderToReceiverInfo4 = sv_d
+		lv_a = MID$(lv_a,lv_b,STRLEN(lv_a))
+		print(lv_a)
+
+	ELSE
+		lv_a = ""
+		lv_b = ""
+		print("Error")
+	#}
+	ENDIF
+#}
+endif
+
+
+if((BANCS.INPUT.SenderToReceiverInfo1 != "") and (BANCS.INPUT.SenderToReceiverInfo1 != " ")) then
+#{
+	if((BANCS.STDIN.menuId == "HPORDM") AND (BANCS.STDIN.contextBankId == "43"))then
+	#{
+		sv_m = sv_m + ":721:/" +  BANCS.INPUT.SenderToReceiverInfo1 + "|"
+	else
+		sv_m = sv_m + ":721:" +  BANCS.INPUT.SenderToReceiverInfo1 + "|"
+	#}
+	endif
+#}
+endif
+
+if((BANCS.INPUT.SenderToReceiverInfo2 != "") and (BANCS.INPUT.SenderToReceiverInfo2 != " "))THEN 
+#{ 
+	if((BANCS.STDIN.menuId == "HPORDM") AND (BANCS.STDIN.contextBankId == "43"))then
+	#{
+		sv_m = sv_m + ":722://" + BANCS.INPUT.SenderToReceiverInfo2 + "|" 
+		print(sv_m)
+	#}
+	endif 
+
+	############################## Sirees start
+	IF (BANCS.STDIN.contextBankId == "43") THEN
+		IF (FIELDEXISTS(BANCS.INPUT.ReceiverBIC)) THEN
+			IF (BANCS.INPUT.ReceiverBIC=="SARBZAJSXXX") THEN
+				sv_k="3000"
+				print(sv_k)
+				sv_j="/CPL/"
+				print(sv_j)
+				sv_j= sv_j + sv_k
+				print(sv_j)
+				print(sv_m)
+				sv_m = sv_m + ":722:"+ sv_j + "|"
+				print(sv_m)
+			ENDIF
+		ENDIF
+	ENDIF
+	############################## Sirees end
+#}
+endif 
+    
+if((BANCS.INPUT.SenderToReceiverInfo3 != "") and (BANCS.INPUT.SenderToReceiverInfo3 != " "))THEN 
+#{ 
+	sv_m = sv_m + ":723:" + BANCS.INPUT.SenderToReceiverInfo3 + "|" 
+#} 
+endif 
+    
+if((BANCS.INPUT.SenderToReceiverInfo4 != "") and (BANCS.INPUT.SenderToReceiverInfo4 != " "))THEN 
+#{ 
+	sv_m = sv_m + ":724:" + BANCS.INPUT.SenderToReceiverInfo4 + "|" 
+#} 
+endif 
+    
+if((BANCS.INPUT.SenderToReceiverInfo5 != "") and (BANCS.INPUT.SenderToReceiverInfo5 != " "))THEN 
+#{ 
+	sv_m = sv_m + ":725:" + BANCS.INPUT.SenderToReceiverInfo5 + "|" 
+#} 
+endif 
+    
+if((BANCS.INPUT.SenderToReceiverInfo6 != "") and (BANCS.INPUT.SenderToReceiverInfo6 != " "))THEN 
+#{ 
+	sv_m = sv_m + ":726:" + BANCS.INPUT.SenderToReceiverInfo6 + "|" 
+#} 
+endif 
+
+print(sv_m)
+
+BANCS.OUTPUT.SwiftMessage = sv_m
+trace off
+end-->
+

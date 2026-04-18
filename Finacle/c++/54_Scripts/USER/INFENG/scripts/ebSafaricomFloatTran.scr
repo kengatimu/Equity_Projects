@@ -1,0 +1,198 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#FileName       : ebSafaricomFloatTran.sc
+#Desc           : tran
+#MenuId         : NA
+#CalledScript   :
+#Module         :
+#Date           : 07/01/2020
+#Author         : Vino Palani
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#+++++++++++++
+#Rep/Class
+#+++++++++++++
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        EQSRV.GLBDATA.errMsg    = ""
+#++++++++++++
+#transaction
+#++++++++++++
+        sv_a = urhk_MTTS_Close("")
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("MTT","TranDetails")==0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        if(classexists("MTT","PartTranDetails")==0)then
+                createclass("MTT","PartTranDetails",5)
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+        sv_a = urhk_MTTS_PopulateInputDetails("")
+        print(sv_a)
+        if(sv_a==0)then
+                MTT.InputDetails.TranId        = MTT.InputDetails.Argument1
+        else
+                MTT.InputDetails.TranId  = ""
+        endif
+        sv_d = "dtdCnt,tranId,pstdFlg,tranDate,DrAcct,DrAmt,DrCrncy,DrSolId | "
+        sv_d = sv_d + " select count(*),tran_id,pstd_flg,tran_date,acid,tran_amt,tran_crncy_code,dth_init_sol_id "
+        sv_d = sv_d + " from tbaadm.dtd where bank_id=?SVAR and tran_id = lpad(?SVAR,9,' ') "
+        sv_d = sv_d + " and tran_date =to_date(?SVAR,'DD-MM-RR') and rownum<=1 "
+	sv_d = sv_d + " and part_tran_type='C' "
+        sv_d = sv_d + " and exists ( select 1 from tbaadm.gam where acid=dtd.acid " 
+	sv_d = sv_d + " and bank_id=?SVAR and acct_ownership<>'O' and schm_code='SB167') "
+        sv_d = sv_d + " group by tran_id,pstd_flg,tran_date,acid,tran_amt,tran_crncy_code,dth_init_sol_id "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + MTT.InputDetails.TranId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+        print(BANCS.INPARAM.BINDVARS)
+        print(sv_d)
+        sv_u = urhk_dbSelectWithBind(sv_d)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.dtdCnt = BANCS.OUTPARAM.dtdCnt
+                EQSRV.GLBDATA.tranId = BANCS.OUTPARAM.tranId
+                EQSRV.GLBDATA.pstdFlg = BANCS.OUTPARAM.pstdFlg
+                EQSRV.GLBDATA.tranDate = BANCS.OUTPARAM.tranDate
+                EQSRV.GLBDATA.DrAcct = BANCS.OUTPARAM.DrAcct
+                EQSRV.GLBDATA.DrAmt = BANCS.OUTPARAM.DrAmt
+                EQSRV.GLBDATA.DrCrncy = BANCS.OUTPARAM.DrCrncy
+                EQSRV.GLBDATA.DrSolId = BANCS.OUTPARAM.DrSolId
+        else
+                EQSRV.GLBDATA.dtdCnt = 0
+                EQSRV.GLBDATA.tranId = ""
+                EQSRV.GLBDATA.pstdFlg = ""
+                EQSRV.GLBDATA.tranDate = ""
+                EQSRV.GLBDATA.DrAcct = ""
+                EQSRV.GLBDATA.DrAmt = ""
+                EQSRV.GLBDATA.DrCrncy = ""
+                EQSRV.GLBDATA.DrSolId = ""
+        endif
+        if(cint(EQSRV.GLBDATA.dtdCnt) <=0)then
+                print("No Virtual account Transactions")
+                exitscript
+        endif
+        if((EQSRV.GLBDATA.pstdFlg =="N") or (EQSRV.GLBDATA.pstdFlg== "") or (EQSRV.GLBDATA.pstdFlg==" "))then
+                print("Source Tran are Not Posted")
+                exitscript
+        endif
+        sv_a= urhk_B2k_AcidToForacid(EQSRV.GLBDATA.DrAcct)
+        if(sv_a==0)then
+                EQSRV.GLBDATA.foracid = BANCS.OUTPARAM.Foracid
+        else
+                EQSRV.GLBDATA.foracid = ""
+        endif
+        BANCS.INPARAM.PostTranFlg       = "Y"
+        BANCS.INPARAM.CommitFlg         = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+        BANCS.INPARAM.ValidationFlag    = "Y"
+        BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw  ="Y"
+
+        sv_a = urhk_MTTS_Initialize("")
+        MTT.TranDetails.TranDate        = "0"
+        MTT.TranDetails.TranType        = "T"
+        MTT.TranDetails.TranSubType     = "BI"
+        MTT.TranDetails.Remarks         = "Safaricom Virtual Acct FloatTran"
+        MTT.TranDetails.IgnoreExcp      = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.TranIdOnline    = "N"
+        sv_u = urhk_MTTS_defineTransaction("FloatFund")
+        if(sv_u != 0) then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                endif
+                goto ENDSCR
+        endif
+        sv_u = urhk_MTTS_populateInputDetails("")
+        if(sv_u != 0) then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                endif
+                goto ENDSCR
+        endif
+        ###EQSRV.GLBDATA.crAcct = "0341400302961"
+        EQSRV.GLBDATA.crBacid = "MPESAAGENT"
+        sv_i = EQSRV.GLBDATA.crBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + EQSRV.GLBDATA.DrSolId
+        sv_u = urhk_B2k_BacidToAcctId(sv_i)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.crAcct = BANCS.OUTPARAM.AcctId
+	else
+		EQSRV.GLBDATA.crAcct = ""
+        endif
+        print(EQSRV.GLBDATA.crAcct)
+#Debit
+        print(EQSRV.GLBDATA.foracid)
+        MTT.PartTranDetails.Account     = EQSRV.GLBDATA.foracid
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Particulars = "Dr.For " + EQSRV.GLBDATA.crAcct + " /Float Fund "
+        MTT.PartTranDetails.RefAmount   = -1 * cdouble(EQSRV.GLBDATA.DrAmt)
+        MTT.PartTranDetails.Remarks     = "Fund to Safaricom GL"
+        MTT.PartTranDetails.RefNum      = EQSRV.GLBDATA.tranId
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.TranIdentifier = "FloatFund"
+        ##MTT.PartTranDetails.ReportCode = sv_z
+        sv_u = urhk_MTTS_definePartTran("SettleDr")
+        print(sv_u)
+        if(sv_u!=0)then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                        EQSRV.GLBDATA.errMsg    = MTT.Error.Description
+                        goto ENDSCR
+                endif
+        endif
+#Credit
+        print(EQSRV.GLBDATA.crAcct)
+        MTT.PartTranDetails.Account     = EQSRV.GLBDATA.crAcct
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.Particulars = "Cr.From " + EQSRV.GLBDATA.foracid
+        MTT.PartTranDetails.RefAmount   = 1 * cdouble(EQSRV.GLBDATA.DrAmt)
+        MTT.PartTranDetails.Remarks     = "Safaricom Virtual Cr"
+        MTT.PartTranDetails.RefNum      = EQSRV.GLBDATA.tranId
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.TranIdentifier = "FloatFund"
+        ##MTT.PartTranDetails.ReportCode = sv_z
+        sv_u = urhk_MTTS_definePartTran("SettleDr")
+        print(sv_u)
+        if(sv_u!=0)then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                        EQSRV.GLBDATA.errMsg    = MTT.Error.Description
+                        goto ENDSCR
+                endif
+        endif
+#Res
+        sv_u = urhk_MTTS_endDefinition("")
+        if(sv_u!=0)then
+                if(fieldexists(MTT.Error.Description))then
+                        print(MTT.Error.Description)
+                        EQSRV.GLBDATA.errMsg    = MTT.Error.Description
+                        goto ENDSCR
+                endif
+        else
+                print(BANCS.OUTPARAM.MTTTranId)
+        endif
+        sv_u = urhk_MTTS_Close("")
+        print(sv_u)
+ENDSCR:
+        print(EQSRV.GLBDATA.errMsg)
+        sv_a = urhk_MTTS_Close("")
+        ##if(classexists("EQSRV","GLBDATA")==1)then
+        ##      deleteclass("EQSRV","GLBDATA")
+        ##endif
+        ##if(repexists("EQSRV")==1)then
+        ##      deleterep("EQSRV")
+        ##endif
+        exitscript
+trace off
+end-->

@@ -1,0 +1,198 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : eftouwmn001.scr
+#   Description     : EFT outward files
+#   Date            : 11-11-2013
+#   Author          : Bharath
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : 
+#   Calling Script  : 
+#   Menu Option     : 
+#   Srl. No         Date            Author          	Description.   
+#   -------         ------          ------          	------------
+#   1.0             11-11-2013      Bharath				Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+# Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+	CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+ sv_l = urhk_B2k_printrepos("BANCS")
+   print(sv_l)
+
+print(BANCS.INPUT.fromDate)
+print(BANCS.INPUT.toDate)
+print(BANCS.INPUT.funcCode)
+print(BANCS.STDIN.sysDate)
+#-----------------------------------------------------------------------------------------------
+# Initialize required variables
+#-----------------------------------------------------------------------------------------------
+CUST.DATA.errMsg 		= ""
+CUST.DATA.comFileName	= ""
+CUST.DATA.errFld		= "fromDate"
+
+IF((BANCS.INPUT.fromDate == "") OR (BANCS.INPUT.toDate == "") OR (BANCS.INPUT.funcCode == "") ) THEN
+#{	
+	CUST.DATA.errMsg = "Enter From Date / To Date / Function Code"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+CUST.DATA.fromDate 	= TRIM(BANCS.INPUT.fromDate)
+print(CUST.DATA.fromDate)
+CUST.DATA.toDate 	= TRIM(BANCS.INPUT.fromDate)
+print(CUST.DATA.toDate)
+
+	sv_s="toTime|"
+	sv_s = sv_s + " select to_CHAR(sysdate,'HH24-MI-SS') from dual "
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+
+	IF (sv_d == 0) THEN
+		print(BANCS.OUTPARAM.toTime)
+	ELSE
+		GOTO ENDOFSCRIPT
+
+	ENDIF 
+
+CUST.DATA.toTime = BANCS.OUTPARAM.toTime
+print(CUST.DATA.toTime)
+
+CUST.DATA.funcCode 	= TRIM(BANCS.INPUT.funcCode)
+CUST.DATA.funcCode	= TOUPPER(CUST.DATA.funcCode)
+print(CUST.DATA.funcCode)
+
+#----------------------------------------------------------------------------------
+#---    Setting Env variables
+#----------------------------------------------------------------------------------
+sv_a = "fromDate|" + CUST.DATA.fromDate
+sv_u = urhk_putEnvForCallShellScript(sv_a)
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+	CUST.DATA.errMsg = "Error in setting env variable"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+sv_a = "toDate|" + CUST.DATA.toDate
+sv_u = urhk_putEnvForCallShellScript(sv_a)
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+	CUST.DATA.errMsg = "Error in setting env variable"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+sv_a = "toTime|" + CUST.DATA.toTime
+sv_u = urhk_putEnvForCallShellScript(sv_a)
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+	CUST.DATA.errMsg = "Error in setting env variable"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+sv_a = "bankId|" + BANCS.STDIN.contextBankId
+sv_u = urhk_putEnvForCallShellScript(sv_a)
+PRINT(sv_u)
+IF (sv_u != 0) THEN
+#{
+	CUST.DATA.errMsg = "Error in setting env variable"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+#----------------------------------------------------------------------------------
+#---  Setting com file
+#----------------------------------------------------------------------------------
+IF(CUST.DATA.funcCode == "EFTTAX")THEN
+#{
+	CUST.DATA.comFileName = "efttaxdp001.com"
+#}
+ENDIF
+
+IF(CUST.DATA.funcCode == "EGOKB")THEN
+#{
+	CUST.DATA.comFileName = "egokbdp001.com"
+#}
+ENDIF
+
+IF(CUST.DATA.funcCode == "SIMREPP")THEN
+#{
+	CUST.DATA.comFileName = "simreppdp001.com"
+#}
+ENDIF
+
+#IF(CUST.DATA.funcCode == "EGOKC")THEN
+##{
+#	CUST.DATA.comFileName = "egokcdp001.com"
+##}
+#ENDIF
+
+IF(CUST.DATA.comFileName == "")THEN
+#{
+	CUST.DATA.errMsg = "File download failed please retry"
+	GOTO ENDOFSCRIPT		
+#}
+ENDIF
+
+#----------------------------------------------------------------------------------
+#---  Executing com file in background 
+#----------------------------------------------------------------------------------
+sv_u = urhk_getFileLocation("COM|"+CUST.DATA.comFileName)
+print(sv_u)
+IF (sv_u == 0) THEN
+#{
+	BANCS.INPARAM.scriptName = CUST.DATA.comFileName
+	BANCS.INPARAM.arguments = ""
+	sv_u = urhk_CallShellScript("b")
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.DATA.errMsg = "File download failed please retry"
+		GOTO ENDOFSCRIPT		
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	CUST.DATA.errMsg = "Unable to load com file"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF (CUST.DATA.errMsg != "") THEN
+#{
+	sv_s = "Error_01|ERROR:^"+ CUST.DATA.errMsg +"^"+CUST.DATA.errFld
+	sv_u = urhk_SetOrbOut(sv_s)
+	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+#}
+ELSE
+#{
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	sv_g = "RESULT_MSG|File Download Initiated Successfully"
+	sv_z = urhk_SetOrbOut(sv_g)
+	print(sv_z)
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

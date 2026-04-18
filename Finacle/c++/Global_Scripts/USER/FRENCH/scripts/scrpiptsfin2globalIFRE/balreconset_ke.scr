@@ -1,0 +1,293 @@
+<--START
+TRACE ON
+
+        sv_r =  REPEXISTS("STDWFS")
+if ( sv_r == 0) then
+#{
+CREATEREP("STDWFS")
+#}
+ENDIF
+IF(CLASSEXISTS("STDWFS","GLBDATA") == 0) THEN
+#{
+CREATECLASS("STDWFS","GLBDATA",5)
+#}
+ENDIF
+
+STDWFS.GLBDATA.crncyCode="KES"
+
+sv_r =  REPEXISTS("MTT")
+if ( sv_r == 0) then
+#{
+CREATEREP("MTT")
+#}
+endif
+
+IF(CLASSEXISTS("MTT","TranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","TranDetails",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("MTT","PartTranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","PartTranDetails",5)
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CUST Repository exists else create it
+###########################################################################################
+
+sv_r = REPEXISTS("CUST")
+
+IF(sv_r == 0) THEN
+#{
+        CREATEREP ("CUST")
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CIETXN Class exists else create it
+###########################################################################################
+
+sv_r = CLASSEXISTS("CUST","CIETXN")
+
+IF(sv_r == 0) THEN
+#{
+        CREATECLASS ("CUST","CIETXN",5)
+#}
+ENDIF
+
+###########################################################################################
+# Initailizing the GL accounts no for Kenya 54
+###########################################################################################
+
+CUST.CIETXN.suspense = "0001300104489"
+CUST.CIETXN.settlmnt = "0001100104469"
+CUST.CIETXN.suspense_fin = "6000130014489"
+
+
+sv_q = ""
+sv_q = " sumsuspense | select sum(tran_amt) from TBAADM.CTD_DTD_ACLI_VIEW where acid in (select acid from tbaadm.gam "
+sv_q = sv_q + "where foracid =?SVAR ) and tran_date= to_date(sysdate, 'DD-MON-YY') and PART_TRAN_TYPE ='C' "
+BANCS.INPARAM.BINDVARS = CUST.CIETXN.suspense 
+print(sv_q)
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+	IF (sv_w==0) THEN
+        #{
+        	CUST.CIETXN.sumsuspense=FORMAT$(CDOUBLE(BANCS.OUTPARAM.sumsuspense),"%.2f")
+                print(CUST.CIETXN.sumsuspense)
+
+###############################Calculate totoal EOD balance for 99 entity####################
+
+sv_q=""
+sv_q = "sumsuspense_fin | select sum(tran_amt) from TBAADM.CTD_DTD_ACLI_VIEW where acid in (select acid from tbaadm.gam "
+sv_q = sv_q + "where foracid =?SVAR ) and tran_date= to_date(sysdate, 'DD-MON-YY') and PART_TRAN_TYPE ='D' "
+BANCS.INPARAM.BINDVARS = CUST.CIETXN.suspense_fin
+print(BANCS.INPARAM.BINDVARS)
+print(sv_q)
+sv_w =  urhk_dbSelectWithBind(sv_q)
+print(sv_w)
+
+        IF (sv_w==0) THEN
+        #{
+                CUST.CIETXN.sumsuspense_fin=FORMAT$(CDOUBLE(BANCS.OUTPARAM.sumsuspense_fin),"%.2f")
+                print(CUST.CIETXN.sumsuspense_fin)
+        #}
+        ENDIF
+###############################################################################################
+
+IF (CUST.CIETXN.sumsuspense != CUST.CIETXN.sumsuspense_fin) THEN
+#{
+
+        print("The Total EOD balance is mismatch")
+	CUSTS.CIETXN.errMsg="The Total EOD balance is mismatch"
+        sv_e=urhk_SetOrbOut("Error|"+CUSTS.CIETXN.errMsg)
+        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+        print(sv_u)
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+IF(BANCS.STDIN.contextBankId =="54") THEN
+#{
+
+###############Proceeding fund transfer from suspense GL to settlement GL####################
+
+############initialize MTT##################
+
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="CI"
+BANCS.INPARAM.PostTranFlg               = "Y"
+BANCS.INPARAM.CommitFlg                 = "Y"
+BANCS.INPARAM.ValidationFlag            = "N"
+BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+BANCS.INPARAM.IgnoreExcp                = "I"
+
+sv_t = urhk_MTTS_initialize("FUNDTRANGL")
+print(sv_t)
+
+IF (sv_t != 0) THEN
+#{
+sv_m = urhk_TBAF_DispMesg("MTT initialise has failed.")
+BANCS.OUTPUT.successOrFailure = "F"
+sv_a = urhk_SetOrbOut(sv_m)
+exitscript
+#}
+ENDIF
+
+STDWFS.GLBDATA.depAmt="0"
+BANCS.STDIN.tran_id=""
+MTT.TranDetails.TranDate        =   "0"
+MTT.TranDetails.IgnoreExcp      =   "I"
+MTT.TranDetails.Consolidate     =   "N"
+MTT.TranDetails.Remarks         =   "FUND TRAN GL"
+MTT.TranDetails.ReversalFlag    =   "N"
+MTT.TranDetails.PostFlag        =   "Y"
+MTT.TranDetails.CommitFlg       =   "Y"
+MTT.TranDetails.ValidationFlag  =   "N"
+MTT.TranDetails.PostTranFlg    =   "Y"
+print(MTT.TranDetails.PostTranFlg)
+MTT.TranDetails.flgPostTransaction= "Y"
+
+sv_r = urhk_MTTS_DefineTransaction("FUNDTRANGL")
+print(sv_r)
+if (sv_r != 0) then
+#{
+STDWFS.GLBDATA.Error_Desc      = "Error In Creation of Transaction"
+exitscript
+#}
+endif
+
+################################## End of Header ################################
+
+################## Debit Transaction:####################################
+MTT.PartTranDetails.RefAmount="-"+CUST.CIETXN.sumsuspense
+MTT.PartTranDetails.Account=CUST.CIETXN.suspense
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="FUND TRAN GL"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars= "Transfer Funds to settlement GL" 
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="FUNDTRANGL"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.ICSANO
+
+
+sv_r = urhk_MTTS_DefinePartTran("DR")
+print(sv_r)
+IF (sv_r != 0) THEN
+#{
+STDWFS.GLBDATA.Error_Desc      = "Error In Creation of Dr Transaction"
+#sv_e = "Error_0|Error^Error In Creation of Dr Transaction -^idCode"
+#sv_x = urhk_SetOrbOut(sv_e)
+print(STDWFS.GLBDATA.Error_Desc)
+#print(MTT.Error.Description)
+exitscript
+#}
+ENDIF
+#############################
+
+############### Credit Transaction :############################################
+MTT.PartTranDetails.RefAmount=CUST.CIETXN.sumsuspense
+print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.Account=CUST.CIETXN.settlmnt
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="CHRG TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars= "FUND Received from Suspense GL"
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="FUNDTRANGL"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.foracid   -- put the sno
+
+
+sv_r = urhk_MTTS_DefinePartTran("CR")
+print(sv_r)
+
+sv_r = urhk_MTTS_EndDefinition("")
+print(sv_r)
+
+IF(sv_r == 0) THEN
+#{
+        IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+        #{
+                IF(BANCS.OUTPARAM.MTTTranId != "") THEN
+                #{
+                        print(BANCS.OUTPARAM.MTTTranId)
+                        CUST.CIETXN.TranID = BANCS.OUTPARAM.MTTTranId
+                        print(CUST.CIETXN.TranID)
+                #}
+                ENDIF
+        #}
+        ENDIF
+#}
+else
+#{
+                sv_u = urhk_MTTS_ReportErrorCondition("")
+                print (MTT.Error.Description)
+                BANCS.OUTPUT.successOrFailure = "F"
+                GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+        sv_u = urhk_MTTS_HandleExceptions("POST")
+        print(sv_u)
+
+sv_s = urhk_MTTS_Close("")
+print(sv_s)
+
+IF(sv_u != 0) THEN
+        #{
+                IF(FIELDEXISTS(MTT.Error.Description)) THEN
+                #{
+                        print(MTT.Error.Description)
+                #}
+                ENDIF
+
+                BANCS.OUTPUT.successOrFailure = "F"
+                CUST.CIETXN.Response = "urhk_MTTS_Close returns FAILURE"
+		print(CUST.CIETXN.Response)
+                goto ENDOFSCRIPT
+        #}
+        ENDIF
+
+        IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+        #{
+                sv_h = BANCS.OUTPARAM.MTTPostingError
+                print(sv_h)
+                CUST.CIETXN.errorMsg = sv_h
+                print(CUST.CIETXN.errorMsg)
+                CUST.CIETXN.scriptSuccess = "N"
+                CUST.CIETXN.srvError = "Y"
+                print(CUST.CIETXN.srvError)
+                exitscript
+        #}
+	ELSE
+
+        #{
+                BANCS.OUTPUT.successOrFailure = "S"
+                CUST.CIETXN.srvError = "N"
+                print(CUST.CIETXN.srvError)
+        #}
+        ENDIF
+
+#}
+ENDIF
+
+
+ENDOFSCRIPT:
+
+exitscript
+TRACE OFF
+end-->
+
+
+
+

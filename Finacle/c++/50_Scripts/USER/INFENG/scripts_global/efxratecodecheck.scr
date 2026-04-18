@@ -1,0 +1,166 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : efxratecodecheck.scr 
+#  Description     : This script will be called to for fx conversion based on currency pairs
+#  Date            : 2022-08-10
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : NA
+#  Menu Option     : FI 
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             2022-08-10      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+sv_r=urhk_B2k_PrintRepos("BANCS")
+PRINT(sv_r)
+
+sv_r = REPEXISTS("CUST")
+IF (sv_r == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+sv_r = CLASSEXISTS("CUST", "ATM")
+IF (sv_r == 0) THEN
+#{
+	CREATECLASS("CUST", "ATM", 5)
+#}
+ENDIF
+if(fieldexists(BANCS.INPUT.fromAmount)==1)then
+	CUST.DATA.fromAmount = BANCS.INPUT.fromAmount
+	print(CUST.DATA.fromAmount)
+else
+	CUST.DATA.errMsg="Kindly Supply from amount"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+endif
+	
+if( (FIELDEXISTS(("BANCS").("INPUT").("account_number"))== 0) ) then
+#{
+	CUST.DATA.errMsg="Kindly Supply account_number"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+	#}
+ELSE
+	#{
+	CUST.DATA.account_number = BANCS.INPUT.account_number
+	print(CUST.DATA.account_number)
+#}
+ENDif
+
+if( (FIELDEXISTS(("BANCS").("INPUT").("bank_id"))== 0) ) then
+#{
+	CUST.DATA.errMsg="Kindly Supply bank_id"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+	#}
+ELSE
+	#{
+	CUST.DATA.bank_id = BANCS.INPUT.bank_id
+	print(CUST.DATA.bank_id)
+#}
+ENDif
+
+if( (FIELDEXISTS(("BANCS").("INPUT").("from_currency"))== 0) ) then
+#{
+	CUST.DATA.errMsg="Kindly Supply from_currency"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+	#}
+ELSE
+	#{
+	CUST.DATA.from_currency = BANCS.INPUT.from_currency
+	print(CUST.DATA.from_currency)
+#}
+ENDif
+
+if( (FIELDEXISTS(("BANCS").("INPUT").("to_currency"))== 0) ) then
+#{
+	CUST.DATA.errMsg="Kindly Supply to_currency"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+	#}
+ELSE
+	#{
+	CUST.DATA.to_currency = BANCS.INPUT.to_currency
+	print(CUST.DATA.to_currency)
+#}
+ENDif
+
+
+if((CUST.DATA.from_currency!="") and (CUST.DATA.to_currency !=""))then
+	CUST.ATM.transactiontype="T"
+	sv_q = " FXratecode| select CUSTOM.RETURN_FX_RATE_CODE(?SVAR,?SVAR,?SVAR,?SVAR) from dual"
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.ATM.transactiontype + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_w=urhk_dbSelectWithBind(sv_q)
+	print(sv_w)
+	if( sv_w != 0 )then
+		CUST.DATA.errMsg="FX Group Not Maintained "
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)	
+		exitscript
+	else
+		CUST.ATM.FXratecode = BANCS.OUTPARAM.FXratecode
+		print(CUST.ATM.FXratecode)
+		if (CUST.ATM.FXratecode=="") THEN
+			CUST.DATA.errMsg="FX Group Not Maintained "
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)	
+			exitscript
+		endif
+	endif
+
+	CUST.DATA.fromAmount = cdouble(CUST.DATA.fromAmount)
+	BANCS.INPARAM.InputAmount  = CUST.DATA.fromAmount 
+
+	##BANCS.INPARAM.FromCurrency = CUST.DATA.from_currency
+	##BANCS.INPARAM.ToCurrency   = CUST.DATA.to_currency 
+	BANCS.INPARAM.FromCurrency = CUST.DATA.to_currency
+	BANCS.INPARAM.ToCurrency = CUST.DATA.from_currency	
+	BANCS.INPARAM.RateCode     = CUST.ATM.FXratecode
+	BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+
+
+	sv_u = urhk_B2k_ConvertAmount("")
+
+	CUST.DATA.convertedAmt = BANCS.OUTPARAM.OutputAmount
+	PRINT(CUST.DATA.convertedAmt)
+else
+	CUST.DATA.convertedAmt =cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+	print(CUST.DATA.convertedAmt)
+endif
+
+sv_f="FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS|select FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE, "
+sv_f = sv_f + " VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+sv_f = sv_f + " and RATECODE in(?SVAR)"
+BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.DATA.bank_id + "|" + CUST.ATM.FXratecode 
+print(BANCS.INPARAM.BINDVARS)
+sv_w=urhk_dbSelectWithBind(sv_f)
+if(sv_w != 0)then
+	CUST.DATA.errMsg="FX rate Maintained "
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)	
+	exitscript
+else
+	CUST.DATA.rate = BANCS.OUTPARAM.VAR_CRNCY_UNITS
+	print(CUST.DATA.rate)
+endif
+
+if((CUST.ATM.FXratecode !="") and (CUST.DATA.rate !="") and (CUST.DATA.fromAmount !="") and (CUST.DATA.convertedAmt !=""))then
+	sv_u = urhk_SetOrbOut("RATE_CODE|" + CUST.ATM.FXratecode)
+	print(CUST.ATM.FXratecode)
+	sv_u = urhk_SetOrbOut("RATE|" + CUST.DATA.rate)
+	print(CUST.DATA.rate)
+	sv_u = urhk_SetOrbOut("FromAmount|" + CUST.DATA.fromAmount)
+	print(CUST.DATA.fromAmount)
+	sv_u = urhk_SetOrbOut("ConvertedAmount|" + CUST.DATA.convertedAmt)
+	print(CUST.DATA.convertedAmt)
+endif
+
+End:
+EXITSCRIPT
+END-->

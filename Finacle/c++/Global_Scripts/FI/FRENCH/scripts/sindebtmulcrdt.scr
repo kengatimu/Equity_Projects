@@ -1,0 +1,279 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : sindebtmulcrdt.scr
+#   Description     : Charges for all the trasaction of MPESA
+#   Date            : 05-07-2018
+#   Author          : Bhushan BS
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : charge_mtt.scr
+#   Calling Script  : NA
+#   Menu Option     :
+#   Srl. No         Date            Author              Description.
+#   -------         ------          ------              ------------
+#   1.0             05-07-2018      Bhushan BS          Original Version
+#-----------------------------------------------------------------------------------------------
+
+
+<--START
+TRACE ON
+
+        sv_r =  REPEXISTS("STDWFS")
+if ( sv_r == 0) then
+#{
+CREATEREP("STDWFS")
+#}
+ENDIF
+IF(CLASSEXISTS("STDWFS","GLBDATA") == 0) THEN
+#{
+CREATECLASS("STDWFS","GLBDATA",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+STDWFS.GLBDATA.crncyCode="KES"
+sv_r =  REPEXISTS("MTT")
+if ( sv_r == 0) then
+#{
+CREATEREP("MTT")
+#}
+endif
+
+IF(CLASSEXISTS("MTT","TranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","TranDetails",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("MTT","PartTranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","PartTranDetails",5)
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CUST Repository exists else create it
+###########################################################################################
+
+sv_r = REPEXISTS("CUST")
+
+IF(sv_r == 0) THEN
+#{
+        CREATEREP ("CUST")
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CIETXN Class exists else create it
+###########################################################################################
+
+sv_r = CLASSEXISTS("CUST","CIETXN")
+
+IF(sv_r == 0) THEN
+#{
+        CREATECLASS ("CUST","CIETXN",5)
+#}
+ENDIF
+
+        sv_a = urhk_b2k_printRepos("BANCS")
+
+
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="CI"
+BANCS.INPARAM.PostTranFlg               = "Y"
+BANCS.INPARAM.CommitFlg                 = "Y"
+BANCS.INPARAM.ValidationFlag            = "N"
+BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+BANCS.INPARAM.IgnoreExcp                = "I"
+
+sv_t = urhk_MTTS_initialize("MPESACHRG")
+print(sv_t)
+
+IF (sv_t != 0) THEN
+#{
+sv_m = urhk_TBAF_DispMesg("MTT initialise has failed.")
+BANCS.OUTPUT.successOrFailure = "F"
+sv_a = urhk_SetOrbOut(sv_m)
+exitscript
+#}
+ENDIF
+
+#STDWFS.GLBDATA.depAmt="0"
+BANCS.STDIN.tran_id =""
+MTT.TranDetails.TranDate        =   "0"
+MTT.TranDetails.IgnoreExcp      =   "I"
+MTT.TranDetails.Consolidate     =   "N"
+MTT.TranDetails.Remarks         =   "Charges TRAN"
+MTT.TranDetails.ReversalFlag    =   "N"
+MTT.TranDetails.PostFlag        =   "Y"
+MTT.TranDetails.CommitFlg       =   "Y"
+MTT.TranDetails.ValidationFlag  =   "N"
+MTT.TranDetails.PostTranFlg    =   "Y"
+print(MTT.TranDetails.PostTranFlg)
+MTT.TranDetails.flgPostTransaction= "Y"
+
+sv_r = urhk_MTTS_DefineTransaction("MPESACHRG")
+print(sv_r)
+if (sv_r != 0) then
+#{
+STDWFS.GLBDATA.Error_Desc      = "Error In Creation of Transaction"
+exitscript
+#}
+endif
+
+################################## End of Header ################################
+
+################## Debit Transaction:####################################
+MTT.PartTranDetails.RefAmount="-"+CUST.CIETXN.TOTAmount
+MTT.PartTranDetails.Account=CUST.CIETXN.Debit_Acct
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="Charges TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars=CUST.CIETXN.service_name + "_CHARGES/"  +CUST.CIETXN.Refnumberto 
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="MPESACHRG"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.ICSANO
+
+
+sv_r = urhk_MTTS_DefinePartTran("DR")
+print(sv_r)
+IF (sv_r != 0) THEN
+#{
+
+CUST.CIETXN.errorMsg = "Error In Creation of Dr Transaction"
+print(CUST.CIETXN.errorMsg)
+sv_x = urhk_SetOrbOut("Error_0|" +CUST.CIETXN.errorMsg)
+CUST.CIETXN.scriptSuccess = "N"
+CUST.CIETXN.srvError = "Y"
+print(CUST.CIETXN.srvError)
+exitscript
+#}
+ENDIF
+#############################
+
+############### Credit Transaction 1 :############################################
+MTT.PartTranDetails.RefAmount=CUST.CIETXN.Amount
+print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.Account=CUST.CIETXN.Credit_Acct
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="Charges TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars=CUST.CIETXN.service_name + "_CHARGES/" +CUST.CIETXN.Refnumberto 
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="MPESACHRG"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.foracid   -- put the sno
+
+
+sv_r = urhk_MTTS_DefinePartTran("CR")
+print(sv_r)
+
+IF(sv_r == 1) THEN
+#{
+CUST.CIETXN.errorMsg = "Error In Creation of Cr Transaction"
+print(CUST.CIETXN.errorMsg)
+sv_x = urhk_SetOrbOut("Error_0|" +CUST.CIETXN.errorMsg)
+CUST.CIETXN.scriptSuccess = "N"
+CUST.CIETXN.srvError = "Y"
+print(CUST.CIETXN.srvError)
+exitscript
+#}
+ENDIF
+
+############### Credit Transaction 2 :############################################
+MTT.PartTranDetails.RefAmount=CUST.CIETXN.Amount1
+print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.Account=CUST.CIETXN.Credit_Acct1
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="Charges TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars=CUST.CIETXN.service_name + "_CHARGES/" +CUST.CIETXN.Refnumberto 
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="MPESACHRG"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.foracid   -- put the sno
+
+
+sv_r = urhk_MTTS_DefinePartTran("CR")
+print(sv_r)
+
+
+sv_r = urhk_MTTS_EndDefinition("")
+print(sv_r)
+
+IF(sv_r == 0) THEN
+#{
+        IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+        #{
+                IF(BANCS.OUTPARAM.MTTTranId != "") THEN
+                #{
+                        print(BANCS.OUTPARAM.MTTTranId)
+                        CUST.CIETXN.TranID = BANCS.OUTPARAM.MTTTranId
+                        print(CUST.CIETXN.TranID)
+                #}
+                ENDIF
+        #}
+        ENDIF
+#}
+else
+#{
+                sv_u = urhk_MTTS_ReportErrorCondition("")
+                print (MTT.Error.Description)
+                BANCS.OUTPUT.successOrFailure = "F"
+                GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+        sv_u = urhk_MTTS_HandleExceptions("POST")
+        print(sv_u)
+	sv_s = urhk_MTTS_Close("")
+	print(sv_s)
+
+	IF(sv_u != 0) THEN
+        #{
+                IF(FIELDEXISTS(MTT.Error.Description)) THEN
+                #{
+                        print(MTT.Error.Description)
+                #}
+                ENDIF
+
+                BANCS.OUTPUT.successOrFailure = "F"
+                CUST.CIETXN.Response = "urhk_MTTS_Close returns FAILURE"
+                goto ENDOFSCRIPT
+        #}
+        ENDIF
+	IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+        #{
+                sv_h = BANCS.OUTPARAM.MTTPostingError
+                print(sv_h)
+                CUST.CIETXN.errorMsg = sv_h
+                print(CUST.CIETXN.errorMsg)
+                CUST.CIETXN.scriptSuccess = "N"
+                CUST.CIETXN.srvError = "Y"
+                print(CUST.CIETXN.srvError)
+                exitscript
+        #}
+        ELSE
+
+        #{
+                BANCS.OUTPUT.successOrFailure = "S"
+                CUST.CIETXN.srvError = "N"
+                print(CUST.CIETXN.srvError)
+        #}
+        ENDIF
+
+
+ENDOFSCRIPT:
+
+exitscript
+TRACE OFF
+end-->
+

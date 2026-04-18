@@ -1,0 +1,247 @@
+<--start
+	TRACE ON
+
+	#------------------------------------#
+	#-- Repository And Class Creation  --#
+	#### CHG0036558/16092025INFENG Correction of interest rate for existing SB102 accounts
+	#  CHG0037230/26112025INFENG Interests on virtual account  Scheme VA301
+	# CHG0037230/26112025FRENCH2 Interests on virtual account  Scheme VA301
+	#------------------------------------#
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	PRINT(sv_u)
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	   CREATEREP("CUST")
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	   CREATECLASS("CUST","DATA",5)
+	ENDIF
+
+
+	sv_a = "foracid, IntRate|"
+	sv_a = sv_a + "select trim(ACCOUNT_NUM), trim(INTEREST_RATE_TO_CONFIGURE) from CUSTOM.C_SB102IntUpdate WHERE is_int_updated = 'N' FETCH FIRST 4000 ROWS ONLY"
+	PRINT(sv_a)
+	sv_c = urhk_dbCursorOpenWithBind(sv_a)
+	PRINT(sv_c)
+
+	IF (sv_c != 0) THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+
+	CUST.DATA.DB_CURSOR_NUMBER = sv_c
+	PRINT(CUST.DATA.DB_CURSOR_NUMBER)
+
+	#-----------------------------#
+	#-- Cursor Fetch Loop
+	#-----------------------------#
+
+	sv_f = urhk_dbCursorFetch(CUST.DATA.DB_CURSOR_NUMBER)
+	print(sv_f)
+
+	IF (sv_f != 0) THEN
+	#{
+		GOTO ERRORCHECK
+	#}
+	ENDIF
+	
+	#-----------------------------#
+	#-- SRV_FetchSBAcctMaintDtlForModify --
+	#-----------------------------#
+	WHILE (sv_f == 0)
+	#{
+		CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+		CUST.DATA.IntRate = BANCS.OUTPARAM.IntRate
+		CUST.DATA.startDate = MID$(BANCS.STDIN.BODDate ,0, 10)
+		CUST.DATA.startDate = "09-10-2025"
+		CUST.DATA.intTblCode = "VA301"
+		
+		sv_i = urhk_SetUrhkInp("IntTblCrit.entityType.type|ACCNT" )
+		PRINT(sv_i)
+		sv_i = urhk_SetUrhkInp("IntTblCrit.entityId.entityDispId|" + CUST.DATA.foracid)
+		PRINT(sv_i)
+
+		sv_q = urhk_ExecSrv("SRV_FetchIntTblDtlForModify|retain_all_output = Y|same_user_verify = Y")
+		PRINT(sv_q)
+
+		IF (sv_q == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			PRINT(sv_u)
+
+			#--------------------------------------#
+			#--SRV_ModifySBAcct
+			#--------------------------------------#
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.minIntCr|" + CUST.DATA.IntRate)
+			PRINT(sv_i)
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.maxIntCr|" + CUST.DATA.IntRate)
+			PRINT(sv_i)
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.acctPrefIntDr|" + CUST.DATA.IntRate)
+			PRINT(sv_i)
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.acctPrefIntCr|" + CUST.DATA.IntRate)
+			PRINT(sv_i)
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.custPrefIntCr|" + CUST.DATA.IntRate)
+            PRINT(sv_i)
+			sv_i = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.custPrefIntDr|" + CUST.DATA.IntRate)
+			PRINT(sv_i)
+			sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.startDate|" + CUST.DATA.startDate)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("IntTblDtlLL.<rec_0>.intTblCode.tblCode|" + CUST.DATA.intTblCode)
+			PRINT(sv_u)
+
+			sv_q = urhk_ExecSrv("SRV_ModifyIntTblDtl|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_q)
+
+			IF (sv_q==0)THEN
+			#{	
+				####################################################
+				#fetch for verify
+				####################################################
+					
+				sv_i = urhk_SetUrhkInp("IntTblCrit.entityType.type|ACCNT" )
+				PRINT(sv_i)
+				sv_i = urhk_SetUrhkInp("IntTblCrit.entityId.entityDispId|" + CUST.DATA.foracid)
+				PRINT(sv_i)
+
+				sv_q = urhk_ExecSrv("SRV_FetchIntTblDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_q)
+
+				IF (sv_q == 0) THEN
+				#{
+					sv_u = urhk_CopyOutToIn("")
+					PRINT(sv_u)
+					
+					sv_i = urhk_SetUrhkInp("IntTblCrit.entityType.type| ACCNT" )
+					PRINT(sv_i)
+					sv_i = urhk_SetUrhkInp("IntTblCrit.entityId.entityDispId|" + CUST.DATA.foracid)
+					PRINT(sv_i)
+
+					sv_q = urhk_ExecSrv("SRV_VerifyIntTblDtl|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_q)
+
+					IF (sv_q == 0) THEN
+					#{
+						PRINT("Modification successful for Account: " + CUST.DATA.foracid)
+
+						sv_a = "update CUSTOM.C_SB102IntUpdate set is_int_updated = 'Y' "
+						sv_a = sv_a + "WHERE is_int_updated = 'N' and ACCOUNT_NUM = '"+CUST.DATA.foracid+"' "
+						print(sv_a)
+						
+						sv_c = urhk_dbSqlWithBind(sv_a)
+						PRINT(sv_c)
+						
+						IF(sv_c == 0)THEN
+						#{
+							sv_c = urhk_dbSqlWithBind("COMMIT")
+							PRINT(sv_c)
+						#}
+						ELSE
+						#{
+							sv_c = urhk_dbSqlWithBind("ROLLBACK")
+							PRINT(sv_c)
+						#}
+						ENDIF
+						
+						sv_e = CUST.DATA.foracid
+						sv_u = system("echo '"+sv_e+"' >>SB_accounts_success.suc")
+						print(sv_u)
+					#}
+					ELSE
+					#{
+						PRINT("Modification FAILED for Account: " + CUST.DATA.foracid)
+						GOTO ERRORCHECK
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					GOTO ERRORCHECK
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				GOTO ERRORCHECK
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			GOTO ERRORCHECK
+		#}
+		ENDIF
+		
+		ERRORCHECK:
+		# SRV Error check
+		#----------------------------------------------------------------------------------------------------
+		IF (sv_q != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}									
+			ELSE
+			#{
+				sv_v = 0
+			#}
+			ENDIF
+			
+			IF(sv_v > 0)THEN
+			#{
+				sv_u = system("echo 'Error'")
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					
+					sv_i = sv_i + 1
+					sv_e = CUST.DATA.foracid + " => "+ sv_e
+					sv_u = system("echo '"+sv_e+"' >>SB_charge_fail.txt")
+					print(sv_u)
+					
+					sv_a = "update CUSTOM.C_SB102IntUpdate set is_int_updated = 'E' "
+					sv_a = sv_a + "WHERE is_int_updated = 'N' and ACCOUNT_NUM = '"+CUST.DATA.foracid+"' "
+					print(sv_a)
+					
+					sv_c = urhk_dbSqlWithBind(sv_a)
+					PRINT(sv_c)
+					
+					IF(sv_c == 0)THEN
+					#{
+						sv_c = urhk_dbSqlWithBind("COMMIT")
+						PRINT(sv_c)
+					#}
+					ELSE
+					#{
+						sv_c = urhk_dbSqlWithBind("ROLLBACK")
+						PRINT(sv_c)
+					#}
+					ENDIF
+					
+					#Error response
+					sv_t = "ERROR | " +sv_e
+					sv_u = urhk_SetOrbOut(sv_t)
+
+					#EXITSCRIPT
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		sv_f = urhk_dbCursorFetch(CUST.DATA.DB_CURSOR_NUMBER)
+	#}
+	do
+
+	TRACE OFF
+	EXITSCRIPT
+	
+END-->

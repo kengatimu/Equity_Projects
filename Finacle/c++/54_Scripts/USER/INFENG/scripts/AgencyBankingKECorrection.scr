@@ -1,0 +1,379 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : 
+#  Description     : Close accounts after recovery
+#  Date            : 19-05-2025
+#------------------------------------------------------------------------------------------------
+<--start
+trace on
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF	
+	sv_r = CLASSEXISTS("CUST", "CLS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "CLS", 5)
+	#}
+	ENDIF
+	CUST.CLS.SourceAcct = ""
+        CUST.CLS.srvErrMsg = ""
+        CUST.CLS.srvErrCode = ""
+        CUST.CLS.srvSucFail = ""
+	#----------------------------------------------------------------------
+	# STEP2: Pick accounts to close
+	#----------------------------------------------------------------------
+	lv_a = "cifId,odAcct,remarks,updated|select a.cif_id,agent_od,remarks,updated from custom.agent_updates a,tbaadm.gam where updated = 'N' and gam.foracid=a.agent_od and gam.sol_id = ?SVAR "
+	#lv_a = lv_a + " and agent_od in('048OD000004059','048OD000016229','048OD000031212') "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+	print(lv_a)
+
+        sv_u = urhk_dbCursorOpenWithBind(lv_a)
+        if(sv_u==0)then
+        #{
+                CUST.CLS.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                CUST.CLS.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                CUST.CLS.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                CUST.CLS.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        CUST.CLS.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(CUST.CLS.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                CUST.CLS.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                CUST.CLS.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                CUST.CLS.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+
+        while(sv_z ==0)
+	#{
+	CUST.CLS.cifId = BANCS.OUTPARAM.cifId
+	CUST.CLS.odAcct = BANCS.OUTPARAM.odAcct
+	CUST.CLS.remarks = BANCS.OUTPARAM.remarks
+	CUST.CLS.updated = BANCS.OUTPARAM.updated
+	print(CUST.CLS.cifId)
+	print(CUST.CLS.odAcct)
+	print(CUST.CLS.remarks)
+	print(CUST.CLS.updated)
+	sv_a = urhk_getAcctDetailsInRepository(CUST.CLS.odAcct)
+	print(sv_a)
+	IF(sv_a == 0) THEN
+	#{
+		CUST.CLS.sourceclsflg = BANCS.OUTPARAM.acctCloseflg
+		print(CUST.CLS.sourceclsflg )
+		CUST.CLS.schmcode = BANCS.OUTPARAM.schmCode
+		print(CUST.CLS.schmcode)
+		CUST.CLS.solid = BANCS.OUTPARAM.acctSolId
+		print(CUST.CLS.solid)
+		CUST.CLS.acid = BANCS.OUTPARAM.acid
+		print(CUST.CLS.acid)
+        	CUST.CLS.CrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		print(CUST.CLS.CrncyCode)	
+	#}
+	ELSE
+	#{
+		CUST.CLS.srvErrMsg = "Acount Invalid"
+   		GOTO NXTREC
+	#}
+	ENDIF
+	print(CUST.CLS.SourceAcct)
+###############Close
+IF(CUST.CLS.remarks == "To close") then
+#{				
+	sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.odAcct)
+	sv_a= urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+	sv_a= urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+
+	sv_u = urhk_ExecSrv("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y")
+	print(sv_u)					
+	IF (sv_u == 0 ) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.odAcct)
+		sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.CLS.acid)
+		sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.CLS.schmcode)
+		sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+		sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+		sv_u = urhk_SetUrhkInp("intCalcReqd|N")
+
+		sv_u = urhk_ExecSrv("NAPI_CloseOperAcct|retain_all_output = Y")
+		PRINT(sv_u)			
+		IF(sv_u == 0)THEN
+		#{
+			sv_u=urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.odAcct)
+			sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+			sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")					
+					
+			sv_u = urhk_ExecSrv("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+			print(sv_u)			
+			IF (sv_u == 0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUST.CLS.odAcct)
+				sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUST.CLS.acid)
+				sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUST.CLS.schmcode)
+				sv_u = urhk_SetUrhkInp("acctBasic.solId.solId|" + CUST.CLS.solid) 
+				sv_u = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+						
+				sv_u = urhk_ExecSrv("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				IF(sv_u == 0) THEN
+				#{
+						CUST.CLS.MSG = "A/c. ID "+ CUST.CLS.odAcct +" Closed Successfully."
+						sv_z = urhk_SetOrbOut("SuccessOrFailure|S")
+						sv_t = "Msg| " + CUST.CLS.MSG
+						sv_u = urhk_SetOrbOut(sv_t)
+                				lv_y = "update custom.agent_updates set updated  ='Y' where agent_od = '"+CUST.CLS.odAcct+"' and remarks = '"+CUST.CLS.remarks+"'"
+                				lv_x = urhk_dbSQLWithBind(lv_y)
+                				IF(lv_x==0)THEN
+                				#{
+                        				sv_d = urhk_dbSqlWithBind("COMMIT")
+                				#}
+                				ENDIF
+						GOTO NXTREC
+						
+				#}
+				ELSE
+				#{
+					GOTO CHECKERROR
+				#}
+				ENDIF
+
+			#}
+			ELSE
+			#{
+				GOTO CHECKERROR
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			GOTO CHECKERROR
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		GOTO CHECKERROR
+	#}
+	ENDIF
+
+	CHECKERROR:
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) then
+		#{
+			sv_u = system("echo 'Error '")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>acctclose.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "Msg| " +sv_e
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|F")
+				sv_u = urhk_SetOrbOut(sv_t)
+				GOTO NXTREC
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+###############zerorize
+IF((CUST.CLS.remarks == "Zerorize") OR (CUST.CLS.remarks == "Expire")) then
+#{
+        lv_s = "serial_num,limitExpDate|select serial_num,to_char(lim_exp_date,'DD-MM-YYYY') from tbaadm.lht where serial_num in (select max(serial_num) from tbaadm.lht "
+	lv_s = lv_s + " where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' and status='A') and bank_id=?SVAR and acid=?SVAR "
+	lv_s = lv_s + " and entity_cre_flg='Y' and del_flg='N' and status='A' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CLS.acid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.CLS.acid
+        print(BANCS.INPARAM.BINDVARS)
+        print(lv_s)
+        lv_m = urhk_dbSelectWithBind(lv_s)
+        if(lv_m==0)then
+        #{
+                CUST.CLS.serial_num = BANCS.OUTPARAM.serial_num
+		CUST.CLS.limitExpDate = BANCS.OUTPARAM.limitExpDate
+                print(CUST.CLS.serial_num)
+		print(CUST.CLS.limitExpDate)
+
+                if(CUST.CLS.serial_num == "") THEN
+                        GOTO NXTREC
+                ENDIF
+                print(CUST.CLS.acid)
+                sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + CUST.CLS.odAcct)
+                print(sv_a)
+                sv_a = urhk_SetUrhkOut("limitHdr.schmCookie|schmCookie")
+                sv_a = urhk_SetUrhkOut("limitHdr.GAMCookie|GAMCookie")
+                sv_a = urhk_SetUrhkOut("limitHdr.sanctLimit|sanctLimit")
+                sv_a = urhk_SetUrhkOut("limitHdr.maxAlwdLimForAcct|maxAlwdLimForAcct")
+                sv_a = urhk_SetUrhkOut("limitHdr.count|count")
+                sv_a = urhk_SetUrhkOut("limitHdr.isLacType|isLacType")
+                sv_u = urhk_ExecSrv("SRV_FetchAcctSanctLimitForModify|retain_all_output = Y")
+                print(sv_u)
+                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                #{
+                        print(BANCS.OUTPARAM.successOrFailure)
+                        sv_s = BANCS.OUTPARAM.successOrFailure
+                #}
+                else
+                #{
+                        sv_s = "X"
+                #}
+                endif
+
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("modify Fetch success")
+                CUST.CLS.schmCookie = BANCS.OUTPARAM.schmCookie
+                        print(CUST.CLS.schmCookie)
+                CUST.CLS.GAMCookie = BANCS.OUTPARAM.GAMCookie
+                        print(CUST.CLS.GAMCookie)
+                CUST.CLS.count  =  BANCS.OUTPARAM.count
+                        print(CUST.CLS.count)
+                CUST.CLS.isLacType  =  BANCS.OUTPARAM.isLacType
+                        print(CUST.CLS.isLacType)
+                CUST.CLS.SanctionLimit = BANCS.OUTPARAM.sanctLimit
+                        print(CUST.CLS.SanctionLimit)
+                CUST.CLS.maxAlwdLimForAcct = BANCS.OUTPARAM.maxAlwdLimForAcct
+                        print(CUST.CLS.maxAlwdLimForAcct)
+        #}
+        else
+        #{
+                CUST.CLS.srvAcctId = CUST.CLS.odAcct
+                CUST.CLS.sanctLimit = "0"
+                CUST.CLS.maxAlwdLimForAcct = "0"
+                callscriptifexist("ebsrvHandler.scr")
+                #CUST.CLS.srvErrMsg = EQSRV.GLBDATA.SrvError
+                CUST.CLS.srvErrCode = "Failed : SRV_FetchAcctSanctLimitForModify "
+                CUST.CLS.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + CUST.CLS.srvErrCode )
+                goto NXTREC
+        #}
+        endif
+        sv_a = urhk_CopyOutToIn("")
+        print(sv_a)
+        sv_a = urhk_SetUrhkInp("limitHdr.GAMCookie|" + CUST.CLS.GAMCookie )
+        sv_a = urhk_SetUrhkInp("limitHdr.schmCookie|" + CUST.CLS.schmCookie )
+        #}
+	IF(CUST.CLS.remarks == "Zerorize") then
+		CUST.CLS.SanctionLimit ="0"
+	ENDIF
+	IF(CUST.CLS.remarks == "Expire") then
+		CUST.CLS.limitExpDate2 ="16-05-2026"
+	ENDIF
+        print(CUST.CLS.serial_num)
+        lv_c = cint("0")
+        print(lv_c)
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + CUST.CLS.odAcct)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.key.serial_num|" + CUST.CLS.serial_num)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.supercedeFlg|N")
+	IF(CUST.CLS.remarks == "Expire") then
+        	sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.expiryDate|" + CUST.CLS.limitExpDate2)
+	ENDIF
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLimit|" + CUST.CLS.SanctionLimit + "|" + CUST.CLS.CrncyCode)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.recordFlg|Y")
+
+        sv_a = urhk_ExecSrvNoCommit("SRV_AddAcctSanctLimitAndVerify|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = I|call_mode=N")
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+                sv_s = "X"
+        #}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("Sanction Limit Modified Successfully")
+                lv_y = "update custom.agent_updates set updated  ='Y' where agent_od = '"+CUST.CLS.odAcct+"' and remarks = '"+CUST.CLS.remarks+"' "
+                lv_x = urhk_dbSQLWithBind(lv_y)
+                IF(lv_x==0)THEN
+                #{
+                        sv_d = urhk_dbSqlWithBind("COMMIT")
+                #}
+                ENDIF
+
+        #}
+        else
+        #{
+                CUST.CLS.srvAcctId = CUST.CLS.odAcct
+                CUST.CLS.sanctLimit = "0"
+                CUST.CLS.maxAlwdLimForAcct = "0"
+                callscriptifexist("ebsrvHandler.scr")
+                #CUST.CLS.srvErrMsg = CUST.CLS.SrvError
+                CUST.CLS.srvErrCode = "Failed : SRV_FetchAcctSanctLimitForModify "
+                CUST.CLS.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + CUST.CLS.srvErrCode )
+                goto NXTREC
+        #}
+        endif
+        ENDIF
+#}
+ENDIF
+        NXTREC:
+                        print(CUST.CLS.srvErrMsg)
+                        print(CUST.CLS.srvErrCode)
+                        print(CUST.CLS.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(CUST.CLS.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(CUST.CLS.schdlcurNum)
+                                print(sv_u)
+                                CUST.CLS.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                CUST.CLS.srvErrCode = "DBCursor"
+                                CUST.CLS.srvSucFail = "F"
+                                goto Endofscript
+                        #}
+                        endif
+                        CUST.CLS.ddaRec = cint(CUST.CLS.ddaRec) + 1
+                        CUST.CLS.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + CUST.CLS.ddaRec
+                        print(CUST.CLS.recmsg)
+        #}
+        do
+        sv_u = urhk_dbCursorClose(CUST.CLS.schdlcurNum)
+        print(sv_u)
+
+endofscript:
+trace off
+end-->

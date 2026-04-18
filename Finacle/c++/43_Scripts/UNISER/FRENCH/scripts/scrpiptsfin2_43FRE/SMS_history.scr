@@ -1,0 +1,124 @@
+<--START
+TRACE ON
+## This is a daily batch script to move the SMS messages from MOBEE_PUSH table to History table
+	LIBNAME CUSTOMSO
+
+        sv_a = REPEXISTS("CUST")
+        IF(sv_a == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+        sv_r = CLASSEXISTS("CUST","SMSHIST")
+        IF (sv_r == 0) THEN
+        #{
+                CREATECLASS("CUST", "SMSHIST", 5)
+        #}
+        ENDIF
+
+	CUST.SMSHIST.errMsg = ""
+
+        sv_s = "timeStamp|select to_char(sysdate,'ddmmyyyyhhmiss') from dual"
+        PRINT(sv_s)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.SMSHIST.timeStamp = BANCS.OUTPARAM.timeStamp
+                PRINT(CUST.SMSHIST.timeStamp)
+        #}
+        ENDIF
+
+
+        CUST.SMSHIST.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+
+        CUST.SMSHIST.failureFile = "failfile_SMStoHIST.lst"
+        CUST.SMSHIST.failFileIndex1 = ""
+        CUST.SMSHIST.failFileIndex1 = urtn_fileOpen(CUST.SMSHIST.failureFile + "|w")
+
+        PRINT(CUST.SMSHIST.failFileIndex1)
+
+        CUST.SMSHIST.list_file_name = CUST.SMSHIST.failureFile
+        CUST.SMSHIST.title = "SMS HISTORY MOVEMENT Report"
+        CUST.SMSHIST.mrt_file_name = "SMStoHIST.mrt"
+        CUST.SMSHIST.rpt_file_name = "SMStoHIST_" + CUST.SMSHIST.timeStamp + ".rpt"
+        CUST.SMSHIST.rpt =  "SMStoHIST_" + CUST.SMSHIST.timeStamp
+
+
+	#sv_s = "INSERT INTO CUSTOM.MOBEE_PUSH_SMS_DRC_HIST SELECT * FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND STATUS='C'"
+	sv_s = "INSERT INTO CUSTOM.MOBEE_PUSH_SMS_DRC_HIST SELECT * FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND TO_DATE(TRAN_DATE,'DD-MM-YY') <> TO_DATE(?SVAR,'DD-MM-YY')" 
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ CUST.SMSHIST.BODDate
+
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_u = urhk_dbSQLWithBind(sv_s)
+        PRINT(sv_u)
+	IF(sv_u != 0)THEN
+	#{
+		CUST.SMSHIST.errorMsg = "SMS Movement to History is failed"
+	#}
+	ELSE
+	#{
+		#sv_s = "DELETE FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND STATUS='C'"
+		sv_s = "DELETE FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND TO_DATE(TRAN_DATE,'DD-MM-YY') <> TO_DATE(?SVAR,'DD-MM-YY')"
+
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ CUST.SMSHIST.BODDate
+
+		PRINT(sv_s)
+        	PRINT(BANCS.INPARAM.BINDVARS)
+
+        	sv_u = urhk_dbSQLWithBind(sv_s)
+        	PRINT(sv_u)
+		IF(sv_u != 0)THEN
+		#{
+			CUST.SMSHIST.errMsg = "SMS Movement to History is failed"
+		#}
+		ELSE
+		#{
+        		sv_u = urhk_dbSQLWithBind("COMMIT")
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+        IF(CUST.SMSHIST.errMsg == "") THEN
+        #{
+	        CUST.SMSHIST.errMsg = " |SMS messages moved to Hisotry table Successfully"
+                sv_b = urtn_fileWrite(CUST.SMSHIST.failFileIndex1 + "|" + CUST.SMSHIST.errMsg)
+                PRINT(sv_b)
+        #}
+        ENDIF
+
+        sv_c = urtn_fileClose(CUST.SMSHIST.failFileIndex1)
+        PRINT(sv_c)
+
+
+        CUST.SMSHIST.ERR000002 = "Failed "
+        PRINT(CUST.SMSHIST.list_file_name)
+        sv_r = "exebatch mrbx4004 $B2K_SESSION_ID " + CUST.SMSHIST.mrt_file_name + " " + CUST.SMSHIST.list_file_name + " " + CUST.SMSHIST.rpt
+        PRINT(sv_r)
+        sv_r = SYSTEM(sv_r)
+        IF (sv_r != 0) THEN
+        #{
+       		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.SMSHIST.ERR000002 + "")
+                GOTO FINISH
+        #}
+        ENDIF
+        sv_q = "exebatch babx4040 $B2K_SESSION_ID " + " "+ CUST.SMSHIST.rpt_file_name+" '" + CUST.SMSHIST.title+"' MANAGER 1 N"
+        PRINT(sv_q)
+        sv_r = SYSTEM(sv_q)
+        IF (sv_r != 0) THEN
+        #{
+        	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.SMSHIST.ERR000002 + "^DATE")
+                GOTO FINISH
+        #}
+        ENDIF
+
+TRACE OFF
+END-->

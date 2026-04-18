@@ -1,0 +1,277 @@
+
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: 
+# Category: User Defined
+# Script: salupldprcsdp003.scr
+# Type: NA|default
+# Description: Validate if the account is eligible for charge debit
+# Author: JAMES GICHIRI
+# Date: 14-03-2023
+# Modification Log:
+#============================================================
+
+
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#------------------------------------------------------------------------------
+ 
+ <--START
+  TRACE ON
+  
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","SALVAL") == 0) THEN
+	#{
+		CREATECLASS("CUST","SALVAL",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	#=============== *INPUTS * ========================
+			
+	CUST.SALVAL.EMPLOYER 	= CUST.SLAMNT.empID
+	CUST.SALVAL.USERID   	= BANCS.STDIN.userId
+	CUST.SALVAL.CHARGEAMT = TRIM(CUST.SLAMNT.chrg_Amt)
+	  
+	  PRINT(CUST.SALVAL.EMPLOYER)
+	  PRINT(CUST.SALVAL.USERID)
+	  PRINT(CUST.SALVAL.CHARGEAMT)
+
+	
+	 
+	 
+	IF(BANCS.STDIN.contextBankId == "54")THEN
+	#{
+		#=======================================Validation Start
+		sv_s = "FORACID,solid,frezcode,salamt,clrbal| select c_sup.FORACID,c_sup.sol_id,gam.FREZ_CODE,c_sup.SAL_CR_AMT,gam.CLR_BAL_AMT from CUSTOM.c_sup,tbaadm.gam "
+		sv_s = sv_s + " where c_sup.FORACID=gam.FORACID AND gam.SCHM_CODE!='SB190' AND c_sup.INVALID in ('S','N') and c_sup.UPL_STATUS='P' "
+		sv_s = sv_s + " and c_sup.EMPLOYER=?SVAR and c_sup.RCRE_USER_ID=?SVAR and c_sup.del_flg ='N' and SAL_CR_AMT > 100 "
+		sv_s = sv_s + " and c_sup.bank_id = gam.bank_id and GAM.bank_id = ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.SALVAL.EMPLOYER + "|" + CUST.SALVAL.USERID + "|" + BANCS.STDIN.contextBankId
+        sv_k = urhk_dbCursorOpenWithBind(sv_s)
+        PRINT(sv_k)
+        sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        PRINT(sv_m)
+        sv_c = urhk_dbCursorFetch(sv_m)
+        PRINT(sv_c)
+        IF(sv_c != 0)THEN
+		#{
+                CUST.SALVAL.Error_msg="No records found in the upload table"
+				print(CUST.SALVAL.Error_msg)
+                sv_c=urhk_dbCursorClose(sv_m)
+				GOTO ENDVALIDATION
+		#}		
+        ELSE
+		#{
+            sv_j = 0
+            PRINT(sv_j)
+
+			WHILE (sv_c == 0)
+				
+				CUST.SALVAL.FailureOrSuccess="S"
+				CUST.SALVAL.ErroMsg = " "
+				
+				CUST.SALVAL.foracid  	= BANCS.OUTPARAM.FORACID
+				CUST.SALVAL.solid		= BANCS.OUTPARAM.solid
+				CUST.SALVAL.frecode		= BANCS.OUTPARAM.frezcode
+				CUST.SALVAL.salamt		= BANCS.OUTPARAM.salamt
+				CUST.SALVAL.clramt		= BANCS.OUTPARAM.clrbal
+				CUST.SALVAL.chrAmt		= "120"
+				
+				#Print the outputs
+				print(CUST.SALVAL.foracid)
+				print(CUST.SALVAL.solid)
+				print(CUST.SALVAL.frecode)
+				print(CUST.SALVAL.salamt)
+				print(CUST.SALVAL.clramt)
+				print(CUST.SALVAL.chrAmt)
+				
+				#----------------------------------------
+				#	Debit Freeze
+				#----------------------------------------
+				IF(CUST.SALVAL.frecode=="D")THEN
+				#{
+					CUST.SALVAL.ErroMsg = "Debit Freeze"
+					print(CUST.SALVAL.ErroMsg)
+					CUST.SALVAL.FailureOrSuccess="F"
+					GOTO NEXTREC
+				#}
+				ENDIF
+				
+				
+				#----------------------------------------
+				#	Charged- Off accounts
+				#----------------------------------------
+				sv_i = "chrgeoffflg |SELECT CHRGE_OFF_FLG  FROM TBAADM.GAM,TBAADM.gac WHERE GAM.acid = gac.acid AND GAM.bank_id = gac.bank_id "
+				sv_i = sv_i + " AND GAM.foracid = ?SVAR  AND GAM.bank_id = ?SVAR  "
+				BANCS.INPARAM.BINDVARS = CUST.SALVAL.foracid + "|" + BANCS.STDIN.contextBankId
+				sv_u = urhk_dbSelectWithBind(sv_i)
+				IF(sv_u == 0) THEN
+					IF (BANCS.OUTPARAM.chrgeoffflg=="Y") THEN
+						CUST.SALVAL.ErroMsg = "Charged-Off account"
+						print(CUST.SALVAL.ErroMsg)
+						CUST.SALVAL.FailureOrSuccess="F"
+						GOTO NEXTREC
+					ENDIF
+				ENDIF
+
+				#----------------------------------------
+				# Dormant accounts
+				#----------------------------------------
+				sv_i = "accountstatus |SELECT acct_status  FROM TBAADM.GAM,TBAADM.smt WHERE GAM.acid = smt.acid AND GAM.bank_id = smt.bank_id "
+				sv_i = sv_i + " AND GAM.foracid = ?SVAR  AND GAM.bank_id = ?SVAR and smt.bank_id = ?SVAR "
+				BANCS.INPARAM.BINDVARS = CUST.SALVAL.foracid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+				sv_u = urhk_dbSelectWithBind(sv_i)
+				IF(sv_u == 0) THEN
+					IF (BANCS.OUTPARAM.accountstatus !="A") THEN
+						CUST.SALVAL.ErroMsg = "Dormant account"
+						print(CUST.SALVAL.ErroMsg)
+						CUST.SALVAL.FailureOrSuccess="F"
+						GOTO NEXTREC
+					ENDIF
+				ENDIF
+
+				#----------------------------------------
+				#	Insufficient Funds
+				#----------------------------------------
+				sv_b = urhk_getAcctDetailsInRepository(CUST.SALVAL.foracid)
+				print(sv_b)
+				
+				IF(sv_b=="0")THEN
+				#{
+				
+					CUST.SALVAL.effvbal = BANCS.OUTPARAM.EffAvailableAmt
+					print(CUST.SALVAL.effvbal)
+					CUST.SALVAL.effvbalsal = cdouble(CUST.SALVAL.effvbal) + cdouble(CUST.SALVAL.salamt)
+					print(CUST.SALVAL.effvbalsal)
+					IF(cdouble(CUST.SALVAL.effvbalsal) < cdouble(CUST.SALVAL.chrAmt))THEN
+					#{
+					
+						CUST.SALVAL.ErroMsg = "Insuccifient Balance"
+						print(CUST.SALVAL.ErroMsg)
+						CUST.SALVAL.FailureOrSuccess = "F"
+						GOTO NEXTREC
+					#}
+					ENDIF
+					
+					
+				#}
+				ENDIF
+				
+				
+				
+				
+				NEXTREC:
+				
+					IF(CUST.SALVAL.FailureOrSuccess=="F")THEN
+					#{		
+									
+						sv_s = "update CUSTOM.c_sup set RMK='CHARGE UNDEBITABLE' where c_sup.INVALID in ('S','N') and c_sup.UPL_STATUS='P' "
+						sv_s = sv_s + "and c_sup.EMPLOYER=?SVAR and c_sup.RCRE_USER_ID=?SVAR and c_sup.del_flg ='N' and SAL_CR_AMT > 100 "
+						sv_s = sv_s + "and c_sup.bank_id = ?SVAR and  c_sup.del_flg ='N' and FORACID=?SVAR "
+						print(sv_s)
+						BANCS.INPARAM.BINDVARS =  CUST.SALVAL.EMPLOYER + "|" + CUST.SALVAL.USERID + "|" + BANCS.STDIN.contextBankId +"|" + CUST.SALVAL.foracid
+
+						print(BANCS.INPARAM.BINDVARS)
+						print(sv_s)
+						sv_d=urhk_dbSqlWithBind(sv_s)
+						IF (sv_d == 0)THEN
+						#{
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+							print(sv_d)
+							IF(sv_d ==0 )THEN
+							#{
+								print("Account remarks updated successfully")
+								
+								
+								#================================add Lien to the account START============================
+								 #IF(CUST.SALVAL.foracid != " ")THEN
+								 ##{
+								#	CUST.GCHRG.drAcctId = CUST.SALVAL.foracid
+								#	CUST.GCHRG.chargeAmount = CUST.SALVAL.chrAmt
+								#	
+								#	IF(CUST.SALVAL.EMPLOYER=="KTDA")THEN
+								#	#{
+								#		CUST.GCHRG.eventId = "PNLTEA"
+								#	#}
+								#	ELSE
+								#	#{
+								#		CUST.GCHRG.eventId = "PNLSALREM"
+								#	#}
+								#	ENDIF
+								#	#CUST.GCHRG.eventId = "SALC"
+								#	
+								#	CUST.GCHRG.acctCrncyCode = CUST.SLAMNT.drAcctCrncy
+								#	
+								#	CALL("addlien.scr")
+								#	
+								#	IF (FIELDEXISTS(CUSS.SAL.SuccessOrFailure) == 1)THEN
+								#	#{
+								#		IF(CUSS.SAL.SuccessOrFailure == "S")THEN
+								#		#{
+								#			CUST.SALVAL.ErroMsg = CUST.SALVAL.ErroMsg + "   Lein Modified Successfully "
+								#			sv_a = "echo " + CUST.SALVAL.foracid + " - " + CUST.SALVAL.ErroMsg + " >> errorchracct.log"
+								#			print(sv_a)
+								#			sv_b = system(sv_a)
+								#			print(sv_b)
+								#		#}
+								#		ELSE
+								#		#{
+								#			CUST.SALVAL.ErroMsg = CUST.SALVAL.ErroMsg + "   Lein Modification Failed "
+								#			sv_a = "echo " + CUST.SALVAL.foracid + " - " + CUST.SALVAL.ErroMsg + " >> errorchracct.log"
+								#			print(sv_a)
+								#			sv_b = system(sv_a)
+								#			print(sv_b)
+								#		#}
+								#		ENDIF
+								#	#}
+								#	ELSE
+								#	#{
+								#		CUST.SALVAL.ErroMsg = CUST.SALVAL.ErroMsg + "   Lein Modification Failed "
+								#		sv_a = "echo " + CUST.SALVAL.foracid + " - " + CUST.SALVAL.ErroMsg + " >> errorchracct.log"
+								#		print(sv_a)
+								#		sv_b = system(sv_a)
+								#		print(sv_b)
+								#	#}
+								#	ENDIF
+								#	
+								 ##}
+								 #ENDIF
+								#================================  END LIEND ADDITION ====================================
+							#}
+							ENDIF
+						#}	
+						ENDIF
+					#}
+					ENDIF
+					
+					sv_c = urhk_dbCursorFetch(sv_m)
+					PRINT(sv_c)
+				
+			DO
+			sv_c = urhk_dbCursorClose(sv_m)
+			PRINT(sv_c)
+		#}	
+		ENDIF		
+		#===========================================Validation Ends
+		
+	
+
+	ENDVALIDATION:
+	print("VAlidation ended successfully")
+		
+	EXITSCRIPT
+	   
+	TRACE OFF
+END-->

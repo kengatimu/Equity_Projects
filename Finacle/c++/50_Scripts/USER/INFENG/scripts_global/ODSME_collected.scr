@@ -1,0 +1,174 @@
+##############################################################################
+## 				IMPORTANT:					##
+## 				AUTHOR: Silvester Kisalu			##
+## 				Type: Fetch and update details of the manually  ##
+##				collected OD548 transactions			##
+## 				Date: 13/04/2023				##
+##############################################################################
+
+<--start
+trace on 
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+       	endif
+
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+       	endif
+
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	print (sv_a)
+	
+	print(BANCS.INPUT.accNum)
+	print(BANCS.INPUT.OperaccNum)
+	print(BANCS.INPUT.refCrncy)
+	print(BANCS.INPUT.refAmt)
+
+	sv_s= "acid1,foracid1,totamt,adjamt,tranid,dpd_counter1|select acid,foracid,TOT_AMOUNT,ADJ_AMOUNT,TRAN_ID,max(dpd_counter) from CUSTOM.ODSME_BOOK where foracid =?SVAR and BANK_ID=?SVAR and COLLECTED !='Y' and rownum<=1 GROUP BY acid,foracid,TOT_AMOUNT,ADJ_AMOUNT,TRAN_ID"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.accNum +"|"+ BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbcursorOpenWithBind(sv_s)
+	IF(sv_e == 0) THEN
+	#{	
+		CUST.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.DATA.CURSOR_NUMBER)
+		sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+		print(sv_c)
+		BANCS.INPUT.RECCOUNT=cint("1")
+		print(BANCS.INPUT.RECCOUNT)
+
+		WHILE(sv_c == "0")
+		#{
+			CUST.DATA.acid1 = BANCS.OUTPARAM.acid1
+			print(CUST.DATA.acid1)
+			CUST.DATA.foracid1= BANCS.OUTPARAM.foracid1
+			print(CUST.DATA.foracid1)
+			CUST.DATA.dpd_counter1= BANCS.OUTPARAM.dpd_counter1
+			print(CUST.DATA.dpd_counter1)
+			CUST.DATA.totamt=BANCS.OUTPARAM.totamt
+			PRINT(CUST.DATA.totamt)
+			CUST.DATA.adjamt=BANCS.OUTPARAM.adjamt
+			PRINT(CUST.DATA.adjamt)
+			CUST.DATA.tranid=BANCS.OUTPARAM.tranid
+			print(CUST.DATA.tranid)
+
+			CUST.DATA.adjamtdiff=CDOUBLE(CUST.DATA.totamt) - CDOUBLE(CUST.DATA.adjamt)
+			CUST.DATA.adjamtdiff=FORMAT$(CDOUBLE(CUST.DATA.adjamtdiff),"%.2f")
+			PRINT(CUST.DATA.adjamtdiff)
+			IF((CUST.DATA.adjamtdiff) > (BANCS.INPUT.refAmt)) THEN
+			#{
+				BANCS.INPUT.refAmt=CDOUBLE(BANCS.INPUT.refAmt)
+				PRINT(BANCS.INPUT.refAmt)
+				CUST.DATA.adjamt=CDOUBLE(CUST.DATA.adjamt) + CDOUBLE(BANCS.INPUT.refAmt)
+				CUST.DATA.adjamt=FORMAT$(CDOUBLE(CUST.DATA.adjamt),"%.2f")
+				PRINT(CUST.DATA.adjamt)
+				CUST.DATA.CollectedFlg="L"
+			#}
+			ELSE
+			#{
+				CUST.DATA.adjamt=CDOUBLE(CUST.DATA.adjamt) + CDOUBLE(CUST.DATA.adjamtdiff)
+				CUST.DATA.adjamt=FORMAT$(CDOUBLE(CUST.DATA.adjamt),"%.2f")
+				PRINT(CUST.DATA.adjamt)
+				CUST.DATA.CollectedFlg="Y"
+				BANCS.INPUT.refAmt=CUST.DATA.adjamtdiff
+				PRINT(BANCS.INPUT.refAmt)
+			#}
+			ENDIF
+			
+			IF(CUST.DATA.dpd_counter1>=0) THEN
+			#{
+				IF((CUST.DATA.totamt) != (CUST.DATA.adjamt)) THEN
+				#{
+					#------ Initializing Transaction
+					sv_u = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+					sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+					sv_u = urhk_SetUrhkInp("tranHdr.initSol.solId|"+BANCS.STDIN.mySolId)
+
+					#------ Manual Collection Dedit leg
+
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|"+BANCS.INPUT.OperaccNum)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|ODA Collection Dr To "+ BANCS.INPUT.accNum)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranCrncyCode.crncyCode|"+BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranAmt|"+BANCS.INPUT.refAmt+"|"+ BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|"+BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|"+BANCS.INPUT.refAmt+"|"+ BANCS.INPUT.refCrncy)
+
+					#------ Manual Collection Credit leg
+
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|"+BANCS.INPUT.accNum)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|ODA Collection Cr From " + BANCS.INPUT.OperaccNum)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranAmt|"+BANCS.INPUT.refAmt+"|"+ BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranCrncyCode.crncyCode|"+BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|"+BANCS.INPUT.refCrncy)
+					sv_u = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|"+BANCS.INPUT.refAmt+"|"+ BANCS.INPUT.refCrncy)
+					sv_a = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranId|tranId")
+					sv_a = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranDate|tranDate")
+					#sv_u = urhk_ExecSrv("SRV_AddAndPostXferTran|retain_all_output = Y|same_user_verify = Y")
+					sv_u = urhk_ExecSrvNoCommit("SRV_AddXferTran|retain_all_output = Y|call_mode = N")
+					print(sv_u)
+					IF(sv_u==0)THEN
+					#{
+						print(BANCS.OUTPARAM.tranId)
+						print(BANCS.OUTPARAM.tranDate)
+						CUST.DATA.tranId=BANCS.OUTPARAM.tranId
+						PRINT(CUST.DATA.tranId)
+						call("ODSME_PostTxns.scr")
+					#}
+					ENDIF
+
+
+
+				#}
+				ENDIF
+				IF(CUST.DATA.CollectedFlg=="Y") THEN
+				#{
+					CUST.DATA.dpd_counter1="0"
+				#}
+				ELSE
+				#{
+					PRINT(CUST.DATA.dpd_counter1)
+				#}
+				ENDIF
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+				EQOD.GLBDATA.msg = "Account" +" "+CUST.DATA.foracid1+" "+ "Collection Details updated Successfully."
+				sv_c = urhk_SetOrbOut("RESULT_MSG|" + EQOD.GLBDATA.msg )
+				print(sv_c)
+				sv_s ="UPDATE CUSTOM.ODSME_BOOK SET ADJ_AMOUNT=?SVAR,COLLECTED=?SVAR,DPD_COUNTER=?SVAR where bank_id=?SVAR and foracid =?SVAR and COLLECTED !='Y' and TRAN_ID=?SVAR"
+				print(sv_s)
+				print(CUST.DATA.tranid)
+				BANCS.INPARAM.BINDVARS = CUST.DATA.adjamt +"|"+ CUST.DATA.CollectedFlg +"|"+ CUST.DATA.dpd_counter1 +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.foracid1 +"|"+ CUST.DATA.tranid										
+				Print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				PRINT(sv_d)
+				IF(sv_d==0)THEN
+				#{
+					sv_d = urhk_dbSqlWithBind("COMMIT")
+					GOTO NEXTREC
+				#}
+				ENDIF
+
+			#}
+			ENDIF
+			NEXTREC:
+			sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+			print(sv_c)
+		#}
+		DO
+	#}
+	ELSE
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+trace off
+end-->

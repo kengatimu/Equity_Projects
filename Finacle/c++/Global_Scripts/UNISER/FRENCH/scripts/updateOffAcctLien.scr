@@ -1,0 +1,104 @@
+<--START
+CHECKSUM="fe27148bfba44e88c54f795c5835f30b054d83cc4aea06f364eaac7ba8c21230"
+	TRACE ON
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	
+	sv_q = "FORACID, ACID, LIEN_AMT | SELECT FORACID,ACID, LIEN_AMT FROM TBAADM.GAM WHERE CUST_ID IS NULL AND LIEN_AMT <> 0 AND rownum<2"
+	sv_d = urhk_dbCursorOpenWithBind(sv_q)
+	sv_m=BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_m)
+	IF(sv_d == 0) THEN
+	#{
+		sv_a=urhk_dbCursorFetch(sv_m)
+		print(sv_a)
+		WHILE(sv_a == 0)
+		#{
+			CUST.DATA.C_FORACID = BANCS.OUTPARAM.FORACID
+			CUST.DATA.C_ACID = BANCS.OUTPARAM.ACID
+			CUST.DATA.C_LIEN_AMT = BANCS.OUTPARAM.LIEN_AMT
+			CUST.DATA.C_UPDATE_GAM = "N"
+			CUST.DATA.C_UPDATE_HASH = "N"
+			print("Updating Acct:" + CUST.DATA.C_FORACID +"  "+CUST.DATA.C_ACID +"  "+ CUST.DATA.C_LIEN_AMT)
+			lv_s = " TSCNT | SELECT TS_CNT FROM TBAADM.GAM WHERE FORACID = '"+ CUST.DATA.C_FORACID +"' FOR UPDATE NOWAIT"
+			print(lv_s)
+			lv_q = urhk_dbSelectForUpdateNoWait(lv_s)
+			print(lv_q)
+			IF(lv_q != 0) THEN
+			#{
+				print("Unable to obtain lock ON Acct:"+CUST.DATA.C_FORACID)
+				lv_p=urhk_dbSqlWithBind("ROLLBACK")
+				#}
+			ELSE
+				#{
+				CUST.DATA.C_TSCNT = BANCS.OUTPARAM.TSCNT
+				BANCS.INPARAM.BINDVARS = CUST.DATA.C_ACID
+				lv_s = "DELETE FROM ALT WHERE ACID = ?SVAR"
+				sv_d = urhk_dbSQLWithBind(lv_s)
+				IF(sv_d==0)THEN
+				#{
+					CUST.DATA.C_UPDATE_GAM = "Y"
+					#}
+				ELSE
+					#{
+					print("Unable to Delete ALT for Acct:"+CUST.DATA.C_FORACID)
+					lv_p=urhk_dbSqlWithBind("ROLLBACK")
+				#}
+				ENDIF
+				
+				IF (CUST.DATA.C_UPDATE_GAM == "Y") THEN
+				#{
+					BANCS.INPARAM.BINDVARS = CUST.DATA.C_FORACID + "|" + CUST.DATA.C_TSCNT
+					print(BANCS.INPARAM.BINDVARS)
+					lv_s = "UPDATE TBAADM.GAM SET LIEN_AMT = 0 WHERE FORACID = ?SVAR AND TS_CNT = ?SVAR"
+					sv_d = urhk_dbSQLWithBind(lv_s)
+					IF(sv_d==0)THEN
+					#{
+						CUST.DATA.C_UPDATE_HASH = "Y"
+						#}
+					ELSE
+						#{
+						print("Unable to Update the Acct:"+CUST.DATA.C_FORACID)
+						lv_p=urhk_dbSqlWithBind("ROLLBACK")
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				IF(CUST.DATA.C_UPDATE_HASH == "Y") THEN
+				#{
+					sv_u = urhk_SetUrhkInp("acct.foracid|"+CUST.DATA.C_FORACID)
+					sv_u = urhk_SetUrhkInp("rmks|LIEN AMT UPDATE")
+					sv_d = urhk_ExecSrvNoCommit("SRV_UpdateHashNum|same_user_verify = Y|retain_all_output = Y")
+					print(sv_u)
+					IF(sv_u==0)THEN
+					#{
+						print("Updated Acct:"+CUST.DATA.C_FORACID)
+						lv_p=urhk_dbSqlWithBind("COMMIT")
+						#}
+					ELSE
+						#{
+						print("Unable to Update Hash for Acct:"+CUST.DATA.C_FORACID)
+						lv_p=urhk_dbSqlWithBind("ROLLBACK")
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			sv_a=urhk_dbCursorFetch(sv_m)
+		#}
+		DO
+		sv_x=urhk_dbCursorClose(sv_m)
+	#}
+	ENDIF
+END-->

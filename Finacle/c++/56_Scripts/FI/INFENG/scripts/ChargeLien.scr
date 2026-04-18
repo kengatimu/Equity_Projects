@@ -1,0 +1,393 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: Event Based
+# Script: ChargeLien.scr
+# Type: GCHRG|default
+# Description: Creation of Lien instead of Overdrawing
+# Author: James Irungu
+# Date: 02/06/2020
+# Modification Log:
+#============================================================
+
+<--START
+TRACE ON
+
+if (REPEXISTS("CUST") == 0) then
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+if (CLASSEXISTS("CUST", "GCHRG") == 0) then
+#{
+    CREATECLASS("CUST", "GCHRG", 5)
+#}
+ENDIF
+
+
+if (REPEXISTS("CASH") == 0) then
+#{
+	CREATEREP("CASH")
+#}
+ENDIF
+
+if (CLASSEXISTS("CASH", "WITH") == 0) then
+#{
+    CREATECLASS("CASH", "WITH", 5)
+#}
+ENDIF
+
+
+IF (FIELDEXISTS(CASH.WITH.Rate) == 1) THEN
+	CUST.GCHRG.Rate =  CASH.WITH.Rate
+ENDIF
+
+sv_r = urhk_B2k_printRepos("BANCS")
+print (sv_r)
+sv_z = urhk_B2k_printRepos("CUST")
+print (sv_z)
+
+CUST.GCHRG.LienSuccessOrFailure =""
+CUST.GCHRG.LienFailureReason =""
+CUST.GCHRG.reasonCode = ""
+CUST.GCHRG.lienRemarks  =""
+CUST.GCHRG.errMsg = ""
+CUST.GCHRG.NewLienAmt = ""
+CUST.GCHRG.acid = ""
+CUST.GCHRG.blockAmt = ""
+CUST.GCHRG.actcrncy =""
+CUST.GCHRG.Crncy =""
+CUST.GCHRG.AvaBal = ""
+CUST.GCHRG.eventIdX= ""
+CUST.GCHRG.CHRG_IND = ""
+CUST.GCHRG.refCode ="NOR"
+
+
+CUST.GCHRG.reasonCode ="CHRGL"
+CUST.GCHRG.lienRemarks ="Lien Due to overdrawn charges"
+Print (CUST.GCHRG.drAcctId )
+Print (CUST.GCHRG.chrgAmt) 
+Print (CUST.GCHRG.eventId)
+CUST.GCHRG.eventIdX = CUST.GCHRG.eventId
+
+
+sv_a = CUST.GCHRG.drAcctId
+sv_b = urhk_getAcctDetailsInRepository(sv_a)
+IF(sv_b == 0) then
+        CUST.GCHRG.ClrBal = BANCS.OUTPARAM.ClearBalance
+	Print (CUST.GCHRG.ClrBal)
+        CUST.GCHRG.AvaAmt = BANCS.OUTPARAM.AvailableAmt
+	Print (CUST.GCHRG.AvaAmt)
+        CUST.GCHRG.AvaBal = BANCS.OUTPARAM.EffAvailableAmt
+	Print (CUST.GCHRG.AvaBal)
+	CUST.GCHRG.Crncy= BANCS.OUTPARAM.acctCrncyCode
+	Print (CUST.GCHRG.Crncy)
+	CUST.GCHRG.schemeType = BANCS.OUTPARAM.schemeType 
+	Print (CUST.GCHRG.schemeType )
+
+ENDIF
+
+CUST.GCHRG.LENGTH = STRLEN(CUST.GCHRG.chrgAmt)
+PRINT (CUST.GCHRG.LENGTH )
+
+CUST.GCHRG.actcrncy = MID$(CUST.GCHRG.chrgAmt,((cint (CUST.GCHRG.LENGTH ) -4) + 1),cint(CUST.GCHRG.LENGTH ))
+PRINT(CUST.GCHRG.actcrncy)
+
+IF (CUST.GCHRG.actcrncy  != CUST.GCHRG.Crncy) THEN
+
+	IF ((FIELDEXISTS(CUST.GCHRG.Rate) != 1) OR (CUST.GCHRG.Rate == 1 ) OR (CUST.GCHRG.Rate == ""))  THEN
+		sv_a = " VarCrnyRate | SELECT var_crncy_units FROM TBAADM.RTL WHERE fxd_crncy_code = ?SVAR AND var_crncy_code = ?SVAR AND ratecode = ?SVAR AND fxd_crncy_code != ?SVAR AND bank_id = ?SVAR "
+		PRINT(sv_a)
+		BANCS.INPARAM.BINDVARS =   CUST.GCHRG.Crncy  + "|" +   BANCS.STDIN.homeCrncyCode + "|" + CUST.GCHRG.refCode + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.contextBankId
+		sv_s = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_s)
+		IF (sv_s == 0) THEN				
+			IF (BANCS.OUTPARAM.VarCrnyRate != "") THEN
+				PRINT(BANCS.OUTPARAM.VarCrnyRate )
+				CUST.GCHRG.Rate = BANCS.OUTPARAM.VarCrnyRate
+			ENDIF
+		ENDIF
+	ENDIF
+	
+	PRINT (CUST.GCHRG.Rate)
+
+	CUST.GCHRG.AvaBal = (CDOUBLE (CUST.GCHRG.AvaBal) *  CDOUBLE  (CUST.GCHRG.Rate))  
+	PRINT (CUST.GCHRG.AvaBal)
+ENDIF
+
+IF (cint(CUST.GCHRG.LENGTH) == 4) THEN
+	
+	sv_a = "count|select count(*) from tbaadm.ptt where   BANK_ID= ?SVAR AND  event_id = ?SVAR and del_flg = 'N' "
+	PRINT(sv_a)
+	BANCS.INPARAM.BINDVARS =   BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.eventId
+	sv_s = urhk_dbSelectWithBind(sv_a)
+	PRINT(sv_s)
+	IF (sv_s !=0) THEN
+		#{
+		CUST.GCHRG.LienSuccessOrFailure = "F"
+		CUST.GCHRG.LienFailureReason = "Query to fetch count of EVENT SRL Failed "
+		#}
+	ELSE
+		IF (BANCS.OUTPARAM.count == 1) THEN		
+			sv_a = " event_id, TRAN_REMARKS, AMT_IND,FIXED_AMT, CRNCY_CODE | select event_id, TRAN_REMARKS, AMT_IND,FIXED_AMT, adm.CRNCY_CODE  from tbaadm.ptt,  tbaadm.adm  where "
+			sv_a = sv_a +  "  AMT_DRV_SRL_NUM = AMT_DERV_SRL_NUM and ptt.bank_id =adm.bank_id  and ptt.bank_id = ?SVAR and AMT_IND ='F' and event_id =?SVAR "
+			sv_a = sv_a +  "  and ptt.ENTITY_CRE_FLG  ='Y' and ptt.DEL_FLG ='N'  and ptt.ENTITY_CRE_FLG =adm.ENTITY_CRE_FLG  and ptt.DEL_FLG  = adm.DEL_FLG and  rownum < 2   " 
+			PRINT(sv_a)
+			BANCS.INPARAM.BINDVARS =   BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.eventId
+			sv_s = urhk_dbSelectWithBind(sv_a)
+			PRINT(sv_s)
+			IF (sv_s == 0) THEN
+				CUST.GCHRG.chrgAmtval = BANCS.OUTPARAM.FIXED_AMT
+				CUST.GCHRG.actcrncy = BANCS.OUTPARAM.CRNCY_CODE
+				CUST.GCHRG.lienRemarks = BANCS.OUTPARAM.TRAN_REMARKS
+				CUST.GCHRG.chrgAmt = CUST.GCHRG.chrgAmtval +  "|" + CUST.GCHRG.actcrncy
+				PRINT(CUST.GCHRG.chrgAmt)
+				CUST.GCHRG.LENGTH = STRLEN(CUST.GCHRG.chrgAmt)
+				PRINT (CUST.GCHRG.LENGTH )
+				CUST.GCHRG.AMT_IND = BANCS.OUTPARAM.AMT_IND
+				IF (CDOUBLE(CUST.GCHRG.AvaBal) < CDOUBLE(CUST.GCHRG.chrgAmtval)) THEN
+					PRINT (CUST.GCHRG.AMT_IND) 
+					CUST.GCHRG.AvaBal = 0
+					CUST.GCHRG.eventId = ""	
+				ENDIF	
+		
+			ELSE
+				CUST.GCHRG.LienSuccessOrFailure = "F"
+				CUST.GCHRG.LienFailureReason = "Query to fetch count of lien record details of DCHRG lien ON ALT table failed"
+				GOTO ENDOFSCRIPT_LIEN_MOD
+			ENDIF
+		ENDIF
+	ENDIF
+ENDIF
+
+IF (cint(CUST.GCHRG.LENGTH) > 4) THEN
+
+	CUST.GCHRG.chrgAmtval= MID$(CUST.GCHRG.chrgAmt,0,(cint (CUST.GCHRG.LENGTH ) -4) )
+	PRINT(CUST.GCHRG.chrgAmtval)
+	CUST.GCHRG.actcrncy = MID$(CUST.GCHRG.chrgAmt,((cint (CUST.GCHRG.LENGTH ) -4) + 1),cint(CUST.GCHRG.LENGTH ))
+	PRINT(CUST.GCHRG.actcrncy)
+
+IF (CUST.GCHRG.lienRemarks =="Lien Due to overdrawn charges") THEN
+			sv_a = " TRAN_REMARKS | select TRAN_REMARKS  from tbaadm.ptt,  tbaadm.adm  where AMT_DRV_SRL_NUM = AMT_DERV_SRL_NUM and ptt.bank_id =adm.bank_id  and ptt.bank_id = ?SVAR  and event_id = ?SVAR "
+			sv_a = sv_a +  "  and ptt.ENTITY_CRE_FLG  ='Y' and ptt.DEL_FLG ='N'  and ptt.ENTITY_CRE_FLG =adm.ENTITY_CRE_FLG  and ptt.DEL_FLG  = adm.DEL_FLG  and rownum < 2 " 
+			PRINT(sv_a)
+			BANCS.INPARAM.BINDVARS =   BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.eventId
+			sv_s = urhk_dbSelectWithBind(sv_a)
+			PRINT(sv_s)
+			IF (sv_s == 0) THEN
+				
+				IF (BANCS.OUTPARAM.TRAN_REMARKS != "") THEN
+					PRINT(BANCS.OUTPARAM.TRAN_REMARKS)
+					CUST.GCHRG.lienRemarks = BANCS.OUTPARAM.TRAN_REMARKS
+				ENDIF
+			ENDIF
+				
+ENDIF
+		IF (CDOUBLE(CUST.GCHRG.AvaBal) < CDOUBLE(CUST.GCHRG.chrgAmtval)) THEN
+			IF ((CUST.GCHRG.AvaBal > 0)  AND (CUST.GCHRG.Crncy == BANCS.STDIN.homeCrncyCode)  ) THEN
+				CUST.GCHRG.blockAmt = (CDOUBLE(CUST.GCHRG.AvaBal) - CDOUBLE(CUST.GCHRG.chrgAmtval))
+				PRINT(CUST.GCHRG.blockAmt)
+			ELSE
+				CUST.GCHRG.blockAmt = (CDOUBLE(CUST.GCHRG.chrgAmtval)* -1)
+				CUST.GCHRG.chrgAmt = "0" +  "|" + CUST.GCHRG.actcrncy
+			ENDIF
+
+			IF  (CUST.GCHRG.blockAmt < 0 ) THEN
+				CUST.GCHRG.blockAmt = (CDOUBLE(CUST.GCHRG.blockAmt) * -1)
+				print(CUST.GCHRG.blockAmt)
+				CUST.GCHRG.chrgAmt =  CUST.GCHRG.AvaBal +  "|" + CUST.GCHRG.actcrncy 
+				Print (CUST.GCHRG.chrgAmt)
+			
+				IF (CUST.GCHRG.schemeType == "SBA" ) THEN
+					CALL("gchrgcommon.scr")
+					CUST.GCHRG.chrgAmt = "0" +  "|" + CUST.GCHRG.actcrncy			
+				ENDIF
+
+			ELSE
+				GOTO ENDOFSCRIPT_LIEN_MOD
+			ENDIF
+
+
+			PRINT (CUST.GCHRG.blockAmt) 
+			PRINT (CUST.GCHRG.actcrncy)
+			PRINT (CUST.GCHRG.Crncy)
+
+			IF (CUST.GCHRG.actcrncy != CUST.GCHRG.Crncy) THEN 			
+				CUST.GCHRG.blockAmt = (CDOUBLE (CUST.GCHRG.blockAmt)/CDOUBLE(CUST.GCHRG.Rate))
+				PRINT (CUST.GCHRG.blockAmt)
+			ELSE
+				PRINT (CUST.GCHRG.blockAmt)
+
+			ENDIF
+
+			sv_t = urhk_B2k_ForacidToAcid(CUST.GCHRG.drAcctId)
+			IF(sv_t == 0) THEN
+					#{
+							sv_g = BANCS.OUTPARAM.Acid
+					#}
+			ENDIF
+			CUST.GCHRG.acid = sv_g
+			print (CUST.GCHRG.acid)
+
+
+				BANCS.INPARAM.BINDVARS = CUST.GCHRG.acid + "|" + BANCS.STDIN.contextBankId
+				sv_a = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND b2k_type='ULIEN' AND BANK_ID= ?SVAR"
+				PRINT(sv_a)
+				sv_s = urhk_dbSelectWithBind(sv_a)
+				PRINT(sv_s)
+				IF (sv_s !=0) THEN
+				#{
+					CUST.GCHRG.LienSuccessOrFailure = "F"
+					CUST.GCHRG.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+					sv_s = CUST.GCHRG.drAcctId+ "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+					PRINT(sv_s)
+					GOTO ENDOFSCRIPT_LIEN_MOD
+				#}
+				ELSE
+					CUST.GCHRG.NewRecNum = BANCS.OUTPARAM.count
+						PRINT(CUST.GCHRG.NewRecNum)
+					IF ((CUST.GCHRG.NewRecNum) == 0 ) THEN
+	
+						sv_l = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.GCHRG.drAcctId)
+						sv_l = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+						sv_a = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|31-12-2099 00:00:00")
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.key.serial_num|0")
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.newLienAmt|" + CUST.GCHRG.blockAmt + "|"+CUST.GCHRG.Crncy)
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.oldLienAmt|0|"+CUST.GCHRG.Crncy)
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.expiryDate|31-12-2099 00:00:00")
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienRemarks|" + CUST.GCHRG.lienRemarks)
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienReasonCode.refCode|" + CUST.GCHRG.reasonCode)
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.effFromDate|" + BANCS.STDIN.BODDate)
+						sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.requestDept|" + CUST.GCHRG.eventIdX)
+						#Call the service for adding and verifying the new lien.
+						sv_a = urhk_ExecSrvNoCommit("SRV_AddLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+						PRINT(sv_a)
+						IF (sv_a != 0) THEN
+						#{
+								GOTO ERROR_HANDLING
+						#}
+						ENDIF
+				
+					ELSE 
+						
+						BANCS.INPARAM.BINDVARS = CUST.GCHRG.acid + "|" + BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.reasonCode
+						sv_a = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND b2k_type='ULIEN' AND BANK_ID= ?SVAR AND LIEN_REASON_CODE = ?SVAR "
+						PRINT(sv_a)
+						sv_s = urhk_dbSelectWithBind(sv_a)
+						PRINT(sv_s)
+						IF (sv_s !=0) THEN
+						
+							CUST.GCHRG.LienSuccessOrFailure = "F"
+							CUST.GCHRG.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+							sv_s = CUST.GCHRG.drAcctId+ "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+							PRINT(sv_s)
+							#sv_b = urtn_fileWrite(CUST.GCHRG.failFileIndex1 + "|" + sv_s)
+							#PRINT(sv_b)
+
+							GOTO ENDOFSCRIPT_LIEN_MOD
+
+						ELSE
+							PRINT (BANCS.OUTPARAM.count)
+							
+								sv_a = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.GCHRG.drAcctId)
+								sv_a = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+								sv_a = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|31-12-2099 00:00:00")
+								sv_a = urhk_ExecSrvNoCommit("SRV_FetchLienDtlsOnAcForMod|retain_all_output = Y")
+								PRINT(sv_a)
+
+								IF (sv_a != 0) THEN
+								#{
+										GOTO ERROR_HANDLING
+								#}
+								ENDIF
+
+								sv_a = urhk_CopyOutToIn("")
+								PRINT(sv_a)
+
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.key.serial_num|0")
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.newLienAmt|" + CUST.GCHRG.blockAmt +  "|" +CUST.GCHRG.Crncy)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.oldLienAmt|0|"+CUST.GCHRG.Crncy)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.expiryDate|31-12-2099 00:00:00")
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.lienRemarks|" + CUST.GCHRG.lienRemarks)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.lienReasonCode.refCode|" + CUST.GCHRG.reasonCode)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.effFromDate|" + BANCS.STDIN.BODDate)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.requestedBy|")
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.requestDept|" + CUST.GCHRG.eventIdX)
+								sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUST.GCHRG.NewRecNum + ">.contactNum|")
+
+								sv_a = urhk_ExecSrvNoCommit("SRV_ModifyLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+								PRINT(sv_a)
+
+								IF (sv_a != 0) THEN
+								#{
+										GOTO ERROR_HANDLING
+								#}
+								ENDIF
+						ENDIF
+					ENDIF
+				ENDIF
+					
+					ERROR_HANDLING:
+
+						#-------------Error handling when the SRV returns failure.--------------------#
+						IF (sv_a != 0) THEN
+						#{
+								CUST.GCHRG.LienSuccessOrFailure = "F"
+								PRINT(CUST.GCHRG.LienSuccessOrFailure)
+								sv_c = BANCS.OUTPARAM.Error_num
+								PRINT(sv_c)
+
+								IF (sv_c > 0) THEN
+								#{
+										IF (STRLEN(BANCS.OUTPARAM.ErrorMesg_1) > 0) THEN
+										#{
+												CUST.GCHRG.LienFailureReason = BANCS.OUTPARAM.ErrorMesg_1
+												PRINT(CUST.GCHRG.LienFailureReason)
+
+												sv_s = CUST.GCHRG.drAcctId+ "|" + CUST.GCHRG.LienFailureReason
+												PRINT(sv_s)
+										#}
+										ENDIF
+
+										sv_d = 1
+										PRINT(sv_c)
+										PRINT(sv_d)
+
+										WHILE(sv_d <= sv_c)
+										#{
+												sv_f = FORMAT$(sv_d, "%d")
+												sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_" + sv_f)
+												PRINT(sv_e)
+												sv_e = ("BANCS").("OUTPARAM").("ErrorCode_" + sv_f)
+												PRINT(sv_e)
+												sv_e = ("BANCS").("OUTPARAM").("Tag_" + sv_f)
+												PRINT(sv_e)
+												sv_d = sv_d + 1
+										#}
+										DO
+								#}
+								ENDIF
+								#}
+						ELSE
+								#{
+								CUST.GCHRG.LienSuccessOrFailure = "S"
+						#}
+						ENDIF
+
+
+		ELSE
+
+			CUST.GCHRG.LienSuccessOrFailure = "S"
+
+		ENDIF
+	ENDIF
+
+
+ENDOFSCRIPT_LIEN_MOD:
+
+PRINT(CUST.GCHRG.LienSuccessOrFailure)
+EXITSCRIPT
+TRACE OFF
+
+END-->

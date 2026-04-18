@@ -1,0 +1,591 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_waiveAssessmtFee.scr
+#  Description     : This script will waive charges to loan accounts for closure and verify
+#  Date            : 12-03-2021
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : NA
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             12-03-2021      Timothy Karemeri		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUSTS") == 0) THEN
+#{
+	CREATEREP("CUSTS")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","GLBDATA") == 0) THEN
+#{
+	CREATECLASS("CUSTS","GLBDATA",5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUSTS.GLBDATA.errMsg = ""
+
+#------------------------------------------------------------------------------
+#Finding count of records that need to be processed
+#------------------------------------------------------------------------------
+
+		sv_n = "startDate |select DB_STAT_DATE from tbaadm.gct where bank_id = ?SVAR "
+		print (sv_n)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		sv_f =  urhk_dbSelectWithBind(sv_n)
+		PRINT(sv_f)
+
+		IF (sv_f == 0)THEN
+			CUSTS.GLBDATA.startDate = BANCS.OUTPARAM.startDate
+			print (CUSTS.GLBDATA.startDate)
+		ENDIF
+		IF(BANCS.STDIN.contextBankId =="50") THEN
+		#{
+			CUSTS.GLBDATA.acctMgr = "EXPUSR50"
+		#}
+		ENDIF
+		IF(BANCS.STDIN.contextBankId =="54") THEN
+		#{
+			CUSTS.GLBDATA.acctMgr = "EXPUSR54"
+		#}
+		ENDIF
+		IF(BANCS.STDIN.contextBankId =="55") THEN
+		#{
+			CUSTS.GLBDATA.acctMgr = "EXPUSR55"
+		#}
+		ENDIF
+		IF(BANCS.STDIN.contextBankId =="56") THEN
+		#{
+			CUSTS.GLBDATA.acctMgr = "EXPUSR56"
+		#}
+		ENDIF
+
+		sv_q="foracid|"
+		sv_q = sv_q + " select distinct foracid from tbaadm.gam a, tbaadm.chat b where a.bank_id = b.bank_id and a.bank_id = ?SVAR "
+		#sv_q = sv_q + " and a.acid = b.acid and  acct_opn_date = ?SVAR and acct_cls_flg != 'Y' and schm_code = 'LA527' "
+		sv_q = sv_q + " and a.acid = b.acid and  acct_opn_date <= ?SVAR and acct_cls_flg != 'Y' and schm_code = 'LA527' "
+		sv_q = sv_q + " and a.sol_id = ?SVAR and b.RCRE_TIME <(select sysdate-0.020833 from dual) "
+		#sv_q = sv_q + " and a.sol_id = ?SVAR and b.RCRE_TIME <(select sysdate from dual) "
+		sv_q = sv_q + " and USER_CALC_CHRGE_AMT ! = 0 and CHRGE_AMT_COLLECTED = 0 "
+		sv_q = sv_q + " and CHRGE_WAIVED = 0 and b.del_flg != 'Y' and ACCT_MGR_USER_ID = ?SVAR "
+		print(sv_q)
+		#BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.GLBDATA.startDate + "|" + BANCS.STDIN.mySolId + "|" + CUSTS.GLBDATA.acctMgr
+		print(BANCS.INPARAM.BINDVARS)
+		sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+		IF(sv_e==0) THEN
+			    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			    sv_q = urhk_dbCursorFetch(sv_m)
+			    print(sv_q)
+
+			   IF(sv_q == 1) THEN
+				 sv_x = urhk_dbCursorClose(sv_m)
+				 print(sv_x)
+				 exitscript
+			   ENDIF
+			  print(sv_q)
+
+		WHILE (sv_q==0)
+			CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+			print(CUSTS.GLBDATA.foracid)
+
+			sv_u = "solid,acid,schmcode,clsflg,clrbal|"
+			sv_u = sv_u + "select sol_id,acid,schm_code,acct_cls_flg,clr_bal_amt from tbaadm.gam  "
+			sv_u = sv_u + " where foracid = ?SVAR  and bank_id= ?SVAR"
+			print(sv_u)
+
+			BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_w =  urhk_dbSelectWithBind(sv_u)
+			print(sv_w)
+
+			IF (sv_w==0) THEN  
+			#{
+				CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+				print(CUSTS.GLBDATA.acid)
+
+				CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+				print(CUSTS.GLBDATA.schmcode)
+
+				CUSTS.GLBDATA.solid=BANCS.OUTPARAM.solid
+				print(CUSTS.GLBDATA.solid)
+
+				CUSTS.GLBDATA.clsflg=BANCS.OUTPARAM.clsflg
+				print(CUSTS.GLBDATA.clsflg)
+
+				CUSTS.GLBDATA.clrbal=BANCS.OUTPARAM.clrbal
+				print(CUSTS.GLBDATA.clrbal)
+
+				
+				IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+				#{
+					sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+					print(sv_u)
+					sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+					print(sv_u)
+				#}
+				ENDIF
+			#}
+			ENDIF
+				
+		#--------------------------------------------------------------------------------------------------------------
+		# # urhk_SetUrhkInp is used to set inputs 
+		#--------------------------------------------------------------------------------------------------------------
+		
+		sv_u = urhk_SetUrhkInp("laAcct.foracid|" + CUSTS.GLBDATA.foracid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("waiverOf| ")
+		PRINT(sv_u)
+
+##############################################
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.key.serial_num | serial_num ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.chrgType | chrgType ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.crncyCode | crncyCode ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.assmntAmt | assmntAmt ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.collAmt | collAmt ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.waiveAmt | waiveAmt ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.whtWaiveAmt | whtWaiveAmt ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.origWaiveAmt | origWaiveAmt ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.actionFlg | actionFlg ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverDtl.reversedFlg | reversedFlg ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.waiverOf | waiverOf ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.selFlg | selFlg ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_0>.chatCookie | chatCookie ")
+
+     ##############################################
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.key.serial_num | serial_num1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.chrgType | chrgType1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.crncyCode | crncyCode1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.assmntAmt | assmntAmt1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.collAmt | collAmt1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.waiveAmt | waiveAmt1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.whtWaiveAmt | whtWaiveAmt1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.origWaiveAmt | origWaiveAmt1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.actionFlg | actionFlg1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverDtl.reversedFlg | reversedFlg1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.waiverOf | waiverOf1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.selFlg | selFlg1 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_1>.chatCookie | chatCookie1 ")
+
+       ##############################################
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.key.serial_num | serial_num2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.chrgType | chrgType2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.crncyCode | crncyCode2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.assmntAmt | assmntAmt2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.collAmt | collAmt2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.waiveAmt | waiveAmt2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.whtWaiveAmt | whtWaiveAmt2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.origWaiveAmt | origWaiveAmt2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.actionFlg | actionFlg2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverDtl.reversedFlg | reversedFlg2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.waiverOf | waiverOf2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.selFlg | selFlg2 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_2>.chatCookie | chatCookie2 ")
+
+       ##############################################
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.key.serial_num | serial_num3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.chrgType | chrgType3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.crncyCode | crncyCode3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.assmntAmt | assmntAmt3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.collAmt | collAmt3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.waiveAmt | waiveAmt3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.whtWaiveAmt | whtWaiveAmt3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.origWaiveAmt | origWaiveAmt3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.actionFlg | actionFlg3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverDtl.reversedFlg | reversedFlg3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.waiverOf | waiverOf3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.selFlg | selFlg3 ")
+       sv_u = urhk_SetUrhkOut("feeWaiverOutputLL.<rec_3>.chatCookie | chatCookie3 ")
+
+	sv_u = urhk_ExecSrv("SRV_FetchFeeWaiverForModify|retain_all_output = Y|same_user_verify = Y")
+	PRINT(sv_u)
+
+		if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+			print(BANCS.OUTPARAM.successOrFailure)
+			sv_s = BANCS.OUTPARAM.successOrFailure
+		else
+			sv_s = "X"
+		endif
+
+		 if (( sv_u == 0 ) and ( sv_s=="S") ) then
+		 ######################################
+			CUSTS.GLBDATA.serial_num = BANCS.OUTPARAM.serial_num
+			print(CUSTS.GLBDATA.serial_num)
+			CUSTS.GLBDATA.chrgType = BANCS.OUTPARAM.chrgType
+			print(CUSTS.GLBDATA.chrgType)
+			CUSTS.GLBDATA.crncyCode = BANCS.OUTPARAM.crncyCode
+			print(CUSTS.GLBDATA.crncyCode)
+			CUSTS.GLBDATA.assmntAmt = BANCS.OUTPARAM.assmntAmt
+			print(CUSTS.GLBDATA.assmntAmt)
+			CUSTS.GLBDATA.collAmt = BANCS.OUTPARAM.collAmt
+			print(CUSTS.GLBDATA.collAmt)
+			CUSTS.GLBDATA.waiveAmt = BANCS.OUTPARAM.waiveAmt
+			print(CUSTS.GLBDATA.waiveAmt)
+			CUSTS.GLBDATA.whtWaiveAmt = BANCS.OUTPARAM.whtWaiveAmt
+			print(CUSTS.GLBDATA.whtWaiveAmt)
+			CUSTS.GLBDATA.origWaiveAmt = BANCS.OUTPARAM.origWaiveAmt
+			print(CUSTS.GLBDATA.origWaiveAmt)
+			CUSTS.GLBDATA.actionFlg = BANCS.OUTPARAM.actionFlg
+			print(CUSTS.GLBDATA.actionFlg)
+			CUSTS.GLBDATA.reversedFlg = BANCS.OUTPARAM.reversedFlg
+			print(CUSTS.GLBDATA.reversedFlg)
+			CUSTS.GLBDATA.waiverOf = BANCS.OUTPARAM.waiverOf
+			print(CUSTS.GLBDATA.waiverOf)
+			CUSTS.GLBDATA.selFlg = BANCS.OUTPARAM.selFlg
+			print(CUSTS.GLBDATA.selFlg)
+			CUSTS.GLBDATA.chatCookie = BANCS.OUTPARAM.chatCookie
+			print(CUSTS.GLBDATA.chatCookie)
+
+			IF((CDOUBLE(CUSTS.GLBDATA.assmntAmt)> 0) AND (CDOUBLE(CUSTS.GLBDATA.waiveAmt)== 0) AND (CDOUBLE(CUSTS.GLBDATA.whtWaiveAmt)== 0))THEN
+			CUSTS.GLBDATA.waiveAmt = CUSTS.GLBDATA.assmntAmt
+				print(CUSTS.GLBDATA.waiveAmt)
+				CUSTS.GLBDATA.whtWaiveAmt = CUSTS.GLBDATA.assmntAmt
+				print(CUSTS.GLBDATA.whtWaiveAmt) 
+			ENDIF
+
+		######################################
+			CUSTS.GLBDATA.serial_num1 = BANCS.OUTPARAM.serial_num1
+			print(CUSTS.GLBDATA.serial_num1)
+			CUSTS.GLBDATA.chrgType1 = BANCS.OUTPARAM.chrgType1
+			print(CUSTS.GLBDATA.chrgType1)
+			CUSTS.GLBDATA.crncyCode1 = BANCS.OUTPARAM.crncyCode1
+			print(CUSTS.GLBDATA.crncyCode1)
+			CUSTS.GLBDATA.assmntAmt1 = BANCS.OUTPARAM.assmntAmt1
+			print(CUSTS.GLBDATA.assmntAmt1)
+			CUSTS.GLBDATA.collAmt1 = BANCS.OUTPARAM.collAmt1
+			print(CUSTS.GLBDATA.collAmt1)
+			CUSTS.GLBDATA.waiveAmt1 = BANCS.OUTPARAM.waiveAmt1
+			print(CUSTS.GLBDATA.waiveAmt1)
+			CUSTS.GLBDATA.whtWaiveAmt1 = BANCS.OUTPARAM.whtWaiveAmt1
+			print(CUSTS.GLBDATA.whtWaiveAmt1)
+			CUSTS.GLBDATA.origWaiveAmt1 = BANCS.OUTPARAM.origWaiveAmt1
+			print(CUSTS.GLBDATA.origWaiveAmt1)
+			CUSTS.GLBDATA.actionFlg1 = BANCS.OUTPARAM.actionFlg1
+			print(CUSTS.GLBDATA.actionFlg1)
+			CUSTS.GLBDATA.reversedFlg1 = BANCS.OUTPARAM.reversedFlg1
+			print(CUSTS.GLBDATA.reversedFlg1)
+			CUSTS.GLBDATA.waiverOf1 = BANCS.OUTPARAM.waiverOf1
+			print(CUSTS.GLBDATA.waiverOf1)
+			CUSTS.GLBDATA.selFlg1 = BANCS.OUTPARAM.selFlg1
+			print(CUSTS.GLBDATA.selFlg1)
+			CUSTS.GLBDATA.chatCookie1 = BANCS.OUTPARAM.chatCookie1
+			print(CUSTS.GLBDATA.chatCookie1)
+
+			IF((CDOUBLE(CUSTS.GLBDATA.assmntAmt1)> 0) AND (CDOUBLE(CUSTS.GLBDATA.waiveAmt1)== 0) AND (CDOUBLE(CUSTS.GLBDATA.whtWaiveAmt1)== 0))THEN
+			CUSTS.GLBDATA.waiveAmt1 = CUSTS.GLBDATA.assmntAmt1
+				print(CUSTS.GLBDATA.waiveAmt1)
+				CUSTS.GLBDATA.whtWaiveAmt1 = CUSTS.GLBDATA.assmntAmt1
+				print(CUSTS.GLBDATA.whtWaiveAmt1) 
+			ENDIF
+		 ######################################
+			CUSTS.GLBDATA.serial_num2 = BANCS.OUTPARAM.serial_num2
+			print(CUSTS.GLBDATA.serial_num2)
+			CUSTS.GLBDATA.chrgType2 = BANCS.OUTPARAM.chrgType2
+			print(CUSTS.GLBDATA.chrgType2)
+			CUSTS.GLBDATA.crncyCode2 = BANCS.OUTPARAM.crncyCode2
+			print(CUSTS.GLBDATA.crncyCode2)
+			CUSTS.GLBDATA.assmntAmt2 = BANCS.OUTPARAM.assmntAmt2
+			print(CUSTS.GLBDATA.assmntAmt2)
+			CUSTS.GLBDATA.collAmt2 = BANCS.OUTPARAM.collAmt2
+			print(CUSTS.GLBDATA.collAmt2)
+			CUSTS.GLBDATA.waiveAmt2 = BANCS.OUTPARAM.waiveAmt2
+			print(CUSTS.GLBDATA.waiveAmt2)
+			CUSTS.GLBDATA.whtWaiveAmt2 = BANCS.OUTPARAM.whtWaiveAmt2
+			print(CUSTS.GLBDATA.whtWaiveAmt2)
+			CUSTS.GLBDATA.origWaiveAmt2 = BANCS.OUTPARAM.origWaiveAmt2
+			print(CUSTS.GLBDATA.origWaiveAmt2)
+			CUSTS.GLBDATA.actionFlg2 = BANCS.OUTPARAM.actionFlg2
+			print(CUSTS.GLBDATA.actionFlg2)
+			CUSTS.GLBDATA.reversedFlg2 = BANCS.OUTPARAM.reversedFlg2
+			print(CUSTS.GLBDATA.reversedFlg2)
+			CUSTS.GLBDATA.waiverOf2 = BANCS.OUTPARAM.waiverOf2
+			print(CUSTS.GLBDATA.waiverOf2)
+			CUSTS.GLBDATA.selFlg2 = BANCS.OUTPARAM.selFlg2
+			print(CUSTS.GLBDATA.selFlg2)
+			CUSTS.GLBDATA.chatCookie2 = BANCS.OUTPARAM.chatCookie2
+			print(CUSTS.GLBDATA.chatCookie2)
+
+			IF((CDOUBLE(CUSTS.GLBDATA.assmntAmt2)> 0) AND (CDOUBLE(CUSTS.GLBDATA.waiveAmt2)== 0) AND (CDOUBLE(CUSTS.GLBDATA.whtWaiveAmt2)== 0))THEN				
+			CUSTS.GLBDATA.waiveAmt2 = CUSTS.GLBDATA.assmntAmt2
+				print(CUSTS.GLBDATA.waiveAmt2)
+				CUSTS.GLBDATA.whtWaiveAmt2 = CUSTS.GLBDATA.assmntAmt2
+				print(CUSTS.GLBDATA.whtWaiveAmt2) 
+			ENDIF
+		
+		 ######################################
+			CUSTS.GLBDATA.serial_num3 = BANCS.OUTPARAM.serial_num3
+			print(CUSTS.GLBDATA.serial_num3)
+			CUSTS.GLBDATA.chrgType3 = BANCS.OUTPARAM.chrgType3
+			print(CUSTS.GLBDATA.chrgType3)
+			CUSTS.GLBDATA.crncyCode3 = BANCS.OUTPARAM.crncyCode3
+			print(CUSTS.GLBDATA.crncyCode3)
+			CUSTS.GLBDATA.assmntAmt3 = BANCS.OUTPARAM.assmntAmt3
+			print(CUSTS.GLBDATA.assmntAmt3)
+			CUSTS.GLBDATA.collAmt3 = BANCS.OUTPARAM.collAmt3
+			print(CUSTS.GLBDATA.collAmt3)
+			CUSTS.GLBDATA.waiveAmt3 = BANCS.OUTPARAM.waiveAmt3
+			print(CUSTS.GLBDATA.waiveAmt3)
+			CUSTS.GLBDATA.whtWaiveAmt3 = BANCS.OUTPARAM.whtWaiveAmt3
+			print(CUSTS.GLBDATA.whtWaiveAmt3)
+			CUSTS.GLBDATA.origWaiveAmt3 = BANCS.OUTPARAM.origWaiveAmt3
+			print(CUSTS.GLBDATA.origWaiveAmt3)
+			CUSTS.GLBDATA.actionFlg3 = BANCS.OUTPARAM.actionFlg3
+			print(CUSTS.GLBDATA.actionFlg3)
+			CUSTS.GLBDATA.reversedFlg3 = BANCS.OUTPARAM.reversedFlg3
+			print(CUSTS.GLBDATA.reversedFlg3)
+			CUSTS.GLBDATA.waiverOf3 = BANCS.OUTPARAM.waiverOf3
+			print(CUSTS.GLBDATA.waiverOf3)
+			CUSTS.GLBDATA.selFlg3 = BANCS.OUTPARAM.selFlg3
+			print(CUSTS.GLBDATA.selFlg3)
+			CUSTS.GLBDATA.chatCookie3 = BANCS.OUTPARAM.chatCookie3
+			print(CUSTS.GLBDATA.chatCookie3)
+
+			IF((CDOUBLE(CUSTS.GLBDATA.assmntAmt3)> 0) AND (CDOUBLE(CUSTS.GLBDATA.waiveAmt3)== 0) AND (CDOUBLE(CUSTS.GLBDATA.whtWaiveAmt3)== 0))THEN
+				CUSTS.GLBDATA.waiveAmt3 = CUSTS.GLBDATA.assmntAmt3
+				print(CUSTS.GLBDATA.waiveAmt3)
+				CUSTS.GLBDATA.whtWaiveAmt3 = CUSTS.GLBDATA.assmntAmt3
+				print(CUSTS.GLBDATA.whtWaiveAmt3) 
+			ENDIF
+		endif
+
+##############################################
+	sv_u = urhk_SetUrhkInp("laAcct.foracid|" + CUSTS.GLBDATA.foracid)
+		#sv_u = urhk_SetUrhkInp("laAcct.foracid|0135509266481")
+		PRINT(sv_u)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.key.serial_num |"+ CUSTS.GLBDATA.serial_num)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.chrgType |"+ CUSTS.GLBDATA.chrgType )
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.crncyCode |"+ CUSTS.GLBDATA.crncyCode)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.assmntAmt |"+ CUSTS.GLBDATA.assmntAmt)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.collAmt |"+ CUSTS.GLBDATA.collAmt)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.waiveAmt |"+ CUSTS.GLBDATA.waiveAmt)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.whtWaiveAmt |"+ CUSTS.GLBDATA.whtWaiveAmt)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.origWaiveAmt |"+ CUSTS.GLBDATA.origWaiveAmt)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.actionFlg |"+ CUSTS.GLBDATA.actionFlg)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverDtl.reversedFlg |"+ CUSTS.GLBDATA.reversedFlg)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.waiverOf |"+ CUSTS.GLBDATA.waiverOf)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.selFlg |"+ CUSTS.GLBDATA.selFlg)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_0>.chatCookie |"+ CUSTS.GLBDATA.chatCookie)
+
+     ##############################################
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.key.serial_num |"+ CUSTS.GLBDATA.serial_num1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.chrgType |"+ CUSTS.GLBDATA.chrgType1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.crncyCode |"+ CUSTS.GLBDATA.crncyCode1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.assmntAmt |"+ CUSTS.GLBDATA.assmntAmt1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.collAmt |"+ CUSTS.GLBDATA.collAmt1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.waiveAmt |"+ CUSTS.GLBDATA.waiveAmt1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.whtWaiveAmt |"+ CUSTS.GLBDATA.whtWaiveAmt1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.origWaiveAmt |"+ CUSTS.GLBDATA.origWaiveAmt1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.actionFlg |"+ CUSTS.GLBDATA.actionFlg1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverDtl.reversedFlg |"+ CUSTS.GLBDATA.reversedFlg1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.waiverOf |"+ CUSTS.GLBDATA.waiverOf1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.selFlg | "+ CUSTS.GLBDATA.selFlg1)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_1>.chatCookie |"+ CUSTS.GLBDATA.chatCookie1)
+
+       ##############################################
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.key.serial_num |"+ CUSTS.GLBDATA.serial_num2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.chrgType |"+ CUSTS.GLBDATA.chrgType2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.crncyCode |"+ CUSTS.GLBDATA.crncyCode2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.assmntAmt | "+ CUSTS.GLBDATA.assmntAmt2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.collAmt | "+ CUSTS.GLBDATA.collAmt2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.waiveAmt | "+ CUSTS.GLBDATA.waiveAmt2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.whtWaiveAmt |"+ CUSTS.GLBDATA.whtWaiveAmt2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.origWaiveAmt |"+ CUSTS.GLBDATA.origWaiveAmt2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.actionFlg |"+ CUSTS.GLBDATA.actionFlg2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverDtl.reversedFlg |"+ CUSTS.GLBDATA.reversedFlg2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.waiverOf |"+ CUSTS.GLBDATA.waiverOf2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.selFlg |"+ CUSTS.GLBDATA.selFlg2)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_2>.chatCookie |"+ CUSTS.GLBDATA.chatCookie2)
+
+       ##############################################
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.key.serial_num |"+ CUSTS.GLBDATA.serial_num3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.chrgType |"+ CUSTS.GLBDATA.chrgType3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.crncyCode |"+ CUSTS.GLBDATA.crncyCode3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.assmntAmt |"+ CUSTS.GLBDATA.assmntAmt3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.collAmt |"+ CUSTS.GLBDATA.collAmt3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.waiveAmt |"+ CUSTS.GLBDATA.waiveAmt3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.whtWaiveAmt |"+ CUSTS.GLBDATA.whtWaiveAmt3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.origWaiveAmt |"+ CUSTS.GLBDATA.origWaiveAmt3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.actionFlg |"+ CUSTS.GLBDATA.actionFlg3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverDtl.reversedFlg |"+ CUSTS.GLBDATA.reversedFlg3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.waiverOf |"+ CUSTS.GLBDATA.waiverOf3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.selFlg |"+ CUSTS.GLBDATA.selFlg3)
+       sv_u = urhk_SetUrhkInp("feeWaiverOutputLL.<rec_3>.chatCookie |"+ CUSTS.GLBDATA.chatCookie3)
+
+	sv_u = urhk_ExecSrv("SRV_ModifyFeeWaiverAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+			
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}									
+				ELSE
+				#{
+					sv_v = 0
+				#}
+				ENDIF
+				IF (sv_v > 0) then
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid +" ' >>assessFee.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>assessFee.log")
+						print(sv_u)
+					#}
+					DO
+				#}
+				ENDIF
+			ELSE
+			#{
+			##########################################################
+			##Closing the Account after waiving charges
+			##########################################################
+				sv_u = "solid,acid,schmcode,clsflg,clrbal|"
+				sv_u = sv_u + "select sol_id,acid,schm_code,acct_cls_flg,clr_bal_amt from tbaadm.gam  "
+				sv_u = sv_u + " where foracid = ?SVAR  AND bank_id= ?SVAR"
+				PRINT(sv_u)
+				
+				BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_w =  urhk_dbSelectWithBind(sv_u)
+				PRINT(sv_w)
+				
+				IF (sv_w==0) THEN
+				#{
+					CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+					PRINT(CUSTS.GLBDATA.acid)
+					
+					CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+					PRINT(CUSTS.GLBDATA.schmcode)
+					
+					CUSTS.GLBDATA.solid=BANCS.OUTPARAM.solid
+					PRINT(CUSTS.GLBDATA.solid)
+					
+					CUSTS.GLBDATA.clsflg=BANCS.OUTPARAM.clsflg
+					PRINT(CUSTS.GLBDATA.clsflg)
+					
+					CUSTS.GLBDATA.clrbal=BANCS.OUTPARAM.clrbal
+					PRINT(CUSTS.GLBDATA.clrbal)
+					
+					
+					IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+					#{
+						sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+						PRINT(sv_u)
+						sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+						PRINT(sv_u)
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				
+				sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+				
+				# sv_a=urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+				
+				# sv_a=urhk_SetUrhkInp("clsrProcCrit.tranType.tranType|")
+				
+				#sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr|retain_all_output = Y")
+				sv_u = urhk_ExecSrv("SRV_FetchLoanAcctDtlForClsr")
+				PRINT(sv_u)
+				
+				IF (sv_u == 0 ) THEN
+				#{
+					#sv_u = urhk_CopyOutToIn("")
+					#PRINT(sv_u)
+					sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+					PRINT(sv_u)
+					sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUSTS.GLBDATA.acid)
+					PRINT(sv_u)
+					sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUSTS.GLBDATA.schmcode)
+					PRINT(sv_u)
+					sv_u = urhk_ExecSrv(" SRV_CloseLoanAcctAndVerify|retain_all_output = Y")
+					PRINT(sv_u)
+					
+				#}
+				ENDIF
+				
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						PRINT(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+						#}
+					ELSE
+						#{
+						sv_v = 0
+					#}
+					ENDIF
+					
+					IF (sv_v > 0) THEN
+					#{
+						sv_u = SYSTEM("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>closed.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							PRINT(sv_e)
+							sv_i = sv_i + 1
+							sv_u = SYSTEM("echo '"+sv_e+"' >>closed.log")
+							PRINT(sv_u)
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+			##########################################################
+			##End of Closing the Account after waiving charges
+			##########################################################
+			#}
+			ENDIF
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)	
+
+DO
+sv_d = urhk_dbCursorClose(sv_m)
+        print(sv_d)
+
+               print("ALL FEES WAIVED AND ACCOUNTS CLOSED")
+ENDIF
+
+
+ENDOFSCRIPT:
+IF(CUSTS.GLBDATA.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUSTS.GLBDATA.errMsg+"' >>assessFee.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

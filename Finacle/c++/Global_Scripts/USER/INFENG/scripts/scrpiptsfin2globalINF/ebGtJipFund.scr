@@ -1,0 +1,319 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#FileName       : ebGtJipFund.scr 
+#Desc           : JipangeFund 
+#MenuId         : NA
+#CalledScript   :
+#Module         : GtGoals
+#Date           : 22/03/2019
+#Author         : Vino Palani
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#+++++++++++++
+#Rep/Class
+#+++++++++++++
+	if(repexists("EQGTG")==0)then
+		createrep("EQGTG")
+	endif
+	if(classexists("EQGTG","GLBDATA")==0)then
+		createclass("EQGTG","GLBDATA",5)
+	endif
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+	EQGTG.GLBDATA.errMsg	= ""
+        sv_a = urhk_MTTS_Close("")
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("MTT","TranDetails")==0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        if(classexists("MTT","PartTranDetails")==0)then
+                createclass("MTT","PartTranDetails",5)
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+	BANCS.OUTPARAM.MTTTranId = ""
+	EQGTG.GLBDATA.drAcctId = ""
+	EQGTG.GLBDATA.crAcctId = ""
+	EQGTG.GLBDATA.uplTranId = ""
+	EQGTG.GLBDATA.clearBalance = ""
+	EQGTG.GLBDATA.uplTranAmt	= ""
+#++++++++++++
+#transaction data
+#++++++++++++
+	sv_d = "drAcctId,crAcctId,uplTranId,uplTranAmt | select dr_acctid,cr_acctid,upl_tranid,upl_tranamt "
+	sv_d = sv_d + " from custom.ebgtgoal_jipange_funding "
+	sv_d = sv_d + " where bank_id=?SVAR "
+	sv_d = sv_d + " and fund_yn = 'N' "
+	sv_d = sv_d + " and del_flg='N' "
+	sv_d = sv_d + " and free_text1='Y' "
+	sv_d = sv_d + " and upl_tranid in (select ltrim(tran_id) from tbaadm.dtd "
+	sv_d = sv_d + " where bank_id=?SVAR and tran_date = to_date(?SVAR,'DD-MM-RR') and pstd_flg='Y' and del_flg='N') " 
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+	print(sv_d)
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbCursorOpenWithBind(sv_d)
+	if(sv_u == 0)then
+		EQGTG.GLBDATA.fundCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	else
+		print("no Jipange Funding Data")
+		goto CLEANUPP
+		exitscript	
+	endif
+	sv_f = urhk_dbCursorFetch(EQGTG.GLBDATA.fundCurNum)
+	if(sv_f !=0)then
+		print("no Jipange Funding Data")
+		sv_u = urhk_dbCursorClose(EQGTG.GLBDATA.fundCurNum)
+		goto CLEANUPP
+		exitscript
+	endif	
+	while(sv_f ==0)
+	#{
+		EQGTG.GLBDATA.drAcctId	= BANCS.OUTPARAM.drAcctId
+		EQGTG.GLBDATA.crAcctId	= BANCS.OUTPARAM.crAcctId
+		EQGTG.GLBDATA.uplTranId	= BANCS.OUTPARAM.uplTranId
+		EQGTG.GLBDATA.uplTranAmt	= BANCS.OUTPARAM.uplTranAmt
+		if(EQGTG.GLBDATA.drAcctId != "")then
+			sv_u = urhk_getAcctDetailsInRepository(EQGTG.GLBDATA.drAcctId)
+			if(sv_u ==0)then
+				EQGTG.GLBDATA.acctSolId	= BANCS.OUTPARAM.acctSolId	
+				EQGTG.GLBDATA.schmType	= BANCS.OUTPARAM.schmType	
+				EQGTG.GLBDATA.acctCloseflg	= BANCS.OUTPARAM.acctCloseflg	
+				EQGTG.GLBDATA.acctCrncyCode	= BANCS.OUTPARAM.acctCrncyCode	
+				EQGTG.GLBDATA.freezeCode	= BANCS.OUTPARAM.freezeCode	
+				EQGTG.GLBDATA.clearBalance	= BANCS.OUTPARAM.clearBalance	
+				EQGTG.GLBDATA.EffAvailableAmt	= BANCS.OUTPARAM.EffAvailableAmt	
+			else
+				EQGTG.GLBDATA.errMsg     = "Invalid DebitAccountId " +EQGTG.GLBDATA.drAcctId
+				goto NEXTREC
+			endif
+		else
+			EQGTG.GLBDATA.errMsg     = "Invalid DebitAccountId " +EQGTG.GLBDATA.drAcctId
+			goto NEXTREC
+		endif
+		if(cdouble(EQGTG.GLBDATA.clearBalance) <= cdouble(EQGTG.GLBDATA.uplTranAmt))then
+			EQGTG.GLBDATA.errMsg     = "Insufficient Balance in DebitAccount "  +EQGTG.GLBDATA.drAcctId
+			goto NEXTREC
+		endif
+		        BANCS.INPARAM.PostTranFlg       = "Y"
+			BANCS.INPARAM.CommitFlg         = "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+			BANCS.INPARAM.ValidationFlag    = "Y"
+			BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw  ="Y"
+
+			sv_a = urhk_MTTS_Initialize("")
+			MTT.TranDetails.TranDate        = "0"
+			MTT.TranDetails.TranType        = "T"
+			MTT.TranDetails.TranSubType     = "BI"
+			MTT.TranDetails.Remarks         = "GeorgeTown Goals Funding"
+			MTT.TranDetails.IgnoreExcp      = "Y"
+			MTT.TranDetails.Consolidate     = "Y"
+			MTT.TranDetails.PrintAdviceInd  = "B"
+			MTT.TranDetails.TranIdOnline    = "N"
+			sv_u = urhk_MTTS_defineTransaction("JipangeFund")
+			if(sv_u != 0) then
+				if(fieldexists(MTT.Error.Description))then
+					print(MTT.Error.Description)
+				endif
+				goto NEXTREC
+			endif
+			sv_u = urhk_MTTS_populateInputDetails("")
+			if(sv_u != 0) then
+				if(fieldexists(MTT.Error.Description))then
+					print(MTT.Error.Description)
+				endif
+				goto NEXTREC
+			endif
+		#Debit
+			print(EQGTG.GLBDATA.drAcctId)
+			MTT.PartTranDetails.Account     = EQGTG.GLBDATA.drAcctId
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = "Dr.For " + EQGTG.GLBDATA.crAcctId + " /Fund to Goals "
+			MTT.PartTranDetails.RefAmount   = -1 * cdouble(EQGTG.GLBDATA.uplTranAmt)
+			MTT.PartTranDetails.Remarks     = "Fund to Jipange Goals"
+			MTT.PartTranDetails.RefNum      = EQGTG.GLBDATA.uplTranId + "/" + EQGTG.GLBDATA.crAcctId
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "JipangeFund"
+			MTT.PartTranDetails.PstFlg              = "Y"
+			##MTT.PartTranDetails.ReportCode = sv_z
+			sv_u = urhk_MTTS_definePartTran("SettleDr")
+			print(sv_u)
+			if(sv_u!=0)then
+				if(fieldexists(MTT.Error.Description))then
+					print(MTT.Error.Description)
+					EQGTG.GLBDATA.errMsg    = MTT.Error.Description
+					goto NEXTREC
+				endif
+			endif
+		#Credit
+			print(EQGTG.GLBDATA.crAcctId)
+			MTT.PartTranDetails.Account     = EQGTG.GLBDATA.crAcctId
+			MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+			MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.Particulars = "Cr.From " + EQGTG.GLBDATA.drAcctId
+			MTT.PartTranDetails.RefAmount   = 1 * cdouble(EQGTG.GLBDATA.uplTranAmt)
+			MTT.PartTranDetails.Remarks     = "KTDA Salary Credit"
+			MTT.PartTranDetails.RefNum      = EQGTG.GLBDATA.uplTranId + "/" +EQGTG.GLBDATA.drAcctId
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = "JipangeFund"
+			MTT.PartTranDetails.PstFlg              = "Y"
+			##MTT.PartTranDetails.ReportCode = sv_z
+			sv_u = urhk_MTTS_definePartTran("SettleDr")
+			print(sv_u)
+			if(sv_u!=0)then
+				if(fieldexists(MTT.Error.Description))then
+					print(MTT.Error.Description)
+					EQGTG.GLBDATA.errMsg    = MTT.Error.Description
+					goto NEXTREC
+				endif
+			endif
+		#Res
+			sv_u = urhk_MTTS_endDefinition("")
+			if(sv_u!=0)then
+			##{
+				if(fieldexists(MTT.Error.Description))then
+					print(MTT.Error.Description)
+					EQGTG.GLBDATA.errMsg    = MTT.Error.Description
+					goto NEXTREC
+				endif
+			else
+				print(BANCS.OUTPARAM.MTTTranId)
+				if(BANCS.OUTPARAM.MTTTranId!="")then
+				##{
+					sv_d = "update custom.EBGTGOAL_JIPANGE_FUNDING set fund_yn='Y' ,fund_tranid=ltrim(?SVAR) ,"
+					sv_d = sv_d + " fund_trandate=to_date(?SVAR,'DD-MM-RR') ,lchg_user_id=?SVAR "
+					sv_d = sv_d + " ,lchg_time = to_date(?SVAR,'DD-MM-RR') where "
+					sv_d = sv_d + " bank_id =?SVAR and dr_acctid=?SVAR and cr_acctid=?SVAR and upl_tranid=?SVAR "
+					BANCS.INPARAM.BINDVARS = BANCS.OUTPARAM.MTTTranId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId + "|" + EQGTG.GLBDATA.drAcctId + "|" + EQGTG.GLBDATA.crAcctId  + "|" +EQGTG.GLBDATA.uplTranId 
+					print(sv_d)
+					print(BANCS.INPARAM.BINDVARS)
+					sv_u = urhk_dbSqlWithBind(sv_d)
+					if(sv_u==0)then
+						sv_u = urhk_dbSqlWithBind("commit")
+					###	goto NEXTREC
+					else
+						sv_u = urhk_dbSqlWithBind("rollback")
+					###	goto NEXTREC
+					endif
+				##++++++++++++++++++++++++++++++++ 
+				## for SMS Push
+				##++++++++++++++++++++++++++++++++ 
+				sv_u = urhk_getAdvanceDetailsForAccount(EQGTG.GLBDATA.crAcctId)
+				if(sv_u==0)then
+					EQGTG.GLBDATA.gSourceAcct = BANCS.OUTPARAM.gacFreeText1
+					print(EQGTG.GLBDATA.gSourceAcct)
+					EQGTG.GLBDATA.gGoalMonths = BANCS.OUTPARAM.gacFreeText2
+					print(EQGTG.GLBDATA.gGoalMonths)
+					EQGTG.GLBDATA.gGoalDays = BANCS.OUTPARAM.gacFreeText3
+					print(EQGTG.GLBDATA.gGoalDays)
+					EQGTG.GLBDATA.gPayoutDays = BANCS.OUTPARAM.gacFreeText4
+					print(EQGTG.GLBDATA.gPayoutDays)
+					EQGTG.GLBDATA.gdummyExpiryDate = BANCS.OUTPARAM.gacFreeText5
+					print(EQGTG.GLBDATA.gdummyExpiryDate)
+					EQGTG.GLBDATA.gAprYN = BANCS.OUTPARAM.gacFreeText7
+					print(EQGTG.GLBDATA.gAprYN)
+					EQGTG.GLBDATA.gOctYN = BANCS.OUTPARAM.gacFreeText8
+					print(EQGTG.GLBDATA.gOctYN)
+					EQGTG.GLBDATA.gActiveDate = BANCS.OUTPARAM.gacFreeText9
+					print(EQGTG.GLBDATA.gActiveDate)
+					EQGTG.GLBDATA.gExpiryDate = BANCS.OUTPARAM.gacFreeText10
+					print(EQGTG.GLBDATA.gExpiryDate)
+					EQGTG.GLBDATA.gMobileNumber = BANCS.OUTPARAM.gacFreeText11
+					print(EQGTG.GLBDATA.gMobileNumber)
+					EQGTG.GLBDATA.gStartDate = BANCS.OUTPARAM.gacFreeText12
+					print(EQGTG.GLBDATA.gStartDate)
+				endif
+				if(EQGTG.GLBDATA.gAprYN != "")then
+					EQGTG.GLBDATA.gAprOct = EQGTG.GLBDATA.gAprYN
+				endif
+				if(EQGTG.GLBDATA.gOctYN != "")then
+					EQGTG.GLBDATA.gAprOct = EQGTG.GLBDATA.gOctYN
+				endif
+				if(cdouble(EQGTG.GLBDATA.gGoalMonths)>0)then
+					EQGTG.GLBDATA.bonusAmt = cdouble(EQGTG.GLBDATA.uplTranAmt) / cdouble(EQGTG.GLBDATA.gGoalMonths)
+					print(EQGTG.GLBDATA.bonusAmt)	
+				else
+					EQGTG.GLBDATA.bonusAmt = "0"
+				endif
+				sv_d = "refNum | SELECT TO_CHAR(SYSDATE,'YYMMDDMISS') FROM DUAL"
+				sv_u = urhk_dbSelectWithBind(sv_d)
+				if(sv_u==0)then
+					EQGTG.GLBDATA.refNum =  BANCS.OUTPARAM.refNum 
+				else
+					EQGTG.GLBDATA.refNum = "XXXYYY"
+				endif
+##EQGTG.GLBDATA.activationMsg = "Jipange Jiinue is now active! Your (" +EQGTG.GLBDATA.gAprOct+ ")" +EQGTG.GLBDATA.uplTranAmt+ " Ksh bonus has been transferred." 
+##EQGTG.GLBDATA.activationMsg = EQGTG.GLBDATA.activationMsg + "You will receive Ksh(" +EQGTG.GLBDATA.bonusAmt+ ") on (" + EQGTG.GLBDATA.gPayoutDays + ") of each month for (" +EQGTG.GLBDATA.gGoalMonths+ " ) months. Visit Auto Savings menu to modify."   
+EQGTG.GLBDATA.activationMsg = "Jipange Jiinue is now active! Your (" +EQGTG.GLBDATA.gAprOct+ ")" +EQGTG.GLBDATA.uplTranAmt+ " Ksh bonus has been transferred" 
+EQGTG.GLBDATA.activationMsg = EQGTG.GLBDATA.activationMsg + " and you have received your first salary.You will receive Ksh(" +EQGTG.GLBDATA.bonusAmt+ ") on "
+EQGTG.GLBDATA.activationMsg = EQGTG.GLBDATA.activationMsg + " (" + EQGTG.GLBDATA.gPayoutDays + ") of each month for (" +EQGTG.GLBDATA.gGoalMonths+ " ) months "
+EQGTG.GLBDATA.activationMsg = EQGTG.GLBDATA.activationMsg + " after today. Visit Auto Savings menu to modify."   
+			print(EQGTG.GLBDATA.activationMsg)
+				sv_d = " INSERT INTO custom.mobee_push_sms ( "
+				sv_d = sv_d + " ref_no,"
+				    sv_d = sv_d + "language,"
+				    sv_d = sv_d + "institution_code,"
+				    sv_d = sv_d + "mobile_number,"
+				    sv_d = sv_d + "message_arrieved_date,"
+				    sv_d = sv_d + "message_priority,"
+				    sv_d = sv_d + "message_status,"
+				    sv_d = sv_d + "message_validity_period,"
+				    sv_d = sv_d + "department,"
+				    sv_d = sv_d + "message_text,"
+				    sv_d = sv_d + "retry_count,"
+				    sv_d = sv_d + "bank_id"
+				    sv_d = sv_d + ") VALUES ("
+				    sv_d = sv_d + "'"+EQGTG.GLBDATA.refNum+"',"
+				    sv_d = sv_d + "'EN',"
+				    sv_d = sv_d + "'068',"
+					print(EQGTG.GLBDATA.gMobileNumber)
+				    sv_d = sv_d + "'"+EQGTG.GLBDATA.gMobileNumber+"',"
+				    sv_d = sv_d + "'19-JUL-19',"
+				    sv_d = sv_d + "'4',"
+				    sv_d = sv_d + "'1',"
+				    sv_d = sv_d + "'86400000',"
+				    sv_d = sv_d + "'Finacle',"
+				    sv_d = sv_d + "'"+EQGTG.GLBDATA.activationMsg+"',"
+				    sv_d = sv_d + "'0',"
+				    sv_d = sv_d + "'"+BANCS.STDIN.contextBankId+"')"
+				print(sv_d)
+				sv_u = urhk_dbSqlWithBind(sv_d)
+				if(sv_u==0)then
+					sv_u = urhk_dbSqlWithBind("commit")
+					goto NEXTREC
+				else
+					sv_u = urhk_dbSqlWithBind("rollback")
+					goto NEXTREC
+				endif
+
+				##}
+				endif
+			##}
+			endif
+
+	NEXTREC:
+		sv_u = urhk_MTTS_Close("")
+		print(sv_u)
+		print(EQGTG.GLBDATA.errMsg)
+		print(EQGTG.GLBDATA.fundCurNum)
+		sv_f = urhk_dbCursorFetch(EQGTG.GLBDATA.fundCurNum)
+		print(sv_f)
+	#}
+	do
+	sv_u = urhk_dbCursorClose(EQGTG.GLBDATA.fundCurNum)
+#CleanUp
+CLEANUPP:
+	if(classexists("EQGTG","GLBDATA")==1)then
+		deleteclass("EQGTG","GLBDATA")
+	endif
+	if(repexists("EQGTG")==1)then
+		deleterep("EQGTG")
+	endif
+	exitscript
+trace off
+end-->

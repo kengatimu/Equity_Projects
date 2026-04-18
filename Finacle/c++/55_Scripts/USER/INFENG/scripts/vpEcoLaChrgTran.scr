@@ -1,0 +1,187 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpEcoLaChrgTran.scr
+#  Description     : batch
+#  Date            : 10-02-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-02-2022      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","GCHRG")==0)then
+                createclass("CUST","GCHRG",5)
+        endif
+        if(fieldexists(CUST.GCHRG.drAcctId)==1)then
+                print(CUST.GCHRG.drAcctId)
+        else
+                CUST.GCHRG.drAcctId = ""
+                exitscript
+        endif
+        CUST.GCHRG.TranId = ""
+        if(fieldexists(EQSRV.GLBDATA.ChargeAmount)==1)then
+                print(EQSRV.GLBDATA.ChargeAmount)
+                CUST.GCHRG.rChargeAmount= cdouble(EQSRV.GLBDATA.ChargeAmount)
+                EQSRV.GLBDATA.rChargeAmount = cdouble(EQSRV.GLBDATA.ChargeAmount)
+        else
+                CUST.GCHRG.rChargeAmount = 0
+        endif
+        if(fieldexists(EQSRV.GLBDATA.disbTranId)==1)then
+                print(EQSRV.GLBDATA.disbTranId)
+                CUST.GCHRG.disbTranId = EQSRV.GLBDATA.disbTranId
+        else
+                CUST.GCHRG.disbTranId = ""
+        endif
+        if(fieldexists(EQSRV.GLBDATA.odAcctId)==1)then
+                print(EQSRV.GLBDATA.odAcctId)
+                CUST.GCHRG.odAcctId = EQSRV.GLBDATA.odAcctId
+        else
+                CUST.GCHRG.odAcctId = ""
+        endif
+        sv_u = urhk_getAcctDetailsInRepository(CUST.GCHRG.drAcctId)
+        if(sv_u==0)then
+                CUST.GCHRG.drChrgSolId = BANCS.OUTPARAM.acctSolId
+                CUST.GCHRG.dreffAmt = BANCS.OUTPARAM.EffAvailableAmt
+        else
+                exitscript
+        endif
+	 if(cdouble(CUST.GCHRG.dreffAmt)<cdouble(EQSRV.GLBDATA.rChargeAmount))then
+                        print("insufficient fund")
+                        exitscript
+         endif
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                goto EndScr
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "CI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "Ecosystem Comm"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        sv_u = urhk_MTTS_DefineTransaction("eftdrcrsweep")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                goto EndScr
+        endif
+        MTT.PartTranDetails.Account = CUST.GCHRG.drAcctId
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.ValueDate   =  "0"
+        ###MTT.PartTranDetails.Particulars =  "Dr: for Ecosystem Comm"
+        MTT.PartTranDetails.Particulars =  CUST.GCHRG.drAcctId + " Fee Collection"
+        MTT.PartTranDetails.RefAmount = -1*cdouble(CUST.GCHRG.rChargeAmount)
+        print(MTT.PartTranDetails.RefAmount)
+        MTT.PartTranDetails.Remarks = ""
+        MTT.PartTranDetails.RefNum = CUST.GCHRG.odAcctId
+        MTT.PartTranDetails.IgnoreExcp = "I"
+        MTT.PartTranDetails.Consolidate = "Y"
+        MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+        print(MTT.PartTranDetails.TranIdentifier)
+        MTT.PartTranDetails.PstFlg = "Y"
+        sv_e = "PurchaseIncome"
+        sv_r = urhk_MTTS_definePartTran(sv_e)
+        print(sv_r)
+        if (sv_r != 0) then
+                print(MTT.Error.Description)
+        endif
+        if(BANCS.STDIN.contextBankId=="54")then
+        CUST.GCHRG.crChrBacid = "BIASTOFI"
+        endif
+        if(BANCS.STDIN.contextBankId=="56")then
+        CUST.GCHRG.crChrBacid = "LACE_571"
+        endif
+	if(BANCS.STDIN.contextBankId=="43")then
+        CUST.GCHRG.crChrBacid = "ADHOCST"
+        endif
+        sv_t = CUST.GCHRG.crChrBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ CUST.GCHRG.drChrgSolId
+        print(sv_t)
+        sv_u = urhk_B2k_BacidToAcctId(sv_t)
+        if(sv_u == 0 )then
+                CUST.GCHRG.crChrgAcctId =BANCS.OUTPARAM.AcctId
+                print(CUST.GCHRG.crChrgAcctId)
+        else
+                CUST.GCHRG.crChrgAcctId = ""
+                exitscript
+        endif
+        MTT.PartTranDetails.Account = CUST.GCHRG.crChrgAcctId
+        MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+        MTT.PartTranDetails.ValueDateDiff = "0"
+        MTT.PartTranDetails.ValueDate     =  "0"
+        MTT.PartTranDetails.Particulars =  "Cr: Ecosysem Comm"
+        MTT.PartTranDetails.RefAmount = 1 * cdouble(CUST.GCHRG.rChargeAmount)
+        print(MTT.PartTranDetails.RefAmount)
+        MTT.PartTranDetails.Remarks = ""
+        MTT.PartTranDetails.RefNum = CUST.GCHRG.odAcctId
+        MTT.PartTranDetails.IgnoreExcp = "I"
+        MTT.PartTranDetails.Consolidate = "Y"
+        MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+        MTT.PartTranDetails.PstFlg = "Y"
+        sv_r = urhk_MTTS_definePartTran("eftdrcrsweep")
+        print(sv_r)
+        if (sv_r != 0) then
+                print(MTT.Error.Description)
+        endif
+        sv_u = urhk_MTTS_EndDefinition("")
+        print(sv_u)
+        CUST.GCHRG.TranId = BANCS.OUTPARAM.MTTTranId
+        print(CUST.GCHRG.TranId)
+        print(MTT.XCPN.NumExceptions)
+        print(MTT.XCPN.NumWarnings)
+        if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                sv_u = urhk_MTTS_HandleExceptions("POST")
+                if (sv_u != 0) then
+                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                        print (MTT.Error.Description)
+                endif
+        else
+                sv_u = urhk_MTTS_HandleExceptions("POST")
+                if (sv_u != 0) then
+                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                        print (MTT.Error.Description)
+                endif
+        endif
+        if(CUST.GCHRG.TranId!="")then
+        #{
+                CUST.GCHRG.successOrFailure ="S"
+                CUST.GCHRG.chargeTranId = CUST.GCHRG.TranId
+                CUST.GCHRG.chargeTranDate = BANCS.STDIN.BODDate
+        else
+                CUST.GCHRG.successOrFailure ="F"
+                CUST.GCHRG.chargeTranId = ""
+                CUST.GCHRG.chargeTranDate = BANCS.STDIN.BODDate
+        #}
+        endif
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+#####trace off
+end-->

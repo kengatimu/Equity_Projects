@@ -1,0 +1,1978 @@
+<--START
+#=========================================================================================*
+# Name                         	:   LoanDisbursement.scr
+# Date                         	:   20-06-2009
+# Description                  	:   To Disburse the loan amount to the given account no.
+# Input                        	:   All the details required to disburse the loan amount.
+# Output                       	:   Success or failure message for disbursement
+# Author                       	:   Revathi Duraisamy
+# Called Scripts               	:   <none>
+# Calling Script               	:   <none>
+# Reference                    	:
+# Modification History  		:	
+#  <Serial No.>  <Date>         <AuthorName>          	<Description>
+#--------------------------------------------------------------------------
+#      1        20-06-2009    	Revathi Duraisame  		Original Version
+#      2	 	12-02-2013		Chethan.S				Modified as per standards
+# Using tabSpace 4 
+#==========================================================================================*
+TRACE ON
+
+####----------------------------------------------####
+# Creation of  Repositories and Classes
+#####----------------------------------------------####
+IF (REPEXISTS("CUST")==0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+#####----------------------------------------------####
+# Creation of  String type  Class
+#####----------------------------------------------####
+IF (CLASSEXISTS("CUST","CASIGLS")==0) THEN
+#{
+	CREATECLASS("CUST","CASIGLS",5)
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+# Assigning the necessary initial values for the Flags and Field 
+#######--------------------------------------------------------------##########
+
+CUST.CASIGLS.chargeFlag = "Y"
+CUST.CASIGLS.crncyFlag = "Y"
+CUST.CASIGLS.eventFlag = "Y"
+CUST.CASIGLS.APPLY_CHARGE="N"
+CUST.CASIGLS.Cntr="0"
+CUST.CASIGLS.errMsg = ""
+
+#------------------------------------------
+# Get the Mod Code From CPARAM table.
+#------------------------------------------
+
+BANCS.INPUT.moduleName  = "CASIGLS"
+BANCS.INPUT.parameterId = "MODCODE1"
+
+CALL ("getcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+	CUST.CASIGLS.modCode1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.CASIGLS.errMsg = "Suspense Account setup not done CPARAM"
+	GOTO Finish
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+# Check whether the mandatory  (LoanAccountID) field Exists
+#######--------------------------------------------------------------##########
+IF ( FIELDEXISTS(BANCS.INPUT.LoanAccountID) == 0 ) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Loan Account No Field is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+# Check whether the mandatory (Credit AccountID )field Exists
+#######--------------------------------------------------------------##########
+IF ( FIELDEXISTS(BANCS.INPUT.CrId) == 0 ) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Credit Account No Field is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+# Check whether the mandatory  (disburse amount ) field Exists
+#######--------------------------------------------------------------##########
+IF ( FIELDEXISTS(BANCS.INPUT.DisbAmt) == 0 ) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Disbursement Amount Field is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+# Check whether the mandatory  (Disbursment application id)  field Exists
+#######--------------------------------------------------------------##########
+IF ( FIELDEXISTS(BANCS.INPUT.Disbursment_id) == 0 ) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Disbursement Application ID Field is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+# Check whether the mandatory  (Charge_No)  field Exists
+#######--------------------------------------------------------------##########
+IF ( FIELDEXISTS(BANCS.INPUT.Charge_No) == 0 ) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Charge No Field is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+
+
+#######--------------------------------------------------------------##########
+# Receive the values from  FI
+#######--------------------------------------------------------------##########
+
+CUST.CASIGLS.loanAcctNo = TRIM(BANCS.INPUT.LoanAccountID)
+CUST.CASIGLS.CrId = TRIM(BANCS.INPUT.CrId)
+CUST.CASIGLS.DisbAmt = TRIM(BANCS.INPUT.DisbAmt)
+CUST.CASIGLS.appId = TRIM(BANCS.INPUT.Disbursment_id)
+
+
+
+#######--------------------------------------------------------------##########
+## To get the BODDate and SYSDate from the BANCS Repository ##
+#######--------------------------------------------------------------##########
+
+print(BANCS.STDIN.sysDate)
+print(BANCS.STDIN.BODDate)
+CUST.CASIGLS.sys_timestamp = BANCS.STDIN.sysDate
+CUST.CASIGLS.bod_timestamp = BANCS.STDIN.BODDate
+CUST.CASIGLS.BODDate = LEFT$(CUST.CASIGLS.bod_timestamp,10)
+print(CUST.CASIGLS.BODDate)
+CUST.CASIGLS.SYSDate = LEFT$(CUST.CASIGLS.sys_timestamp,10)
+print(CUST.CASIGLS.SYSDate)
+
+#######--------------------------------------------------------------##########
+#Validation to check  unique application id is passed  for each request##
+#######--------------------------------------------------------------##########
+
+IF((STRLEN(TRIM(CUST.CASIGLS.appId))) > 0) THEN
+#{
+		GOTO COUNT
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Disbursement Application ID is Mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	exitscript
+#}	
+ENDIF
+
+COUNT:		
+sv_s ="count "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT COUNT(*) "
+sv_s = sv_s + " FROM CUSTOM.C_EQBK "
+sv_s = sv_s + " WHERE app_id = ?SVAR "
+sv_s = sv_s + " AND mod_code = ?SVAR " 
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.appId + "|" + CUST.CASIGLS.modCode1
+print(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+IF( sv_d == 0 ) THEN
+#{ 
+	print(BANCS.OUTPARAM.count)
+	CUST.CASIGLS.count=BANCS.OUTPARAM.count
+	print(CUST.CASIGLS.count)
+	#CUST.CASIGLS.count = "0"
+	IF(CINT(CUST.CASIGLS.count)==0) THEN
+	#{
+		sv_s ="INSERT INTO "
+		sv_s = sv_s + " CUSTOM.C_EQBK VALUES ( "
+		sv_s = sv_s + " to_date(?SVAR,'DD-MM-YYYY'), "
+		sv_s = sv_s + " to_date(?SVAR,'DD-MM-YYYY'), "
+		sv_s = sv_s + " ?SVAR, "
+		sv_s = sv_s + " ?SVAR, "
+		sv_s = sv_s + " 'N', "
+		sv_s = sv_s + " sysdate, "
+		sv_s = sv_s + " null, "
+		sv_s = sv_s + " null, "
+		sv_s = sv_s + " null, "
+		sv_s = sv_s + " null, "
+		sv_s = sv_s + " ?SVAR"
+		sv_s = sv_s + ")"
+		BANCS.INPARAM.BINDVARS = CUST.CASIGLS.SYSDate + "|" + CUST.CASIGLS.BODDate+"|"+CUST.CASIGLS.appId+"|" + CUST.CASIGLS.modCode1 + "|" + BANCS.STDIN.contextBankId
+		print(sv_s)
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		sv_d = urhk_dbSQLWithBind("commit")			
+	#}
+	ELSE
+	#{
+		sv_s ="processedFlag "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT processed_flg "
+		sv_s = sv_s + " FROM CUSTOM.C_EQBK "
+		sv_s = sv_s + " WHERE app_id = ?SVAR "
+		sv_s = sv_s + " AND mod_code = ?SVAR "		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CASIGLS.appId + "|" + CUST.CASIGLS.modCode1
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF( sv_d == 0 ) THEN
+		#{
+			CUST.CASIGLS.processedFlag=BANCS.OUTPARAM.processedFlag
+			print(CUST.CASIGLS.processedFlag)
+			IF((CUST.CASIGLS.processedFlag) =="N") THEN
+			#{
+				sv_s = " UPDATE CUSTOM.C_EQBK "
+				sv_s = sv_s + " SET start_time = sysdate "
+				sv_s = sv_s + " WHERE app_id = ?SVAR "
+				sv_s = sv_s + " AND mod_code = ?SVAR " 
+				BANCS.INPARAM.BINDVARS = CUST.CASIGLS.appId + "|" + CUST.CASIGLS.modCode1
+				print(sv_s)
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				print(sv_d)
+				print(BANCS.OUTPARAM.DB_ERRCODE)
+				####-----------------------------####
+				## commit ctpt Table            ##
+				####-----------------------------####
+				sv_d = urhk_dbSQLWithBind("commit")
+				print(sv_d)
+				
+				GOTO LOGIC
+			#}
+			ELSE
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Disbursement is already done, for the given Disbursement Application ID"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error |" +sv_a)
+				exitscript
+			#}
+			ENDIF
+		#}
+		ENDIF	
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "No Records for the Disbursement Application ID"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error |" +sv_a)
+	exitscript
+#}
+ENDIF
+
+LOGIC:
+#######--------------------------------------------------------------##########
+## Validating  for the loan account is verified  ##
+#######--------------------------------------------------------------##########
+
+sv_s = " entityCreFlg "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT entity_cre_flg "
+sv_s = sv_s + " FROM GAM "
+sv_s = sv_s + " WHERE foracid = ?SVAR "
+sv_s = sv_s + " AND del_flg = 'N' "
+print(sv_s)
+
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.loanAcctNo
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+IF( sv_d == 0 ) THEN
+#{
+  	print(BANCS.OUTPARAM.entityCreFlg)
+  	CUST.CASIGLS.entityCreFlg=BANCS.OUTPARAM.entityCreFlg
+  
+  	IF(CUST.CASIGLS.entityCreFlg != "Y") THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Loan Account No is not verified"
+		sv_a=BANCS.OUTPUT.name
+		sv_u =urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = " Invalid Loan Account No "
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+### Getting the length of the Loan Account No  ##
+#######--------------------------------------------------------------##########
+sv_p = STRLEN(CUST.CASIGLS.loanAcctNo)
+print(sv_p)
+#######--------------------------------------------------------------##########
+## Checking for the existence & length of the Loan Account No
+#######--------------------------------------------------------------##########
+IF(sv_p > 0) THEN
+#{
+	IF(sv_p <= 16) THEN
+	#{
+		####-------------------------------------####
+		## Validating the Loan Account No ##
+		####-------------------------------------####
+		sv_a = urhk_valAcctNumber(CUST.CASIGLS.loanAcctNo)
+		print(sv_a)
+		IF(sv_a == 0) THEN
+		#{
+			sv_s = " schmType "
+			sv_s = sv_s + " | "
+			sv_s = sv_s + " SELECT schm_type "
+			sv_s = sv_s + " FROM GAM "
+			sv_s = sv_s + " WHERE foracid = ?SVAR "
+			sv_s = sv_s + " AND entity_cre_flg = 'Y' "
+			sv_s = sv_s + " AND del_flg = 'N'"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CASIGLS.loanAcctNo
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF( sv_d == 0 ) THEN
+			#{
+				print(BANCS.OUTPARAM.schmType)
+				CUST.CASIGLS.schmType=BANCS.OUTPARAM.schmType
+				IF(CUST.CASIGLS.schmType != "LAA") THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.name = "Invalid Loan Account No"
+					sv_a=BANCS.OUTPUT.name
+					sv_u = urhk_setOrbOut("Error|" +sv_a)
+					GOTO QUITSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "Invalid Loan Account No"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Invalid Loan Account No"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+		
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Invalid Loan Account No"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+
+print(CUST.CASIGLS.CrId)
+#######--------------------------------------------------------------##########
+### Getting the length of the Credit Account No  ##
+#######--------------------------------------------------------------##########
+sv_p = STRLEN(CUST.CASIGLS.CrId)
+print(sv_p)
+#######--------------------------------------------------------------##########
+## Checking for the existence & length of the Credit Account No
+#######--------------------------------------------------------------##########
+IF(sv_p > 0) THEN
+#{
+	IF(sv_p <= 16) THEN
+	#{
+		####-------------------------------------####
+		## Validating the Credit Account No ##
+		####-------------------------------------####
+		sv_a = urhk_valAcctNumber(CUST.CASIGLS.CrId)
+		print(sv_a)
+		IF(sv_a == 0) THEN
+		#{
+			sv_s = "schmType "
+			sv_s = sv_s + " | "
+			sv_s = sv_s + " SELECT schm_type "
+			sv_s = sv_s + " FROM GAM "
+			sv_s = sv_s + " WHERE foracid = ?SVAR"
+			sv_s = sv_s + " AND entity_cre_flg='Y' "
+			sv_s = sv_s + " AND del_flg = 'N'"
+			BANCS.INPARAM.BINDVARS = CUST.CASIGLS.CrId
+			print(sv_s)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF( sv_d == 0 ) THEN
+			#{
+				print(BANCS.OUTPARAM.schmType)
+				CUST.CASIGLS.schmType = BANCS.OUTPARAM.schmType
+				
+				IF((CUST.CASIGLS.schmType == "LAA") OR (CUST.CASIGLS.schmType == "BIA") OR (CUST.CASIGLS.schmType == "FBA") OR (CUST.CASIGLS.schmType == "HOC") OR (CUST.CASIGLS.schmType == "OSP") OR (CUST.CASIGLS.schmType == "PCA") OR (CUST.CASIGLS.schmType == "TDA")) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.name = "The account is not in the required Scheme List   [SBA','CAA','ODA','CCA','DDA','OAB','OAP] or it does not exist."
+					sv_a=BANCS.OUTPUT.name
+					sv_u=urhk_setOrbOut("Error|" +sv_a)
+					GOTO QUITSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "Invalid Credit Account Number"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT	
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Invalid Credit Account Number"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Invalid Credit Account Number"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+## Validation for Disbursement amount ###
+#######--------------------------------------------------------------##########
+print(CUST.CASIGLS.DisbAmt)
+IF((STRLEN(TRIM(CUST.CASIGLS.DisbAmt))) > 0) THEN
+#{
+	####--------------------------------------------------######
+	## To separate the decimal point ######
+	## Obtaining the position of the decimal point ######
+	####-------------------------------------------------########
+	sv_m = getposition(CUST.CASIGLS.DisbAmt,".")
+	print(sv_m)
+
+	IF(sv_m != 0) THEN
+	#{
+		####--------------------------------------------------######
+		## Obtaining the value before the decimal point ######
+		####-------------------------------------------------########
+		sv_n = LEFT$(CUST.CASIGLS.DisbAmt,sv_m-1)
+		print(sv_n)
+		CUST.CASIGLS.before = sv_n
+		
+		IF((STRLEN(TRIM(CUST.CASIGLS.before))) > 14) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "This field can hold a maximum of only 14 digits before decimal point"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT			
+		#}
+		ENDIF
+		
+		####--------------------------------------------------######
+		## Obtaining the length of the amount ######
+		####-------------------------------------------------########
+		sv_l = STRLEN(TRIM(CUST.CASIGLS.DisbAmt))
+		print(sv_l)
+
+		####--------------------------------------------------######
+		## Obtaining the value after the decimal point ######
+		####-------------------------------------------------########
+		sv_g = MID$(CUST.CASIGLS.DisbAmt,sv_m,sv_l)
+		print(sv_g)
+		CUST.CASIGLS.after = sv_g
+		
+		IF((STRLEN(TRIM(CUST.CASIGLS.after))) > 2) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "Cannot exceed 2 digits after the the decimal point"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT			
+		#}
+		ENDIF
+		####--------------------------------------------------######
+		## Combining the values without decimal point ######
+		####-------------------------------------------------########
+		CUST.CASIGLS.total = CUST.CASIGLS.before + CUST.CASIGLS.after
+		print(CUST.CASIGLS.total)
+		####--------------------------------------------------######
+		## Validating  Amount to be numeric #######
+		####-------------------------------------------------########
+		sv_u = urhk_B2k_isStringNumeric(CUST.CASIGLS.total)	
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "Disbursement Amount should be numeric"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		####--------------------------------------------------######
+		## Validating  Amount to be numeric #######
+		####-------------------------------------------------########
+		sv_u = urhk_B2k_isStringNumeric(CUST.CASIGLS.DisbAmt)	
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "Disbursement Amount should be numeric"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT
+		#}
+		ENDIF
+		
+		IF((STRLEN(TRIM(CUST.CASIGLS.DisbAmt))) > 14) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.name = "This field can hold a maximum of only 14 digits before decimal point"
+			sv_a=BANCS.OUTPUT.name
+			sv_u=urhk_setOrbOut("Error|" +sv_a)
+			GOTO QUITSCRIPT			
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Disbursement Amount is mandatory"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO QUITSCRIPT
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+# Fetching the currency code,Sol_id, scheme code for the loan account no ##
+#######--------------------------------------------------------------##########
+sv_s="solLoan,schmLoan,currencyLoan,loanAmount,acid,custIDl "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT sol_id, schm_code, acct_crncy_code,sanct_lim,acid,cust_id "
+sv_s = sv_s + " FROM GAM "
+sv_s = sv_s + " WHERE foracid = ?SVAR"
+sv_s = sv_s + " AND entity_cre_flg='Y' "
+sv_s = sv_s + " AND del_flg='N'"
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.loanAcctNo
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+IF (sv_d==0) THEN
+#{
+	print(BANCS.OUTPARAM.solLoan)
+	print(BANCS.OUTPARAM.schmLoan)
+	print(BANCS.OUTPARAM.currencyLoan)
+	print(BANCS.OUTPARAM.loanAmount)
+	print(BANCS.OUTPARAM.acid)
+	print(BANCS.OUTPARAM.custIDl)
+	CUST.CASIGLS.solLoan = BANCS.OUTPARAM.solLoan
+	CUST.CASIGLS.schmLoan = BANCS.OUTPARAM.schmLoan
+	CUST.CASIGLS.currencyLoan = BANCS.OUTPARAM.currencyLoan
+	CUST.CASIGLS.loanAmount = BANCS.OUTPARAM.loanAmount
+	CUST.CASIGLS.acid = BANCS.OUTPARAM.acid
+	CUST.CASIGLS.custIDl = BANCS.OUTPARAM.custIDl
+#}
+ENDIF
+
+####--arriving at gross or net disburse
+IF (CUST.CASIGLS.CrId !="") THEN
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CASIGLS.CrId)
+	if (sv_u ==0)then
+		print(BANCS.OUTPARAM.AvailableAmt)
+		print(CUST.CASIGLS.loanAmount)
+		CUST.CASIGLS.Laceamt=(CINT(CUST.CASIGLS.loanAmount)*3)/100
+		print(CUST.CASIGLS.Laceamt)
+					
+		CUST.CASIGLS.insurance=(cint(CUST.CASIGLS.loanAmount)*0.003)
+		print(CUST.CASIGLS.insurance)
+
+		CUST.CASIGLS.totfee = CINT(CUST.CASIGLS.insurance) + CINT(CUST.CASIGLS.Laceamt) 
+		print(CUST.CASIGLS.totfee)
+		IF (CINT(CUST.CASIGLS.totfee) > CINT(BANCS.OUTPARAM.AvailableAmt)) THEN
+			Print("KIDOGO")
+			CUST.CASIGLS.grossNetDisbt ="N"
+		ENDIF
+		IF (CINT(CUST.CASIGLS.totfee) < CINT(BANCS.OUTPARAM.AvailableAmt)) THEN
+			CUST.CASIGLS.grossNetDisbt ="G"
+		ENDIF
+		print(CUST.CASIGLS.grossNetDisbt)
+		CUST.CASIGLS.DisbFlag =CUST.CASIGLS.grossNetDisbt
+		print(CUST.CASIGLS.DisbFlag)
+	endif
+ENDIF
+
+#####---end arriving at gross or net disburse
+
+
+#######--------------------------------------------------------------##########
+#### Getting the currencyLoan and scheme code for the Credit account no ##
+#######--------------------------------------------------------------##########
+sv_s = "currencyCrId,CrsolId,custIDCR "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT acct_crncy_code,sol_id,cust_id "
+sv_s = sv_s + " FROM GAM "
+sv_s = sv_s + " WHERE foracid = ?SVAR "
+sv_s = sv_s + " AND entity_cre_flg='Y' "
+sv_s = sv_s + " AND del_flg='N'"
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.CrId
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d) 
+IF (sv_d == 0) THEN
+
+#sv_r = urhk_dbSelect(sv_h)
+#print(sv_r)
+#{
+#	print(BANCS.OUTPARAM.currencyCrId)
+	print(BANCS.OUTPARAM.CrsolId)
+	print(BANCS.OUTPARAM.custIDCR)
+#	print(BANCS.OUTPARAM.solLoan)
+#	CUST.CASIGLS.currencyLoanCrId = BANCS.OUTPARAM.currencyCrId
+print(CUST.CASIGLS.solLoan)
+
+####--------------------------------------------------######
+## Validating  Amount to be numeric #######
+####-------------------------------------------------########
+#sv_n = urhk_B2k_isStringNumeric(CUST.CASIGLS.chrg_total)	
+#print(sv_n)
+#IF(sv_n != 0) THEN
+#{
+	IF(CUST.CASIGLS.solLoan != BANCS.OUTPARAM.CrsolId) THEN
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Acct Sol Differs"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+
+	IF(CUST.CASIGLS.custIDl != BANCS.OUTPARAM.custIDCR) THEN
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Cust ID Differs"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+#### To delete the records from the MCTD table ####
+#######--------------------------------------------------------------##########
+sv_g=CUST.CASIGLS.loanAcctNo
+sv_s = "Count "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT COUNT(*) "
+sv_s = sv_s + " FROM MCTD WHERE event_id = ?SVAR "
+sv_s = sv_s + " AND acid = ( "
+sv_s = sv_s + " 		SELECT acid  "
+sv_s = sv_s + " 		FROM GAM "
+sv_s = sv_s + " 		WHERE foracid = ?SVAR "
+sv_s = sv_s + " 	    ) "
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.modCode1 + "|" + sv_g
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+IF (sv_d == 0 ) THEN
+#{
+	sv_v = BANCS.OUTPARAM.Count
+	print(sv_v)
+#}
+ENDIF
+
+IF(sv_v > 0)THEN
+#{
+	sv_s = " DELETE FROM MCTD "
+	sv_s = sv_s + " WHERE event_id = ?SVAR "
+	sv_s = sv_s + " AND acid = ( "
+	sv_s = sv_s + " 		SELECT acid "
+	sv_s = sv_s + " 		FROM GAM "
+	sv_s = sv_s + " 		WHERE foracid = ?SVAR)"
+	BANCS.INPARAM.BINDVARS = CUST.CASIGLS.modCode1 + "|" + sv_g
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+	sv_d = urhk_dbSQLWithBind("commit")
+	print(sv_d)
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+#### To delete the records from the CXL table ####
+#######--------------------------------------------------------------##########
+sv_g=CUST.CASIGLS.loanAcctNo
+sv_s = " countCxl "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT COUNT(*) "
+sv_s = sv_s + " FROM CXL "
+sv_s = sv_s + " WHERE comp_b2kid_type = ?SVAR "
+sv_s = sv_s + " AND comp_b2kid = ("
+sv_s = sv_s + " 		  	SELECT acid  "
+sv_s = sv_s + " 			FROM GAM "
+sv_s = sv_s + " 			WHERE foracid = ?SVAR )"
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.modCode1 + "|" + sv_g
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+sv_v = BANCS.OUTPARAM.countCxl
+print(sv_v)
+
+IF(sv_v > 0)THEN
+#{
+	sv_s = " DELETE FROM CXL "
+	sv_s = sv_s + " WHERE comp_b2kid_type = ?SVAR "
+	sv_s = sv_s + " AND comp_b2kid = ( "
+	sv_s = sv_s + " 		SELECT acid "
+	sv_s = sv_s + " 		FROM GAM "
+	sv_s = sv_s + " 		WHERE foracid = ?SVAR "
+	sv_s = sv_s + " 		) "
+	BANCS.INPARAM.BINDVARS = CUST.CASIGLS.modCode1 + "|" + sv_g
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+	sv_d = urhk_dbSQLWithBind("commit")
+	print(sv_d)
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+#### Check whether it is first instance of  disbursment ####
+#######--------------------------------------------------------------##########
+sv_s = " disbAmt "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT dis_amt "
+sv_s = sv_s + " FROM LAM "
+sv_s = sv_s + " WHERE acid = ( "
+sv_s = sv_s + " 		SELECT acid "
+sv_s = sv_s + " 		FROM GAM "
+sv_s = sv_s + " 		WHERE foracid = ?SVAR "
+sv_s = sv_s + " 		AND del_flg = 'N' "
+sv_s = sv_s + " 	     ) "
+sv_s = sv_s + " AND entity_cre_flg = 'Y' "
+sv_s = sv_s + " AND del_flg = 'N' "
+print(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.loanAcctNo
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+
+IF (sv_d==0) THEN
+#{
+	print(BANCS.OUTPARAM.disbAmt)
+	CUST.CASIGLS.disbAmt = BANCS.OUTPARAM.disbAmt
+#}
+ENDIF
+CUST.CASIGLS.disbAmt=TRIM(CUST.CASIGLS.disbAmt)
+print(CUST.CASIGLS.disbAmt)
+
+IF (CUST.CASIGLS.disbAmt == 0 ) THEN
+#{
+	CUST.CASIGLS.APPLY_CHARGE="Y"
+	print(CUST.CASIGLS.APPLY_CHARGE)
+	GOTO CHARGE
+#}
+ELSE
+#{
+	CUST.CASIGLS.APPLY_CHARGE = "N"
+	print(CUST.CASIGLS.APPLY_CHARGE)
+	GOTO DISB
+#}
+ENDIF
+
+#######--------------------------------------------------------------##########
+#### Charge calcutaion and collection during disbursement####
+#######--------------------------------------------------------------##########
+
+CHARGE:
+
+#######--------------------------------------------------------------##########
+## To check the no of charge types ######
+#######--------------------------------------------------------------##########
+print(CUST.CASIGLS.APPLY_CHARGE)
+print(BANCS.INPUT.Charge_No)
+CUST.CASIGLS.Charge_No = BANCS.INPUT.Charge_No
+sv_k = CINT(BANCS.INPUT.Charge_No)
+
+####--------------------------------------------------######
+## To check the no of charge types ######
+####-------------------------------------------------########
+IF((STRLEN(TRIM(CUST.CASIGLS.Charge_No))) == 0) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.name = "Enter No of Charge Records other than Script based charges"
+	sv_a=BANCS.OUTPUT.name
+	sv_u=urhk_setOrbOut("Error|" +sv_a)
+	GOTO EndOfScript
+#}
+ENDIF
+#######--------------------------------------------------------------##########
+## Recieving  the inputs From FI and Printing the same ######
+#######--------------------------------------------------------------##########
+
+print(CINT(CUST.CASIGLS.Charge_No))
+CUST.CASIGLS.FI_Cntr = "1"
+print(CUST.CASIGLS.FI_Cntr)
+WHILE(CINT(CUST.CASIGLS.FI_Cntr) <= CINT(CUST.CASIGLS.Charge_No))
+#{
+	print(CUST.CASIGLS.FI_Cntr)
+	#######--------------------------------------------------------------##########
+	## Validation to check whether the conditional mandatotry 
+	# fileds  has values for the charge type,  Event ID,  User entered amount 
+	#other than script based charges are exists ,if not displaying 
+	## proper error message
+	#######--------------------------------------------------------------##########
+
+	#######--------------------------------------------------------------##########
+	## Validation to display that charge type is mandatory######
+	#######--------------------------------------------------------------##########
+	IF ( FIELDEXISTS(("BANCS").("INPUT").("ChrgTyp" + CUST.CASIGLS.FI_Cntr)) == 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Charge Type field is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+	
+	#######--------------------------------------------------------------##########
+	## Validation to display that Event ID is mandatory######
+	#######--------------------------------------------------------------##########
+	
+	IF ( FIELDEXISTS(("BANCS").("INPUT").("ChrgEveID" + CUST.CASIGLS.FI_Cntr)) == 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Charge Event ID field is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+	
+	#######--------------------------------------------------------------##########
+	## Validation to display that amount and currency is mandatory######
+	#######--------------------------------------------------------------##########
+	
+	IF ( FIELDEXISTS(("BANCS").("INPUT").("UsrCalc" + CUST.CASIGLS.FI_Cntr)) == 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "User charge amount and currency fields are mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF
+	
+	print(("BANCS").("INPUT").("ChrgTyp" + CUST.CASIGLS.FI_Cntr))
+	("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.FI_Cntr) = ("BANCS").("INPUT").("ChrgTyp" + CUST.CASIGLS.FI_Cntr)
+	("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.FI_Cntr) = ("BANCS").("INPUT").("ChrgEveID" + CUST.CASIGLS.FI_Cntr)
+	("CUST").("CASIGLS").("UsrCalc" + CUST.CASIGLS.FI_Cntr) = ("BANCS").("INPUT").("UsrCalc" + CUST.CASIGLS.FI_Cntr)
+	
+	print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.FI_Cntr))
+	print(("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.FI_Cntr))
+	print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.FI_Cntr))
+	
+	CUST.CASIGLS.FI_Cntr = CINT(CUST.CASIGLS.FI_Cntr) + 1
+#}
+DO
+
+#######--------------------------------------------------------------##########
+####  call the script to calculate the  system calculated charges ####
+#######--------------------------------------------------------------##########
+
+CALL("Disb_Charge.scr")
+
+#######--------------------------------------------------------------##########
+#### Printing the output obtained from the called script ####
+#######--------------------------------------------------------------##########
+
+print(CUST.CASIGLS.countChrg)
+
+CUST.CASIGLS.chgr_outrec_Cntr = "0"
+WHILE(CINT(CUST.CASIGLS.chgr_outrec_Cntr) < CINT(CUST.CASIGLS.countChrg))
+#{
+	print(("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chgr_outrec_Cntr))
+	print(("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chgr_outrec_Cntr))
+	print(("CUST").("CASIGLS").("data_userChargeAmt" + CUST.CASIGLS.chgr_outrec_Cntr))
+	print(("CUST").("CASIGLS").("data_systemChargeAmt" + CUST.CASIGLS.chgr_outrec_Cntr))
+
+	CUST.CASIGLS.chgr_outrec_Cntr = CINT(CUST.CASIGLS.chgr_outrec_Cntr) + 1
+#}
+DO
+
+#######--------------------------------------------------------------##########
+## Validating the charges input  recieved from the FI  the user ######
+#######--------------------------------------------------------------##########
+
+CUST.CASIGLS.Cntr = "1"
+print(CUST.CASIGLS.Charge_No)
+WHILE(CINT(CUST.CASIGLS.Cntr) <= CINT(CUST.CASIGLS.Charge_No))
+#{
+	print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr))
+	print(("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr))
+	print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr))
+	
+	#######--------------------------------------------------------------##########
+	## To separate currency and user charge amount 				#######
+	#######--------------------------------------------------------------##########
+	sv_c  = GETPOSITION(("CUST").("CASIGLS").("UsrCalc" + CUST.CASIGLS.Cntr), "|")
+	sv_d = LEFT$(("CUST").("CASIGLS").("UsrCalc" + CUST.CASIGLS.Cntr),sv_c-1)
+	print(sv_d)
+	("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr) = sv_d
+	
+	sv_l = STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalc" + CUST.CASIGLS.Cntr)))
+	print(sv_l)
+	
+	#######--------------------------------------------------------------##########
+	## Obtaining the value of currency ######
+	#######--------------------------------------------------------------##########
+	sv_g = MID$(("CUST").("CASIGLS").("UsrCalc" + CUST.CASIGLS.Cntr),sv_c,sv_l)
+	print(sv_g)
+	("CUST").("CASIGLS").("ChrgCrncy" + CUST.CASIGLS.Cntr) = sv_g
+	#Taking
+	
+	####------------------------------------------------------######
+	## Validation to display that charge type is mandatory######
+	####------------------------------------------------------######	
+
+	IF((STRLEN(TRIM(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr)))) == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Charge Type is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	####------------------------------------------------------######
+	## Validation to display that Event ID is mandatory######
+	####------------------------------------------------------######	
+
+	IF((STRLEN(TRIM(("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr)))) == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Charge Event ID is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+
+	####------------------------------------------------------######
+	## Validation to display that amount is mandatory######
+	####------------------------------------------------------######	
+
+	IF((STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr)))) == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "User charge amount and currency is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	#######--------------------------------------------------------------##########
+	## Validation to check whether the user entered charge type, 
+	## Event ID, Currency is applicable for this account
+	## To check, whether the combination charge type, event id 
+	## and currency is proper
+	## If above condition doesnt match, displaying the 
+	## proper error message
+	#######--------------------------------------------------------------##########		
+
+	sv_i = 1
+	sv_s = "charge_type,pttmEventId,chrgCrncyCode "
+	sv_s = sv_s + sv_s + " | "
+	sv_s = sv_s + " SELECT charge_type,pttm_event_id,crncy_code  "
+	sv_s = sv_s + " FROM PCT "
+	sv_s = sv_s + " WHERE schm_code in ( "
+	sv_s = sv_s + " 			select schm_code "
+	sv_s = sv_s + " 			FROM LSP "
+	sv_s = sv_s + " 			WHERE schm_code = ?SVAR "
+	sv_s = sv_s + " 			AND crncy_code = ?SVAR " 
+	sv_s = sv_s + " 			AND del_flg='N' "
+	sv_s = sv_s + " 			)"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CASIGLS.schmLoan + "|" + CUST.CASIGLS.currencyLoan
+	#######--------------------------------------------------------------##########
+	## Fetching data from database ##
+	#######--------------------------------------------------------------##########
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	IF( sv_c == 0 ) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(sv_m)
+		sv_c = urhk_dbCursorFetch(sv_m)
+		WHILE(sv_c == 0)
+		#{
+			print(BANCS.OUTPARAM.charge_type)
+			print(BANCS.OUTPARAM.pttmEventId)
+			print(BANCS.OUTPARAM.chrgCrncyCode)
+			CUST.CASIGLS.charge_type = BANCS.OUTPARAM.charge_type
+			CUST.CASIGLS.pttmEventId = BANCS.OUTPARAM.pttmEventId
+			CUST.CASIGLS.chrgCrncyCode = BANCS.OUTPARAM.chrgCrncyCode
+			print(CUST.CASIGLS.chargeFlag)
+
+			IF(CUST.CASIGLS.chargeFlag != "N") THEN
+			#{
+				print(CUST.CASIGLS.chargeFlag)
+				print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr))
+				print(CUST.CASIGLS.charge_type)
+				IF((CUST.CASIGLS.charge_type) != (("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr))) THEN
+				#{
+					CUST.CASIGLS.chargeFlag = "Y"
+				#}
+				ELSE
+				#{
+					CUST.CASIGLS.chargeFlag = "N"
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(CUST.CASIGLS.eventFlag)
+			IF(CUST.CASIGLS.eventFlag != "N") THEN
+			#{
+				print(CUST.CASIGLS.eventFlag)
+				print(("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr))
+				print((CUST.CASIGLS.pttmEventId))
+				IF((CUST.CASIGLS.pttmEventId) != (("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr))) THEN
+				#{
+					CUST.CASIGLS.eventFlag = "Y"
+				#}
+				ELSE
+				#{
+					CUST.CASIGLS.eventFlag = "N"
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(CUST.CASIGLS.crncyFlag)
+			IF(CUST.CASIGLS.crncyFlag != "N") THEN
+			#{
+				print(CUST.CASIGLS.crncyFlag)
+				print(CUST.CASIGLS.chrgCrncyCode)
+				print(("CUST").("CASIGLS").("ChrgCrncy" + CUST.CASIGLS.Cntr))
+				IF((CUST.CASIGLS.chrgCrncyCode) != (("CUST").("CASIGLS").("ChrgCrncy" + CUST.CASIGLS.Cntr))) THEN
+				#{
+					CUST.CASIGLS.crncyFlag = "Y"
+				#}
+				ELSE
+				#{
+					CUST.CASIGLS.crncyFlag = "N"
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(CUST.CASIGLS.chargeFlag)
+			print(CUST.CASIGLS.eventFlag)
+			print(CUST.CASIGLS.crncyFlag)
+			
+			sv_d = urhk_dbCursorFetch(sv_m)
+			sv_i = sv_i + 1
+		#}
+		DO
+		
+#######--------------------------------------------------------------##########
+## If above condition doesnot match, displaying the #
+## proper error message#
+#######--------------------------------------------------------------##########		
+		
+		IF((CUST.CASIGLS.chargeFlag == "Y") OR (CUST.CASIGLS.eventFlag == "Y") OR (CUST.CASIGLS.crncyFlag == "Y")) THEN
+		#{
+			IF(CUST.CASIGLS.chargeFlag == "Y") THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Invalid Charge Type"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO LOOPEND
+			#}
+			ENDIF
+			IF(CUST.CASIGLS.eventFlag == "Y") THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Invalid Charge Event ID"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO LOOPEND
+			#}
+			ENDIF	
+			IF(CUST.CASIGLS.crncyFlag == "Y") THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Invalid Currency code"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO LOOPEND
+			#}
+			ENDIF
+			
+			LOOPEND:
+			sv_c = urhk_dbCursorClose(sv_m)
+			GOTO QUITSCRIPT
+		#}
+		ELSE
+		#{
+			sv_c = urhk_dbCursorClose(sv_m)
+		#}
+		ENDIF
+	#}	
+	ENDIF
+
+#######--------------------------------------------------------------##########
+## Validation for Charge amount ###
+#######--------------------------------------------------------------##########
+	print(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr))
+	IF((STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr)))) > 0) THEN
+	#{
+		####--------------------------------------------------######
+		## To separate the decimal point ######
+		## Obtaining the position of the decimal point ######
+		####-------------------------------------------------########
+		sv_m = getposition(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),".")
+		print(sv_m)
+
+		IF(sv_m != 0) THEN
+		#{
+			####--------------------------------------------------######
+			## Obtaining the value before the decimal point ######
+			####-------------------------------------------------########
+			sv_d = Left$(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),sv_c-1)
+			print(sv_d)
+			CUST.CASIGLS.chrg_before = sv_d
+
+			IF((STRLEN(TRIM(CUST.CASIGLS.chrg_before))) > 14) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "This field can hold a maximum of only 14 digits before decimal point"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO QUITSCRIPT			
+			#}
+			ENDIF
+
+			####--------------------------------------------------######
+			## Obtaining the length of the amount ######
+			####-------------------------------------------------########
+			sv_l = STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr)))
+			print(sv_l)
+
+			####--------------------------------------------------######
+			## Obtaining the value after the decimal point ######
+			####-------------------------------------------------########
+			sv_g = MID$(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),sv_c,sv_l)
+			print(sv_g)
+			CUST.CASIGLS.chrg_after = sv_g
+
+			IF((STRLEN(TRIM(CUST.CASIGLS.chrg_after))) > 2) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Cannot exceed 2 digits after the the decimal point"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO QUITSCRIPT			
+			#}
+			ENDIF
+			####--------------------------------------------------######
+			## Combining the values without decimal point ######
+			####-------------------------------------------------########
+			CUST.CASIGLS.chrg_total = CUST.CASIGLS.chrg_before + CUST.CASIGLS.chrg_after
+			print(CUST.CASIGLS.chrg_total)
+
+			IF(BANCS.STDIN.contextBankId != "UG") THEN
+			#{
+				####--------------------------------------------------######
+				## Validating  Amount to be numeric #######
+				####-------------------------------------------------########
+				sv_u = urhk_B2k_isStringNumeric(CUST.CASIGLS.chrg_total)	
+				print(sv_u)
+				IF(sv_u != 0) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.name = "Charge Amount should be numeric"
+					sv_a=BANCS.OUTPUT.name
+					sv_u=urhk_setOrbOut("Error|" +sv_a)
+					GOTO QUITSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			####--------------------------------------------------######
+			## Validating  Amount to be numeric #######
+			####-------------------------------------------------########
+			sv_u = urhk_B2k_isStringNumeric(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr))	
+			print(sv_u)
+			IF(sv_u != 0) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "Charge Amount should be numeric"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO QUITSCRIPT
+			#}
+			ENDIF
+
+			IF((STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr)))) > 14) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = "This field can hold a maximum of only 14 digits before decimal point"
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error|" +sv_a)
+				GOTO QUITSCRIPT			
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Charge Amount is mandatory"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	#}
+	ENDIF	
+#######--------------------------------------------------------------##########
+#### To map the event id and charge type with the input ####
+### Assigning the value of user calculated amount and system calculated 
+#amount  for the user entered charge type(Fixed/Percentage)
+#######--------------------------------------------------------------##########
+	
+	print(CUST.CASIGLS.countChrg)
+	CUST.CASIGLS.chk_Cntr = "0"
+	WHILE(CINT(CUST.CASIGLS.chk_Cntr) < CINT(CUST.CASIGLS.countChrg))
+	#{
+		print(("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr))
+		print(("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chk_Cntr))
+		print(("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr))
+		print(("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chk_Cntr))
+		IF(((("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr)) == (("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chk_Cntr))) AND ((("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr)) == (("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chk_Cntr)))) THEN
+		#{
+			print("true")
+			####-----------------------------------------------------------------------------######
+			#### To check whether it is script based charge ####
+			####-----------------------------------------------------------------------------########
+			sv_s = "amtInd "
+			sv_s = sv_s + " | "
+			sv_s = sv_s + " SELECT amt_ind "
+			sv_s = sv_s + " FROM ADM "
+			sv_s = sv_s + " WHERE amt_drv_srl_num IN ( "
+			sv_s = sv_s + " 			SELECT PTT.amt_derv_srl_num "
+			sv_s = sv_s + " 			FROM PTT "
+			sv_s = sv_s + " 			WHERE event_id = ?SVAR "
+			sv_s = sv_s + " 			AND event_type = ?SVAR "
+			sv_s = sv_s + " 			) "
+			sv_s = sv_s + " 			AND del_flg!='Y' "
+			BANCS.INPARAM.BINDVARS = ("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr ) + "|" + ("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d == 0) THEN
+			#{
+				print(BANCS.OUTPARAM.amtInd)
+				CUST.CASIGLS.amtInd = BANCS.OUTPARAM.amtInd
+				IF(CUST.CASIGLS.amtInd == "S") THEN
+				#{
+					print("script")
+					("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_userChargeAmt" + CUST.CASIGLS.chk_Cntr)
+					("CUST").("CASIGLS").("systemChargeAmt"+CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_systemChargeAmt" + CUST.CASIGLS.chk_Cntr)
+				#}
+				ELSE
+				#{
+					print("am not script")
+					("CUST").("CASIGLS").("systemChargeAmt"+CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_systemChargeAmt" + CUST.CASIGLS.chk_Cntr)
+					IF(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr) == "0") THEN
+					#{
+						("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_userChargeAmt" + CUST.CASIGLS.chk_Cntr)
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		CUST.CASIGLS.chk_Cntr = CINT(CUST.CASIGLS.chk_Cntr) + 1
+	#}
+	DO
+	CUST.CASIGLS.Cntr = CINT(CUST.CASIGLS.Cntr) + 1
+	print(CUST.CASIGLS.Cntr)
+	CUST.CASIGLS.chargeFlag = "Y"
+	CUST.CASIGLS.crncyFlag = "Y"
+	CUST.CASIGLS.eventFlag = "Y"
+#}
+DO
+
+####-----------------------------------------------------------------------------######
+#### To get the script based charges applicable for this account ####
+####-----------------------------------------------------------------------------########
+print(CUST.CASIGLS.Cntr)
+
+IF(TRIM(CUST.CASIGLS.APPLY_CHARGE) == "Y") THEN
+#{
+	print(CUST.CASIGLS.countChrg)
+	print(CUST.CASIGLS.Cntr)
+	CUST.CASIGLS.chk_Cntr = "0"
+	WHILE(CINT(CUST.CASIGLS.chk_Cntr) < CINT(CUST.CASIGLS.countChrg))
+	#{
+		####-----------------------------------------------------------------------------######
+		#### To check the script based charges from the called script ####
+		####-----------------------------------------------------------------------------########
+		print(("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chk_Cntr))
+		print(("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chk_Cntr))
+		####-----------------------------------------------------------------------------######
+		#### To check whether it is script based charge ####
+		####-----------------------------------------------------------------------------########
+		sv_s = "amtInd "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT amt_ind "
+		sv_s = sv_s + " FROM ADM "
+		sv_s = sv_s + " WHERE amt_drv_srl_num IN ( "
+		sv_s = sv_s + " 			SELECT PTT.amt_derv_srl_num "
+		sv_s = sv_s + " 			FROM PTT "
+		sv_s = sv_s + " 			WHERE event_id = ?SVAR "
+		sv_s = sv_s + " 			AND event_type = ?SVAR "
+		sv_s = sv_s + " 			) "
+		sv_s = sv_s + " 			AND del_flg!='Y' "
+		sv_s = sv_s + " AND bank_id = '54' "
+		BANCS.INPARAM.BINDVARS = ("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chk_Cntr) + "|" + ("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chk_Cntr)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d==0) THEN
+		#{
+			print(BANCS.OUTPARAM.amtInd)
+			CUST.CASIGLS.amtInd = BANCS.OUTPARAM.amtInd
+			IF(CUST.CASIGLS.amtInd == "S") THEN
+			#{
+				print(CUST.CASIGLS.Cntr)
+				print("script")
+				("CUST").("CASIGLS").("ChrgTyp" + CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_chargeType" + CUST.CASIGLS.chk_Cntr)
+				("CUST").("CASIGLS").("ChrgEveID" + CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_eventId" + CUST.CASIGLS.chk_Cntr)
+				("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_userChargeAmt" + CUST.CASIGLS.chk_Cntr)
+				("CUST").("CASIGLS").("systemChargeAmt"+CUST.CASIGLS.Cntr) = ("CUST").("CASIGLS").("data_systemChargeAmt" + CUST.CASIGLS.chk_Cntr)
+				print(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr))
+				####--------------------------------------------------######
+				## Obtaining the charge currency ######
+				####-------------------------------------------------########		
+				sv_m = getposition(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),"|")
+				print(sv_m)
+
+				IF(sv_m != 0) THEN
+				#{
+					####--------------------------------------------------######
+					## Obtaining the value before the pipe ######
+					####-------------------------------------------------########
+					sv_n = LEFT$(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),sv_m-1)
+					print(sv_n)
+					CUST.CASIGLS.amt = sv_n
+
+					####--------------------------------------------------######
+					## Obtaining the length of the amount ######
+					####-------------------------------------------------########
+					sv_l = STRLEN(TRIM(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr)))
+					print(sv_l)
+					print(sv_m)
+					####--------------------------------------------------######
+					## Obtaining the value after the pipe ######
+					####-------------------------------------------------########
+					sv_g = MID$(("CUST").("CASIGLS").("UsrCalcAmt" + CUST.CASIGLS.Cntr),sv_m,sv_l)
+					print(sv_g)
+					("CUST").("CASIGLS").("ChrgCrncy" + CUST.CASIGLS.Cntr) = sv_g
+				#}
+				ENDIF
+				
+				CUST.CASIGLS.Cntr = CINT(CUST.CASIGLS.Cntr) + 1
+			#}
+			ENDIF
+		#}
+		ENDIF
+		CUST.CASIGLS.chk_Cntr = CINT(CUST.CASIGLS.chk_Cntr) + 1
+	#}
+	DO
+#}
+ENDIF
+
+
+
+
+
+DISB:
+
+#######--------------------------------------------------------------##########
+##### Define the Inputs necessary for Loan Disbursement #####
+#######--------------------------------------------------------------##########
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.isDetailsEntered|1")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.laAcct.foracid|"+CUST.CASIGLS.loanAcctNo)
+
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.tranType.code|T")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.valueDate|"+BANCS.STDIN.BODDate)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.solId.solId|"+CUST.CASIGLS.solLoan)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.schmCode.schmCode|"+CUST.CASIGLS.schmLoan)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.crncyCode.crncyCode|"+CUST.CASIGLS.currencyLoan)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.disburseAmt|"+CUST.CASIGLS.DisbAmt+"|"+CUST.CASIGLS.currencyLoan)
+
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.transferAcctNum.foracid|"+CUST.CASIGLS.CrId)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.grossNetDisbt.code|N")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.modeOfCall|D")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.grossNetDisbt.code|"+CUST.CASIGLS.DisbFlag)
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.loanAmt|200000|KES")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.loanPerdMths|12")
+sv_u= urhk_SetUrhkInp("acctDisburseTranLA.loanPerdDays|0")
+
+print(sv_u)
+
+sv_t = 1
+print(CUST.CASIGLS.Cntr)
+
+IF (CUST.CASIGLS.disbAmt == 0 ) THEN
+#{
+	CUST.CASIGLS.Cntr = CINT(CUST.CASIGLS.Cntr) - 1
+	print(CUST.CASIGLS.Cntr)
+#}
+ENDIF
+
+print(CUST.CASIGLS.Cntr)
+
+WHILE(sv_t <= CINT(CUST.CASIGLS.Cntr))
+#{
+	sv_k = format$(sv_t,"%d")
+	print(("CUST").("CASIGLS").("ChrgTyp" + sv_k))
+	print(("CUST").("CASIGLS").("ChrgEveID" + sv_k))
+	#print(("CUST").("CASIGLS").("UsrCalc" + sv_k))
+	print(("CUST").("CASIGLS").("UsrCalcAmt" + sv_k))
+	print(("CUST").("CASIGLS").("ChrgCrncy" + sv_k))
+
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.key.serialNum|1")
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.eventSrlNum|1")
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.key.chargeType|"+("CUST").("CASIGLS").("ChrgTyp" + sv_k))
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.eventId|"+("CUST").("CASIGLS").("ChrgEveID" + sv_k))
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.chargeCrncy.crncyCode|"+("CUST").("CASIGLS").("ChrgCrncy" + sv_k))
+	print(CUST.CASIGLS.ChrgCrncy1)
+	print(CUST.CASIGLS.UsrCalcAmt1)
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.userChargeAmt|"+("CUST").("CASIGLS").("UsrCalcAmt" + sv_k)+"|"+("CUST").("CASIGLS").("ChrgCrncy" + sv_k))
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.systemChargeAmt|"+("CUST").("CASIGLS").("systemChargeAmt" + sv_k)+"|"+("CUST").("CASIGLS").("ChrgCrncy" + sv_k))
+	#sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.modifyAllwd|N")
+	#sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.newRecordFlg|Y")
+	#sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.collectedAmt|0")
+	sv_u= urhk_SetUrhkInp("acctDisburseTranLA.chargesLL.<rec_"+ sv_k+">.selectFlg|N")
+
+	sv_t  = sv_t + 1
+#}
+DO		
+
+
+#######--------------------------------------------------------------##########
+## To check whether holiday period is exsists or not ####
+#######--------------------------------------------------------------##########
+sv_s = " hldyPerdIntFlg "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT hldy_perd_int_flg "
+sv_s = sv_s + " FROM LSP "
+sv_s = sv_s + " WHERE schm_code = ?SVAR  "
+sv_s = sv_s + " AND crncy_code = ?SVAR "
+sv_s = sv_s + " AND del_flg='N' "
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.schmLoan + "|" + CUST.CASIGLS.currencyLoan 
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+IF (sv_d == 0) THEN
+#{
+	print(BANCS.OUTPARAM.hldyPerdIntFlg)
+	CUST.CASIGLS.hldyPerdIntFlg = BANCS.OUTPARAM.hldyPerdIntFlg
+	IF((STRLEN(CUST.CASIGLS.hldyPerdIntFlg)) > 0) THEN
+	#{
+		sv_s = " disbursedAmt "
+		sv_s = sv_s + " | "
+		sv_s = sv_s + " SELECT dis_amt "
+		sv_s = sv_s + " FROM LAM "
+		sv_s = sv_s + " WHERE acid = ?SVAR "
+		sv_s = sv_s + " AND entity_cre_flg='Y' "
+		sv_s = sv_s + " AND del_flg = 'N' "
+		BANCS.INPARAM.BINDVARS = CUST.CASIGLS.acid
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			print(BANCS.OUTPARAM.disbursedAmt)
+			CUST.CASIGLS.disbursedAmt = BANCS.OUTPARAM.disbursedAmt
+			CUST.CASIGLS.total_amt = CDOUBLE(CUST.CASIGLS.disbursedAmt) + CDOUBLE(CUST.CASIGLS.DisbAmt)
+			print(CUST.CASIGLS.total_amt)
+			print(CUST.CASIGLS.loanAmount)
+			IF((CDOUBLE(CUST.CASIGLS.total_amt)) == (CDOUBLE(CUST.CASIGLS.loanAmount))) THEN
+			#{
+				sv_u= urhk_SetUrhkInp("acctDisburseTranLA.finalDisbFlg|Y")
+			#}
+			ELSE
+			#{	
+				sv_u= urhk_SetUrhkInp("acctDisburseTranLA.finalDisbFlg|N")
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+sv_s = "dbstat|SELECT"
+sv_s = sv_s + " TO_CHAR(db_stat_date,'DD-MM-YYYY HH24:MI:SS')"
+sv_s = sv_s + " FROM"
+sv_s = sv_s + " TBAADM.GCT"
+sv_s = sv_s + " WHERE bank_id = ?SVAR"
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+sv_d = urhk_dbSelectWithBind(sv_s)
+IF(sv_d == 0) THEN
+#{
+CUST.CASIGLS.dbstat = BANCS.OUTPARAM.dbstat
+print(CUST.CASIGLS.dbstat)
+#}
+ENDIF
+sv_u = urhk_SetUrhkInp("acctDisburseTranLA.glDate|"+ CUST.CASIGLS.dbstat)
+print(sv_u)
+
+###---------------------------------------------------------------------#######
+### SRV to Insert Disburse Data  ###
+###---------------------------------------------------------------------#######
+sv_u = urhk_ExecSrv("SRV_InsertDisbData|same_user_verify = Y|retain_all_output = Y")
+print(sv_u)
+IF(sv_u == 0)THEN
+#{
+	print(BANCS.OUTPARAM.successOrFailure)
+#}
+ENDIF
+ 
+IF (sv_u != 0) THEN
+#{
+       sv_e = BANCS.OUTPUT.successOrFailure
+       print(sv_e)
+       print(BANCS.OUTPARAM.Fatal_num)
+       print(BANCS.OUTPARAM.Error_num)
+       print(BANCS.OUTPARAM.Warning_num)
+       print(BANCS.OUTPARAM.UserInfo_num)
+       print(BANCS.OUTPARAM.Xcpn_num)
+       print(BANCS.OUTPARAM.Xcpn_Err_num)
+       print(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+       print(BANCS.OUTPARAM.Xcpn_Err_num)
+
+       sv_m = 1
+       sv_n = CINT(BANCS.OUTPARAM.Error_num)
+       WHILE (sv_m <= sv_n)
+       #{
+
+		sv_l = 1
+			sv_p = FORMAT$(sv_l,"%d")
+			CUST.CASIGLS.ErrMsg = ("BANCS").("OUTPARAM").("ErrorMesg_"+ sv_p)
+			#CUST.CASIGLS.ErrMsg = sv_m + CUST.CASIGLS.ErrMsg
+			print(CUST.CASIGLS.ErrMsg)
+			CUST.CASIGLS.ErrCode = ("BANCS").("OUTPARAM").("ErrorCode_"+ sv_p)
+			print(CUST.CASIGLS.ErrCode)
+			CUST.CASIGLS.Tag = ("BANCS").("OUTPARAM").("Tag_"+ sv_p)
+			print(CUST.CASIGLS.Tag)
+			CUST.CASIGLS.successFailure = "F"
+	       sv_f = FORMAT$(sv_m,"%d")
+	       sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+	       print(sv_e)
+		###-----------------------------------------#######
+		### To Display the Error message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Error - During Loan Disbursement :"+sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error|" +sv_a)
+		GOTO QUITSCRIPT
+	       sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+	       print(sv_e)
+	       sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+	       print(sv_e)
+	 	sv_m = sv_m + 1
+       	#}
+       	DO
+       	sv_m = 1
+       	sv_n = CINT(BANCS.OUTPARAM.Xcpn_num)
+       	WHILE (sv_m <= sv_n)
+       	#{
+       		sv_f = FORMAT$(sv_m,"%d")
+       		sv_e = ("BANCS").("OUTPARAM").("XcpnDesc_"+sv_f)
+       		print(sv_e)
+       		
+       		###-----------------------------------------#######
+       		### To Display the Exception message ###
+       		###-----------------------------------------#######
+       		BANCS.OUTPUT.successOrFailure = "F"
+       		BANCS.OUTPUT.name = "- During Disbursement Exception :"+sv_e
+       		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Exception|" +sv_a)
+       		
+       		sv_m = sv_m + 1
+       	#}
+       	DO
+
+       	sv_m = 1
+       	sv_n = CINT(BANCS.OUTPARAM.Warning_num)
+       	WHILE (sv_m <= sv_n)
+       	#{
+       		sv_f = FORMAT$(sv_m,"%d")
+       		sv_e = ("BANCS").("OUTPARAM").("WarningMesg"+sv_f)
+       		print(sv_e)
+		###-----------------------------------------#######
+		### To Display the Warning message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Warning - During Disbursement :"+sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Warning|" +sv_a)       
+		
+       		sv_m = sv_m + 1
+       	#}
+	DO
+ #}
+ ENDIF
+ 
+###---------------------------------------------------------------------#######
+## commit insert disb data            ##
+###---------------------------------------------------------------------#######
+sv_u = urhk_dbSQLWithBind("commit")
+print(sv_u)
+
+###---------------------------------------------------------------------#######
+## calling the verification SRV service         ##
+###---------------------------------------------------------------------#######
+sv_u = urhk_CopyOutToIn("")
+print(sv_u)
+
+sv_u= urhk_SetUrhkOut("tranMesg.tranDetail.tranIdentifier.tranId|tran_Id")
+sv_u= urhk_SetUrhkOut("tranMesg.tranDetail.tranIdentifier.tranDate|tran_Date")
+print(sv_u)
+
+###---------------------------------------------------------------------#######
+### SRV to Verify the Disbursement  ###
+###---------------------------------------------------------------------#######
+sv_u = urhk_ExecSrv("SRV_VerifyDisbData|same_user_verify = Y|retain_all_output = Y")
+print(sv_u)
+
+IF(sv_u == 0)THEN
+#{	
+	#sv_q = urhk_B2k_PrintRepos("BANCS")
+	#print(sv_q)
+	print(BANCS.OUTPARAM.successOrFailure)	
+	print(BANCS.OUTPARAM.tran_Id)	
+	print(BANCS.OUTPARAM.tran_Date)
+	IF(BANCS.OUTPARAM.successOrFailure == "S") THEN
+	#{
+		print(BANCS.OUTPARAM.tran_Id)	
+		print(BANCS.OUTPARAM.tran_Date)
+		
+		####-------------------------------------######
+		## Assuming the values to the repository
+		####-----------------------------------########
+		CUST.CASIGLS.tranId	=	BANCS.OUTPARAM.tran_Id
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.OUTPUT.name =CUST.CASIGLS.tranId
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Loan Account has been disbursed successfully|" +sv_a)
+		GOTO EndOfScript
+	#}
+	ENDIF
+#}
+ENDIF
+ 
+IF (sv_u != 0) THEN
+#{
+	sv_m = BANCS.OUTPUT.successOrFailure
+	print(sv_m)
+	print(BANCS.OUTPARAM.Fatal_num)
+	print(BANCS.OUTPARAM.Error_num)
+	print(BANCS.OUTPARAM.Warning_num)
+	print(BANCS.OUTPARAM.UserInfo_num)
+	print(BANCS.OUTPARAM.Xcpn_num)
+	print(BANCS.OUTPARAM.Xcpn_Err_num)
+	print(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+	print(BANCS.OUTPARAM.Xcpn_Err_num)
+
+	sv_m = 1
+	sv_n = cint(BANCS.OUTPARAM.Error_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_m,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+		print(sv_e)
+		
+		###-----------------------------------------#######
+		### To Display the Error message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = sv_e
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error - During Disbursement Verify|" +sv_a)
+		
+###---------------------------------------------------------------------#######
+		## Rollback  the transaction in case of failure ##
+###---------------------------------------------------------------------#######
+		sv_d = urhk_dbSQLWithBind("Rollback")
+		print(sv_d)
+		
+		GOTO EndOfScript
+		
+		sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+		print(sv_e)
+		sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+		print(sv_e)
+		 sv_m = sv_m + 1
+	#}
+	DO
+
+	sv_m = 1
+	sv_n = CINT(BANCS.OUTPARAM.Xcpn_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_m,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("XcpnDesc_"+sv_f)
+		print(sv_e)
+		sv_m = sv_m + 1
+	#}
+	DO
+
+	sv_m = 1
+	sv_n = CINT(BANCS.OUTPARAM.Warning_num)
+	WHILE (sv_m <= sv_n)
+	#{
+		sv_f = FORMAT$(sv_m,"%d")
+		sv_e = ("BANCS").("OUTPARAM").("WarningMesg"+sv_f)
+		print(sv_e)
+		sv_m = sv_m + 1
+	#}
+	DO
+		
+###---------------------------------------------------------------------#######
+#### New changes starts here #####
+###---------------------------------------------------------------------#######
+	
+	 IF ((cint(BANCS.OUTPARAM.Warning_num) > 0) OR (cint(BANCS.OUTPARAM.Xcpn_num) > 0) OR (cint(BANCS.OUTPARAM.UserInfo_num) > 0) OR (cint (BANCS.OUTPARAM.Xcpn_Xcpn_num) > 0)) THEN
+	 #{
+	 	####-----------------------------------------------------####
+		## Rollback  the transaction in case of failure ##
+		####-----------------------------------------------------####
+		sv_d = urhk_dbSQLWithBind("Rollback")
+		print(sv_d)
+		
+	 	 ####-----------------------------------------------------####
+	 	## calling the same service to override the exception ##
+		####-----------------------------------------------------####
+	 
+	 	sv_u= urhk_SetUrhkOut("tranMesg.tranDetail.tranIdentifier.tranId|tran_Id")
+		sv_u= urhk_SetUrhkOut("tranMesg.tranDetail.tranIdentifier.tranDate|tran_Date")
+		print(sv_u)
+		
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+	
+		#### INPUTS #####
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.isDetailsEntered|1")
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.laAcct.foracid|"+CUST.CASIGLS.loanAcctNo)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.laAcct.crncyCode|"+CUST.CASIGLS.currencyLoan)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.laAcct.solId|"+CUST.CASIGLS.solLoan)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.tranType.code|T")
+		
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.disburseAmt|"+CUST.CASIGLS.DisbAmt+"|"+CUST.CASIGLS.currencyLoan)
+
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.valueDate|"+BANCS.STDIN.BODDate)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.solId.solId|"+CUST.CASIGLS.solLoan)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.schmCode.schmCode|"+CUST.CASIGLS.schmLoan)
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.crncyCode.crncyCode|"+CUST.CASIGLS.currencyLoan)
+		
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.transferAcctNum.foracid|"+CUST.CASIGLS.CrId)
+		#sv_u= urhk_SetUrhkInp("acctDisburseTranLA.grossNetDisbt.code|N")
+		sv_u= urhk_SetUrhkInp("acctDisburseTranLA.grossNetDisbt.code|"+CUST.CASIGLS.DisbFlag)
+		print(sv_u)
+		
+###---------------------------------------------------------------------#######
+### SRV to Verify the Disbursement  ###
+###---------------------------------------------------------------------#######
+		sv_u = urhk_ExecSrv("SRV_VerifyDisbData|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			IF(BANCS.OUTPARAM.successOrFailure == "S") THEN
+			#{
+				print(BANCS.OUTPARAM.tran_Id)	
+				print(BANCS.OUTPARAM.tran_Date)
+
+				####-------------------------------------######
+				## Assuming the values to the repository
+				####-----------------------------------########
+				CUST.CASIGLS.tranId	=	BANCS.OUTPARAM.tran_Id
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name =CUST.CASIGLS.tranId
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Loan Account has been disbursed successfully|" +sv_a)
+				GOTO EndOfScript
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (sv_u != 0) THEN
+		#{
+			sv_m = BANCS.OUTPUT.successOrFailure
+			print(sv_m)
+			print(BANCS.OUTPARAM.Fatal_num)
+			print(BANCS.OUTPARAM.Error_num)
+			print(BANCS.OUTPARAM.Warning_num)
+			print(BANCS.OUTPARAM.UserInfo_num)
+			print(BANCS.OUTPARAM.Xcpn_num)
+			print(BANCS.OUTPARAM.Xcpn_Err_num)
+			print(BANCS.OUTPARAM.Xcpn_Xcpn_num)
+			print(BANCS.OUTPARAM.Xcpn_Err_num)
+			print("here 108")
+			sv_m = 1
+			sv_n = CINT(BANCS.OUTPARAM.Error_num)
+			WHILE (sv_m <= sv_n)
+			#{
+				sv_f = FORMAT$(sv_m,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				print(sv_e)
+				
+				###-----------------------------------------#######
+				### To Display the Error message ###
+				###-----------------------------------------#######
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.name = sv_e
+				sv_a=BANCS.OUTPUT.name
+				sv_u=urhk_setOrbOut("Error During Disbursement Verification|" +sv_a)
+				
+				####-----------------------------------------------------####
+				## Rollback  the transaction in case of failure ##
+				####-----------------------------------------------------####
+				sv_d = urhk_dbSQLWithBind("Rollback")
+				print(sv_d)
+				
+				GOTO QUITSCRIPT
+
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				print(sv_e)
+				 sv_m = sv_m + 1
+			#}
+			DO
+			sv_m = 1
+			sv_n = CINT(BANCS.OUTPARAM.Xcpn_num)
+			WHILE (sv_m <= sv_n)
+			#{
+				sv_f = FORMAT$(sv_m,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("XcpnDesc_"+sv_f)
+				print(sv_e)
+				sv_m = sv_m + 1
+			#}
+			DO
+			print("here 110")
+			sv_m = 1
+			sv_n = cint(BANCS.OUTPARAM.Warning_num)
+			WHILE (sv_m <= sv_n)
+			#{
+				sv_f = FORMAT$(sv_m,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("WarningMesg"+sv_f)
+				print(sv_e)
+				#sv_d = sv_d + 1
+				sv_m = sv_m + 1
+			#}
+			DO
+		#}
+		ENDIF
+		
+	#}
+	ELSE
+	#{
+		###-----------------------------------------#######
+		### To Display the Error message ###
+		###-----------------------------------------#######
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.name = "Error - Manual Intervention needed from Finacle Application for the Disbursement Verification"
+		sv_a=BANCS.OUTPUT.name
+		sv_u=urhk_setOrbOut("Error |" +sv_a)
+		GOTO QUITSCRIPT
+	#}	
+	ENDIF
+	
+###---------------------------------------------------------------------#######
+#### New changes ends here #####
+###---------------------------------------------------------------------#######
+ #}
+ ENDIF 
+ 
+ EndOfScript:
+ 
+###---------------------------------------------------------------------#######
+## Update the PROCESSED_FLG and end_time  status to the table ##
+###---------------------------------------------------------------------#######
+print(CUST.CASIGLS.appId)
+sv_s =" UPDATE CUSTOM.C_EQBK "
+sv_s = sv_s + " SET end_time = SYSDATE,processed_flg = 'Y' "
+sv_s = sv_s + " WHERE app_id = ?SVAR "
+sv_s = sv_s + " AND mod_code = ?SVAR " 
+BANCS.INPARAM.BINDVARS = CUST.CASIGLS.appId + "|" + CUST.CASIGLS.modCode1
+print(sv_s)
+sv_d = urhk_dbSQLWithBind (sv_s)
+print(sv_d)
+print(BANCS.OUTPARAM.DB_ERRCODE)
+
+###---------------------------------------------------------------------#######
+## commit CUSTOM.C_EQBK Table            ##
+###---------------------------------------------------------------------#######
+sv_d = urhk_dbSQLWithBind("commit")
+print(sv_d)
+ 
+QUITSCRIPT:	
+IF(CUST.CASIGLS.errMsg != "") THEN
+#{
+	sv_s = "echo '" + CUST.CASIGLS.errMsg + "' > error.log"
+	sv_a = SYSTEM(sv_s)
+	print(sv_a)
+#}
+ENDIF
+
+###---------------------------------------------------------------------#######
+## Exiting the script ##
+###---------------------------------------------------------------------#######
+ 	exitscript
+ 	
+ trace off
+exitscript
+end-->
+ 
+###---------------------------------------------------------------------#######
+## End of Script ##
+###---------------------------------------------------------------------#######
+ 

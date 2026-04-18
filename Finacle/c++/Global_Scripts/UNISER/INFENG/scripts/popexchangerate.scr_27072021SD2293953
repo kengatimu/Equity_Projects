@@ -1,0 +1,178 @@
+##########################################################################################
+# Source Name           : popexchangerate.scr
+# Date                  : 05-July-2013
+# Description           : This script is used to validate the account id and get the
+#			: balance details of that account.
+# Author                : Pankaj Gaur
+# Input                 : Loan Account Currency,Source Account Currency
+# Output                : rapayment rate code,var_crncy_units,cust_var_crncy_units
+# Author                : Pankaj Gaur
+# Called Script         : None
+# Calling Script        : None
+# Calling js            : Java script function fnExecuteScript from the front end
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        05-July-2013   Pankaj Gaur		Base Version
+###########################################################################################
+
+<--START
+CHECKSUM="8c2d19a2f55f1ec7a708b4d4a3cbd4a6a02ecb0b9fd3979650bdccaf2c180853"
+	TRACE ON
+	
+	###########################################################################################
+	# Creating Repositories and Classes
+	###########################################################################################
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CSDATA Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CSDATA")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CSDATA",5)
+	#}
+	ENDIF
+	
+	#	sv_t = urhk_B2K_printRepos("BANCS")
+	
+	###########################################################################################
+	# Include Library CUSTOMSO
+	# Library CUSTOMSO is required for fetching CPARAM values
+	###########################################################################################
+	
+	InclLib:
+		#{
+		LIBNAME CUSTOMSO
+		RETURN
+	#}
+	
+	###########################################################################################
+	# Get the input from the front end
+	###########################################################################################
+	
+	IF(FIELDEXISTS(BANCS.INPUT.lacAcctCurr) == 1) THEN
+	#{
+		CUST.CSDATA.lacAcctCurr = BANCS.INPUT.lacAcctCurr
+		PRINT(CUST.CSDATA.lacAcctCurr)
+		#}
+		
+		IF(FIELDEXISTS(BANCS.INPUT.srcAcctCurr) ==1) THEN
+		#{
+			CUST.CSDATA.srcAcctCurr = BANCS.INPUT.srcAcctCurr
+			PRINT(CUST.CSDATA.srcAcctCurr)
+			#}
+			CUST.CSDATA.varCrncy = ""
+			CUST.CSDATA.custVar = ""
+			
+			CUST.CSDATA.repayRateCode= ""
+			CUST.CSDATA.validationFlg=""
+			
+			##########################################################################################
+			# Find Repayment Rate Code from GCT table
+			##########################################################################################
+			
+			sv_s = "repayRateCode|SELECT repay_rate_code"
+			sv_s = sv_s + " FROM TBAADM.GCT"
+			sv_s = sv_s + " WHERE bank_id = '"+BANCS.STDIN.contextBankId+"'"
+			print(sv_s)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			
+			IF(sv_d != 0)THEN
+			#{
+				CUST.CSDATA.validationFlg = "Query execution from script failed"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			CUST.CSDATA.repayRateCode = BANCS.OUTPARAM.repayRateCode
+			PRINT(CUST.CSDATA.repayRateCode)
+			
+			
+			###########################################################################################
+			# Calling SRV_FetchTieredRateDtl to fetch rate code
+			###########################################################################################
+			
+			sv_u = urhk_SetUrhkInp("genTieredRateDtl.fromCrncy.crncyCode|"+CUST.CSDATA.lacAcctCurr)
+			sv_u = urhk_SetUrhkInp("genTieredRateDtl.toCrncy.crncyCode|"+CUST.CSDATA.srcAcctCurr)
+			sv_u = urhk_SetUrhkInp("genTieredRateDtl.rateCode.refCode|"+CUST.CSDATA.repayRateCode)
+			
+			
+			sv_u = urhk_SetUrhkOut("genTieredRateDtl.rate|rate")
+			sv_u = urhk_SetUrhkOut("genTieredRateDtl.treaRate|treaRate")
+			
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchTieredRateDtl")
+			print(sv_u)
+			
+			IF(sv_u == 0)THEN
+			#{
+				CUST.CSDATA.varCrncy = BANCS.OUTPARAM.rate
+				PRINT(CUST.CSDATA.varCrncy)
+				
+				CUST.CSDATA.custVar = BANCS.OUTPARAM.treaRate
+				PRINT(CUST.CSDATA.custVar)
+			#}
+			ENDIF
+			
+			
+			
+			ENDOFSCRIPT:
+				
+				##########################################################################################
+				# Sending data to the Front end
+				##########################################################################################
+				IF(CUST.CSDATA.repayRateCode=="") THEN
+				#{
+					sv_u = urhk_SetOrbOut("rateCode|NULL")
+					#}
+				ELSE
+					#{
+					sv_u = urhk_SetOrbOut("rateCode|" + CUST.CSDATA.repayRateCode)
+					PRINT(sv_u)
+					
+				#}
+				ENDIF
+				IF(CUST.CSDATA.varCrncy=="") THEN
+				#{
+					sv_u = urhk_SetOrbOut("varCrncy|NULL")
+					#}
+				ELSE
+					#{
+					sv_u = urhk_SetOrbOut("varCrncy|" + CUST.CSDATA.varCrncy)
+					PRINT(sv_u)
+					
+				#}
+				ENDIF
+				IF(CUST.CSDATA.custVar=="") THEN
+				#{
+					sv_u = urhk_SetOrbOut("custVar|NULL")
+					#}
+				ELSE
+					#{
+					sv_u = urhk_SetOrbOut("custVar|" + CUST.CSDATA.custVar)
+					PRINT(sv_u)
+					
+				#}
+				ENDIF
+				
+			ENDSCRIPT:
+				EXITSCRIPT
+				
+				TRACE OFF
+		END-->
+		
+		

@@ -1,0 +1,225 @@
+#  Date            : 11-05-2023
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : SRV
+#  Menu Option     : HBJE-SFEE
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             11-05-2023      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+
+<--START
+
+CHECKSUM="7096eabd43fb6a787064ee21f6ee2917faa9c06ebdc03d4baa3934a4b0fe4375"
+	TRACE ON
+	sv_a = urhk_B2K_printRepos("BANCS")
+	print(sv_a)
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+
+        IF(CLASSEXISTS("CUST","MESSAGING")==0) THEN
+        #{
+                CREATECLASS("CUST","MESSAGING",5)
+        #}
+        ENDIF	
+
+IF(CLASSEXISTS("CUST","WITH")==0) THEN
+	CREATECLASS("CUST","WITH",5)
+ENDIF
+
+	#----------------------------------------------------------------
+	# Account Fetch
+	#----------------------------------------------------------------
+	##sv_s ="foracid,aid,clramt|select foracid,acid,clr_bal_amt from tbaadm.gam where schm_code ='LA572' and bank_id =?SVAR and ACCT_CLS_FLG ='N' and clr_bal_amt <>'0'"
+	sv_s ="foracid,acid,clramt,phone,name|select foracid,acid,clr_bal_amt,phoneno,SUBSTR (LTRIM (g.ACCT_NAME),1,INSTR (LTRIM (g.ACCT_NAME), ' ') - 1) "
+	sv_s = sv_s + " from tbaadm.gam g, tbaadm.cphone c where schm_code ='LA572' and g.bank_id =?SVAR and g.sol_id =?SVAR "
+	sv_s = sv_s + " and ACCT_CLS_FLG ='N' and clr_bal_amt <>'0' and g.cif_id =c.PHONE_B2KID "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId  + "|" +  BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+
+	IF(sv_e == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_t = urhk_dbCursorFetch(sv_m)
+		print(sv_t)
+
+		IF(sv_t == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			CUST.LADISB.errMsg ="No Data."
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.LADISB.errMsg )
+			EXITSCRIPT
+		#}
+		ENDIF
+		print(sv_t)
+
+		WHILE (sv_t==0)
+			CUST.LADISB.foracid = BANCS.OUTPARAM.foracid
+			print(CUST.LADISB.foracid)
+			CUST.LADISB.acid = BANCS.OUTPARAM.acid
+			print(CUST.LADISB.acid)
+			CUST.LADISB.clramt = BANCS.OUTPARAM.clramt
+			print(CUST.LADISB.clramt)
+			CUST.LADISB.phone = BANCS.OUTPARAM.phone
+			print(CUST.LADISB.phone)
+			CUST.MESSAGING.MOBILENUMBER = CUST.LADISB.phone
+			print(CUST.MESSAGING.MOBILENUMBER)	
+			CUST.LADISB.name = BANCS.OUTPARAM.name
+			print(CUST.LADISB.name)
+			CUST.LADISB.Dear="Dear "
+			print(CUST.LADISB.Dear)
+			CUST.LADISB.FinBOD = mid$(BANCS.STDIN.BODDate,0,10)
+			print(CUST.LADISB.FinBOD)
+
+			
+			
+			#------------------------------------------------------
+			#Due Date/3 days to demand sms
+			#------------------------------------------------------
+			##sv_s = "shldNum,dmdDate,TimeDiff,dpd|select max(SHDL_NUM),to_char(NEXT_DMD_DATE,'ddmmyyyy'),NEXT_DMD_DATE- trunc(sysdate) diff from tbaadm.lrs where "
+			sv_s = "shldNum,dmdDate,TimeDiff,dpd|select max(SHDL_NUM),to_char(NEXT_DMD_DATE,'ddmmyyyy'),NEXT_DMD_DATE- to_date(?SVAR,'dd-mm-yyyy') diff,dpd_cntr from tbaadm.lrs, tbaadm.gac where "
+			sv_s = sv_s + " lrs.acid =?SVAR and lrs.bank_id =?SVAR and lrs.acid=gac.acid  group by NEXT_DMD_DATE,dpd_cntr "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS =CUST.LADISB.FinBOD + "|" +CUST.LADISB.acid + "|" + BANCS.STDIN.contextBankId 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w=urhk_dbSelectWithBind(sv_s)
+			if(sv_w==0)then
+				CUST.LADISB.shldNum = BANCS.OUTPARAM.shldNum
+				print(CUST.LADISB.shldNum)
+				CUST.LADISB.dmdDate = BANCS.OUTPARAM.dmdDate
+				print(CUST.LADISB.dmdDate)
+				CUST.LADISB.TimeDiff = BANCS.OUTPARAM.TimeDiff
+				print(CUST.LADISB.TimeDiff)
+				CUST.LADISB.dpd = BANCS.OUTPARAM.dpd
+				print(CUST.LADISB.dpd)
+				if(cdouble(CUST.LADISB.TimeDiff)==3)then
+					CUST.LADISB.repay=" .Remember, Your due day for Merchant Loan  is on "
+					print(CUST.LADISB.repay)
+					CUST.LADISB.repayloan=" and Due Amount "
+					print(CUST.LADISB.repayloan)
+					CUST.LADISB.repayloan2 = " . Timely payment increases your chances of accessing more limit"
+					CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.LADISB.dmdDate + CUST.LADISB.repayloan + CUST.LADISB.clramt + CUST.LADISB.repayloan2
+					print(CUST.MESSAGING.MESSAGETEXT)
+					callscriptifexist("esmspushLARW.scr")
+				endif
+				if(cdouble(CUST.LADISB.TimeDiff)==0)then
+					CUST.LADISB.repay=" Kindly, remember to pay for your Merchant Loan  today. Due Amount Rwf. "
+                                        print(CUST.LADISB.repay)
+                                        CUST.LADISB.repayloan=" . Timely payment increases your chances of accessing more limit "
+                                        print(CUST.LADISB.repayloan)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.LADISB.clramt + CUST.LADISB.repayloan 
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+				endif
+				#----------------------------------------------------------
+				# Dpd SMS
+				#----------------------------------------------------------
+				if((cdouble(CUST.LADISB.dpd)==1) or (cdouble(CUST.LADISB.dpd)==2) or (cdouble(CUST.LADISB.dpd)==4) or (cdouble(CUST.LADISB.dpd)==8))then
+					CUST.LADISB.repay=" Kindly, pay your overdue Merchant Loan . Amount due is Rwf. "
+                                        print(CUST.LADISB.repay)
+                                        CUST.LADISB.repayloan=" . Go to ‘Clear Loan’ menu and pay your loan, Failure to pay in time affects your limit "
+                                        print(CUST.LADISB.repayloan)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.LADISB.clramt + CUST.LADISB.repayloan
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+					callscriptifexist("esmspushLARW.scr")
+				endif
+				if(cdouble(CUST.LADISB.dpd)==10)then
+					CUST.LADISB.repay=" You are now 10 days overdue. Failure to clear your loan within the next 24 hrs. will have you blacklisted meaning you will not be able to borrow again in future " 
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay 
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+				endif
+				if(cdouble(CUST.LADISB.dpd)==12)then
+					CUST.LADISB.repay=" ;You are now 12 days overdue. You have been blacklisted and your borrowing limit has been suspended. Go to ‘Clear Loan’ menu and payoff your loan "
+					print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+				endif
+				if(cdouble(CUST.LADISB.dpd)==15)then
+                                        CUST.LADISB.repay=" ;You are now 15 days overdue. If not cleared in 7 days some services like prepaid & Credit cards will be suspended and your account referred to collection agents. Go to ‘Clear Loan’ menu and payoff your loan "
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+				if(cdouble(CUST.LADISB.dpd)==21)then
+                                        CUST.LADISB.repay="; You are now 21 days overdue. Kindly note that your account has been outsourced to <XX> for collection. Go to ‘Clear Loan’ menu and payoff your loan " 
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+				if((cdouble(CUST.LADISB.dpd)==30) or (cdouble(CUST.LADISB.dpd)==45))then
+                                        CUST.LADISB.repay= " ; You are now "
+					print(CUST.LADISB.repay)
+					CUST.LADISB.repay2= " days overdue. You have been blacklisted and your borrowing limit has been suspended. Go to ‘Clear Loan’ menu and payoff your loan "
+                                        print(CUST.LADISB.repay2)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay + CUST.LADISB.dpd + CUST.LADISB.repay2
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+				if(cdouble(CUST.LADISB.dpd)==60)then
+                                        CUST.LADISB.repay=" ; You are now 60 days overdue. Remember you have been blacklisted and your borrowing limit has been suspended. Go to ‘Clear Loan’ menu and payoff your loan"
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+				if(cdouble(CUST.LADISB.dpd)==75)then
+                                        CUST.LADISB.repay=" ; You are now 75 days overdue. You shall be listed with the CRB within 15 days unless you clear your loan in full. Go to ‘Clear Loan’ menu and payoff your loan"
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+				if(cdouble(CUST.LADISB.dpd)==90)then
+                                        CUST.LADISB.repay="; You are now 90 days overdue. You have been listed with the CRB in accordance with the Law. Go to ‘Clear Loan’ menu and payoff your loan"
+                                        print(CUST.LADISB.repay)
+                                        CUST.MESSAGING.MESSAGETEXT= CUST.LADISB.Dear + CUST.LADISB.name + CUST.LADISB.repay
+                                        print(CUST.MESSAGING.MESSAGETEXT)
+                                        callscriptifexist("esmspushLARW.scr")
+                                endif
+
+			endif
+ 
+		NEXTREC:
+		sv_t = urhk_dbCursorFetch(sv_m)
+		print(sv_t)
+		#}
+		DO
+		sv_x = urhk_dbCursorClose(sv_m)
+		print(sv_x)
+	#}
+	ELSE
+	#{
+		CUST.LADISB.errMsg ="Data Error"
+		sv_e=urhk_SetOrbOut("StattusCode|Error")
+		sv_e=urhk_SetOrbOut("Error|"+CUST.LADISB.errMsg)
+	#}
+	ENDIF		
+
+	ENDOFSCRIPT:
+EXITSCRIPT
+END-->
+

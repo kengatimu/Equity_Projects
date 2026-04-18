@@ -1,0 +1,308 @@
+##########################################################################################
+# Source Name           : siInterEntitydp005.scr
+# Date                  : 29-Apr-2013
+# Description           : This script is called from SRV's to insert data in mod table in Modify mode.
+# Author                : Priyanka T02
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        29-Apr-2013    Priyanka T02               Base Version
+###########################################################################################
+
+<--START
+	#trace on
+	# Script body goes here
+	#---------------------------------------------------------------------
+	#Check whether CUST Repository exists else create it
+	#---------------------------------------------------------------------
+	
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#Check whether CSIIET Class exists else create it
+	#---------------------------------------------------------------------
+	
+	IF(CLASSEXISTS("CUST","CSIIET") == 0) THEN
+	#{
+		CREATECLASS ("CUST","CSIIET",5)
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#Initialize the variables
+	#---------------------------------------------------------------------
+	CUST.CSIIET.siSrlNum = ""
+	CUST.CSIIET.siInterEntityFlg = ""
+	CUST.CSIIET.targerEntity = ""
+	CUST.CSIIET.targetEntityAcctId = ""
+	CUST.CSIIET.count = ""
+	CUST.CSIIET.count1 = ""
+	CUST.CSIIET.bankId = BANCS.STDIN.contextBankId
+	
+	#---------------------------------------------------------------------------------
+	# Reading Custom Field Values from frontend
+	#---------------------------------------------------------------------------------
+	
+	IF(FIELDEXISTS(ONS.CUSTOM.custDataIn))THEN
+	#{
+		PRINT(ONS.CUSTOM.custDataIn)
+		PRINT(STRLEN(ONS.CUSTOM.custDataIn))
+		sv_u = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+		#sv_a = urhk_B2k_PrintRepos("BANCS")
+		
+		IF(sv_u == 0)THEN
+		#{
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_1))THEN
+			#{
+				CUST.CSIIET.siInterEntityFlg = BANCS.INPUT.issimdtl_FIELD_1
+				PRINT(CUST.CSIIET.siInterEntityFlg)
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_2))THEN
+			#{
+				CUST.CSIIET.targerEntity= BANCS.INPUT.issimdtl_FIELD_2
+				PRINT(CUST.CSIIET.targerEntity)
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_3))THEN
+			#{
+				CUST.CSIIET.targetEntityAcctId  = BANCS.INPUT.issimdtl_FIELD_3
+				PRINT(CUST.CSIIET.targetEntityAcctId )
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			PRINT("Custom Field values not available")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		PRINT("Custom Field values not available")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(CUST.CSIIET.siInterEntityFlg == "Y")THEN
+	#{
+		IF((CUST.CSIIET.targerEntity == "") OR (CUST.CSIIET.targetEntityAcctId == ""))THEN
+		#{
+			sv_u = urhk_SRV_SetErr("Target Entity and Target Entity Customer A/c. ID are mandatory for Inter Entity SI")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#------------------------------------------------------------------------
+	        #Validate if entered target entity is same as bank id,if yes throw error
+	        #------------------------------------------------------------------------
+	        IF(CUST.CSIIET.targerEntity == CUST.CSIIET.bankId)THEN
+	        #{
+	                CUST.CSIIET.errorMsg = "The entered Target Entity is same as Bank Id."
+	                sv_r = urhk_SRV_SetErr(CUST.CSIIET.errorMsg)
+	        #}
+	        ENDIF
+
+	        #---------------------------------------------------
+	        #Validate if entered acct id belongs to target entity
+	        #---------------------------------------------------
+	        BANCS.INPARAM.BINDVARS =  CUST.CSIIET.targetEntityAcctId
+	        print(BANCS.INPARAM.BINDVARS)
+	        sv_s = "targetBankId|SELECT BANK_ID "
+	        sv_s = sv_s + "FROM TBAADM.GAM "
+	        sv_s = sv_s + "WHERE FORACID = ?SVAR "
+
+	        print(sv_s)
+
+	        sv_d =urhk_dbSelectWithBind(sv_s)
+	        print(sv_d)
+
+	        IF(sv_d == 0)THEN
+	        #{
+	                CUST.CSIIET.targetBankId = BANCS.OUTPARAM.targetBankId
+	                print(CUST.CSIIET.targetBankId)
+
+	                IF(CUST.CSIIET.targetBankId != CUST.CSIIET.targerEntity)THEN
+	                #{
+
+	                        CUST.CSIIET.errorMsg = "The entered Target Entity Acct Id does not match for Target Entity."
+	                        sv_r = urhk_SRV_SetErr(CUST.CSIIET.errorMsg)
+				GOTO ENDOFSCRIPT
+	                #}
+	                ENDIF
+	        #}
+	        ELSE
+	        #{
+	                print("Could not fetch record from gam table")
+	                GOTO ENDOFSCRIPT
+	        #}
+		ENDIF
+
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------
+	#Obtaining the value of si srl num
+	#---------------------------------------------------------------------
+	sv_u = urhk_SRV_GetVal("siHeader.siSrlNum")
+	PRINT(sv_u)
+	IF(sv_u != 0)THEN
+	#{
+		CUST.CSIIET.successOrFailure = "F"
+		print("Couldn fetch siSrlNum")
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		CUST.CSIIET.siSrlNum = BANCS.OUTPARAM.srvValue
+		print(CUST.CSIIET.siSrlNum)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------
+	#Checking if the record if modified after verification
+	#------------------------------------------------------
+	
+	BANCS.INPARAM.BINDVARS = CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.bankId + "|Y"
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_s = "count|SELECT COUNT(1)"
+	sv_s = sv_s + "FROM CUSTOM.IESID "
+	sv_s = sv_s + "WHERE SI_SRL_NUM = ?SVAR "
+	sv_s = sv_s + "AND BANK_ID = ?SVAR "
+	sv_s = sv_s + "AND ENTITY_CRE_FLG = ?SVAR"
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		print("Could not fetch data")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CSIIET.count = BANCS.OUTPARAM.count
+		print(CUST.CSIIET.count)
+	#}
+	ENDIF
+	#rec present
+	IF(CUST.CSIIET.count != 0)THEN 
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.bankId + "|Y"
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "count1|SELECT COUNT(1)"
+		sv_s = sv_s + "FROM CUSTOM.IESID_MOD "
+		sv_s = sv_s + "WHERE SI_SRL_NUM = ?SVAR "
+		sv_s = sv_s + "AND BANK_ID = ?SVAR "
+		sv_s = sv_s + "AND ENTITY_CRE_FLG = ?SVAR"
+		print(sv_s)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d != 0)THEN
+		#{
+			print("Could not fetch data")
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.CSIIET.count1 = BANCS.OUTPARAM.count1
+			print(CUST.CSIIET.count1)
+		#}
+		ENDIF
+		
+		IF(CUST.CSIIET.count1 == 0)THEN
+		#{
+				
+			#----------------------------------
+			#Insert custom data in mod table
+			#----------------------------------
+			BANCS.INPARAM.BINDVARS = CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.targerEntity + "|" + CUST.CSIIET.targetEntityAcctId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CSIIET.siInterEntityFlg + "|Y" + "|N" +  "|" + CUST.CSIIET.bankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "INSERT INTO CUSTOM.IESID_MOD("
+			sv_s = sv_s + "SI_SRL_NUM,TARGET_ENTITY,TARGET_ENTITY_ACCOUNT_ID,INTER_ENTITY_SI_FLG,"
+			sv_s = sv_s + "ENTITY_CRE_FLG,DEL_FLG,BANK_ID)"
+			sv_s = sv_s + "VALUES(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR)"
+			print(sv_s)
+			
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			
+			IF(sv_d != 0)THEN
+			#{
+				print("Could not insert data in custom table")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			BANCS.INPARAM.BINDVARS =  CUST.CSIIET.targerEntity + "|" + CUST.CSIIET.targetEntityAcctId + "|" + CUST.CSIIET.siInterEntityFlg
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.bankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "UPDATE CUSTOM.IESID_MOD "
+			sv_s = sv_s + "SET TARGET_ENTITY = ?SVAR, "
+			sv_s = sv_s + "TARGET_ENTITY_ACCOUNT_ID = ?SVAR, "
+			sv_s = sv_s + "INTER_ENTITY_SI_FLG = ?SVAR "
+			sv_s = sv_s + "WHERE SI_SRL_NUM = ?SVAR "
+			sv_s = sv_s + "AND BANK_ID = ?SVAR"
+			print(sv_s)
+			
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			
+			IF(sv_d != 0)THEN
+			#{
+				print("Could not update custom table")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		print("record not verfied -first time modification")
+		BANCS.INPARAM.BINDVARS =  CUST.CSIIET.targerEntity + "|" + CUST.CSIIET.targetEntityAcctId + "|" + CUST.CSIIET.siInterEntityFlg
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.bankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "UPDATE CUSTOM.IESID "
+		sv_s = sv_s + "SET TARGET_ENTITY = ?SVAR, "
+		sv_s = sv_s + "TARGET_ENTITY_ACCOUNT_ID = ?SVAR, "
+		sv_s = sv_s + "INTER_ENTITY_SI_FLG = ?SVAR "
+		sv_s = sv_s + "WHERE SI_SRL_NUM = ?SVAR "
+		sv_s = sv_s + "AND BANK_ID = ?SVAR"
+		print(sv_s)
+		
+		sv_d = urhk_dbSQLWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d != 0)THEN
+		#{
+			print("Could not update custom table")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+				
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+		#trace off
+END-->

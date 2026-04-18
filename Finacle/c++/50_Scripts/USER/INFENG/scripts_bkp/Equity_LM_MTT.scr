@@ -1,0 +1,324 @@
+######################################################################################################################################
+# Script name		: Equity_LM_MTT.scr
+# Date				: 20-Sep-2013
+# Description		: perform MTT transactions
+# Author			: Bharath
+# Calling Scripts	: Equity_LM_Main.scr
+# Called scripts	: none
+######################################################################################################################################
+
+<--START 
+TRACE ON
+####-------------------------------------------####
+#  Creating New Repository and Class 
+####-------------------------------------------####
+IF (REPEXISTS("EQUITY")==0) THEN
+		CREATEREP("EQUITY")
+ENDIF
+
+sv_d = CLASSEXISTS("EQUITY", "LM")
+IF (sv_d == 0) THEN
+	CREATECLASS("EQUITY", "LM", 5)
+ENDIF
+
+####-------------------------------------------####
+#     Repository and class for  MTT
+####-------------------------------------------####
+
+IF (REPEXISTS("MTT") == 0) then
+#{
+    CREATEREP("MTT")
+#}
+ENDIF
+
+IF (CLASSEXISTS("MTT", "TranDetails") == 0) THEN
+#{
+        CREATECLASS("MTT", "TranDetails", 5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("MTT", "PartTranDetails") == 0) THEN
+#{
+        CREATECLASS("MTT", "PartTranDetails", 5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("MTT", "Error") == 0) THEN
+#{
+        CREATECLASS("MTT", "Error", 5)
+#}
+ENDIF
+
+####-------------------------------------------####
+# Values expected from Calling Script.
+####-------------------------------------------####
+
+PRINT(EQUITY.LM.BodDate)
+
+PRINT(EQUITY.LM.cr_acctno)
+PRINT(EQUITY.LM.cr_crncy_code)
+PRINT(EQUITY.LM.cr_sol_id)
+PRINT(EQUITY.LM.cr_parttran)
+PRINT(EQUITY.LM.cr_tran_amt)
+PRINT(EQUITY.LM.cr_particulars)
+PRINT(EQUITY.LM.cr_rpt_code)
+PRINT(EQUITY.LM.cr_refnum)
+
+PRINT(EQUITY.LM.dr_acctno)
+PRINT(EQUITY.LM.dr_crncy_code)
+PRINT(EQUITY.LM.dr_sol_id)
+PRINT(EQUITY.LM.dr_parttran)
+PRINT(EQUITY.LM.dr_tran_amt)
+PRINT(EQUITY.LM.dr_particulars)
+PRINT(EQUITY.LM.dr_rpt_code)
+PRINT(EQUITY.LM.dr_refnum)
+
+sv_r = urhk_MTTS_Close("")
+PRINT(sv_r)
+
+####-------------------------------------------####
+# Variables used in the Charge Tran creations 
+####-------------------------------------------####
+
+#IF Required un comment while deploying in the bank environment
+#EQUITY.LM.DrAcctNum 	= EQUITY.LM.dr_acctno
+#EQUITY.LM.Remarks2 		= "CHARGES FOR EQUITY LM"
+
+####-------------------------------------------####
+# Define  the transaction
+####-------------------------------------------#### 
+	BANCS.INPARAM.PostTranFlg               = "Y"
+	BANCS.INPARAM.CommitFlg                	= "Y"
+	BANCS.INPARAM.ValidationFlag           	= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+	BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+	BANCS.INPARAM.CheckExceptions         	= "Y"	
+	BANCS.INPARAM.PostFlag        			= "Y"
+	sv_u = urhk_MTTS_initialize("")
+	PRINT(sv_u)      
+	
+	IF (sv_u != 0) THEN
+	#{
+		sv_u = urhk_TBAF_DispMesg("MTT initialise has failed.")
+		
+		EQUITY.LM.reason 				= "Transaction has failed"
+		EQUITY.LM.tran_status 			= "FAL"
+		EQUITY.LM.TranId 				= "NONE"
+		BANCS.OUTPUT.successOrFailure 	= "F"
+		GOTO EndOfScript
+	#}
+	ENDIF
+
+sv_d = "Tran"
+sv_y = "tran1"
+sv_v = "tran2"
+####-------------------------------------------####
+# Populate the details required for Transaction header 
+####-------------------------------------------####
+sv_u = urhk_MTTS_PopulateInputDetails("")
+
+MTT.TranDetails.TranDate         	= "0"
+MTT.TranDetails.TranType         	= "T"
+MTT.TranDetails.TranSubType    		= "BI"
+MTT.TranDetails.IgnoreExcp       	= "I"
+MTT.TranDetails.Consolidate       	= "N"
+MTT.TranDetails.ReversalFlag    	= "N"
+MTT.TranDetails.PostFlag        	= "Y"
+MTT.TranDetails.PostTranFlg			= "Y"
+MTT.TranDetails.CommitFlg           = "Y"
+MTT.TranDetails.Remarks             = "EQUITY LM TRANSACTIONS"
+MTT.TranDetails.ValidationFlag		= "Y"
+PRINT(sv_d)
+
+sv_u = urhk_MTTS_DefineTransaction(sv_d)
+PRINT(sv_u)
+IF (sv_u != "0") THEN
+#{
+	PRINT("Unable to Define MTT transaction")
+	EQUITY.LM.tran_status = "FAL"
+	EQUITY.LM.TranId = "NONE"
+	EQUITY.LM.reason = "Transaction has failed"
+	GOTO EndOfScript
+#}
+ENDIF
+
+####------------------------------------------------####
+# Debiting the customer account
+####------------------------------------------------####
+MTT.PartTranDetails.Account        	 =  	EQUITY.LM.dr_acctno
+MTT.PartTranDetails.RefAmount      =    CDOUBLE(EQUITY.LM.dr_tran_amt) * -1 
+MTT.PartTranDetails.RefCurrency    =  	EQUITY.LM.dr_crncy_code
+MTT.PartTranDetails.Particulars = "SWEEP FROM ACCOUNT " + EQUITY.LM.dr_acctno + " TO ACCOUNT " + EQUITY.LM.cr_acctno
+MTT.PartTranDetails.TranIdentifier  =   	sv_d
+MTT.PartTranDetails.Consolidate     = 	"N" 
+MTT.PartTranDetails.CarveAmtFlg	 =	"Y"
+MTT.PartTranDetails.Refnum        	 = 	""
+MTT.PartTranDetails.Remarks       	 = 	"EQUITY LM TRANSACTIONS"
+MTT.PartTranDetails.PTranBusinessType =	""		
+MTT.PartTranDetails.PostFlag          = "Y"
+MTT.PartTranDetails.PostTranFlg	 = "Y"
+PRINT(MTT.PartTranDetails.Account)
+
+sv_r = urhk_MTTS_DefinePartTran(sv_y)
+PRINT(sv_r)
+
+IF (sv_r != "0") THEN
+#{
+	PRINT("Unable to create MTT Part transaction")
+	EQUITY.LM.tran_status = "FAL"
+	EQUITY.LM.TranId = "NONE"
+	EQUITY.LM.reason = "Transaction has failed"
+	GOTO EndOfScript
+#}
+ENDIF
+
+	#===================================================================
+	# Crediting the credit account 
+	#===================================================================
+	MTT.PartTranDetails.Account         	=  EQUITY.LM.cr_acctno        	        
+	MTT.PartTranDetails.RefAmount      		= CDOUBLE(EQUITY.LM.cr_tran_amt) 	
+	MTT.PartTranDetails.RefCurrency     	=  EQUITY.LM.cr_crncy_code             	
+	MTT.PartTranDetails.Particulars 		= "SWEEP FROM ACCOUNT " + EQUITY.LM.dr_acctno + " TO ACCOUNT " + EQUITY.LM.cr_acctno
+	MTT.PartTranDetails.TranIdentifier  	=  sv_d                               	
+	MTT.PartTranDetails.Consolidate     	=  "N"                              	
+	MTT.PartTranDetails.Refnum          	=  ""                               	
+	MTT.PartTranDetails.PTranBusinessType	=  ""		                	
+	MTT.PartTranDetails.PostFlag        	= "Y"
+	MTT.PartTranDetails.PostTranFlg			= "Y"
+	PRINT(MTT.PartTranDetails.Account)
+
+	sv_r = urhk_MTTS_DefinePartTran(sv_v)
+	PRINT(sv_r)
+	#sv_q = urhk_B2k_PRINTRepos("BANCS")
+	#PRINT(sv_q)
+
+IF (sv_r != "0") THEN
+#{
+	PRINT("Unable to create MTT Part transaction")
+	EQUITY.LM.tran_status = "FAL"
+	EQUITY.LM.TranId = "NONE"
+	EQUITY.LM.reason = "Transaction has failed"
+	GOTO EndOfScript
+#}
+ENDIF
+
+####-------------------------------------------####
+# Commit the transaction
+####-------------------------------------------####
+sv_u = urhk_MTTS_EndDefinition("")
+PRINT(sv_u)
+PRINT(BANCS.OUTPARAM.MTTTranId)
+
+####-------------------------------------------####
+# IF any error tran id will not be created
+####-------------------------------------------####
+IF ((sv_u != 0)  OR (BANCS.OUTPARAM.MTTTranId==""))THEN
+#{
+	PRINT("Error during transaction")
+	
+	EQUITY.LM.reason = "Transaction has failed"
+	
+	sv_t ="UPDATE TBACUST.C_EQLM SET"
+	sv_t = sv_t +" TRAN_STATUS='FAL'"
+	sv_t = sv_t +" WHERE ACCT_NO ='"+EQUITY.LM.cr_acctno+"'"
+	sv_t = sv_t +" AND REF_NUM ='"+EQUITY.LM.cr_refnum+"'"
+	PRINT(sv_t)
+
+	sv_l = urhk_dbSQL(sv_t)
+	PRINT(sv_l)
+
+	sv_q = urhk_dbSQL("commit")
+	PRINT(sv_q)
+
+
+	sv_t ="UPDATE TBACUST.C_EQLM SET"
+	sv_t = sv_t +" TRAN_STATUS='FAL'"
+	sv_t = sv_t +" WHERE ACCT_NO ='"+EQUITY.LM.dr_acctno+"'"
+	sv_t = sv_t +" AND REF_NUM ='"+EQUITY.LM.dr_refnum+"'"
+	PRINT(sv_t)
+
+	sv_l = urhk_dbSQL(sv_t)
+	PRINT(sv_l)
+
+	sv_q = urhk_dbSQL("commit")
+	PRINT(sv_q)
+
+	GOTO EndOfScript			
+#}
+ENDIF
+
+####-------------------------------------------####
+# IF all the inputs are correct tran id wil be created
+####-------------------------------------------####
+PRINT(sv_u)
+IF ((sv_u == 0) AND (BANCS.OUTPARAM.MTTTranId != "")) then
+#{
+	EQUITY.LM.TranId = BANCS.OUTPARAM.MTTTranId
+	PRINT(EQUITY.LM.TranId)
+	IF (fieldexists(BANCS.INPUT.Error) != 0) THEN
+	#{
+		BANCS.INPUT.PostMesg = BANCS.INPUT.Error
+		PRINT(BANCS.INPUT.PostMesg)
+	#}
+	ENDIF
+	
+	####-------------------------------------------------------####
+	#update custom table For Success and TRAN_ID Generated 
+	####--------------------------------------------------------####
+	EQUITY.LM.tran_status = "SUC"
+	PRINT(EQUITY.LM.tran_status)
+
+	sv_t ="UPDATE CUSTOM.C_EQLM SET PROCESSED_FLG= 'Y', TRAN_DATE=to_date(?SVAR,'DD-MM-YYYY'),"
+	sv_t = sv_t +" TRAN_STATUS='SUC',TRAN_ID=?SVAR"
+	sv_t = sv_t +" WHERE ACCT_NO =?SVAR"
+	sv_t = sv_t +" AND REF_NUM =?SVAR"
+	sv_t = sv_t +" AND bank_id =?SVAR"
+	PRINT(sv_t)
+	BANCS.INPARAM.BINDVARS = EQUITY.LM.BodDate 	+ "|" + EQUITY.LM.TranId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_acctno
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.cr_refnum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = urhk_dbsqlWithBind(sv_t)
+	PRINT(sv_l)
+
+	sv_q = urhk_dbsqlWithBind("commit")
+	PRINT(sv_q)
+
+	sv_t ="UPDATE CUSTOM.C_EQLM SET PROCESSED_FLG= 'Y', TRAN_DATE= to_date(?SVAR,'DD-MM-YYYY'),"
+	sv_t = sv_t +" TRAN_STATUS='SUC',TRAN_ID=?SVAR"
+	sv_t = sv_t +" WHERE ACCT_NO =?SVAR"
+	sv_t = sv_t +" AND REF_NUM =?SVAR"
+	sv_t = sv_t +" AND bank_id =?SVAR"
+	PRINT(sv_t)
+
+	BANCS.INPARAM.BINDVARS = EQUITY.LM.BodDate 	+ "|" + EQUITY.LM.TranId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_acctno
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQUITY.LM.dr_refnum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = urhk_dbsqlWithBind(sv_t)
+	PRINT(sv_l)
+
+	sv_q = urhk_dbsqlWithBind("commit")
+	PRINT(sv_q)
+#}
+ENDIF 
+
+EndOfScript:
+####-----------------------------------------####
+# Close the MTT
+####-----------------------------------------####
+sv_r = urhk_MTTS_Close("")
+PRINT(sv_r)
+
+#===================================================================
+# Exiting the script 
+#===================================================================
+PRINT("here end of script")
+EXITSCRIPT		
+TRACE OFF
+END-->

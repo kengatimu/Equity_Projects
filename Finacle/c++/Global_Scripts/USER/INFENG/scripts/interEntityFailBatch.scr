@@ -1,0 +1,193 @@
+<--START
+TRACE ON
+	
+###########################################################################################
+# Check whether CUST Repository exists else create it
+###########################################################################################
+
+#sv_u = urhk_b2k_printrepos("BANCS")
+#print(sv_u)
+
+sv_r = REPEXISTS("CUST")
+
+IF(sv_r == 0) THEN
+#{
+	CREATEREP ("CUST")
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CIETXN Class exists else create it
+###########################################################################################
+
+sv_r = CLASSEXISTS("CUST","CIETXN")
+
+IF(sv_r == 0) THEN
+#{
+	CREATECLASS ("CUST","CIETXN",5)
+#}
+ENDIF
+	
+                sv_r = CLASSEXISTS("CUST","INTERFACE")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","INTERFACE",5)
+        #}
+        ENDIF
+CUST.CIETXN.initEntity=BANCS.STDIN.contextBankId
+	PRINT(CUST.CIETXN.initEntity)
+	
+sv_s = ""
+sv_s = sv_s + "refNo,tEntity,insDate|"
+sv_s = sv_s + " SELECT IE_TXN_REF_NO,TARGET_ENTITY,to_char(rcre_time,'DD-MM-YYYY') "
+sv_s = sv_s + " FROM custom.ie_temp "
+sv_s = sv_s + " WHERE (sysdate-rcre_time)>0.021"
+PRINT(sv_s)
+
+BANCS.INPARAM.BINDVARS = ""
+
+sv_d  = urhk_dbCursorOpenWithBind(sv_s)
+PRINT(sv_d)
+
+IF(sv_d != 0) THEN
+#{
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+	sv_g = (BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+	PRINT(sv_g)
+	
+	sv_j = urhk_dbCursorFetch(sv_g)
+	PRINT(sv_j)
+	
+	IF(sv_j != 0) THEN
+	#{
+		sv_q = urhk_dbCursorClose(sv_g)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF			
+		
+	WHILE(sv_j == 0)
+	#{
+		CUST.CIETXN.delFlg = "N"
+				
+		CUST.CIETXN.refNo = BANCS.OUTPARAM.refNo
+		PRINT(CUST.CIETXN.refNo)
+		
+		CUST.CIETXN.tEntity = BANCS.OUTPARAM.tEntity
+		PRINT(CUST.CIETXN.tEntity)
+		
+		CUST.CIETXN.insDate = BANCS.OUTPARAM.insDate
+		PRINT(CUST.CIETXN.insDate)
+		
+		CUST.CIETXN.pstdUsrId = "FIVUSR"+CUST.CIETXN.tEntity
+		PRINT(CUST.CIETXN.pstdUsrId)
+		
+		CUST.CIETXN.revTran="NA"
+		CUST.CIETXN.remarks="NA"
+			IF(CUST.CIETXN.tEntity != CUST.CIETXN.initEntity)THEN
+		#{
+				CUST.INTERFACE.bankID=CUST.CIETXN.tEntity	
+				
+				CALL("getBoxType.scr")
+	
+				PRINT(CUST.CIETXN.boxType)
+				PRINT(CUST.CIETXN.errorFlg)
+				PRINT(CUST.CIETXN.errorMsg)
+				CUST.CIETXN.Remarks = CUST.CIETXN.errorMsg
+				
+			IF((CUST.CIETXN.errorFlg == "N") AND (CUST.CIETXN.boxType == "I")) THEN
+			#{
+				CALL("getEndPoint.scr")		
+				
+				IF (CUST.CIETXN.errorFlg!="Y") THEN
+				#{
+					CUST.INTERFACE.endPointUrl = CUST.CIETXN.endPointUrl
+					CUST.INTERFACE.callScript="interEntityFailBatch_001.scr"
+					CUST.INTERFACE.inputData = CUST.CIETXN.refNo+"|"+CUST.CIETXN.tEntity+"|"+CUST.CIETXN.insDate+"|"+CUST.CIETXN.pstdUsrId+"|"
+					CALL("interEntityFailBatch_fi.scr")
+					#}
+				ELSE
+					#{
+					PRINT("END POINT URL not fetched")					
+				#}
+				ENDIF
+		
+			#}
+			ELSE
+			#{
+				CALL("interEntityFailBatch_001.scr")
+			#}
+			ENDIF
+			PRINT(CUST.CIETXN.delFlg)
+			PRINT(CUST.CIETXN.remarks)
+			PRINT(CUST.CIETXN.revTran)
+		#}
+		ELSE
+			#{
+				CALL("interEntityFailBatch_001.scr")
+				PRINT(CUST.CIETXN.delFlg)
+			PRINT(CUST.CIETXN.remarks)
+			PRINT(CUST.CIETXN.revTran)
+			#}
+			ENDIF
+		
+		IF(CUST.CIETXN.delFlg == "Y")THEN
+		#{
+		
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CIETXN.refNo
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_s = ""
+			sv_s = sv_s + "INSERT INTO CUSTOM.IE_TEMP_HIST SELECT * FROM CUSTOM.IE_TEMP "
+			sv_s = sv_s + " WHERE IE_TXN_REF_NO=?SVAR"
+			PRINT(sv_s)
+			
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			print(sv_d)
+			
+			sv_s = ""
+			sv_s = sv_s + " DELETE FROM CUSTOM.IE_TEMP "
+			sv_s = sv_s + " WHERE IE_TXN_REF_NO=?SVAR"
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CIETXN.refNo
+			PRINT(BANCS.INPARAM.BINDVARS)
+		
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			print(sv_d)
+			
+			sv_s = ""
+			sv_s = sv_s + " UPDATE CUSTOM.IE_TEMP_HIST SET REMARKS=?SVAR, LCHG_TIME=SYSDATE,REV_TRAN_ID=?SVAR "
+			sv_s = sv_s + " WHERE IE_TXN_REF_NO=?SVAR"
+			PRINT(sv_s)
+		
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CIETXN.remarks+"|"+CUST.CIETXN.revTran+"|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CIETXN.refNo
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			print(sv_d)
+			
+			#sv_u = urhk_dbSqlWithBind("COMMIT")
+			#print(sv_u)
+		#}
+		ENDIF
+		
+		sv_j = urhk_dbCursorFetch(sv_g)
+		PRINT(sv_j)
+	#}
+	DO
+	
+	sv_q = urhk_dbCursorClose(sv_g)
+	PRINT(sv_q)
+		
+#}
+ENDIF
+
+ENDOFSCRIPT:
+		TRACE OFF
+END-->

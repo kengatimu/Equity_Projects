@@ -1,0 +1,262 @@
+<--START          
+#------------------------------------------------------------------------------------------------
+#  Name            : 
+#  Description     : 
+#  Date            : 14-08-2023
+#  Author          : JAMES GICHIRI
+#  Input           : NA
+#  Output          : NA
+#  Calling Script  : SRV_saletax.scr
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             14-08-2023     JAMES GICHIRI                 Original Version
+#-----------------------------------------------------------------------------------------------
+		TRACE ON 
+
+		sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+		
+		
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+       	endif
+
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+       	endif
+		
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+       	
+        CUST.DATA.LntAmnt = CUST.VAT.vatsum
+       	print(CUST.DATA.LntAmnt)
+        CUST.DATA.foracid = CUST.VAT.foracid
+        print(CUST.DATA.foracid)
+        
+
+       	#----------------------------------------------------------------------------------------------------
+		#--- 1. SRV_FetchAcctDtlForTran - FETCH DEBIT A/C DETAILS
+		#---------------------------------------------------------------------------------------------------- 
+
+		sv_k = urhk_SetUrhkInp("acct.foracid|" +CUST.DATA.foracid)
+		print(CUST.DATA.foracid)
+
+		sv_k = urhk_SetUrhkOut("acct.crncyCode|drCrncyCode")
+		sv_k = urhk_SetUrhkOut("acct.solId|solId")
+
+		sv_k = urhk_ExecSrv("SRV_FetchAcctDtlForTran|retain_all_output = Y")
+		print(sv_k)
+
+		IF(sv_k == 0)THEN
+		#{
+			print("Step 1 success")
+
+
+
+			CUST.DATA.drCrncyCode = BANCS.OUTPARAM.drCrncyCode
+			print(CUST.DATA.drCrncyCode)
+
+
+			CUST.DATA.drAcctNum = CUST.DATA.foracid
+			PRINT(CUST.DATA.drAcctNum)
+      
+			CUST.DATA.solId = BANCS.OUTPARAM.solId
+			print(CUST.DATA.solId)
+      
+      
+			CUST.DATA.PARTICULARS = "SALE TAX Sweep"
+			print(CUST.DATA.PARTICULARS)
+      
+		  
+			#Change context sol depending on the account number
+			IF(CUST.DATA.solId != BANCS.STDIN.mySolId)THEN
+			#{
+				sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.DATA.solId)
+				print(sv_u)
+				sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+				print(sv_u)
+				IF(sv_u!="0")THEN
+				#{
+					CALL("trapSRVerror.scr")
+					EXITSCRIPT
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(BANCS.STDIN.contextBankId)
+      
+			#---------------------------------
+			#-------SALE TAX ACCOUNT-------------
+			#-----------------------------
+			IF(CUST.DATA.drCrncyCode =="SSP")THEN
+			#{
+			  
+				CUST.DATA.crAcctNum = "2000340011779"
+			#}
+			ENDIF
+			  
+			IF(CUST.DATA.drCrncyCode =="USD")THEN
+			#{
+			  
+				CUST.DATA.crAcctNum = "2000340011780"
+			#}
+			ENDIF
+
+			print(CUST.DATA.crAcctNum)
+			  
+			#===================================
+			#   INITIALIZE THE MTT
+			#===================================
+			sv_r = urhk_MTTS_Close("")
+        		print(sv_r)
+
+			BANCS.INPARAM.PostTranFlg 		= "Y"
+			BANCS.INPARAM.CommitFlg 		= "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+			BANCS.INPARAM.ValidationFlag 		= "Y"
+			BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+			BANCS.INPARAM.CheckExceptions 		= "N"
+
+			sv_u = urhk_MTTS_Initialize("")
+        	print(sv_u)
+
+			sv_a = urhk_MTTS_PopulateInputDetails("")
+			print(sv_a)
+			MTT.TranDetails.TranDate="0"
+			MTT.TranDetails.TranType = "T"
+			MTT.TranDetails.TranSubType = "BI"
+			MTT.TranDetails.IgnoreExcp = "I"
+			MTT.TranDetails.Consolidate = "N"
+			MTT.TranDetails.Remarks = "SALE TAX Sweep"
+
+			sv_v = "SALESTaxtran"
+			print(sv_v)
+
+			sv_r = urhk_MTTS_DefineTransaction("SALESTaxtran")
+
+			IF((CUST.DATA.LntAmnt > 0)  and (CUST.DATA.foracid!=""))THEN
+			#{		
+				
+				#SALETAX Debit
+					MTT.PartTranDetails.Account 	= CUST.DATA.foracid 
+					MTT.PartTranDetails.RefCurrency = CUST.DATA.drCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = CUST.DATA.PARTICULARS 
+					MTT.PartTranDetails.RefAmount = -(cdouble(CUST.DATA.LntAmnt))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = CUST.DATA.PARTICULARS
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "PnLDr"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.DATA.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+				#SALETAX Credit
+					MTT.PartTranDetails.Account 	= CUST.DATA.crAcctNum
+					MTT.PartTranDetails.RefCurrency = CUST.DATA.drCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = CUST.DATA.PARTICULARS + "-" + CUST.DATA.foracid 
+					MTT.PartTranDetails.RefAmount = (cdouble(CUST.DATA.LntAmnt))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Cr from:" + CUST.DATA.foracid 
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "SALESTax"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.DATA.MTTErrDesc = MTT.Error.Description
+						print(CUST.DATA.MTTErrDesc)
+					#}
+					ENDIF
+		
+		
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.DATA.tranid)
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)			
+				
+			#}
+			ENDIF	
+
+			sv_r = urhk_MTTS_Close("")
+			print(sv_r)
+		
+
+				
+			
+		#}
+		ELSE
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+			#}									
+			ENDIF
+		#}
+		ENDIF
+	
+			
+		
+
+		
+	
+EXITSCRIPT
+TRACE OFF
+END-->

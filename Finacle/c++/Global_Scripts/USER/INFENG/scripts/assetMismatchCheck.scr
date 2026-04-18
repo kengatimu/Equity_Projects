@@ -1,0 +1,97 @@
+<--start
+trace on
+
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+
+        lv_q = "odAcid|select distinct od_acid from custom.odla_dmd_tbl  where bank_id= ?SVAR and entity_cre_flg='Y' and del_flg='N'  "
+	lv_q = lv_q + " and dmd_ovdu_date<to_date('06-06-2024','DD-MM-RRRR') and FLOW_ID='PRDEM' "
+	lv_q = lv_q + " and dmd_amt is not null and (dmd_amt-tot_adj_amt) <>0 and (dmd_amt-tot_adj_amt) >0  order by od_acid " 
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+        print(BANCS.INPARAM.BINDVARS)
+
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                EQSRV.GLBDATA.odAcid = BANCS.OUTPARAM.odAcid
+                print(EQSRV.GLBDATA.odAcid)
+
+		sv_a = "insert into custom.dpd_check (select od_acid,to_date(max(dmd_ovdu_date),'DD-MM-RRRR') as max_dmd_ovdu_date, to_date(min(dmd_ovdu_date),'DD-MM-RRRR') as min_dmd_ovdu_date,dmd_amt-tot_adj_amt  as balance "
+		sv_a = sv_a + " from custom.odla_dmd_tbl  where bank_id= ?SVAR and entity_cre_flg='Y' and del_flg='N'  and dmd_ovdu_date<to_date('06-06-2024','DD-MM-RRRR') and FLOW_ID='PRDEM' and od_acid = ?SVAR "
+		sv_a = sv_a + " and dmd_amt is not null and (dmd_amt-tot_adj_amt) <>0 and (dmd_amt-tot_adj_amt) >0  and rownum<=1  "
+		sv_a = sv_a + " group by od_acid,dmd_ovdu_date,dmd_amt,tot_adj_amt) "
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.odAcid
+		print(BANCS.INPARAM.BINDVARS)
+
+                lv_b = urhk_dbSqlWithBind(sv_a)
+                if(lv_b==0)then
+                           lv_b = urhk_dbSqlWithBind("commit")
+                           print(lv_b)
+                endif
+
+
+		sv_a = " insert into custom.dpd_check_correct (select od_acid,to_date(max_dmd_ovdu_date,'dd-mm-yyyy'), to_date(min_dmd_ovdu_date,'dd-mm-yyyy'),balance from (select od_acid,to_char(max(dmd_ovdu_date),'DD-MM-RRRR') as max_dmd_ovdu_date, "
+		sv_a = sv_a + " to_char(min(dmd_ovdu_date),'DD-MM-RRRR') as min_dmd_ovdu_date,dmd_amt-tot_adj_amt as balance from custom.odla_dmd_tbl where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' "
+		sv_a = sv_a + " and dmd_ovdu_date<to_date('06-06-2024','DD-MM-RRRR') and od_acid = ?SVAR and FLOW_ID='PRDEM' and dmd_amt is not null and (dmd_amt-tot_adj_amt) <>0 and (dmd_amt-tot_adj_amt) >0 "
+		sv_a = sv_a + " group by od_acid,dmd_ovdu_date,dmd_amt,tot_adj_amt order by od_acid,dmd_ovdu_date) where rownum<=1) "
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.odAcid
+		print(BANCS.INPARAM.BINDVARS)
+
+                lv_b = urhk_dbSqlWithBind(sv_a)
+                if(lv_b==0)then
+                           lv_b = urhk_dbSqlWithBind("commit")
+                           print(lv_b)
+                endif
+                
+		NXTREC:
+                        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_z)
+                        if(sv_z!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+				exitscript
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}
+        DO
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+
+trace off
+end-->

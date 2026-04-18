@@ -1,0 +1,840 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: pnlODATranPost.scr
+# Type: NA|default
+# Description: ODA Penalty Script
+# Author: Anshul_Singh04
+# Date: 12/11/18 11:37 AM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="96f18fea1c68dce2c11c7eaac066df55f89cf954905586781db3210849da487b"
+	# Script body goes here
+	TRACE ON
+	LIBNAME CUSTOMSO	
+	###########################################
+	#      Creating Repository and Class      #
+	###########################################
+	
+	sv_a = REPEXISTS("EQT")
+	IF (sv_a == 0) THEN
+	#{
+		CREATEREP("EQT")
+	#}
+	ENDIF
+	
+	sv_a = CLASSEXISTS("EQT", "ODP")
+	IF (sv_a == 0 ) THEN
+	#{
+		CREATECLASS("EQT", "ODP", 5)
+	#}
+	ENDIF
+
+        sv_s = "timeStamp|select to_char(sysdate,'ddmmyyyyhhmiss') from dual"
+        PRINT(sv_s)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                EQT.ODP.timeStamp = BANCS.OUTPARAM.timeStamp
+                PRINT(EQT.ODP.timeStamp)
+        #}
+        ENDIF
+
+        EQT.ODP.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+        EQT.ODP.errMsg = ""
+        EQT.ODP.failureFile = "failfile_ODPenalColl_" + BANCS.STDIN.mySolId + ".lst"
+
+        EQT.ODP.failFileIndex1 = ""
+        EQT.ODP.failFileIndex1 = urtn_fileOpen(EQT.ODP.failureFile + "|w")
+        EQT.ODP.successFile = "successFile_ODPenalColl_" + BANCS.STDIN.mySolId + ".lst"
+
+        EQT.ODP.successFileIndex1 = ""
+        EQT.ODP.successFileIndex1 = urtn_fileOpen(EQT.ODP.successFile + "|w")
+
+        PRINT(EQT.ODP.failFileIndex1)
+        PRINT(EQT.ODP.successFileIndex1)
+
+
+        EQT.ODP.list_file_name = EQT.ODP.failureFile
+        EQT.ODP.title = "OD Penal Amount Collection Failure Report"
+        EQT.ODP.mrt_file_name = "ODPenalClac.mrt"
+        EQT.ODP.rpt_file_name = "ODPenalClac_" + EQT.ODP.timeStamp + ".rpt"
+        EQT.ODP.rpt =  "ODPenalClac_" + EQT.ODP.timeStamp
+
+        EQT.ODP.list_file_nameSuccess = EQT.ODP.successFile
+        EQT.ODP.titleSuccess = "OD Penal Amount Collection Success Report"
+        EQT.ODP.mrt_file_name1 = "ODPenalClac.mrt"
+        EQT.ODP.rpt_file_nameSuccess = "ODPenalClacSuccess_" + EQT.ODP.timeStamp + ".rpt"
+        EQT.ODP.rptSuccess =  "ODPenalClacSuccess_" +  EQT.ODP.timeStamp
+	
+	EQT.ODP.mttTranId = ""
+	EQT.ODP.rateCode = ""
+	EQT.ODP.errMsg = ""	
+	###########################################
+	#        Getting BACID From CPARAM        #
+	###########################################
+	
+	sv_b = "bacid|select CUSTOM.getCparamValue('OD_PENALTY_BACID','OT',?SVAR)  from dual "
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	
+	sv_b = urhk_dbSelectWithBind(sv_b)
+	
+	IF(sv_b == 0) THEN
+	#{
+		EQT.ODP.bacid = BANCS.OUTPARAM.bacid
+		PRINT(EQT.ODP.bacid)
+		#}
+	ELSE
+		#{
+		print("Bacid not maintained in CPARAM!")
+                EQT.ODP.errMsg = "OD_PENALTY_BACID |:Bacid not maintained in CPARAM"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(TRIM(EQT.ODP.bacid) == "")THEN
+	#{
+		print("Bacid not maintained in CPARAM!")
+                EQT.ODP.errMsg = "OD_PENALTY_BACID |:Bacid not maintained in CPARAM"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	###########################################
+	#      	Getting Foracid from BACID        #
+	###########################################
+	
+	sv_b = EQT.ODP.bacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+	print(sv_b)
+	
+	sv_b = urhk_B2k_BacidToAcctId(sv_b)
+	print(sv_b)
+	
+	IF(sv_b == 1)THEN
+	#{
+		print("No Account Found for the given Bacid, Currency Code and Sol Id!")
+                EQT.ODP.errMsg = EQT.ODP.bacid +"|"+ ":No Account Found for the given Bacid"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	print(BANCS.OUTPARAM.AcctId)
+	EQT.ODP.pnlCrAcct = BANCS.OUTPARAM.AcctId
+	
+	sv_r = urhk_getAcctDetailsInRepository(EQT.ODP.pnlCrAcct)
+	print(sv_r)
+	
+	IF(sv_r != 0)THEN
+	#{
+		print("Error in Getting Account Details!")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	print(BANCS.OUTPARAM.acctCloseflg)
+	print(BANCS.OUTPARAM.freezeCode)
+	print(BANCS.OUTPARAM.entityCreFlag)
+	
+	IF(BANCS.OUTPARAM.entityCreFlag != "Y")THEN
+	#{
+                EQT.ODP.errMsg = EQT.ODP.pnlCrAcct +"|"+ "Account Creation is not yet Authorized"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		print("Account Creation is not yet Authorized.")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(BANCS.OUTPARAM.acctCloseflg == "Y")THEN
+	#{
+                EQT.ODP.errMsg = EQT.ODP.pnlCrAcct +"|"+ "Account Closed"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		print("Account Closed!")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF((BANCS.OUTPARAM.freezeCode == "C") OR (BANCS.OUTPARAM.freezeCode == "T"))THEN
+	#{
+		print("Account Frozen!")
+                EQT.ODP.errMsg = EQT.ODP.pnlCrAcct +"|"+ "Account Frozen"
+                sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	###########################################
+	#             Opening Cursor              #
+	###########################################
+	
+	#sv_s = "foracid, acid, acctCrncy, pnlAccrAmt, pnlApplAmt, pnlOutstdngAmt|select foracid, acid, ACCT_CCY_CODE, nvl(PENAL_ACCRUED_AMOUNT_DR,0), nvl(PENAL_APPLIED_AMOUNT_DR, 0 ),  nvl(PENAL_ACCRUED_AMOUNT_DR, 0) - nvl(PENAL_APPLIED_AMOUNT_DR, 0) "
+	sv_s = sv_s + " from custom.c_pnat where bank_id = ?SVAR and sol_id = ?SVAR and nvl(PENAL_APPL_UP_TO_DATE_DR, TO_DATE('11-06-1900', 'DD-MM-YYYY') ) < = TO_DATE(?SVAR, 'DD-MM-YYYY') and nvl(PENAL_ACCRUED_AMOUNT_DR,0) - nvl(PENAL_APPLIED_AMOUNT_DR, 0) > 0"
+	
+	########Updated the query as pnlOutstdngAmt = ( (PENAL_ACCRUED_AMOUNT_DR -  PENAL_APPLIED_AMOUNT_DR) - Total_Waived_Off_Amount )
+	
+	sv_s = "foracid, acid, acctCrncy, pnlAccrAmt, pnlApplAmt, pnlOutstdngAmt|select foracid, acid, ACCT_CCY_CODE, nvl(PENAL_ACCRUED_AMOUNT_DR,0), nvl(PENAL_APPLIED_AMOUNT_DR, 0 ),  nvl(nvl(PENAL_ACCRUED_AMOUNT_DR, 0) - nvl(PENAL_APPLIED_AMOUNT_DR, 0),0) - nvl(TOTAL_WAIVED_OFF_AMT,0) "
+	sv_s = sv_s + " from custom.c_pnat where bank_id = ?SVAR and sol_id = ?SVAR and nvl(PENAL_APPL_UP_TO_DATE_DR, TO_DATE('11-06-1900', 'DD-MM-YYYY') ) < = TO_DATE(?SVAR, 'DD-MM-YYYY') and  nvl(nvl(PENAL_ACCRUED_AMOUNT_DR, 0) - nvl(PENAL_APPLIED_AMOUNT_DR, 0),0) - nvl(TOTAL_WAIVED_OFF_AMT,0) > 0"
+	
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + MID$(BANCS.STDIN.BODDate,0,10)
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(sv_m)
+		
+		sv_z = urhk_dbCursorFetch(sv_m)
+		print(sv_z)
+		IF(sv_z == 1)THEN
+		#{
+                	EQT.ODP.errMsg = " |No Accounts Exists for penal collection"
+                	sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+		#}
+		ENDIF
+		
+		WHILE (sv_z != 1)
+		#{
+			EQT.ODP.mttTranId = ""
+			EQT.ODP.rateCode = ""
+			EQT.ODP.errMsg = " "
+			EQT.ODP.errFlg = "N"
+			
+			print(BANCS.OUTPARAM.foracid)
+			print(BANCS.OUTPARAM.acid)
+			print(BANCS.OUTPARAM.acctCrncy)
+			print(BANCS.OUTPARAM.pnlAccrAmt)
+			print(BANCS.OUTPARAM.pnlApplAmt)
+			print(BANCS.OUTPARAM.pnlOutstdngAmt)
+			
+			EQT.ODP.pnlDrAcct = BANCS.OUTPARAM.foracid
+			EQT.ODP.pnlDrAcid = BANCS.OUTPARAM.acid
+			EQT.ODP.pnlDrAmt = BANCS.OUTPARAM.pnlOutstdngAmt
+			EQT.ODP.acctCrncy = BANCS.OUTPARAM.acctCrncy
+			
+			sv_r = urhk_getAcctDetailsInRepository(EQT.ODP.pnlDrAcct)
+			print(sv_r)
+			
+			IF(sv_r != 0)THEN
+			#{
+				print("Error in Getting Account Details!")
+				EQT.ODP.errFlg = "Y"
+				EQT.ODP.errMsg = "Error in Getting Account Details of Acct Id: "+EQT.ODP.pnlDrAcct
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			print(BANCS.OUTPARAM.acctCloseflg)
+			print(BANCS.OUTPARAM.freezeCode)
+			print(BANCS.OUTPARAM.entityCreFlag)
+			print(BANCS.OUTPARAM.acctSolId)
+			print(BANCS.OUTPARAM.acctCrncyCode)
+			
+			IF(BANCS.OUTPARAM.entityCreFlag != "Y")THEN
+			#{
+				print("Account Creation is not yet Authorized.")
+				EQT.ODP.errFlg = "Y"
+				EQT.ODP.errMsg1 = "Account Creation is not yet Authorized. Acct Id: "+EQT.ODP.pnlDrAcct
+                		EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|No Accounts Exists for penal collection"
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			IF(BANCS.OUTPARAM.acctCloseflg == "Y")THEN
+			#{
+				print("Account Closed!")
+				EQT.ODP.errFlg = "Y"
+				EQT.ODP.errMsg1 = "Account Closed! Acct Id: "+EQT.ODP.pnlDrAcct
+                		EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Account Closed"
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			IF((BANCS.OUTPARAM.freezeCode == "D") OR (BANCS.OUTPARAM.freezeCode == "T"))THEN
+			#{
+				print("Account Frozen!")
+				EQT.ODP.errFlg = "Y"
+				EQT.ODP.errMsg1 = "Account Frozen! Acct Id: "+EQT.ODP.pnlDrAcct
+                		EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Account Frozen"
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			EQT.ODP.acctSolId = BANCS.OUTPARAM.acctSolId
+			EQT.ODP.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			
+			sv_s = " foracid, acid ,clr_bal_amt |select gam.foracid ,gam.acid,nvl((nvl(gam.clr_bal_amt,0)-nvl(gam.lien_amt,0)),0) clr_bal_amt from tbaadm.gam,tbaadm.gac where gam.bank_id=gac.bank_id "
+			sv_s = sv_s + " and gam.del_flg='N' and gam.entity_cre_flg='Y'  and gam.acct_cls_flg='N'  and gam.acid=gac.INT_DR_ACID  "
+			sv_s = sv_s + " and gam.acid=gac.INT_DR_ACID and gac.INT_DR_ACID is not null and gac.INT_DR_ACID <>' ' and gam.bank_id= ?SVAR and gac.acid= ?SVAR"
+			
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + EQT.ODP.pnlDrAcid
+			
+			
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_s)
+			sv_r = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_r)
+			
+			IF(sv_r != 0)THEN
+			#{
+				print("Error in Getting Account Operative account Details!")
+				EQT.ODP.errFlg = "Y"
+				EQT.ODP.errMsg1 = "Error in Getting operative account Account Details of Acct Id: "+EQT.ODP.pnlDrAcct
+			       		EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Error in Getting operative account Account Details"
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+	
+			IF(sv_r == 0) THEN
+			#{
+				#sv_y = urhk_B2k_PrintRepos("BANCS")
+				print(BANCS.OUTPARAM.foracid)
+				EQT.ODP.operforacid = BANCS.OUTPARAM.foracid
+				PRINT(EQT.ODP.operforacid)
+				
+				EQT.ODP.operacid = BANCS.OUTPARAM.acid
+				PRINT(EQT.ODP.operacid)
+				
+				EQT.ODP.oper_clr_bal_amt = BANCS.OUTPARAM.clr_bal_amt
+				PRINT(EQT.ODP.oper_clr_bal_amt)
+				
+				EQT.ODP.oper_clr_bal_amt=cdouble(EQT.ODP.oper_clr_bal_amt)
+				
+						sv_r = urhk_getAcctDetailsInRepository(EQT.ODP.operforacid)
+						print(sv_r)
+						
+						
+						IF(sv_r != 0)THEN
+						#{
+							print("Error in Getting Operative Account Details!")
+							EQT.ODP.errFlg = "Y"
+							EQT.ODP.errMsg1 = "Error in Getting operative Account Details of Acct Id: "+EQT.ODP.pnlDrAcct
+								       		EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Error in Getting operative account Account Details"
+											sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+							GOTO FETCH_NEXT_RECORD
+						#}
+						ENDIF
+						
+						
+						
+						print(BANCS.OUTPARAM.acctCloseflg)
+						print(BANCS.OUTPARAM.freezeCode)
+						print(BANCS.OUTPARAM.entityCreFlag)
+						print(BANCS.OUTPARAM.acctSolId)
+						print(BANCS.OUTPARAM.acctCrncyCode)
+						
+						EQT.ODP.operacctCrncy = BANCS.OUTPARAM.acctCrncyCode
+						
+						
+						
+						IF(BANCS.OUTPARAM.entityCreFlag != "Y")THEN
+						#{
+							print("Operative Account Creation is not yet Authorized.")
+							EQT.ODP.errFlg = "Y"
+							EQT.ODP.errMsg1 = "Operative Account Creation is not yet Authorized. Acct Id: "+EQT.ODP.pnlDrAcct
+									EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|No Operative Accounts Exists for penal collection"
+									sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+							GOTO FETCH_NEXT_RECORD
+						#}
+						ENDIF
+						
+						IF(BANCS.OUTPARAM.acctCloseflg == "Y")THEN
+						#{
+							print("Operative Account Closed!")
+							EQT.ODP.errFlg = "Y"
+							EQT.ODP.errMsg1 = "Operative Account Closed! Acct Id: "+EQT.ODP.pnlDrAcct
+									EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Operative Account Closed"
+									sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+							GOTO FETCH_NEXT_RECORD
+						#}
+						ENDIF
+						
+						IF((BANCS.OUTPARAM.freezeCode == "D") OR (BANCS.OUTPARAM.freezeCode == "T"))THEN
+						#{
+							print("Operative Account Frozen!")
+							EQT.ODP.errFlg = "Y"
+							EQT.ODP.errMsg1 = "Operative Account Frozen! Acct Id: "+EQT.ODP.pnlDrAcct
+									EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"| Operative Account Frozen"
+									sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+							GOTO FETCH_NEXT_RECORD
+						#}
+						ENDIF
+						
+						sv_y = cdouble(EQT.ODP.pnlDrAmt)
+						
+						IF(EQT.ODP.oper_clr_bal_amt <= 0)THEN
+						#{
+							print("Operative Account doesn't have sufficient balance!")
+							EQT.ODP.errFlg = "Y"
+							EQT.ODP.errMsg1 = "Operative Account insufficient balance! Acct Id: "+EQT.ODP.pnlDrAcct
+									EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|Operative Account insufficient balance"
+									sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+							GOTO FETCH_NEXT_RECORD
+						#}
+						ENDIF
+						
+						IF ((EQT.ODP.oper_clr_bal_amt <= sv_y) and (EQT.ODP.oper_clr_bal_amt >0 ))THEN
+						#{
+							EQT.ODP.pnlDrAmt=cdouble(EQT.ODP.oper_clr_bal_amt)
+						#}
+						ENDIF
+			#}
+			ENDIF
+			
+			############################################
+			#             Logic for Rate Code          #
+			############################################
+			
+			IF(EQT.ODP.operacctCrncy != BANCS.STDIN.homeCrncyCode)THEN
+			#{
+				sv_b = "pnlRateCode|select CUSTOM.getCparamValue('OD_PENAL_RATECODE','OT',?SVAR)  from dual "
+				
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+				
+				sv_b = urhk_dbSelectWithBind(sv_b)
+				
+				IF(sv_b == 0) THEN
+				#{
+					EQT.ODP.rateCode = BANCS.OUTPARAM.pnlRateCode
+					PRINT(EQT.ODP.rateCode)
+					#}
+				ELSE
+					#{
+					print("Rate Code not maintained in CPARAM!")
+					EQT.ODP.errFlg = "Y"
+					EQT.ODP.errMsg1 = "Rate Code not maintained in CPARAM! Parameter Id: OD_PENAL_RATECODE "
+                			EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                			sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+					GOTO FETCH_NEXT_RECORD
+				#}
+				ENDIF
+				
+				IF(TRIM(EQT.ODP.rateCode) == "")THEN
+				#{
+					print("Rate Code not maintained in CPARAM!")
+					EQT.ODP.errFlg = "Y"
+					EQT.ODP.errMsg1 = "Rate Code not maintained in CPARAM! Parameter Id: OD_PENAL_RATECODE "
+                			EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                			sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+					GOTO FETCH_NEXT_RECORD
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			############################################
+			#                MTT Begin                 #
+			############################################
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			
+			IF(sv_z != 0)THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				
+				EQT.ODP.errMsg=MTT.Error.Description
+				PRINT(EQT.ODP.errMsg)
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.PostTranFlg = "Y"
+			BANCS.INPARAM.CommitFlg = "Y"
+			BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+			BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+			BANCS.INPARAM.ErrorCheckForLuw = "Y"
+			BANCS.INPARAM.CheckExceptions = "Y"
+			
+			sv_r = urhk_MTTS_Initialize("")
+			PRINT(sv_r)
+			
+			IF(sv_r != 0)THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				
+				EQT.ODP.errMsg=MTT.Error.Description
+				PRINT(EQT.ODP.errMsg)
+						EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				EQT.ODP.errFlg = "Y"
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			############################################
+			#            Define Transaction            #
+			############################################
+			
+			MTT.TranDetails.TranID 					= ""
+			MTT.TranDetails.TranDate                = "0"
+			MTT.TranDetails.TranType                = "T"
+			MTT.TranDetails.PostFlag                = "Y"
+			MTT.TranDetails.TranSubType             = "BI"
+			MTT.TranDetails.ReversalFlag            = "N"
+			MTT.TranDetails.IgnoreExcp              = "I"
+			MTT.TranDetails.Consolidate             = "Y"
+			MTT.TranDetails.Remarks                 = "Penalty on Outstanding Amount on ODA"
+			
+			sv_t = urhk_MTTS_DefineTransaction("ODA_PNL_TXN")
+			
+			IF (sv_t != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				
+				EQT.ODP.errMsg=MTT.Error.Description
+				PRINT(EQT.ODP.errMsg)
+						EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				EQT.ODP.errFlg = "Y"
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			############################################
+			#          Define Debit Part Tran          #
+			############################################
+			
+			print(EQT.ODP.pnlDrAcct)
+			print(EQT.ODP.acctCrncy)
+			print(EQT.ODP.pnlDrAmt)
+			
+			print(EQT.ODP.operforacid)
+			print(EQT.ODP.operacctCrncy )
+			
+			MTT.PartTranDetails.Account         = EQT.ODP.operforacid
+			MTT.PartTranDetails.RefCurrency     = EQT.ODP.operacctCrncy 
+			MTT.PartTranDetails.Particulars     = "DR FOR ODA PENALTY "+EQT.ODP.pnlDrAcct
+			MTT.PartTranDetails.Remarks         = "Penalty on OD Account"
+			MTT.PartTranDetails.RefAmount       = -CDOUBLE(EQT.ODP.pnlDrAmt)
+			MTT.PartTranDetails.Consolidate     = "Y"
+			MTT.PartTranDetails.TranIdentifier  = "ODA_PNL_TXN"
+			MTT.PartTranDetails.CarveAmtFlg     = "Y"
+			MTT.PartTranDetails.RateCode		= ""
+			MTT.PartTranDetails.Rate 			= ""
+			
+			sv_r = urhk_MTTS_DefinePartTran("ODA_PNL_TXN_DR")
+			PRINT(sv_r)
+			
+			IF (sv_r != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				
+				EQT.ODP.errMsg=MTT.Error.Description
+				PRINT(EQT.ODP.errMsg)
+						EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				EQT.ODP.errFlg = "Y"
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			############################################
+			#          Define Credit Part Tran         #
+			############################################
+			
+			print(EQT.ODP.pnlCrAcct)
+			
+			MTT.PartTranDetails.Account           = EQT.ODP.pnlCrAcct
+			MTT.PartTranDetails.RefCurrency       = EQT.ODP.acctCrncy
+			MTT.PartTranDetails.RefAmount         = CDOUBLE(EQT.ODP.pnlDrAmt)
+			MTT.PartTranDetails.Particulars       = "CR FOR ODA PENALTY "+EQT.ODP.pnlDrAcct
+			MTT.PartTranDetails.Remarks           = "Penalty on OD Account"
+			MTT.PartTranDetails.ValueDate         = "0"
+			MTT.PartTranDetails.ReportCode        = ""
+			MTT.PartTranDetails.Consolidate       = "Y"
+			MTT.PartTranDetails.TranIdentifier    = "ODA_PNL_TXN"
+			MTT.PartTranDetails.PTranBusinessType = ""
+			MTT.PartTranDetails.RateCode		  = EQT.ODP.rateCode
+			
+			sv_o = urhk_MTTS_DefinePartTran("ODA_PNL_TXN_CR")
+			PRINT(sv_o)
+			
+			IF(sv_o != 0) THEN
+			#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				
+				EQT.ODP.errMsg=MTT.Error.Description
+				PRINT(EQT.ODP.errMsg)
+						EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                		sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+				EQT.ODP.errFlg = "Y"
+				GOTO FETCH_NEXT_RECORD
+			#}
+			ENDIF
+			
+			sv_w = urhk_MTTS_EndDefinition("")
+			PRINT(sv_w)
+			
+			IF(sv_w != 0) THEN
+			#{
+				PRINT("Transaction Commit Failed")
+				
+				sv_h = urhk_MTTS_ReportErrorCondition("")
+				PRINT(sv_h)
+				
+				IF(sv_h == 0)THEN
+				#{
+					EQT.ODP.errMsg = MTT.Error.Description
+					PRINT(EQT.ODP.errMsg)
+						
+                			EQT.ODP.errMsg = EQT.ODP.pnlDrAcct+"|"+EQT.ODP.errMsg
+                			sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+					IF(TRIM(EQT.ODP.errMsg) == "")THEN
+					#{
+						EQT.ODP.errMsg = "Error in Posting Transaction"
+					#}
+					ENDIF
+					
+					sv_b = "Update custom.c_pnat set PENAL_APPL_FAILURE_DATE = TO_DATE(?SVAR, 'DD-MM-YYYY'), PENAL_APPL_FAILURE_REMARKS = substr(?SVAR,1,150) ,"
+					sv_b = sv_b + " LCHG_USER_ID = ?SVAR, LCHG_TIME = sysdate where acid = ?SVAR and bank_id = ?SVAR"
+					
+					print(sv_b)
+					
+					BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + EQT.ODP.errMsg + "|" +  BANCS.STDIN.userId  + "|" + EQT.ODP.pnlDrAcid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_b = urhk_dbSqlWithBind(sv_b)
+					PRINT(sv_b)
+					
+					IF(sv_b != 0)THEN
+					#{
+						print("Error in Updating Record in Custom Table!")
+						GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+                                        	EQT.ODP.errMsg = EQT.ODP.pnlDrAcct +"|"+ ":Record added for penal Amount-"+EQT.ODP.pnlAmt
+                                        	sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+					#}
+					ENDIF
+					
+					GOTO FETCH_NEXT_RECORD
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(sv_w == 0)THEN
+			#{
+				PRINT(BANCS.OUTPARAM.MTTTranId)
+				EQT.ODP.mttTranId = BANCS.OUTPARAM.MTTTranId
+			#}
+			endif
+			
+			sv_z = urhk_MTTS_Close("")
+			PRINT(sv_z)
+			
+			IF(sv_w == 0)THEN
+			#{
+				IF(EQT.ODP.mttTranId != "" )THEN
+				#{
+					sv_b = "Insert into custom.c_pntd (FORACID, ACID, SOL_ID, ACCT_CCY_CODE, TRAN_ID, TRAN_DATE, TRAN_AMT, RATE_CODE,"
+					sv_b = sv_b + " RCRE_USER_ID , RCRE_TIME, LCHG_USER_ID, LCHG_TIME, BANK_ID) values (?SVAR, ?SVAR, ?SVAR, ?SVAR,"
+					sv_b = sv_b + " ?SVAR, TO_DATE(?SVAR, 'DD-MM-YYYY'), ?SVAR, ?SVAR, ?SVAR, sysdate, ?SVAR, sysdate, ?SVAR)"
+					
+					print(sv_b)
+					
+					BANCS.INPARAM.BINDVARS = EQT.ODP.pnlDrAcct + "|" + EQT.ODP.pnlDrAcid + "|" + EQT.ODP.acctSolId + "|" + EQT.ODP.acctCrncyCode + "|" + EQT.ODP.mttTranId + "|" + MID$(BANCS.STDIN.BODDate,0,10)
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + EQT.ODP.pnlDrAmt + "|" + EQT.ODP.rateCode + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_b = urhk_dbSqlWithBind(sv_b)
+					PRINT(sv_b)
+					
+					IF(sv_b != 0)THEN
+					#{
+						print("Error in Adding Record in Table!")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+					EQT.ODP.errMsg = "Penal Applied For An Amount of:"+EQT.ODP.pnlDrAmt
+					
+					sv_b = "Update custom.c_pnat set PENAL_APPL_UP_TO_DATE_DR = TO_DATE(?SVAR, 'DD-MM-YYYY'), PENAL_APPLIED_AMOUNT_DR = nvl(PENAL_APPLIED_AMOUNT_DR ,0) + ?SVAR,"
+					#sv_b = sv_b + " LCHG_USER_ID = ?SVAR, LCHG_TIME = sysdate where acid = ?SVAR and bank_id = ?SVAR"
+					sv_b = sv_b + " LCHG_USER_ID = ?SVAR, LCHG_TIME = sysdate, PENAL_APPL_FAILURE_REMARKS = substr(?SVAR,1,150) where acid = ?SVAR and bank_id = ?SVAR"
+					
+					print(sv_b)
+					
+					#BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + EQT.ODP.pnlDrAmt + "|" +  BANCS.STDIN.userId  + "|" + EQT.ODP.pnlDrAcid + "|" + BANCS.STDIN.contextBankId
+					BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + EQT.ODP.pnlDrAmt + "|" +  BANCS.STDIN.userId +"|"+ EQT.ODP.errMsg  + "|" + EQT.ODP.pnlDrAcid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_b = urhk_dbSqlWithBind(sv_b)
+					PRINT(sv_b)
+					print(EQT.ODP.pnlDrAcid)
+					print(EQT.ODP.pnlDrAmt)
+	
+					IF(sv_b != 0)THEN
+					#{
+						print("Error in Updating Record in Custom Table!")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+                                        	
+						print("inside error message")	
+						EQT.ODP.errMsg = EQT.ODP.pnlDrAcct +"|"+ ":Record added for penal Amount-"+EQT.ODP.pnlDrAmt
+                                        	print(EQT.ODP.errMsg)	
+						sv_b = urtn_fileWrite(EQT.ODP.successFileIndex1 + "|" + EQT.ODP.errMsg)
+						print(sv_b)	
+					#}
+				ELSE
+					#{
+					EQT.ODP.errMsg = "Unable to Post the Transaction."
+					
+					sv_b = "Update custom.c_pnat set PENAL_APPL_FAILURE_DATE = TO_DATE(?SVAR, 'DD-MM-YYYY'), PENAL_APPL_FAILURE_REMARKS = substr(?SVAR,1,150) ,"
+					sv_b = sv_b + " LCHG_USER_ID = ?SVAR, LCHG_TIME = sysdate where acid = ?SVAR and bank_id = ?SVAR"
+					
+					print(sv_b)
+					
+					BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + EQT.ODP.errMsg + "|" +  BANCS.STDIN.userId  + "|" + EQT.ODP.pnlDrAcid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_b = urhk_dbSqlWithBind(sv_b)
+					PRINT(sv_b)
+					
+					IF(sv_b != 0)THEN
+					#{
+						print("Error in Updating Record in Custom Table!")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			FETCH_NEXT_RECORD:
+				
+				IF(EQT.ODP.errFlg == "Y")THEN
+				#{
+					IF(TRIM(EQT.ODP.errMsg)=="")THEN
+					#{
+						EQT.ODP.errMsg = "Unable to Post the Transaction."
+					#}
+					ENDIF
+					
+					sv_b = "Update custom.c_pnat set PENAL_APPL_FAILURE_DATE = TO_DATE(?SVAR, 'DD-MM-YYYY'), PENAL_APPL_FAILURE_REMARKS = substr(?SVAR,1,150) ,"
+					sv_b = sv_b + " LCHG_USER_ID = ?SVAR, LCHG_TIME = sysdate where acid = ?SVAR and bank_id = ?SVAR"
+					
+					print(sv_b)
+					
+					BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + EQT.ODP.errMsg1 + "|" +  BANCS.STDIN.userId  + "|" + EQT.ODP.pnlDrAcid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_b = urhk_dbSqlWithBind(sv_b)
+					PRINT(sv_b)
+					
+					IF(sv_b != 0)THEN
+					#{
+						print("Error in Updating Record in Custom Table!")
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				sv_z = urhk_dbCursorFetch(sv_m)
+				PRINT(sv_z)
+			#}
+			DO
+			sv_z = urhk_dbCursorClose(sv_m)
+			print(sv_z)
+			#}
+		ELSE
+			#{
+			print("Unable to Open Cursor!")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+                IF(EQT.ODP.errMsg == "") THEN
+                #{
+                        EQT.ODP.errMsg = " Other Accounts|Batch Job executed with out any Errors"
+                        sv_b = urtn_fileWrite(EQT.ODP.failFileIndex1 + "|" + EQT.ODP.errMsg)
+                        PRINT(sv_b)
+                #}
+                ENDIF
+
+                sv_c = urtn_fileClose(EQT.ODP.failFileIndex1)
+                PRINT(sv_c)
+                sv_c = urtn_fileClose(EQT.ODP.successFileIndex1)
+                PRINT(sv_c)
+
+                EQT.ODP.ERR000002 = "Failed "
+                PRINT(EQT.ODP.list_file_name)
+                sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + EQT.ODP.mrt_file_name + " " + EQT.ODP.list_file_name + " " + EQT.ODP.rpt
+                PRINT(sv_r)
+                sv_r = SYSTEM(sv_r)
+                IF (sv_r != 0) THEN
+                #{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                        sv_u = urhk_SetOrbOut("Error_1|ERR^" + EQT.ODP.ERR000002 + "")
+                        GOTO FINISH
+                #}
+                ENDIF
+                sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ EQT.ODP.rpt_file_name+" '" + EQT.ODP.title+"' MANAGER 1 N"
+                PRINT(sv_q)
+                sv_r = SYSTEM(sv_q)
+
+                ##############
+
+                PRINT(EQT.ODP.list_file_nameSuccess )
+                sv_r = "exebatch mrbx4004 ${B2K_SESSION_ID} " + EQT.ODP.mrt_file_name1 + " " + EQT.ODP.list_file_nameSuccess  + " " + EQT.ODP.rptSuccess
+                PRINT(sv_r)
+                sv_r = SYSTEM(sv_r)
+                IF (sv_r != 0) THEN
+                #{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                        sv_u = urhk_SetOrbOut("Error_1|ERR^" + EQT.ODP.ERR000002 + "")
+                        GOTO FINISH
+                #}
+                ENDIF
+                sv_q = "exebatch babx4040 ${B2K_SESSION_ID} " + " "+ EQT.ODP.rpt_file_nameSuccess+" '" + EQT.ODP.titleSuccess+"' MANAGER 1 N"
+                PRINT(sv_q)
+                sv_r = SYSTEM(sv_q)
+
+
+                ##############
+
+
+                IF (sv_r != 0) THEN
+                #{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                        sv_u = urhk_SetOrbOut("Error_1|ERR^" + EQT.ODP.ERR000002 + "^DATE")
+                        GOTO FINISH
+                #}
+                ENDIF
+
+                sv_c = urtn_fileClose(EQT.ODP.failFileIndex1)
+                PRINT(sv_c)
+	FINISH:
+
+		DELETECLASS("EQT", "ODP")
+		DELETEREP("EQT")
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->
+
+298

@@ -1,0 +1,138 @@
+<--START
+	# Script body goes here
+	TRACE ON
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	sv_r = REPEXISTS("CUST")
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether DATA Class exists else create it
+	###########################################################################################
+	sv_c = CLASSEXISTS("CUST", "DATA")
+	IF(sv_c == 0) THEN
+	#{
+		CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+	
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	CUST.DATA.errorFlg = "N"
+	CUST.DATA.errorMsg = " "
+	CUST.DATA.crAcctId1= ""
+	CUST.DATA.cashCrncyCode1 = ""
+	CUST.DATA.totalAmt = "0"
+	CUST.DATA.chrgAmt = "0"
+	CUST.DATA.vatcollAmount = "0"
+	CUST.DATA.schmCode = ""	
+	CUST.DATA.eventId = "0"
+	CUST.DATA.vatPcnt = "0"
+	
+	IF(FIELDEXISTS(BANCS.INPUT.crAcctId1))THEN
+	#{
+		IF(BANCS.INPUT.crAcctId1 != "")THEN
+		#{
+			CUST.DATA.crAcctId1 = BANCS.INPUT.crAcctId1
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.INPUT.cashCrncyCode1))THEN
+	#{
+		IF (BANCS.INPUT.cashCrncyCode1 != "")THEN
+		#{
+			CUST.DATA.cashCrncyCode1 = BANCS.INPUT.cashCrncyCode1
+			PRINT(BANCS.INPUT.cashCrncyCode1)
+		#}
+		ENDIF
+	#}
+	ENDIF		
+
+	sv_s = "schmCode|SELECT SCHM_CODE FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.crAcctId1
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0) THEN
+        #{
+		CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+		PRINT(CUST.DATA.schmCode)
+	#}
+	ENDIF
+
+	sv_s = "event_id|SELECT LOCAL_EVENT_ID FROM TBAADM.DDS WHERE BANK_ID=?SVAR AND SCHM_CODE=?SVAR AND CRNCY_CODE=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.schmCode +"|"+ CUST.DATA.cashCrncyCode1
+
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0) THEN
+        #{
+		CUST.DATA.eventId = BANCS.OUTPARAM.event_id
+                PRINT(CUST.DATA.eventId)
+        #}
+        ENDIF
+
+	sv_s="chrgAmt|SELECT CHRG_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE='DDI' AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+        sv_s = sv_s + " AND SCHM_CODE='CASBC' AND CRNCY_CODE=?SVAR AND BANK_ID=?SVAR AND SRL_NUM='1'"
+        BANCS.INPARAM.BINDVARS = CUST.DATA.eventId + "|" + CUST.DATA.cashCrncyCode1 + "|" + BANCS.STDIN.contextBankId
+
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0) THEN
+        #{
+                CUST.DATA.chrgAmt = BANCS.OUTPARAM.chrgAmt
+                PRINT(CUST.DATA.chrgAmt)
+        #}
+        ENDIF
+
+	sv_s = "vatPcnt | select CUSTOM.getCparamValue('VAT_FOR_CHRG_PCNT','OT',?SVAR) from dual "
+	
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+	        CUST.DATA.vatPcnt = BANCS.OUTPARAM.vatPcnt
+                PRINT (CUST.DATA.vatPcnt)
+        #}
+        ELSE
+        #{
+		CUST.DATA.vatcollAmount = "0"
+        #}
+        ENDIF
+
+        ########## calculating the charges ################
+        IF (CUST.DATA.vatPcnt > 0) THEN
+        #{
+	        PRINT(CUST.DATA.vatPcnt)
+                CUST.DATA.vatcollAmount = CDOUBLE(CUST.DATA.chrgAmt) * (CDOUBLE(CUST.DATA.vatPcnt)/100)
+        #}
+        ELSE
+        #{
+		CUST.DATA.vatcollAmount = "0"
+        #}
+        ENDIF
+
+	CUST.DATA.totalAmt = CDOUBLE(CUST.DATA.chrgAmt) + CDOUBLE(CUST.DATA.vatcollAmount)
+
+	sv_u = urhk_SetOrbOut("totFeeAmt|"+CUST.DATA.totalAmt)
+
+	TRACE OFF
+END-->
+
+

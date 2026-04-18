@@ -1,0 +1,1066 @@
+#----------------------------------------------------------------------------
+#       SCRIPT FOR Unschedule Payment for Loans.
+#
+# Srl No     Modified Date    Author          Modification    Version
+# ------     -------------    -------         --------------   --------
+# 001        08-NOV-04        Nisha        	  Original         1.0
+#----------------------------------------------------------------------------
+#										Inputs To Script
+#----------------------------------------------------------------------------
+#		MTT.InputDetails.LoanAccount			Loan AccountNumber  
+#		MTT.InputDetails.LoanPaymentAccount		Loan Payment account
+#		MTT.InputDetails.LoanInterestAccount	Loan Interest Account
+#		MTT.InputDetails.IntSuspenceAccount 	Interest Suspence Account
+#		MTT.InputDetails.ExcessCreditAccount 	Excess Credit Account
+#		MTT.InputDetails.SourceDebitAccount 	Source Debit Account
+#		MTT.InputDetails.OAPTranId 				Tran Id (valid in case the SourceDebitAccount is of
+#												OAP schme type only)
+#		MTT.InputDetails.OAPTranDate 			Tran Date (valid in case the SourceDebitAccount is 
+#												of OAP schme type only)
+#		MTT.InputDetails.OAPPTranSrlNum			Part Tran Serial Number (valid in case the 
+#												SourceDebitAccount is of OAP schme type only)
+#		MTT.InputDetails.LoanAccountCrncyCode	Loan Account Currency Code   
+#		MTT.InputDetails.CifId					Loan Account Customer CIF Id
+#		MTT.InputDetails.PrePaymentFeeAdj		Pre-Payment Fee to be e    
+#		MTT.InputDetails.SourceAcctTranAmt		Amount to be Debited from Source Account
+#		MTT.InputDetails.LoanAcctTranAmt		Amount to be Credited to Loan Account
+#		MTT.InputDetails.ReferenceNumber		Reference Number 
+#		MTT.InputDetails.TranRemarks			Transaction Remarks
+#		MTT.InputDetails.ValueDate				Value Date of transaction
+#		MTT.InputDetails.IntRouteFlg			Flag indicating whether Interest is routed through 
+#												Loan Account("L") or Loan Interest Account("O")
+#		MTT.InputDetails.ChrgRouteFlg			Flag indicating whether Charge is routed through
+#												Loan Account("L") or Loan Interest Account("O")
+#		MTT.InputDetails.DefaultCollecFlowId	Default collection Flow-Id
+#		MTT.InputDetails.FuncCode				Function Code of LAPAY menu
+
+
+#-----------------------------------------------------------
+#  The Script starts here 							
+#-----------------------------------------------------------
+
+<--start
+#trace on
+sv_r = CDOUBLE("0")      
+sv_r = urhk_MTTS_PopulateInputDetails("")
+if(sv_r == 1) then
+	exitscript	
+endif
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType=MTT.InputDetails.tranType
+if (MTT.InputDetails.tranType == "C" ) then 
+	if (MTT.InputDetails.FuncCode != "R") then 
+		MTT.TranDetails.TranSubType = "CR" 
+	else 
+	   MTT.TranDetails.TranSubType = "CP"
+	endif
+else 
+MTT.TranDetails.TranSubType="BI"							
+endif 
+#MSG0008815="Loan Recovery"
+sv_b = urhk_getMSGCodeErrDesc("MSG0008815")
+if(sv_b == 0) then
+MTT.TranDetails.Remarks= BANCS.OUTPARAM.errDesc
+endif
+MTT.TranDetails.IgnoreExcp="N"								
+MTT.TranDetails.Consolidate="Y"						
+MTT.TranDetails.PrintAdviceInd="Y"							
+MTT.TranDetails.ReversalFlg="N"				
+# newly added the tranId while verification
+MTT.TranDetails.TranID = MTT.InputDetails.tranId 
+#MTT.TranDetails.ReversalDate=MTT.InputDetails.reversalDate	
+MTT.TranDetails.sysTranCode="LOANAA012"
+
+sv_r = urhk_MTTS_DefineTransaction("LoanRecovery")
+if(sv_r == 1) then
+	MTT.Error.Description="Transaction definition could not be created"
+	sv_r = urhk_MTTS_ReportErrorCondition("")
+	exitscript	
+endif
+
+sv_p = 0
+
+while(sv_r < 1)
+#{
+
+	sv_m = CDOUBLE(MTT.InputDetails.PrePaymentFeeAdj)
+	sv_c = CDOUBLE(MTT.InputDetails.prepayFeeInChrgCrncy) 
+
+	sv_p = CDOUBLE(MTT.InputDetails.SourceAcctTranAmt)
+	sv_q = CDOUBLE(MTT.InputDetails.LoanAcctTranAmt)
+	
+	if ((MTT.InputDetails.RevOriginOfTran == "LDS") AND (MTT.InputDetails.FuncCode == "R") AND (MTT.InputDetails.LoanAccountCrncyCode != MTT.InputDetails.DebitAcctCrncyCode )) then 
+		sv_a = "1"  
+	else 
+		sv_a = "0"  
+	endif
+	if (MTT.InputDetails.FuncCode == "R") then 
+		sv_t = CDOUBLE(MTT.InputDetails.RevFeeAdj)
+	endif
+    if( MTT.InputDetails.UnearnIncAcctFlg == "Y" ) then
+        sv_u = CDOUBLE(MTT.InputDetails.benefitAmt)
+    else
+        sv_u = CDOUBLE("0")
+    endif
+	##################################
+	
+#----------------------------------------------------------------------------
+# Debit the source account for the complete amount
+#----------------------------------------------------------------------------
+	MTT.PartTranDetails.Account = MTT.InputDetails.SourceDebitAccount 
+	MTT.PartTranDetails.RefCurrency = MTT.InputDetails.DebitAcctCrncyCode
+    #MSG0309578 = "Loan Account Payments For : " + MTT.InputDetails.LoanAccount
+    #sv_e=urhk_getMSGCodeErrDesc("MSG0309578")
+    #if(sv_e == 0) then
+   # sv_f = BANCS.OUTPARAM.errDesc
+    #endif
+sv_f ="Paiement anticipatif partiel du credit "
+	
+MTT.PartTranDetails.Particulars = sv_f + MTT.InputDetails.LoanAccount	
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.RefAmount = -sv_p
+	MTT.PartTranDetails.sysPartTranCode = "PTRN01774"	 
+	MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+    if (MTT.InputDetails.FuncCode == "R") then
+    #{
+        #if(MTT.InputDetails.IntRouteFlg == "O") then
+            MTT.PartTranDetails.RefAmount = sv_p
+			MTT.PartTranDetails.sysPartTranCode = "PTRN01775"
+        #else
+        #    MTT.PartTranDetails.RefAmount = sv_p-sv_u
+        #endif
+        #MSG0309174 = "Loan Payment Reversal For : " + MTT.InputDetails.LoanAccount
+        sv_g=urhk_getMSGCodeErrDesc("MSG0309174")
+        if(sv_g == 0) then
+        sv_h = BANCS.OUTPARAM.errDesc
+        endif
+        MTT.PartTranDetails.Particulars = sv_h + MTT.InputDetails.LoanAccount
+    #}
+    endif
+
+	MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+	MTT.PartTranDetails.PartTranIdentifier = "SOURCE_DEBIT"
+	MTT.PartTranDetails.PTranBusinessType = "RECOV"								
+	MTT.PartTranDetails.ACPARTB2kId = MTT.InputDetails.LoanAccount
+	MTT.PartTranDetails.ACPARTB2kType = "ACCNT"
+
+	MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+	MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+	# Call to common script to modify tran particulars if script is present
+	MTT.PartTranDetails.ScriptEventType = "LAPAY"
+	sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+	if (sv_z == 0) then
+		call("getMTTTranPart.scr")
+	endif
+	
+	#--------------------------------------------
+    # Enter OAP Details if account is of OAP Type
+    #--------------------------------------------		
+	if(MTT.InputDetails.OAPSchmTypeFlg == "Y")then
+	#{
+		MTT.PartTranDetails.Refnum = MTT.InputDetails.OAPRefNum
+		MTT.OAPAddnlDetails.OffsetAmount = sv_p
+		MTT.OAPAddnlDetails.OrgTranID = MTT.InputDetails.OAPTranId
+		MTT.OAPAddnlDetails.OrgTranDate = MTT.InputDetails.OAPTranDate 
+		MTT.OAPAddnlDetails.OrgPartTran = MTT.InputDetails.OAPPTranSrlNum 
+	#}
+	endif
+
+	#------------------------------------------
+	# Dump the instrument Details
+	#-------------------------------------------
+	if(MTT.InputDetails.tranType == "T") then
+		if (MTT.InputDetails.FuncCode != "R") then
+			MTT.PartTranDetails.InstrmntType = MTT.InputDetails.instrmntType
+
+			if(MTT.InputDetails.instrmntDate !="") then
+				BANCS.INPARAM.date1 = MID$(MTT.InputDetails.instrmntDate,0,10)
+				BANCS.INPARAM.date2 = MID$(BANCS.STDIN.BODDate,0,10)
+				sv_r = urhk_B2k_dateDiff("")
+				MTT.PartTranDetails.InstrmntDate=BANCS.OUTPARAM.dateDiff
+			endif
+
+			MTT.PartTranDetails.InstrmntNum = MTT.InputDetails.instrmntNum
+			MTT.PartTranDetails.InstrmntAlpha = MTT.InputDetails.instrmntAlpha
+		endif
+	endif
+
+	MTT.PartTranDetails.svsTranId = MTT.InputDetails.svsTranId
+	
+	sv_r = urhk_MTTS_DefineLoanPartTran("SOURCE_DEBIT")
+
+	if (sv_r == 1) then
+		exitscript
+	endif
+
+	#-------------------------------------------------------------------
+	#If loan account currency is different from  source account currency	
+	#-------------------------------------------------------------------
+	if (MTT.InputDetails.LoanAccountCrncyCode != MTT.InputDetails.DebitAcctCrncyCode) then 
+	#{
+		#----------------------------------------------------------
+		#Loan Acct Xfer Parking Credit 					
+		#----------------------------------------------------------
+		
+		MTT.PartTranDetails.Account = MTT.InputDetails.XferParkAcct 
+        #MSG0309578 = "Loan Account Payments For : " + MTT.InputDetails.LoanAccount
+        #sv_i=urhk_getMSGCodeErrDesc("MSG0309578")
+        #if(sv_i == 0) then
+       # sv_j = BANCS.OUTPARAM.errDesc
+        #endif
+sv_j ="Paiement anticipatif partiel du credit "
+
+        MTT.PartTranDetails.Particulars = sv_j + MTT.InputDetails.LoanAccount
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+		
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.DebitAcctCrncyCode
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.RefAmount = sv_p
+		MTT.PartTranDetails.sysPartTranCode = "PTRN01776"
+		if (MTT.InputDetails.FuncCode == "R") then 
+			MTT.PartTranDetails.RefAmount = -sv_p
+			MTT.PartTranDetails.sysPartTranCode = "PTRN01777"
+		endif
+
+		if (sv_a == "1" ) then 
+			MTT.PartTranDetails.Account = MTT.InputDetails.ConsolLoanParkAcct 
+			MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode 
+			MTT.PartTranDetails.RefAmount = -sv_q + sv_t
+		endif
+		MTT.PartTranDetails.RateCode=MTT.InputDetails.TranRateCode
+		MTT.PartTranDetails.Rate=MTT.InputDetails.TranRate
+		MTT.PartTranDetails.TreaRate = MTT.InputDetails.TranTreaRate
+	    MTT.PartTranDetails.TreaRefNum = MTT.InputDetails.TreaRefNum
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SOURCE_DEBIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"								
+		sv_r = urhk_MTTS_DefineLoanPartTran("LA_PARK_CREDIT")
+		if (sv_r == 1) then
+			exitscript
+		endif
+
+		BANCS.INPARAM.InputAmount=sv_p
+		BANCS.INPARAM.FromCurrency=MTT.InputDetails.DebitAcctCrncyCode
+		BANCS.INPARAM.ToCurrency=MTT.InputDetails.LoanAccountCrncyCode
+		if (sv_a == "1" ) then 
+			BANCS.INPARAM.InputAmount=sv_q - sv_t
+			BANCS.INPARAM.FromCurrency= MTT.InputDetails.LoanAccountCrncyCode
+			BANCS.INPARAM.ToCurrency=MTT.InputDetails.DebitAcctCrncyCode
+		endif
+		BANCS.INPARAM.RateCode=MTT.InputDetails.TranRateCode
+		BANCS.INPARAM.Rate=MTT.InputDetails.TranRate
+		sv_z=urhk_B2k_ConvertAmount("")
+		sv_x= CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+
+		#-----------------------------------------------------------
+		# Loan Acct Xfer Parking Debit 					
+		#-----------------------------------------------------------
+
+		MTT.PartTranDetails.Account = MTT.InputDetails.XferParkAcct 
+		#print (MTT.PartTranDetails.Account ) 
+        #MSG0309578 = "Loan Account Payments For : " + MTT.InputDetails.LoanAccount
+       # sv_i=urhk_getMSGCodeErrDesc("MSG0309578")
+       # if(sv_i == 0) then
+       # sv_j = BANCS.OUTPARAM.errDesc
+       # endif
+sv_j ="Paiement anticipatif partiel du credit "
+
+        MTT.PartTranDetails.Particulars = sv_j + MTT.InputDetails.LoanAccount
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+	
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.RefAmount = -sv_x
+		MTT.PartTranDetails.sysPartTranCode = "PTRN01778"
+		if ((MTT.InputDetails.FuncCode == "R") OR (MTT.InputDetails.FuncCode == "W")) then 
+		MTT.PartTranDetails.RefAmount = sv_x
+		MTT.PartTranDetails.sysPartTranCode = "PTRN01779"
+		endif
+		if (sv_a == "1" ) then 
+			MTT.PartTranDetails.Account = MTT.InputDetails.ConsolLoanParkAcct 
+			MTT.PartTranDetails.RefCurrency = MTT.InputDetails.DebitAcctCrncyCode
+		endif 
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SOURCE_DEBIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"								
+
+
+		sv_r = urhk_MTTS_DefineLoanPartTran("LA_PARK_CREDIT")
+		if (sv_r == 1) then
+			exitscript
+		endif
+	#}
+	endif
+    
+	#if forward a/c in construction period then make sv_q as 0
+    if (MTT.InputDetails.ForwardIjarahInCP == "Y") then
+        sv_q = 0
+    endif
+#----------------------------------------------------------
+# Loan Acct Credit			 					 
+#----------------------------------------------------------
+	if (sv_q != 0 ) then 
+	#{
+
+		MTT.PartTranDetails.Account = MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+##Commenting for harcoding the tran particulars
+#        #MSG0309175 = "Loan Account Payments From : " + MTT.InputDetails.LoanAccount
+#        sv_i=urhk_getMSGCodeErrDesc("MSG0309175")
+#        if(sv_i == 0) then
+#        sv_j = BANCS.OUTPARAM.errDesc
+#        endif
+#        MTT.PartTranDetails.Particulars = sv_j + MTT.InputDetails.SourceDebitAccount 
+		MTT.PartTranDetails.Particulars = "UNSCH Loan Account Payments From : " + MTT.InputDetails.LoanAccount
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+	
+		MTT.PartTranDetails.RefAmount = sv_q
+        #if(MTT.InputDetails.IntRouteFlg == "O") then
+        #    MTT.PartTranDetails.RefAmount = sv_q
+        #else
+        #   MTT.PartTranDetails.RefAmount = sv_q+sv_u
+        #endif
+#	print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "LA_CR"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.Remarks = MTT.InputDetails.TranRemarks
+		MTT.PartTranDetails.Refnum = MTT.InputDetails.ReferenceNumber
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount
+		MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.DefaultCollecFlowId
+		MTT.PartTranDetails.sysPartTranCode = "PTRN01780"
+
+		if ((sv_q < 0) AND (MTT.InputDetails.FuncCode == "M")) then
+			MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.TransferFlowId
+		endif
+
+		MTT.LAAddnlDetails.OriginOfTran = "LAPAY"
+		MTT.LAAddnlDetails.TypeOfDemand = "A"	
+
+		if (MTT.InputDetails.FuncCode == "R") then
+		#{
+			#MTT.PartTranDetails.RefAmount = sv_q
+			MTT.PartTranDetails.sysPartTranCode ="PTRN01781"
+            #MSG0309176 = "Loan Recovery Reversal From :" + MTT.InputDetails.SourceDebitAccount
+            sv_o=urhk_getMSGCodeErrDesc("MSG0309176")
+            if(sv_o == 0) then
+            sv_s = BANCS.OUTPARAM.errDesc
+            endif
+            MTT.PartTranDetails.Particulars = sv_s + MTT.InputDetails.SourceDebitAccount
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LAPAY"
+			sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_z == 0) then
+				call("getMTTTranPart.scr")
+			endif
+		
+			MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RevTranId	
+			MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RevTranDate	
+			MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevLoanAcctPTranSrlNum	
+			MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.RevLoanAcctFlowId	
+			MTT.LAAddnlDetails.PrincipalAmt	= "0"
+			MTT.LAAddnlDetails.InterestAmt	= "0"
+			MTT.LAAddnlDetails.BankChrgAmt	= "0"
+			MTT.LAAddnlDetails.OtherChrgAmt	= "0"
+		#}
+		endif
+
+		MTT.LAAddnlDetails.AdvancePaymentFlg="Y"   
+		MTT.LAAddnlDetails.oFlowAdjFlg = "L" 
+
+		if (  MTT.InputDetails.collIntTillValueDateFlg == "Y") then
+			MTT.LAAddnlDetails.intCollOnPrepayFlg = "Y"
+		else
+			MTT.LAAddnlDetails.intCollOnPrepayFlg = "N"
+		endif
+		if(MTT.InputDetails.prepaymentType == "M") then
+			MTT.LAAddnlDetails.prepayTypeFlg = "M"
+		else
+			MTT.LAAddnlDetails.prepayTypeFlg = "V"
+		endif
+		
+		sv_r = urhk_MTTS_DefineLoanPartTran("LOAN_ACCT_CR")								
+		if (sv_r == 1) then
+			GOTO GET_NEXT_REC
+		endif
+	#}
+	endif
+
+# PartTran for margin money acct if a/c is forward ijarsh type in construction period.
+    sv_q=CDOUBLE(MTT.InputDetails.LoanAcctTranAmt)
+    if ((MTT.InputDetails.ForwardIjarahInCP == "Y") AND (sv_q != 0)) then
+    #{
+
+        MTT.PartTranDetails.RefAmount       = sv_q
+        MTT.PartTranDetails.Account         = MTT.InputDetails.MarginMnyAccnt
+        MTT.PartTranDetails.ValueDate       = MTT.InputDetails.ValueDate
+        MTT.PartTranDetails.RefCurrency     = MTT.InputDetails.LoanAccountCrncyCode
+        MTT.PartTranDetails.RateCode        = ""
+        MTT.PartTranDetails.TreaRefNum      = ""
+
+        # Call to common script to modify tran particulars if script is present
+        MTT.PartTranDetails.ScriptEventType = "LAPAY"
+        sv_m=urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+        if (sv_m==0) then
+            call("getMTTTranPart.scr")
+        endif
+        MTT.PartTranDetails.Consolidate     = "N"
+        MTT.PartTranDetails.EntryUserId     = MTT.InputDetails.EntryUserId
+        MTT.PartTranDetails.EntryTime       = MTT.InputDetails.EntryTime
+        MTT.PartTranDetails.Particulars     = MTT.InputDetails.LoanAccount + " : Margin Money Acct Credit"
+        MTT.PartTranDetails.Remarks         = "Margin Money Acct Credit"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03778"
+
+        MTT.PartTranDetails.ACPARTB2kType   = "ACCNT"
+        MTT.PartTranDetails.ACPARTB2kId     = MTT.InputDetails.LoanAccount
+        if (MTT.InputDetails.FuncCode == "R") then
+        #{
+            MTT.PartTranDetails.Particulars =MTT.InputDetails.LoanAccount + " : Margin Money Acct Debit"
+            MTT.PartTranDetails.Remarks         = "Margin Money Acct Debit"
+			MTT.PartTranDetails.sysPartTranCode = "PTRN03634"
+        #}
+        endif
+        MTT.PartTranDetails.TranIdentifier    ="LoanRecovery"
+        MTT.PartTranDetails.PTranBusinessType ="MARMONREDIT"
+        sv_r = urhk_MTTS_DefinePartTran("MARGIN_MONEY_ACCT_CREDIT")
+        if (sv_r == 1) then
+            GOTO GET_NEXT_REC
+        endif
+    #}
+    endif
+
+#----------------------------------------------------------
+# Credit the Charges.
+#----------------------------------------------------------
+
+	sv_r = urhk_getLaPaymentFeeTranDetails(MTT.InputDetails.LoanAccount)
+		
+	#If the Collection Currency & Charge Currency are different then Cr & Dr part 
+	#trans to the Parking account will have to be done for the total amount used for
+	#Fees collection ie sum of feeAdjustment & prePaymentAdjustment Amts	
+
+	if(sv_r < 1) then 
+	#{
+		#-----------------------------------------------------------
+		# Charges Parking Acct Credit			 	     				 
+		#-----------------------------------------------------------
+
+		if (MTT.InputDetails.FuncCode == "R") then 
+		sv_t = CDOUBLE(MTT.InputDetails.RevFeeAdj)
+		endif
+
+		if ((MTT.InputDetails.FeeCalcCrncy != MTT.InputDetails.LoanAccountCrncyCode) AND (MTT.InputDetails.FeeCalcCrncy != "" ) AND (sv_m != 0 )) then 
+		#{
+			MTT.PartTranDetails.Account = MTT.InputDetails.FeeParkAcct
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+			if (MTT.InputDetails.FuncCode != "R") then 
+				MTT.PartTranDetails.RefAmount = sv_m
+				MTT.PartTranDetails.sysPartTranCode = "PTRN01782"
+#	print(MTT.PartTranDetails.RefAmount)
+			else 
+				MTT.PartTranDetails.RefAmount = -sv_t
+				MTT.PartTranDetails.sysPartTranCode = "PTRN01783"
+#	print(MTT.PartTranDetails.RefAmount)
+			endif
+			MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+            #MSG0309190 = "Parking Account Credit for Loan Fee Collection"
+            sv_u = urhk_getMSGCodeErrDesc("MSG0309190")
+            if(sv_u == 0) then
+            MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+            endif
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LAPAY"
+			sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_z == 0) then
+				call("getMTTTranPart.scr")
+			endif
+		
+			MTT.PartTranDetails.Consolidate = "Y"
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+			MTT.PartTranDetails.RateCode=MTT.InputDetails.ChargeRateCode
+			MTT.PartTranDetails.Rate=MTT.InputDetails.ChargeRate
+			MTT.PartTranDetails.TreaRate = MTT.InputDetails.ChargeTreaRate
+			MTT.PartTranDetails.TreaRefNum = MTT.InputDetails.TreaRefNum
+			MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+			MTT.PartTranDetails.PTranBusinessType = "FEECOLL"
+			MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+            MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+
+			sv_z = urhk_MTTS_DefineLoanPartTran("FEEPARKCR")	
+			if (sv_z == 1) then
+			   GOTO GET_NEXT_REC
+			endif
+			
+			#Calling B2K Convert Amt to find out how much to Debit the Parking Acct
+			#and the subsequent Charge Credits .
+
+			#-----------------------------------------------------------
+			#Charges Parking Acct Debit 			 	        				 
+			#-----------------------------------------------------------
+
+			MTT.PartTranDetails.Account=MTT.InputDetails.FeeParkAcct
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+			MTT.PartTranDetails.RefAmount=-sv_c
+			MTT.PartTranDetails.sysPartTranCode = "PTRN01784"
+			if (MTT.InputDetails.FuncCode == "R") then 
+				MTT.PartTranDetails.RefAmount=sv_c
+				MTT.PartTranDetails.sysPartTranCode = "PTRN01785"
+			endif
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.FeeCalcCrncy
+			MTT.PartTranDetails.RateCode = ""
+            #MSG0309192 = "Parking Account Debit for Loan Fee Collection"
+            sv_y = urhk_getMSGCodeErrDesc("MSG0309192")
+            if(sv_y == 0) then
+            MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+            endif
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LAPAY"
+			sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_z == 0) then
+				call("getMTTTranPart.scr")
+			endif
+	
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="LoanRecovery"
+			MTT.PartTranDetails.PTranBusinessType="FEECOLL"
+			sv_z = urhk_MTTS_DefineLoanPartTran("FEEPARKDR")
+			if (sv_z == 1) then
+				GOTO GET_NEXT_REC
+			endif
+		endif
+		#}
+	endif
+	#} 
+	
+	#-----------------------------------------------------------
+	# Charges  Acct Credit			 	        	 				 
+	#-----------------------------------------------------------
+
+	while(sv_r < 1)
+	#{
+		if ( CDOUBLE(MTT.InputDetails.FeeCollectionAmt) != 0 ) then
+		#{
+			sv_v = CDOUBLE(MTT.InputDetails.FeeCalcAmt)
+			sv_w = CDOUBLE(MTT.InputDetails.FeeCollectionAmt)
+			MTT.PartTranDetails.Account=MTT.InputDetails.ChargeCollAcct
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+			MTT.PartTranDetails.RefAmount=sv_w
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.FeeCalcCrncy
+			MTT.PartTranDetails.RateCode = ""
+		            #MSG0318558="Loan Prepayment Fee Collection for " + MTT.InputDetails.LoanAccount
+            sv_b=urhk_getMSGCodeErrDesc("MSG0318558")
+            if(sv_b == 0) then
+            sv_e = BANCS.OUTPARAM.errDesc
+            endif
+            MTT.PartTranDetails.Particulars = sv_e + MTT.InputDetails.LoanAccount	
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LAPAY"
+			sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_z == 0) then
+				call("getMTTTranPart.scr")
+			endif
+	
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.TranIdentifier="LoanRecovery"
+			MTT.PartTranDetails.PTranBusinessType="FEECOLL"
+			MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+            MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+
+			MTT.ChargeDetails.EventType = MTT.InputDetails.EventType
+			MTT.ChargeDetails.EventId = MTT.InputDetails.EventId
+			MTT.ChargeDetails.CompB2kId = MTT.InputDetails.CompB2kId
+		    MTT.ChargeDetails.PtranBusType = MTT.InputDetails.PtranBusType	
+			MTT.ChargeDetails.CalculatedAmount = sv_v
+			MTT.ChargeDetails.ActualAmount = sv_w
+			MTT.ChargeDetails.CollectionCrncy = MTT.InputDetails.FeeCalcCrncy
+			MTT.ChargeDetails.ChargeCifId = MTT.InputDetails.CifId
+			MTT.ChargeDetails.TargetAcctId = MTT.InputDetails.LoanAccount
+			MTT.ChargeDetails.ServiceSolId  = BANCS.STDIN.mySolId
+			MTT.PartTranDetails.sysPartTranCode = "PTRN01786"
+			sv_r = urhk_MTTS_DefineChargePartTran("FEECR")
+			if (sv_r == 1) then
+			   GOTO GET_NEXT_REC
+			endif
+		#}
+		endif
+		sv_r = urhk_getLaPaymentFeeTranDetails(MTT.InputDetails.LoanAccount)
+		
+	#}
+	do
+#----------------------------------------------------------------------------
+#Part Tran for Transaction Fee
+#----------------------------------------------------------------------------
+
+	if (MTT.InputDetails.TransactionFeeAcct !="") then
+	#{	
+			MTT.PartTranDetails.Account=MTT.InputDetails.TransactionFeeAcct
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+			MTT.PartTranDetails.RefAmount=MTT.InputDetails.TransactionFeeAdj
+			MTT.PartTranDetails.RefCurrency=MTT.InputDetails.TransactionFeeCrncy
+			MTT.PartTranDetails.RateCode = ""
+		            #MSG0318559="Transaction Fee Collection for " + MTT.InputDetails.LoanAccount
+            sv_b=urhk_getMSGCodeErrDesc("MSG0318559")
+            if(sv_b == 0) then
+            sv_e = BANCS.OUTPARAM.errDesc
+            endif
+		MTT.PartTranDetails.Particulars = sv_e + MTT.InputDetails.LoanAccount	
+			# Call to common script to modify tran particulars if script is present
+			MTT.PartTranDetails.ScriptEventType = "LAPAY"
+			sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+			if (sv_z == 0) then
+				call("getMTTTranPart.scr")
+			endif
+
+			MTT.ChargeDetails.IsCxlEntryReqd="Y"
+			MTT.PartTranDetails.Consolidate="Y"
+			MTT.PartTranDetails.TranIdentifier="LoanRecovery"
+			MTT.PartTranDetails.PTranBusinessType="FEECOLL"
+			MTT.ChargeDetails.EventType = MTT.InputDetails.TransactionFeeEventType 
+			MTT.ChargeDetails.EventId = MTT.InputDetails.TransactionFeeEventId
+			MTT.ChargeDetails.CompB2kId = MTT.InputDetails.CompB2kId
+		    MTT.ChargeDetails.PtranBusType = MTT.InputDetails.PtranBusType	
+			MTT.ChargeDetails.CalculatedAmount = MTT.InputDetails.TransactionFeeOrig
+			MTT.ChargeDetails.ActualAmount = MTT.InputDetails.TransactionFeeAdj
+			MTT.ChargeDetails.CollectionCrncy = MTT.InputDetails.TransactionFeeCrncy
+			MTT.ChargeDetails.ChargeCifId = MTT.InputDetails.CifId
+			MTT.ChargeDetails.TargetAcctId = MTT.InputDetails.LoanAccount
+			MTT.ChargeDetails.ServiceSolId  = BANCS.STDIN.mySolId
+			MTT.PartTranDetails.sysPartTranCode = "PTRN01787"
+			sv_r = urhk_MTTS_DefineChargePartTran("FEECR")
+	#}
+	endif
+
+	# Script added for Salam Part transactions
+	#print(MTT.InputDetails.IslamicProdType)
+	#print(MTT.InputDetails.Agent1AccID)
+	#print(MTT.InputDetails.Agent2AccID)
+	#print(MTT.InputDetails.SalamComAccID)
+	#print(MTT.InputDetails.SalamEntryOnPreClosureFlg)
+
+	if(( MTT.InputDetails.IslamicProdType == "S" ) AND ( MTT.InputDetails.SalamEntryOnPreClosureFlg == "Y")) then
+	#{
+		#First Part Tran : Crediting Agent1 Account account
+		MTT.PartTranDetails.Account = MTT.InputDetails.Agent1AccID 
+		MTT.PartTranDetails.Particulars = "Salam Transaction for Seller Dealer : " + MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+		#print(MTT.PartTranDetails.RefCurrency)
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.RefAmount =sv_q
+		#print(MTT.PartTranDetails.RefAmount)
+		
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SALAM_AGENT1_CREDIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+		MTT.PartTranDetails.Remarks = MTT.InputDetails.TranRemarks
+		MTT.PartTranDetails.ACPARTB2kId = MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03683"
+		if (MTT.InputDetails.FuncCode == "R") then 
+		#{
+			MTT.PartTranDetails.Particulars = "Salam Transaction Reversal for Seller Dealer : " + MTT.InputDetails.LoanAccount
+		#}
+		endif
+		MTT.PartTranDetails.RateCode=MTT.InputDetails.TranRateCode
+
+		sv_r = urhk_MTTS_DefineLoanPartTran("SALAM_AGENT1_CREDIT1")
+		#print(sv_r)
+		if (sv_r == 1) then
+			exitscript
+		endif
+
+		#Second Part Tran : Debiting Salam commodity account
+		MTT.PartTranDetails.Account = MTT.InputDetails.SalamComAccID
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+		#print(MTT.PartTranDetails.RefCurrency)
+		MTT.PartTranDetails.Particulars = "Salam Transaction for Seller Dealer : " + MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.RefAmount = -sv_q
+		#print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+
+		if (MTT.InputDetails.FuncCode == "R") then 
+		#{
+			MTT.PartTranDetails.Particulars = "Salam Transaction Reversal for Seller Dealer : " + MTT.InputDetails.LoanAccount
+		#}
+		endif
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SALAM_COMM_DEBIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03682"
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+		MTT.PartTranDetails.svsTranId = MTT.InputDetails.svsTranId
+		MTT.PartTranDetails.RateCode=MTT.InputDetails.TranRateCode
+		
+		sv_r = urhk_MTTS_DefineLoanPartTran("SALAM_COMM_DEBIT1")
+		#print(sv_r)
+		if (sv_r == 1) then
+			exitscript
+		endif
+
+		#Third Part Tran : Debiting Agent 2 Account account
+		MTT.PartTranDetails.Account = MTT.InputDetails.Agent2AccID 
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+		#print(MTT.PartTranDetails.RefCurrency)
+		MTT.PartTranDetails.Particulars = "Salam Transaction for Buyer Dealer : " + MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.RefAmount = -sv_q
+		#print(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03684"
+		if (MTT.InputDetails.FuncCode == "R") then 
+		#{
+			MTT.PartTranDetails.Particulars = "Salam Transaction Reversal for Buyer Dealer : " + MTT.InputDetails.LoanAccount
+		#}
+		endif
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SALAM_AGENT2_DEBIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId
+		MTT.PartTranDetails.ACPARTB2kId = MTT.InputDetails.LoanAccount
+        MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+		MTT.PartTranDetails.svsTranId = MTT.InputDetails.svsTranId
+		MTT.PartTranDetails.RateCode=MTT.InputDetails.TranRateCode
+		sv_r = urhk_MTTS_DefineLoanPartTran("SALAM_AGENT2_DEBIT1")
+		#print(sv_r)
+		if (sv_r == 1) then
+			exitscript
+		endif
+
+		#Fourth Part Tran : Crediting Salam Commodity account
+		MTT.PartTranDetails.Account = MTT.InputDetails.SalamComAccID
+		MTT.PartTranDetails.Particulars = "Salam Transaction for Buyer Dealer : " + MTT.InputDetails.LoanAccount
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+		#print(MTT.PartTranDetails.RefCurrency)
+
+		# Call to common script to modify tran particulars if script is present
+		MTT.PartTranDetails.ScriptEventType = "LAPAY"
+		sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+			call("getMTTTranPart.scr")
+		endif
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.RefAmount = sv_q
+		#print(MTT.PartTranDetails.RefAmount)
+
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "SALAM_COMM_CREDIT"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId 
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime 
+		MTT.PartTranDetails.Remarks = MTT.InputDetails.TranRemarks
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03685"
+		if (MTT.InputDetails.FuncCode == "R") then 
+		#{
+			MTT.PartTranDetails.Particulars = "Salam Transaction Reversal for Buyer Dealer : " + MTT.InputDetails.LoanAccount
+		#}
+		endif
+		MTT.PartTranDetails.RateCode=MTT.InputDetails.TranRateCode
+
+		sv_r = urhk_MTTS_DefineLoanPartTran("SALAM_COMM_CREDIT1")
+		#print(sv_r)
+		if (sv_r == 1) then
+		exitscript
+		endif
+	#}
+	endif
+	# End of Script added for Salam Part transactions
+    ###################### Script added for Murabah Part transactions
+	#print(MTT.InputDetails.IslamicProdType)
+    #print(MTT.InputDetails.LoanAccount)
+
+    if( MTT.InputDetails.UnearnIncAcctFlg == "Y" ) then
+	#{
+	sv_u = CDOUBLE(MTT.InputDetails.benefitAmt)
+    #    #First Part Tran : Debiting Unearned Income Account
+        MTT.PartTranDetails.Account=MTT.InputDetails.UnearnIncAccID
+        MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount
+        MTT.PartTranDetails.RefAmount = -sv_u
+       	## added for partial rebate  Refund  of Istisna
+        if ((MTT.InputDetails.IslamicProdType == "I") AND (MTT.InputDetails.PassRebateOnlineFlg == "Y"))then
+        sv_d = CDOUBLE(MTT.InputDetails.EligibleRebateAmount)
+            if ( sv_d > sv_u)then
+                MTT.PartTranDetails.RefAmount = -sv_d
+            endif
+        endif 
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+        MTT.PartTranDetails.Particulars = "Debiting Unearned Income Account : " + MTT.InputDetails.UnearnIncAccID
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03873"
+
+    if (MTT.InputDetails.FuncCode == "R") then
+    #{    
+		MTT.PartTranDetails.Particulars = "Reversal of Debiting Unearned Income Account : " + MTT.InputDetails.UnearnIncAccID
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03875"
+        MTT.PartTranDetails.RefAmount = sv_u
+	##  added for partial rebate  Refund  of Istisna
+        if ((MTT.InputDetails.IslamicProdType == "I") AND (MTT.InputDetails.PassRebateOnlineFlg == "Y"))then
+        sv_d = CDOUBLE(MTT.InputDetails.EligibleRebateAmount)
+            if ( sv_d > sv_u)then
+                MTT.PartTranDetails.RefAmount = sv_d
+            endif
+        endif
+        
+		MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RevTranId
+        MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RevTranDate
+        MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevLoanAcctPTranSrlNum
+        MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.RevLoanAcctFlowId
+        MTT.LAAddnlDetails.PrincipalAmt = "0"
+        MTT.LAAddnlDetails.InterestAmt  = "0"
+        MTT.LAAddnlDetails.BankChrgAmt  = "0"
+        MTT.LAAddnlDetails.OtherChrgAmt = "0"
+    endif
+	#}
+
+    #    # Call to common script to modify tran particulars if script is present
+        MTT.PartTranDetails.ScriptEventType = "LAPAY"
+        sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+        if (sv_z == 0) then
+            call("getMTTTranPart.scr")
+        endif
+
+        MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+        MTT.PartTranDetails.PartTranIdentifier = "UEI_DEBIT"
+        MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03873" 
+
+        sv_r = urhk_MTTS_DefineLoanPartTran("INT_REFUND")
+        if (sv_r == 1) then
+            exitscript
+        endif
+
+	##Second Part Tran : Crediting Rebate Benefit Account
+
+    if(((MTT.InputDetails.IslamicProdType == "I") AND (MTT.InputDetails.PassRebateOnlineFlg == "N")) OR (((MTT.InputDetails.IslamicProdType == "M") OR (MTT.InputDetails.IslamicProdType == "T")) AND (MTT.InputDetails.RebateMethodPrepay == "P")))  then
+    #{
+	    MTT.PartTranDetails.ACPARTB2kId = MTT.InputDetails.LoanAccount
+	    MTT.PartTranDetails.ACPARTB2kType = "ACCNT"
+	    MTT.PartTranDetails.Account     = MTT.InputDetails.RebateBenefitAccount
+	    #sv_k = CDOUBLE(MTT.InputDetails.RebateBenefitAmount)
+	    MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+	    MTT.PartTranDetails.RefAmount   =  sv_u
+	    MTT.LAAddnlDetails.TypeOfDemand = "T"
+	 #   MTT.LAAddnlDetails.DemandFlowId = "INDEM"
+	    MTT.PartTranDetails.Particulars = "Crediting Rebate Benefit Account : " + MTT.InputDetails.RebateBenefitAccount
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03876"
+	   # print(MTT.TranDetails.TranType)
+	    if (MTT.InputDetails.FuncCode == "R") then
+	    	MTT.PartTranDetails.Particulars = "Reversal of Crediting Rebate Benefit Account: " + MTT.InputDetails.RebateBenefitAccount
+			MTT.PartTranDetails.sysPartTranCode = "PTRN03877"
+	#	print(MTT.PartTranDetails.Account)
+		MTT.PartTranDetails.RefAmount       = -sv_u
+    # 	print(MTT.TranDetails.TranType)
+		MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RevTranId
+		MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RevTranDate
+		MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevRebateBenefitAcctPTranSrlNum
+		MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.RevLoanAcctFlowId
+		MTT.LAAddnlDetails.PrincipalAmt = "0"
+		MTT.LAAddnlDetails.InterestAmt  = "0"
+		MTT.LAAddnlDetails.BankChrgAmt  = "0"
+		MTT.LAAddnlDetails.OtherChrgAmt = "0"
+	    endif
+
+	## Call to common script to modify tran particulars if script is present
+	   	MTT.PartTranDetails.ScriptEventType = "LAPAY"
+           	sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+		if (sv_z == 0) then
+		    call("getMTTTranPart.scr")
+		endif
+
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+		MTT.PartTranDetails.Consolidate = "N"
+
+		MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+		MTT.PartTranDetails.PartTranIdentifier = "RBA_CR"
+		MTT.PartTranDetails.PTranBusinessType = "RECOV"
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount
+		MTT.LAAddnlDetails.intRefundPrePymntFlg="Y"
+
+		sv_r = urhk_MTTS_DefineLoanPartTran("REBATE AMOUNT")
+		if (sv_r == 1) then
+			exitscript
+		endif
+	#}
+	else
+	#{
+
+    ##Fourth Part Tran : Crediting  LOAN INT Account
+
+        if(MTT.InputDetails.IntRouteFlg == "O") then
+            MTT.PartTranDetails.Account     = MTT.InputDetails.LoanInterestAccount
+		else
+			MTT.PartTranDetails.Account =  MTT.InputDetails.LoanAccount
+		endif
+
+        MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+        MTT.PartTranDetails.RefAmount =sv_u
+        MTT.LAAddnlDetails.TypeOfDemand = "T"
+        MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.DefaultCollecFlowId
+        MTT.PartTranDetails.Particulars = "Crediting Loan  Int Account : " + MTT.InputDetails.LoanInterestAccount
+		MTT.PartTranDetails.sysPartTranCode = "PTRN03878" 
+		if (MTT.InputDetails.FuncCode == "R") then
+            MTT.PartTranDetails.Particulars = "Reversal of Crediting Loan Int Account: " + MTT.InputDetails.LoanInterestAccount
+			MTT.PartTranDetails.sysPartTranCode = "PTRN03879" 
+            MTT.PartTranDetails.RefAmount =-(sv_u)
+
+            MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RevTranId
+            MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RevTranDate
+            
+			if(MTT.InputDetails.IntRouteFlg == "O") then
+				MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevLoanIntAcctPTranSrlNum
+            else
+				MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevLoanAcctPTranSrlNum
+            endif
+
+			MTT.LAAddnlDetails.PrincipalAmt = "0"
+            MTT.LAAddnlDetails.InterestAmt  = "0"
+            MTT.LAAddnlDetails.BankChrgAmt  = "0"
+            MTT.LAAddnlDetails.OtherChrgAmt = "0"
+        endif
+
+        # Call to common script to modify tran particulars if script is present
+#		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+#		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.LoanAccount
+        MTT.PartTranDetails.ScriptEventType = "LAPAY"
+        sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+        if (sv_z == 0) then
+            call("getMTTTranPart.scr")
+        endif
+
+        MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+        MTT.PartTranDetails.Consolidate = "N"
+
+        MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+        MTT.PartTranDetails.PartTranIdentifier = "LA_CR"
+        MTT.PartTranDetails.PTranBusinessType = "UNERN"
+    MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount
+    MTT.LAAddnlDetails.intRefundPrePymntFlg="Y"
+
+
+        sv_r = urhk_MTTS_DefineLoanPartTran("REFUND AMOUNT")
+        if (sv_r == 1) then
+            exitscript
+        endif
+	##############################################################################################
+    ###part tran added for partial rebate  Refund  of Istisna :Credit Rebate
+    #Benifit PH for partial refund
+    ##############################################################################################
+    
+		if ((MTT.InputDetails.IslamicProdType == "I") AND (MTT.InputDetails.PassRebateOnlineFlg == "Y"))then
+    #   {
+            sv_d =CDOUBLE(MTT.InputDetails.EligibleRebateAmount)
+
+            if (sv_d > sv_u)then
+        #{
+
+                        sv_x =(sv_d - sv_u)
+				MTT.PartTranDetails.ACPARTB2kId = MTT.InputDetails.LoanAccount
+                MTT.PartTranDetails.ACPARTB2kType = "ACCNT"
+                MTT.PartTranDetails.Account     = MTT.InputDetails.RebateBenefitAccount
+                MTT.PartTranDetails.RefCurrency = MTT.InputDetails.LoanAccountCrncyCode
+                MTT.PartTranDetails.RefAmount   =  sv_x
+               MTT.LAAddnlDetails.TypeOfDemand = "T"
+                MTT.PartTranDetails.Particulars = "Crediting Rebate Benefit Account : " + MTT.InputDetails.RebateBenefitAccount
+				MTT.PartTranDetails.sysPartTranCode = "PTRN03876" 
+                # print(MTT.TranDetails.TranType)
+                if (MTT.InputDetails.FuncCode == "R") then
+                MTT.PartTranDetails.Particulars = "Reversal of Crediting Rebate Benefit Account: " + MTT.InputDetails.RebateBenefitAccount
+				MTT.PartTranDetails.sysPartTranCode = "PTRN03877" 
+            #   print(MTT.PartTranDetails.Account)
+                MTT.PartTranDetails.RefAmount       = -sv_x
+            #   print(MTT.TranDetails.TranType)
+                MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RevTranId
+                MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RevTranDate
+                MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.RevRebateBenefitAcctPTranSrlNum
+                MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.RevLoanAcctFlowId
+                MTT.LAAddnlDetails.PrincipalAmt = "0"
+                MTT.LAAddnlDetails.InterestAmt  = "0"
+                MTT.LAAddnlDetails.BankChrgAmt  = "0"
+                MTT.LAAddnlDetails.OtherChrgAmt = "0"
+                endif
+			## Call to common script to modify tran particulars if script is present
+                MTT.PartTranDetails.ScriptEventType = "LAPAY"
+                sv_z = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+                if (sv_z == 0) then
+                    call("getMTTTranPart.scr")
+                endif
+                MTT.PartTranDetails.ValueDate = MTT.InputDetails.ValueDate
+                MTT.PartTranDetails.Consolidate = "N"
+
+                MTT.PartTranDetails.TranIdentifier = "LoanRecovery"
+                MTT.PartTranDetails.PartTranIdentifier = "RBA_CR"
+                MTT.PartTranDetails.PTranBusinessType = "RECOV"
+                MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount
+                MTT.LAAddnlDetails.intRefundPrePymntFlg="Y"
+
+                sv_r = urhk_MTTS_DefineLoanPartTran("REBATE AMOUNT")
+                if (sv_r == 1) then
+                    exitscript
+                endif
+            endif
+            #}
+        endif
+        #}
+	endif
+    endif
+    #}
+    # End of Script added for Murabaha Part transactions
+				
+GET_NEXT_REC: 
+sv_r = urhk_MTTS_PopulateInputDetails("")
+	if(sv_r == 1) then
+		sv_r = urhk_MTTS_EndDefinition("")
+		exitscript
+	endif
+DO
+#}
+#trace off
+end-->

@@ -1,0 +1,39 @@
+#++++++++++++++++++++++++++++++++++++++++++++++++
+#Author : Vino Palani
+#Date   : 27/09/2021
+#++++++++++++++++++++++++++++++++++++++++++++++++
+#Merchant & Card Transaction Maintenance
+#++++++++++++++++++++++++++++++++++++++++++++++++
+. `execom vpMerchantMaster.com` &
+#++++++++++++++++++++++++++++++++++++++++++++++++
+#Agent Commission Transaction Processing
+#++++++++++++++++++++++++++++++++++++++++++++++++
+. `execom vpAgentCommMaster.com` &
+#++++++++++++++++++++++++++++++
+#Post Treasury Deals 01-03-2022
+#++++++++++++++++++++++++++++++
+thr=`date +%H`
+tmi=`date +%M`
+tday=`date +%a`
+exprc=`ps -aef | grep  "exebatch -i RTD-" | wc -l`
+echo ${thr}
+echo ${tmi}
+echo ${tday}
+echo ${exprc}
+if [ "${exprc}" -le "1" ]
+then
+if [ "${thr}" -le "17" ]
+then
+        if [ "${tday}" !=  "Sun" ]
+        then
+        . `execom vptmRTDpost.com` &
+        else
+                echo "no RTD sunday"
+        fi
+else
+        echo "no RTD time"
+fi
+else
+        echo "no RTD exebatch"
+fi
+exit 0

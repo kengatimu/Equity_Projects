@@ -1,0 +1,176 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : IMTPordCheck.scr
+#  Description     :
+#  Date            : 23-12-2022
+#  Author          : Irungu James
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-12-2022      James irungu         Original Version
+#  1.1             23-12-2024      James irungu         CHG0033637 Add EFT and Change PORD for Rwanda
+#-----------------------------------------------------------------------------------------------
+#DuplonsCheck.scr
+<--START
+	# Script body goes here
+
+	TRACE ON
+
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print(sv_r)
+	
+	#==================================================================================================
+	# Repository and Class Creation
+	#==================================================================================================
+	IF (REPEXISTS("CUST")== 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST" , "DATA",5)
+	#}
+	ENDIF
+
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("TranType"))== 0) ) THEN
+        CUST.DATA.TranType="PORD"
+ELSE
+        CUST.DATA.TranType="EFT"
+ENDIF
+
+
+
+CUST.DATA.TranAcct=BANCS.INPUT.TranAcct
+CUST.DATA.TranAmt =BANCS.INPUT.TranAmt
+CUST.DATA.TranCrncy =BANCS.INPUT.TranCrncy
+CUST.DATA.TranDate=BANCS.INPUT.TranDate
+CUST.DATA.RefNum = BANCS.INPUT.RefNum
+CUST.DATA.DestAcct = BANCS.INPUT.DestAcct
+
+Print (CUST.DATA.TranAcct)
+Print (CUST.DATA.TranAmt)
+Print (CUST.DATA.TranCrncy)
+Print (CUST.DATA.TranDate)
+Print (CUST.DATA.RefNum)
+Print (CUST.DATA.DestAcct)
+CUST.DATA.BodDate =  mid$(CUST.DATA.TranDate,0,10)
+print(CUST.DATA.BodDate)
+
+
+sv_d = "StartDate| select to_char (to_date(?SVAR,'YYYY-MM-DD'),'DD-MON-YYYY')  as StartDate FROM dual"
+BANCS.INPARAM.BINDVARS = CUST.DATA.BodDate
+print(sv_d)
+print(BANCS.INPARAM.BINDVARS)
+sv_u = urhk_dbSelectWithBind(sv_d)
+if(sv_u==0)then
+    CUST.DATA.StartDate =BANCS.OUTPARAM.StartDate
+    print(CUST.DATA.StartDate)
+endif
+
+
+IF (FIELDEXISTS(BANCS.INPUT.TranAcct)) THEN
+	IF  (CUST.DATA.TranType=="PORD") THEN
+		CUST.DATA.RefNum = mid$(CUST.DATA.RefNum,0,16) 
+		Print (CUST.DATA.RefNum)
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.TranAcct)
+		CUST.DATA.cifId = BANCS.OUTPARAM.cifId
+		PRINT(sv_u)
+		IF(sv_u == 0)THEN
+			sv_a = " foracid, status, PYMT_REF_NUM | select  foracid, pord.status, pord.PYMT_REF_NUM "
+			sv_a = sv_a + " from tbaadm.pord  , tbaadm.porh , tbaadm.gam where pord.bank_id = ?SVAR  and porh.PYMT_REF_NUM = pord.PYMT_REF_NUM "
+			sv_a = sv_a + " and pord.bank_id = porh.bank_id  and pord.bank_id = gam.bank_id and porh.DR_ACCT = gam.acid  "
+			sv_a = sv_a + " and  (pord.AWI_ACCT  = ?SVAR  or pord.BENEF_PARTY_ACCT =?SVAR )  and pord.REMIT_AMT =?SVAR  and   gam.foracid  =?SVAR "
+			sv_a = sv_a + " and pord.REMIT_CRNCY =?SVAR  and pord.TRAN_REF_NUM = ?SVAR "
+			
+			IF (CUST.DATA.cifId == "54304037979") THEN 	
+				sv_a = sv_a + " and trunc (pord.rcre_time ) >=?SVAR "
+			ELSE
+				sv_a = sv_a + " and trunc (pord.rcre_time ) = ?SVAR "
+			ENDIF	
+			
+			print(sv_a)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.DestAcct + "|" + CUST.DATA.DestAcct  + "|" + CUST.DATA.TranAmt  + "|" + CUST.DATA.TranAcct
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DATA.TranCrncy  + "|" + CUST.DATA.RefNum + "|" + CUST.DATA.StartDate
+			Print (BANCS.INPARAM.BINDVARS)
+			sv_b = urhk_dbSelectWithBind(sv_a)
+			print(sv_b)
+			IF(sv_b == 0)THEN				
+				CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+				CUST.DATA.status = BANCS.OUTPARAM.status
+				CUST.DATA.PYMT_REF_NUM = BANCS.OUTPARAM.PYMT_REF_NUM
+				CUST.DATA.TranFound = "Y"
+			ELSE
+				CUST.DATA.foracid = CUST.DATA.TranAcct
+				CUST.DATA.status  ="NA"
+				CUST.DATA.PYMT_REF_NUM = "NA"
+				CUST.DATA.TranFound = "N"
+			ENDIF
+		ELSE
+			CUST.DATA.foracid = CUST.DATA.TranAcct
+			CUST.DATA.status  ="NA"
+			CUST.DATA.PYMT_REF_NUM = "NA"
+			CUST.DATA.TranFound = "N"
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ELSE
+		CUST.DATA.RefNum = mid$(CUST.DATA.RefNum,0,20) 
+		Print (CUST.DATA.RefNum)
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.TranAcct)
+		PRINT(sv_u)
+		IF(sv_u == 0)THEN
+			
+			CUST.DATA.cifId = BANCS.OUTPARAM.cifId
+
+			sv_a = " foracid, status, PYMT_REF_NUM | select  foracid,  PSTD_FLG, otc.tran_id  from  tbaadm.otc, tbaadm.dctd_acli  dtd ,  tbaadm.gam where CUST_ACCT  = gam.acid  "
+			sv_a = sv_a + " and otc.CUST_ACCT =  dtd .acid  and otc.tran_id = dtd .tran_id and otc.bank_id =   dtd .bank_id  "
+			sv_a = sv_a + " and otc.TRAN_DATE =  dtd .tran_date  and otc.bank_id =  dtd .bank_id  and otc.bank_id = ?SVAR "
+			sv_a = sv_a + " and otc.CUST_ACCT =  gam .acid  and DEST_CUST_ACCT =?SVAR "
+			sv_a = sv_a + " and REMIT_AMT = ?SVAR and gam.foracid = ?SVAR and REMIT_CRNCY = ?SVAR "			
+			IF (CUST.DATA.cifId == "54304037979") THEN 	
+				sv_a = sv_a + " and dtd.ref_num =?SVAR and trunc(otc.RCRE_TIME) >=?SVAR and rownum =1 "
+			ELSE
+				sv_a = sv_a + " and dtd.ref_num =?SVAR and trunc(otc.RCRE_TIME) =?SVAR and rownum =1 "
+			ENDIF						
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.DestAcct  + "|" + CUST.DATA.TranAmt  + "|" + CUST.DATA.TranAcct
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DATA.TranCrncy  + "|" + CUST.DATA.RefNum + "|" + CUST.DATA.StartDate
+			Print (BANCS.INPARAM.BINDVARS)
+			sv_b = urhk_dbSelectWithBind(sv_a)
+			print(sv_b)
+			IF(sv_b == 0)THEN				
+				CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+				CUST.DATA.status = BANCS.OUTPARAM.status
+				CUST.DATA.PYMT_REF_NUM = BANCS.OUTPARAM.PYMT_REF_NUM
+				CUST.DATA.TranFound = "Y"
+			ELSE
+				CUST.DATA.foracid = CUST.DATA.TranAcct
+				CUST.DATA.status  ="NA"
+				CUST.DATA.PYMT_REF_NUM = "NA"
+				CUST.DATA.TranFound = "N"
+			ENDIF
+		ELSE
+			CUST.DATA.foracid = CUST.DATA.TranAcct
+			CUST.DATA.status  ="NA"
+			CUST.DATA.PYMT_REF_NUM = "NA"
+			CUST.DATA.TranFound = "N"
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ENDIF
+ELSE
+	CUST.DATA.foracid = CUST.DATA.TranAcct
+	CUST.DATA.status  ="NA"
+	CUST.DATA.PYMT_REF_NUM = "NA"
+	CUST.DATA.TranFound = "N"
+	GOTO ENDOFSCRIPT
+ENDIF
+
+
+ENDOFSCRIPT:
+	sv_u = urhk_SetOrbOut("TranFound|"+CUST.DATA.TranFound)
+	sv_u = urhk_SetOrbOut("foracid|"+CUST.DATA.foracid)
+	sv_u = urhk_SetOrbOut("PYMT_REF_NUM|"+CUST.DATA.PYMT_REF_NUM)
+	sv_u = urhk_SetOrbOut("status|"+CUST.DATA.status)
+EXITSCRIPT
+END-->
+
+

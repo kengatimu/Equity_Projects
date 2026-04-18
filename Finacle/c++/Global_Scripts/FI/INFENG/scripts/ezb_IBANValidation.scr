@@ -1,0 +1,259 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_IBANValidation.scr
+#  Description     : 
+#  Date            : 28-05-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             28-08-2023     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+####
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+
+	IF (REPEXISTS("EAZBZ") == 0) THEN
+	#{
+		CREATEREP("EAZBZ")
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("EAZBZ","DATA") == 0) THEN
+	#{
+		CREATECLASS("EAZBZ","DATA",5)
+	#}
+	ENDIF
+	
+	sv_x = urhk_B2k_PrintRepos("BANCS")
+    print(sv_x)
+	
+	IF(FIELDEXISTS(BANCS.INPUT.AccountNo) == 1 ) THEN
+	#{
+		EAZBZ.DATA.IBAN = BANCS.INPUT.AccountNo
+		print(EAZBZ.DATA.IBAN)
+	#}
+	ELSE
+	#{
+		EAZBZ.DATA.errMsg="Please Enter Account Number"
+		lv_a = "E9999"
+        sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+		sv_u = urhk_SetOrbErr(sv_c)
+		exitscript
+	#}
+    ENDIF
+
+    IF(FIELDEXISTS(BANCS.STDIN.myBankCode) == 1 ) THEN
+	#{
+		EAZBZ.DATA.bankCode = BANCS.STDIN.myBankCode
+		print(EAZBZ.DATA.bankCode)
+	#}
+	ELSE
+	#{
+		EAZBZ.DATA.bankCode = ""
+	#}
+    ENDIF
+
+    BANCS.INPARAM.iban_number = EAZBZ.DATA.IBAN
+	sv_u = urhk_getForacidFromIBANnumber("") 
+	PRINT(sv_u)
+
+	IF (sv_u==0) THEN
+		EAZBZ.DATA.accountNum = TRIM(BANCS.OUTPARAM.foracid)
+		print(EAZBZ.DATA.accountNum)
+
+		IF(EAZBZ.DATA.accountNum == "")THEN 
+		#{
+			EAZBZ.DATA.errMsg="Error Deriving Account from IBAN ["+EAZBZ.DATA.IBAN+"]"
+			lv_a = "E9999"
+			sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+			sv_u = urhk_SetOrbErr(sv_c)
+			exitscript
+		#}
+		ENDIF
+	ELSE
+		EAZBZ.DATA.errMsg="Error Deriving Account from IBAN ["+EAZBZ.DATA.IBAN+"]"
+		lv_a = "E9999"
+        sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+		sv_u = urhk_SetOrbErr(sv_c)
+		exitscript
+	ENDIF
+
+	sv_a = urhk_getAcctDetailsInRepository(EAZBZ.DATA.accountNum)
+	print(sv_a)
+
+    IF(sv_a == 0) THEN
+    #{
+        EAZBZ.DATA.solid = BANCS.OUTPARAM.acctSolId
+        print(EAZBZ.DATA.solid)
+
+        EAZBZ.DATA.ownership = trim(BANCS.OUTPARAM.acctOwnerShip)
+        print(EAZBZ.DATA.ownership)
+
+		sv_q = "ibanNumber,hashNo,solId,brName,cntryCode,city,instName,postalCode,routingNum,bic |"
+		sv_q = sv_q + "select g.iban_number,g.hashed_no,g.sol_id,b.SWIFT_BR_NAME,b.CNTRY_CODE,r.ref_desc,bk.BANK_NAME,b.ROUTING_BANK_CODE, b.BR_ADDR_1, "
+		sv_q = sv_q + " (case when g.bank_id='50' then (select DEFAULT_SENDER_BIC FROM tbaadm.pprm WHERE PAYSYS_ID='RTGS' AND del_flg='N' AND entity_cre_flg='Y' AND bank_id=g.bank_id) else "
+		sv_q = sv_q + " (select DEFAULT_SENDER_BIC FROM tbaadm.pprm WHERE PAYSYS_ID='SWIFT' AND del_flg='N' AND entity_cre_flg='Y' AND bank_id=g.bank_id) end ) swiftcode "
+		sv_q = sv_q + " from tbaadm.gam g,tbaadm.bct b,tbaadm.rct r, tbaadm.bkc bk where "
+		sv_q = sv_q + " g.bank_id=?SVAR and g.foracid=?SVAR and "
+		sv_q = sv_q + " b.bank_id=g.bank_id and b.br_code=g.sol_id and b.del_flg='N' and b.bank_code=?SVAR and "
+		sv_q = sv_q + " r.ref_code=b.br_city_code and b.bank_id=g.bank_id and b.br_code=g.sol_id and "
+		sv_q = sv_q + " bk.bank_id=g.bank_id and bk.del_flg='N' and bk.bank_code=b.bank_code and rownum < 2  "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ EAZBZ.DATA.accountNum +"|"+ EAZBZ.DATA.bankCode
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+
+		IF(sv_c == 0)THEN
+		#{
+			EAZBZ.DATA.ibanNumber = BANCS.OUTPARAM.ibanNumber
+			print(EAZBZ.DATA.ibanNumber)
+			EAZBZ.DATA.hashNo = BANCS.OUTPARAM.hashNo
+			print(EAZBZ.DATA.hashNo)
+			EAZBZ.DATA.solId = BANCS.OUTPARAM.solId
+			print(EAZBZ.DATA.solId)
+			EAZBZ.DATA.brName = BANCS.OUTPARAM.brName
+			print(EAZBZ.DATA.brName)
+			EAZBZ.DATA.cntryCode = BANCS.OUTPARAM.cntryCode
+			print(EAZBZ.DATA.cntryCode)
+			EAZBZ.DATA.city = BANCS.OUTPARAM.city
+			print(EAZBZ.DATA.city)
+			EAZBZ.DATA.instName = BANCS.OUTPARAM.instName
+			print(EAZBZ.DATA.instName)
+			EAZBZ.DATA.postalCode = BANCS.OUTPARAM.postalCode
+			EAZBZ.DATA.postalCode = EAZBZ.DATA.postalCode +","+ EAZBZ.DATA.city+"," + EAZBZ.DATA.cntryCode
+			print(EAZBZ.DATA.postalCode)
+			EAZBZ.DATA.routingNum = BANCS.OUTPARAM.routingNum
+			print(EAZBZ.DATA.routingNum)
+			EAZBZ.DATA.bic = BANCS.OUTPARAM.bic
+			print(EAZBZ.DATA.bic)
+		ELSE
+			EAZBZ.DATA.errMsg="Could not get the details!! Try Again"
+			lv_a = "E9999"
+			sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+			sv_u = urhk_SetOrbErr(sv_c)
+			exitscript
+		#}
+		ENDIF
+    ELSE 
+		EAZBZ.DATA.errMsg="Invalid Account Number ["+EAZBZ.DATA.accountNum+"]"
+		lv_a = "E9999"
+        sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+		sv_u = urhk_SetOrbErr(sv_c)
+		exitscript
+    #}
+    ENDIF   
+	
+
+	sv_q = "paysys, bic|"
+	sv_q = sv_q + "select distinct PAYSYS_ID,BANK_IDENTIFIER from tbaadm.brbic where bank_code=?SVAR and del_flg='N' and bank_id=?SVAR "
+	print(sv_q)
+
+	BANCS.INPARAM.BINDVARS = EAZBZ.DATA.bankCode+"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_c = urhk_dbcursorOpenWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF (sv_c == 0)THEN
+	#{
+		EAZBZ.DATA.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(EAZBZ.DATA.cursor_number)
+
+		sv_d = urhk_dbCursorFetch(EAZBZ.DATA.cursor_number)
+		print(sv_d)
+
+		sv_q = 0
+		print(sv_q)
+
+		WHILE (sv_d == 0)
+		#{
+			sv_q = sv_q + 1
+			print(sv_q)
+
+			sv_v = "Paysys_" + FORMAT$(sv_q, "%d") 
+			("EAZBZ").("DATA").(sv_v) = BANCS.OUTPARAM.paysys
+
+			sv_v = "BIC_" + FORMAT$(sv_q, "%d") 
+			("EAZBZ").("DATA").(sv_v) = BANCS.OUTPARAM.bic
+			
+			sv_d = urhk_dbCursorFetch(EAZBZ.DATA.cursor_number)
+			print(sv_d)
+
+		#}
+		DO 
+
+		sv_x = urhk_dbCursorClose(EAZBZ.DATA.cursor_number)
+		print(sv_x)
+		print(EAZBZ.DATA.cursor_number)
+		
+		EAZBZ.DATA.totRec =  sv_q
+		print(EAZBZ.DATA.totRec)
+
+		EAZBZ.DATA.null = " "
+		
+		sv_t = "IBANValidation_RES.AccountNumber| " + EAZBZ.DATA.accountNum
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.IBAN| " + EAZBZ.DATA.ibanNumber
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.AccountNo| " + EAZBZ.DATA.accountNum
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.accountBase| " + EAZBZ.DATA.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.accountChecksum| " + EAZBZ.DATA.hashNo
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.bban| " + EAZBZ.DATA.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.branchCode| " + EAZBZ.DATA.solId
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.branchCodeClearingSystems| " + EAZBZ.DATA.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.branchName| " + EAZBZ.DATA.brName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.city| " + EAZBZ.DATA.city
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.instTitle| " + EAZBZ.DATA.instName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.instTitleOver| " + EAZBZ.DATA.instName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.postal| " + EAZBZ.DATA.postalCode
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.routingNo| " + EAZBZ.DATA.routingNum
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.street| " + EAZBZ.DATA.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "IBANValidation_RES.swiftOver| " + EAZBZ.DATA.null
+		sv_u = urhk_SetOrbOut(sv_t)
+		
+		sv_q = 1
+
+		WHILE (sv_q <= EAZBZ.DATA.totRec)
+		#{
+			sv_v = "BIC_" + FORMAT$(sv_q, "%d")
+			sv_t = "IBANValidation_RES.Paysys.<rec_" + FORMAT$(sv_q,"%d") + ">.code| " + ("EAZBZ").("DATA").(sv_v)
+			sv_u = urhk_SetOrbOut(sv_t)
+			sv_v = "Paysys_" + FORMAT$(sv_q, "%d")
+			sv_t = "IBANValidation_RES.Paysys.<rec_" + FORMAT$(sv_q,"%d") + ">.clearingSystem| " + ("EAZBZ").("DATA").(sv_v)
+			sv_u = urhk_SetOrbOut(sv_t)
+
+			sv_q = sv_q + 1
+			print(sv_q)
+		#}
+		DO
+	ELSE
+		EAZBZ.DATA.errMsg="Could not get the details!! Try Again"
+		lv_a = "E9999"
+        sv_c = lv_a + "^"+ EAZBZ.DATA.errMsg + "^BE"
+		sv_u = urhk_SetOrbErr(sv_c)
+		exitscript
+	#}
+	ENDIF
+				
+	
+ENDOFSCRIPT:
+trace off
+end-->

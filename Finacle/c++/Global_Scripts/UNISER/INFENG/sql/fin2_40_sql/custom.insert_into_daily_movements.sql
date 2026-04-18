@@ -1,0 +1,52 @@
+DROP PROCEDURE CUSTOM.INSERT_INTO_DAILY_MOVEMENTS;
+
+CREATE OR REPLACE PROCEDURE CUSTOM.INSERT_INTO_DAILY_MOVEMENTS(vAcctDate in date, vBankId VARCHAR2) IS
+
+vUserID varchar2(50);
+        --, STATUS, ERROR_CODE, CREATION_DATE, CREATED_BY, LAST_UPDATE_DATE,LAST_UPDATED_BY
+        
+cursor  cu1 is
+select tran_date ,value_date, BRANCH, DEPARTMENT,ACCOUNT1,ACCOUNT2, 
+     PRODUCT, CHANNEL,BACID,CUST_ID,tran_crncy_code,gl_sub_head_code,
+    AMOUNT ,DECODE(CHARGED_OFF,'Y',CHARGED_OFF,(DECODE(l.foracid,NULL,' ','Y')))CHARGED_OFF
+        from     
+   (select a.tran_date ,a.value_date,a.acid,a.bank_id,a.sol_id BRANCH,a.ref_num DEPARTMENT,SUBSTR(B.FORACID,4,10)ACCOUNT1,B.SCHM_TYPE ACCOUNT2, 
+    B.SCHM_CODE PRODUCT,C.DELIVERY_CHANNEL_ID CHANNEL,B.BACID,A.CUST_ID,a.tran_crncy_code,b.gl_sub_head_code,
+    DECODE(PART_TRAN_TYPE,'D',A.TRAN_AMT*-1,A.TRAN_AMT)AMOUNT ,DECODE(SUBSTR(B.FORACID,4,10),'0000100920','Y','') CHARGED_OFF
+    from tbaadm.htd A,tbaadm.GAM B,tbaadm.HTH C where  
+    A.ACID=B.ACID AND A.BANK_ID = vBankId AND B.BANK_ID = vBankId AND C.BANK_ID = vBankId AND A.TRAN_DATE=C.TRAN_DATE AND A.TRAN_ID=C.TRAN_ID AND A.tran_date>=vAcctDate and A.tran_date<=vAcctDate
+    and A.del_flg='N')k left join 
+        (select a.acid,a.bank_id,b.foracid,b.clr_bal_amt from tbaadm.cot a,tbaadm.gam b where a.acid=b.acid and a.BANK_ID = vBankId and b.BANK_ID = vBankId and  CHRGE_OFF_DATE is not null )l on k.acid=l.acid and k.BANK_ID = vBankId and l.BANK_ID = vBankId ;
+
+BEGIN
+
+
+
+select  sys_context('USERENV','SESSION_USER') 
+INTO    vUserID
+from    dual;
+
+
+INSERT  INTO CUSTOM.DAILY_MOVEMENTS_HISTORY
+SELECT * FROM CUSTOM.DAILY_MOVEMENTS;
+COMMIT;
+
+EXECUTE IMMEDIATE 'truncate table CUSTOM.DAILY_MOVEMENTS drop storage';
+
+for i in cu1 loop
+INSERT  INTO    DAILY_MOVEMENTS 
+        (TRAN_DATE, VALUE_DATE, BRANCH, DEPARTMENT, ACCOUNT1, ACCOUNT2, PRODUCT, CHANNEL, BACID, CUST_ID, TRAN_CRNCY_CODE, 
+        GL_SUB_HEAD_CODE, AMOUNT, STATUS, ERROR_CODE, CREATION_DATE, CREATED_BY, LAST_UPDATE_DATE, 
+        LAST_UPDATED_BY,CHARGED_OFF )
+        values  (I.TRAN_DATE, I.VALUE_DATE, I.BRANCH, I.DEPARTMENT, I.ACCOUNT1, I.ACCOUNT2, I.PRODUCT, I.CHANNEL, I.BACID, I.CUST_ID, I.TRAN_CRNCY_CODE, 
+        I.GL_SUB_HEAD_CODE, I.AMOUNT, 'U','', SYSDATE, vUserID, SYSDATE, 11, I.CHARGED_OFF);
+
+ END LOOP;
+
+--COMMIT; 
+ 
+END INSERT_INTO_DAILY_MOVEMENTS;
+/
+
+
+GRANT EXECUTE ON CUSTOM.INSERT_INTO_DAILY_MOVEMENTS TO CEOD_USERS;

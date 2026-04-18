@@ -1,0 +1,182 @@
+##########################################################################################
+# Source Name           : SMS_NOTIFICATION_RW.scr
+# Date                  : 19-01-2022
+# Description           : Notification for Inactive dormant account  
+# Author                : Anand Pansare
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        19-02-2023    Anand Pansare          Original file
+###########################################################################################
+<--start
+trace on
+        lv_a=urhk_B2K_PrintRepos("BANCS")
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        lv_r = CLASSEXISTS("CUST","MESSAGING")
+        IF (lv_r == 0) THEN
+        #{
+                CREATECLASS("CUST","MESSAGING",5)
+        #}
+        ENDIF
+
+		
+	print(BANCS.STDIN.mySolId)
+	print(BANCS.STDIN.contextBankId)
+	CUST.MESSAGING.batchExecutingForDate = Mid$(BANCS.STDIN.batchExecutingForDate,0,10)	
+	print(CUST.MESSAGING.batchExecutingForDate)
+	CUST.MESSAGING.BODDate = Mid$(BANCS.STDIN.BODDate,0,10)	
+	print(CUST.MESSAGING.BODDate)
+	
+	lv_s = ""
+	lv_s =lv_s + "output|"
+	lv_s =lv_s + "SELECT custom.fn_sms_notification_rw('"+BANCS.STDIN.contextBankId+"','"+BANCS.STDIN.mySolId+"','"+CUST.MESSAGING.BODDate+"') FROM DUAL"
+
+	print(lv_s)
+	lv_z = urhk_dbSelectWithBind(lv_s)
+	print(lv_z)
+	IF(lv_z==0) THEN
+	#{
+		lv_r=urhk_dbSQLWithBind("commit")
+		print(lv_r)
+	#}
+	endif
+
+	lv_s = ""
+	lv_s = lv_s + " cif_id,foracid,last_tran_date,alert_type,phoneno,msg1,msg2,msg3|"
+	lv_s = lv_s + " select cif_id,foracid,to_char(last_tran_date,'DD-MM-YYYY'),alert_type,phoneno,"
+	lv_s = lv_s + " substr(massage,0,99) msg1, substr(massage,100,99) msg2, substr(massage,199,99) msg3 "
+	lv_s = lv_s + " from custom.sms_notification_tbl"
+	lv_s = lv_s + " where alert_date = to_date('"+CUST.MESSAGING.BODDate+"','DD-MM-YYYY')"
+	lv_s = lv_s + " and sol_id  = '"+BANCS.STDIN.mySolId+"'"
+	lv_s = lv_s + " and bank_id ='"+BANCS.STDIN.contextBankId+"'"
+	lv_s = lv_s + " and status_flg ='N'"
+
+	print(lv_s)
+	lv_d = urhk_dbCursorOpenWithBind(lv_s)
+	print(lv_d)
+
+	IF(lv_d!=0) THEN
+	#{
+		lv_u = urhk_dbCursorClose(lv_a)
+		print(lv_u)
+	#}
+	ELSE
+	#{
+		CUST.MESSAGING.DB_CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.MESSAGING.DB_CURSOR_NUMBER)
+
+
+		lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+
+		IF(lv_c != "0")THEN
+		#{
+			print("OK NOTHING TO SEND")
+		#}
+		ENDIF
+
+		while(lv_c == 0)
+		#{
+                                CUST.MESSAGING.cif_id 	= BANCS.OUTPARAM.cif_id
+                                print(CUST.MESSAGING.cif_id)
+                                CUST.MESSAGING.foracid 	= BANCS.OUTPARAM.foracid
+                                print(CUST.MESSAGING.foracid)
+                                CUST.MESSAGING.last_tran_date = BANCS.OUTPARAM.last_tran_date
+                                print(CUST.MESSAGING.last_tran_date)
+                                CUST.MESSAGING.alert_type 	= BANCS.OUTPARAM.alert_type
+                                print(CUST.MESSAGING.alert_type)
+                                CUST.MESSAGING.phoneno 	= BANCS.OUTPARAM.phoneno
+                                print(CUST.MESSAGING.phoneno)
+                                CUST.MESSAGING.massage 	= BANCS.OUTPARAM.msg1 + BANCS.OUTPARAM.msg2 + BANCS.OUTPARAM.msg3
+                                print(CUST.MESSAGING.massage)
+
+
+				CUST.MESSAGING.MOBILENUMBER = CUST.MESSAGING.phoneno
+				CUST.MESSAGING.MESSAGETEXT  = CUST.MESSAGING.massage
+
+				############Formatting the phone number
+				IF(CUST.MESSAGING.MOBILENUMBER !="")THEN
+				#{
+					lv_a=CUST.MESSAGING.MOBILENUMBER
+					PRINT(lv_a)
+
+					CUST.MESSAGING.BANKID = BANCS.STDIN.contextBankId
+					lv_l=CUST.MESSAGING.BANKID
+					print(lv_l)
+
+					lv_b=MID$(lv_a,0,1)
+
+					print(lv_b)
+
+					IF(CINT(lv_b)==0) THEN
+					#{
+
+						###Number starts with a zero, pad with the bank
+						##Get from second character to the last
+
+						lv_a=TRIM(lv_a)
+
+						lv_b=MID$(lv_a,1,30)
+
+						lv_c=TRIM(lv_b)
+						lv_c="2"+lv_l+lv_b
+						PRINT(lv_c)
+						CUST.MESSAGING.MOBILENUMBER=lv_c
+
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+				####Sending the record to external system
+
+				IF(CUST.MESSAGING.MOBILENUMBER!="") THEN
+				#{
+					CALL("smspushRW.scr")
+					print(CUST.MESSAGING.MOBILENUMBER)
+				#}
+				ENDIF
+
+				#PRINT(CUST.MESSAGING.response)
+
+				if ((CINT(CUST.MESSAGING.response)==1) OR (CINT(CUST.MESSAGING.response)==2)) then
+				#{
+					lv_m = ""
+					lv_m = lv_m + " update custom.sms_notification_tbl"
+					lv_m = lv_m + " set status_flg = 'Y'"
+					lv_m = lv_m + " where sol_id= '"+BANCS.STDIN.mySolId+"'"
+					lv_m = lv_m + " and bank_id ='"+BANCS.STDIN.contextBankId+"'"
+					lv_m = lv_m + " and status_flg ='N'"
+					lv_m = lv_m + " and cif_id = '"+CUST.MESSAGING.cif_id+"'"
+					lv_m = lv_m + " and foracid = '"+CUST.MESSAGING.foracid+"'"
+					lv_m = lv_m + " and alert_date = to_date('"+CUST.MESSAGING.BODDate+"','DD-MM-YYYY')"
+					lv_m = lv_m + " and last_tran_date = to_date('"+CUST.MESSAGING.last_tran_date+"','DD-MM-YYYY')"
+					lv_m = lv_m + " and alert_type = '"+CUST.MESSAGING.alert_type+"'"
+					lv_m = lv_m + " and phoneno = '"+CUST.MESSAGING.phoneno+"'"
+
+					print(lv_m)
+					lv_r=urhk_dbSQLWithBind(lv_m)
+					PRINT(lv_r)
+
+					lv_r = urhk_dbsqlWithBind("COMMIT")
+				#}
+				endif
+
+                                lv_c = urhk_dbCursorFetch(CUST.MESSAGING.DB_CURSOR_NUMBER)
+                                print(lv_c)
+		#}
+		do
+		lv_c = urhk_dbCursorClose(CUST.MESSAGING.DB_CURSOR_NUMBER)
+		print(lv_c)
+	#}
+	ENDIF
+
+
+trace off
+end-->
+

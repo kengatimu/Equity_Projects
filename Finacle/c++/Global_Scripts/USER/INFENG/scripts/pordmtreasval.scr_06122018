@@ -1,0 +1,168 @@
+<--START
+
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether PORDM Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","PORDM")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","PORDM",5)
+	#}
+	ENDIF
+	sv_u = urhk_b2k_printrepos("BANCS")
+	PRINT(sv_u)
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	CUST.PORDM.acctCrncy =" "
+	CUST.PORDM.refCrncy=" "
+	CUST.PORDM.rateCode =" "
+	CUST.PORDM.rate=" "
+	CUST.PORDM.treaRate=" "
+	CUST.PORDM.errorFlg="N"
+	CUST.PORDM.errorMsg =" "
+	CUST.PORDM.rate1=" "
+	CUST.PORDM.treaRate1=" "
+	CUST.PORDM.treaRefNum=" "
+	
+		CUST.PORDM.treaRefNum = BANCS.INPUT.tresExchRefNo
+		PRINT(CUST.PORDM.treaRefNum)
+
+		CUST.PORDM.acctCrncy = TOUPPER(BANCS.INPUT.drAcctCrncy)
+		PRINT(CUST.PORDM.acctCrncy)
+
+		CUST.PORDM.refCrncy = TOUPPER(BANCS.INPUT.remitCrncy)
+		PRINT(CUST.PORDM.refCrncy)
+
+		CUST.PORDM.rateCode1 = BANCS.INPUT.exchRateCode
+		PRINT(CUST.PORDM.rateCode1)
+
+		CUST.PORDM.rate1 = CDOUBLE(BANCS.INPUT.exchRate)
+		PRINT(CUST.PORDM.rate1)
+
+		CUST.PORDM.treaRate1 = CDOUBLE(BANCS.INPUT.tresExchRate)
+		PRINT(CUST.PORDM.treaRate1)
+
+	IF((CUST.PORDM.acctCrncy != "") AND (CUST.PORDM.refCrncy != "") AND (CUST.PORDM.acctCrncy != CUST.PORDM.refCrncy)) THEN
+	#{
+		###########################################################################################
+		# Fetching RATECODE from custom table
+		###########################################################################################
+
+		IF(CUST.PORDM.acctCrncy != CUST.PORDM.refCrncy) THEN
+		#{
+			sv_s = "recCount|"
+			sv_s = sv_s + " SELECT 1 FROM DUAL WHERE EXISTS("
+			sv_s = sv_s + " SELECT 1 FROM TBAADM.CNC"
+			sv_s = sv_s + " WHERE CRNCY_CODE = ?SVAR"
+			sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y'"
+			sv_s = sv_s + " AND DEL_FLG != 'Y'"
+			sv_s = sv_s + " AND BANK_ID = ?SVAR)"
+			PRINT(sv_s)
+
+			BANCS.INPARAM.BINDVARS = CUST.PORDM.refCrncy + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d != 0)THEN
+			#{
+				CUST.PORDM.errorFlg = "Y"
+				CUST.PORDM.errorMsg = "Invalid Ref. CCY"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+                        sv_s = "rateCode| select ratecode_tran from custom.c_ratecode where from_currency = ?SVAR AND to_currency=?SVAR AND bank_id =?SVAR"
+                        PRINT(sv_s)
+                        BANCS.INPARAM.BINDVARS = CUST.PORDM.acctCrncy + "|" + CUST.PORDM.refCrncy + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d ==0) THEN
+			#{
+				CUST.PORDM.rateCode = BANCS.OUTPARAM.rateCode
+				PRINT(CUST.PORDM.rateCode)
+
+			#}
+			ELSE
+			#{
+				#CUST.PORDM.errorFlg="Y"
+				#CUST.PORDM.errorMsg ="enter the values manually"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#IF(BANCS.STDIN.menuId != "HPORDM") THEN
+	#{
+	
+		IF(CUST.PORDM.rateCode1 != CUST.PORDM.rateCode)THEN
+		#{
+					CUST.PORDM.errorFlg="Y"
+					#CUST.PORDM.errorMsg="Treasury reference ratecode  and custom setup ratecode or not same, Transaction is abonded"
+					CUST.PORDM.errorMsg="Treasury reference ratecode and defaulted ratecode differs"
+					sv_u=urhk_SetOrbOut("errorFlg|"+CUST.PORDM.errorFlg)
+					sv_u=urhk_SetOrbOut("errorMsg|"+CUST.PORDM.errorMsg)
+			PRINT(sv_u)	
+			GOTO ENDOFSCRIPT
+		#}	
+		ENDIF
+	
+		sv_s="rate,tresrate|SELECT CUST_RATE,TREASURY_RATE FROM TBAADM.FTRT WHERE TR_REF_NUM=?SVAR AND BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.PORDM.treaRefNum + "|" + BANCS.STDIN.contextBankId
+	
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d ==0) THEN
+			#{
+					CUST.PORDM.rate = CDOUBLE(BANCS.OUTPARAM.rate)
+					PRINT(CUST.PORDM.rate)
+					CUST.PORDM.treaRate = CDOUBLE(BANCS.OUTPARAM.tresrate)
+					PRINT(CUST.PORDM.treaRate)
+	
+			#}
+		ENDIF
+	
+		IF((CUST.PORDM.rate1 != CUST.PORDM.rate) OR (CUST.PORDM.treaRate1 != CUST.PORDM.treaRate))THEN
+		#{
+					CUST.PORDM.errorFlg="Y"
+					CUST.PORDM.errorMsg="Defaulted rate values are not equal to special rate values ,Can't Proceed"
+					sv_u=urhk_SetOrbOut("errorFlg|"+CUST.PORDM.errorFlg)
+					sv_u=urhk_SetOrbOut("errorMsg|"+CUST.PORDM.errorMsg)
+			PRINT(sv_u)	
+		#}	
+		ENDIF
+	#}
+	#ENDIF
+	
+	ENDOFSCRIPT:
+
+TRACE OFF
+				
+END-->
+

@@ -1,0 +1,140 @@
+###############################################################################################
+# Source Name           : mntfwcmn002.scr
+# Date                  : 01-08-2013
+# Description           : This script is called to throw exception when limit exceeds in MNTFWC.
+# Author                : Anik Soni
+# Calling script        : NA
+# Called script         : NA
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#     0.1        01-08-2013    Anik Soni               Created for TO -356905
+#     0.2        06-08-2013    Anik Soni          Feching Exception code from FCT inplace of GSP
+###############################################################################################
+
+<--START
+CHECKSUM="544aaee350d4337905579d0355719bb56487b71b580a3f46149cd2af6d2b15f1"
+	#trace on
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Create repository and class
+	#-------------------------------------------------------------------------------------------------------
+	IF(REPEXISTS("CUST")==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","DATA")==0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	#sv_a = urhk_B2K_printRepos("BANCS")
+	
+	
+	#=================================================================
+	# Fetching some details from front end.
+	#=================================================================
+	
+	sv_u = urhk_SRV_GetVal("fwcGenDtl.fwcAmt")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.DATA.fwcAmt = TOUPPER(BANCS.OUTPARAM.srvValue)
+		CUST.DATA.fwcAmt = LEFT$(CUST.DATA.fwcAmt,GETPOSITION(CUST.DATA.fwcAmt,"|") - 1)
+		print(CUST.DATA.fwcAmt)
+		#}
+	ELSE
+		#{
+		CUST.DATA.fwcAmt = ""
+	#}
+	ENDIF
+	sv_u = urhk_SRV_GetVal("fwcLimitDtl.limitId.limitPrefix")
+	print(sv_u)
+	IF(sv_u == 0) THEN
+	#{
+		CUST.DATA.limPrefix = BANCS.OUTPARAM.srvValue
+		#}
+	ELSE
+		#{
+		CUST.DATA.limPrefix = ""
+	#}
+	ENDIF
+	sv_u = urhk_SRV_GetVal("fwcLimitDtl.availableLimit")
+	print(sv_u)
+	IF ((sv_u == 0) AND (CUST.DATA.limPrefix != "")) THEN
+	#{
+		CUST.DATA.availableLimit = TOUPPER(BANCS.OUTPARAM.srvValue)
+		CUST.DATA.availableLimit = LEFT$(CUST.DATA.availableLimit,GETPOSITION(CUST.DATA.availableLimit,"|") - 1)
+		print(CUST.DATA.availableLimit)
+		#}
+	ELSE
+		#{
+		CUST.DATA.availableLimit = ""
+	#}
+	ENDIF
+	sv_u = urhk_SRV_GetVal("fwcGenDtl.applAcct.solId")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.DATA.solId = TOUPPER(BANCS.OUTPARAM.srvValue)
+		print(CUST.DATA.solId)
+		#}
+	ELSE
+		#{
+		CUST.DATA.solId = ""
+	#}
+	ENDIF
+	
+	#=================================================================
+	# Checking if the there is cap on Limit.
+	#=================================================================
+	IF((CUST.DATA.availableLimit == "") OR (CUST.DATA.fwcAmt == "")) THEN
+	#{
+		print("No validation required")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.DATA.availableLimit) != 0)THEN
+	#{
+		IF(CDOUBLE(CUST.DATA.fwcAmt) > CDOUBLE(CUST.DATA.availableLimit)) THEN
+		#{
+			sv_s = "excpnCode|SELECT GT_PARTY_LIMIT_EXCP "
+			sv_s = sv_s + "FROM TBAADM.FCT "
+			sv_s = sv_s + "WHERE SOL_ID = ?SVAR "
+			sv_s = sv_s + "AND bank_id = ?SVAR "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.solId + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF (sv_d != 0) THEN
+			#{
+				print("No exception code setup at Fex control(FCT)table")
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CUST.DATA.excpnCode =  BANCS.OUTPARAM.excpnCode
+				print(CUST.DATA.excpnCode)
+				#=================================================================
+				# Raise the relevant exception in this case
+				#=================================================================
+				sv_u = urhk_B2k_PutUserException(CUST.DATA.excpnCode)
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		#trace off
+END-->

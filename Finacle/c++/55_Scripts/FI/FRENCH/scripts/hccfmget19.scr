@@ -1,0 +1,139 @@
+<--START
+CHECKSUM="5214eec61b359bd1777a13dfcd0b2e7c1f39c706e705b44212df021eed1d05b5"
+	TRACE ON
+	sv_k=""
+	sv_y=""
+	sv_w=""
+	
+	sv_q="custId|"
+	sv_q = sv_q + " select cif_id from   CUSTOM.BULK_CIF  where ENTITY_CRE_FLG = 'V' and cif_id not in (select cif_id from  tbaadm.ccmg where bank_id='54' ) and rownum<3"
+	print(sv_q)
+	
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			exitscript
+		#}
+		ENDIF
+		print(sv_q)
+		WHILE(sv_q==0)
+		#{
+			##################
+			# Get account balance as on BOD date.
+			
+			sv_a=BANCS.OUTPARAM.custId
+			print(sv_a)
+			
+			#####
+			#----------------------------------------------------------------------
+			# Create the necessary repositories and Classes
+			#----------------------------------------------------------------------
+			IF(REPEXISTS("CUST") == 0 ) THEN
+			#{
+				CREATEREP("CUST")
+			#}
+			ENDIF
+
+			IF(CLASSEXISTS("CUST","CCFM") == 0) THEN
+			#{
+				CREATECLASS("CUST","CCFM",5)
+			#}
+			ENDIF
+
+
+			CUST.CCFM.cifId = sv_a
+			print(CUST.CCFM.cifId)
+
+			#----------------------------------------------------------------------
+			# Check if entry exists in HCCFM. If there are no entries then create
+			# the same
+			#----------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = CUST.CCFM.cifId + "|" + BANCS.STDIN.contextBankId
+			sv_s = "countData|SELECT COUNT(*) FROM TBAADM.CCMG WHERE CIF_ID = ?SVAR AND BANK_ID = ?SVAR"
+			sv_d = urhk_dbselectWithBind(sv_s)
+			IF(CINT(BANCS.OUTPARAM.countData) == CINT("0")) THEN
+			#{
+				sv_u = urhk_SetUrhkInp("custGeneralDet.custId.cifId|" + CUST.CCFM.cifId)
+						
+				#--------------------------------------------------------
+				# The below parameters can be parameterized in CPARAM
+				#--------------------------------------------------------
+				sv_u = urhk_SetUrhkInp("custGeneralDet.sweepsFlg|N")
+				sv_u = urhk_SetUrhkInp("custGeneralDet.combStmtReqd|N")
+				sv_u = urhk_SetUrhkInp("custGeneralDet.partyFlg|N")
+				sv_u = urhk_SetUrhkInp("custGeneralDet.zakatDedCalBase|00")
+				sv_u = urhk_SetUrhkInp("custGeneralDet.delFlg|N")
+				sv_u = urhk_SetUrhkInp("custBuySellLimDet.isCustBuySellLimDetEntered|0")
+				sv_u = urhk_SetUrhkInp("custGeneralDet.poSTPCeilCrncy.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+				sv_u = urhk_SetUrhkInp("custGeneralDet.poSTPCeilAmount|0|" + BANCS.STDIN.homeCrncyCode)
+				sv_u = urhk_ExecSrv("SRV_AddCoreCustomer|retain_all_output = N")
+				print(sv_u)
+				IF(sv_u == 0) THEN
+				#{
+					#--------------------------------------------------------
+					# If add is successful then call fetch for verify and
+					# Verify SRV corresponding to HCCFM
+					#--------------------------------------------------------
+					sv_u = urhk_SetUrhkInp("custGeneralDet.custId.cifId|" + CUST.CCFM.cifId)
+					sv_u = urhk_ExecSrv("SRV_FetchCoreCustomerDataForVerify|same_user_verify = Y|retain_all_output = Y")
+					print(sv_u)
+					IF(sv_u == 0) THEN
+					#{
+						sv_u = urhk_CopyOutToIn("")
+						sv_u = urhk_ExecSrv("SRV_VerifyCoreCustomer|same_user_verify = Y|retain_all_output = Y")
+						print(sv_u)
+						IF(sv_u == 0) THEN			
+						#{
+							BANCS.INPARAM.BINDVARS = CUST.CCFM.cifId + "|" + "CIFMODMEMO" + "|" + "CORE"
+							BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+							sv_s = "DELETE FROM TBAADM.IRD WHERE ENTITY_ID = ?SVAR AND REQUEST_TYPE = ?SVAR"
+							sv_s = sv_s + " AND TARGET_SYSTEM = ?SVAR AND BANK_ID = ?SVAR"
+							sv_u = urhk_dbSQLWithBind(sv_s)
+							print(sv_u)
+						#}
+						ELSE
+						#{
+							sv_u = urhk_SRV_SetErr("Could not create entry in HCCFM for the customer id")
+						#}
+						ENDIF
+					#}
+					ELSE
+					#{
+						sv_u = urhk_SRV_SetErr("Could not create entry in HCCFM for the customer id")
+					#}
+					ENDIF
+				
+				#}
+				ELSE
+				#{
+					sv_u = urhk_SRV_SetErr("Could not create entry in HCCFM for the customer id")
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				print("Entry already present in HCCFM")
+			#}
+			ENDIF
+
+			#####
+			
+			
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+		#}
+		DO
+		TRACE OFF
+		EXITSCRIPT
+		
+	END-->
+	
+	

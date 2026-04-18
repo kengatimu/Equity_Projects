@@ -1,0 +1,598 @@
+<--START
+CHECKSUM="729d29b90319cfe73804a210ebb27a3013f47f3ae2bad0299dfbb888344f8796"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	sv_y = 0
+	sv_p = urhk_B2k_PID("")
+	CUST.DATA.pid = TRIM(BANCS.OUTPARAM.PID)
+	print(CUST.DATA.pid)
+	CUST.DATA.fileName = "CSOL"+ CUST.DATA.pid +".rpt"
+	CUST.DATA.fileName = "${FIN_REPORTS_DIR}/" + BANCS.STDIN.userId + "/"+CUST.DATA.fileName
+	print(CUST.DATA.fileName)
+	sv_s = "echo '                                     FAILURE REPORT\n' >"+CUST.DATA.fileName
+	print(sv_s)
+	sv_a = system(sv_s)
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation for unverified Bio Enrollments:
+	#-----------------------------------------------------------------------------------------------
+	
+	Call("bio_report.scr")	
+	
+	IF (FIELDEXISTS(BANCS.OUTPUT.successorFailure) == 1) THEN
+	#{
+		print(BANCS.OUTPUT.successorFailure)
+		
+		IF(BANCS.OUTPUT.successorFailure == "F")THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			#sv_s = "echo 'Unverified Bio Enrollment Exist for the sol,For detailed report login to Biometric Application - View Unverified Customers OR Finacle report BI004-Unverified Biometric Enrollment Report' >>"+CUST.DATA.fileName
+			sv_s="echo '"+CUST.INTERFACE.bio_message+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_s = "echo 'For detailed report login to Biometric Application - View Unverified Customers OR Finacle report BI004-Unverified Biometric Enrollment Report' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		
+		IF(BANCS.OUTPUT.successorFailure == "E")THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unable to contact BIO for validating Unverified Bio Enrollments' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+	#}
+	ENDIF
+		
+		
+		
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation for unposted transactions
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|select COUNT(distinct tran_id) from tbaadm.DTD "
+	sv_s = sv_s + " WHERE DTD.dth_init_sol_id = ?SVAR "
+	sv_s = sv_s + " AND DTD.pstd_flg != 'Y' "
+	sv_s = sv_s + " AND DTD.del_flg = 'N'"
+	sv_s = sv_s + " AND DTD.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unposted Transactions Exist for the sol. No. " + BANCS.OUTPARAM.Count + "' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'Unposted Transactions Exist for the sol' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation for clearing zone
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|select COUNT(1) from tbaadm.OZH "
+	sv_s = sv_s + " WHERE OZH.sol_id = ?SVAR "
+	sv_s = sv_s + " AND OZH.zone_stat in ('O','S') "
+	sv_s = sv_s + " AND OZH.clg_zone_date <= to_date(?SVAR,'dd-mm-yyyy') "
+	sv_s = sv_s + " AND OZH.del_flg = 'N'"
+	sv_s = sv_s + " AND OZH.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + MID$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 7 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'More Than Seven Open OR Supended Zones Exist' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'More than two outward zones are still Open' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation for clearing zone
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|select COUNT(1) from tbaadm.OZH "
+	sv_s = sv_s + " WHERE OZH.sol_id = ?SVAR "
+	sv_s = sv_s + " AND OZH.zone_stat in ('O','S') "
+	sv_s = sv_s + " AND OZH.clg_zone_date <= to_date(?SVAR,'dd-mm-yyyy') "
+	sv_s = sv_s + " AND OZH.del_flg = 'N'"
+	sv_s = sv_s + " AND OZH.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + MID$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 7 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'More Than Seven Open OR Supended Zones Exist' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'More than two outward zones are still Open' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation fixed deposit closure of zero balance
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|select COUNT(1) from tbaadm.GAM "
+	sv_s = sv_s + " WHERE GAM.schm_type='TDA' "
+	sv_s = sv_s + " AND GAM.sol_id = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_opn_date= to_date(?SVAR,'dd-mm-yyyy') "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+	sv_s = sv_s + " AND GAM.clr_bal_amt = 0 "
+	sv_s = sv_s + " AND GAM.acct_cls_date is null "
+	sv_s = sv_s + " AND GAM.del_flg = 'N' AND gam.schm_code!='TD407' "
+	sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND GAM.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + MID$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unfunded Fixed Deposit Opened for the Day Exist :No. "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_s = "echo 'Unfunded Fixed Deposit Opened for the Day Exist' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_y = 1
+	#}
+	ENDIF
+	
+	##-----------------------------------------------------------------------------------------------
+	## Validation for mobee
+	##-----------------------------------------------------------------------------------------------
+	#sv_a = BANCS.STDIN.mySolId
+	#print(sv_a)
+	#sv_s = "mobee|select count(mobee_customer_st.registered_branch_code) from mobeeuser.mobee_customer_st@finacle_mobee "
+	#sv_s = sv_s + " where mobee_customer_st.institution_code in ('068','001') "
+	#sv_s = sv_s + "and not(STATUS ='APPROVED') and mobee_customer_st.registered_branch_code=?SVAR"
+	#sv_s = sv_s + "and mobee_customer_st.bank_id=?SVAR"
+	#BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	#PRINT(BANCS.INPARAM.BINDVARS)
+	#sv_d =  urhk_dbSelectWithBind(sv_s)
+	#IF (sv_d == 0 ) THEN
+	##{
+	#	sv_k = BANCS.OUTPARAM.Count
+	#	print(sv_k)
+	#	IF ( CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+	#	#{
+	#		BANCS.INPUT.RET = "1"
+	#		BANCS.OUTPUT.successOrFailure = "F"
+	#		sv_s = "echo 'Unverified Mobile Banking Applications Exist :No. "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+	#		print(sv_s)
+	#		sv_a = system(sv_s)
+	#		print(sv_a)
+	#		sv_y = 1
+	#	#}
+	#	ENDIF
+	##}
+	#ELSE
+	##{
+	#	sv_s = "echo 'Unverified Mobile Banking Applications Exist' >>"+CUST.DATA.fileName
+	#	print(sv_s)
+	#	sv_a = system(sv_s)
+	#	print(sv_a)
+	#	BANCS.OUTPUT.successOrFailure = "F"
+	#	sv_y = 1
+	##}
+	#ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation of bid bonds
+	#-----------------------------------------------------------------------------------------------
+	#### start  bid bonds ####
+	sv_s = "Count|select count(1) from TBAADM.ADT "
+	sv_s = sv_s + "WHERE ADT.AUTH_ID = '!' "
+	sv_s = sv_s + "AND  ADT.INIT_SOL_ID=?SVAR"
+	sv_s = sv_s + "AND  ADT.bank_ID=?SVAR"
+	sv_s = sv_s + "AND  TABLE_NAME = 'BGM' "
+	sv_s = sv_s + "AND AUDIT_SRL_NUM >= '001' "
+	sv_s = sv_s + "AND CALLER_MODULE = 'O' "
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF ( CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unverified Bids Exist for this Sol :No. "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'Unverified Bids Exist for this Sol' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	#### end bid bonds ####
+	
+	IF((BANCS.STDIN.contextBankId == "54") OR (BANCS.STDIN.contextBankId == "43") OR (BANCS.STDIN.contextBankId == "50")) THEN
+	#{
+		
+		#-----------------------------------------------------------------------------------------------
+		# Validation of IGLS
+		#-----------------------------------------------------------------------------------------------
+		#### start  IGLS ####
+		sv_a = BANCS.STDIN.mySolId
+		print(sv_a)
+		sv_s = "Count|SELECT a-b from (SELECT TBAADM.COMMONPACKAGE.EABBAL(?SVAR,ACID,(SELECT DB_STAT_DATE FROM TBAADM.GCT where bank_id=?SVAR)) b  FROM TBAADM.GAM WHERE BACID='PAGRPREC' AND SOL_ID=?SVAR AND bank_id=?SVAR),"
+		sv_s = sv_s + " (SELECT clr_bal_amt a  FROM TBAADM.GAM WHERE BACID='PAGRPREC' AND SOL_ID=?SVAR AND clr_bal_amt !=0 AND bank_id=?SVAR) DUAL "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0 ) THEN
+		#{
+			sv_k = BANCS.OUTPARAM.Count
+			print(sv_k)
+			IF ((CINT(BANCS.OUTPARAM.Count) > 500000) AND (BANCS.STDIN.mySolId !="000") AND (BANCS.STDIN.mySolId !="999" ) ) THEN
+			#{
+				BANCS.INPUT.RET = "1"
+				BANCS.OUTPUT.successOrFailure = "F"
+				sv_s = "echo 'Unreconciled IGLS GLs for the Day Exist :No. "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+				print(sv_s)
+				sv_a = system(sv_s)
+				print(sv_a)
+				sv_y = 1
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#### End IGLS ####
+		
+		
+		#-----------------------------------------------------------------------------------------------
+		# Validation of IGLS new
+		#-----------------------------------------------------------------------------------------------
+		#### start  IGLS new ####
+		sv_s = "clr_bal|SELECT clr_bal_amt from TBAADM.GAM where CLR_BAL_AMT !=0 "
+		sv_s = sv_s + " AND GAM.bacid='PAGRPREC' "
+		sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+		sv_s = sv_s + " AND GAM.del_flg = 'N'"
+		sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND GAM.SOL_ID  = ?SVAR"
+		sv_s = sv_s + " AND GAM.BANK_ID  = ?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0 ) THEN
+		#{
+			sv_k = BANCS.OUTPARAM.clr_bal
+			print(sv_k)
+			IF ((sv_k != 0) AND (BANCS.STDIN.mySolId !="000") AND (BANCS.STDIN.mySolId !="999" ) ) THEN
+			#{
+				BANCS.INPUT.RET = "1"
+				BANCS.OUTPUT.successOrFailure = "F"
+				sv_s = "echo 'Unzerolized IGLS GL for the Day Exist Amount: "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+				print(sv_s)
+				sv_a = system(sv_s)
+				print(sv_a)
+				sv_y = 1
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#### End IGLS new  ####
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation of accounts with suspended CUMM's
+	#-----------------------------------------------------------------------------------------------
+	##### start accounts with suspended CUMM's ##
+	sv_s = "Count|SELECT count(1) from TBAADM.cmg, TBAADM.gam where cmg.del_flg='Y' "
+	sv_s = sv_s + " AND cmg.cif_id = gam.cif_id AND gam.acct_cls_flg!='Y' "
+	sv_s = sv_s + " AND gam.bank_id = ?SVAR"
+	sv_s = sv_s + " AND gam.bank_id = cmg.bank_id"
+	sv_s = sv_s + " AND gam.sol_id = ?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 1000 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Accounts with suspended CUMMs exist: "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'Accounts with suspended CUMMs exist' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	#### End accounts with suspended CUMM's ####
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation of cust_ids_without_accts
+	#-----------------------------------------------------------------------------------------------
+	##### start cust_ids_without_accts ##
+	#sv_s = "Count|SELECT count(1) FROM "
+	#sv_s = sv_s + "(SELECT PRIMARY_SOL_ID,DECODE(CMG.DEL_FLG,'N','ACTIVE','Y','SUSPENDED')STATUS,NUM_OF_ACCOUNTS,CMG.cif_id CUSTCMG,CUST_NAME,aas.cust_id CUSTAAS,ACID,SCHM_TYPE,NMA_KEY_ID,ACCT_POA_AS_NAME,cmg.bank_id "
+	#sv_s = sv_s + " FROM TBAADM.CMG, TBAADM.AAS, TBAADM.CCMG WHERE AAS.CUST_ID=CMG.CUST_ID and CMG.bank_id=AAS.bank_id and CMG.bank_id= ?SVAR "
+	#sv_s = sv_s + " AND NUM_OF_ACCOUNTS=0 and cmg.del_flg='N' and CMG.bank_id=CCMG.bank_id "
+	#sv_s = sv_s + " and CMG.CUST_ID = CCMG.CUST_ID and AAS.CUST_ID = CCMG.CUST_ID)T,TBAADM.CMG "
+	#sv_s = sv_s + " WHERE T.CUSTCMG = CMG.cif_id "
+	#sv_s = sv_s + " AND T.bank_id = CMG.bank_id "
+	#sv_s = sv_s + " AND CMG.bank_id = ?SVAR "
+	##sv_s = sv_s + " AND T.CUSTAAS IS NULL "
+	#sv_s = sv_s + " AND cmg.primary_sol_id = ?SVAR "
+	
+	
+	sv_s = "Count|SELECT count(c1.cif_id) from tbaadm.cmg c1, tbaadm.ccmg c2 "
+	sv_s = sv_s + "  where c1.bank_id = ?SVAR AND c1.del_flg ='N' AND c1.PRIMARY_SOL_ID = ?SVAR  AND c1.PRIMARY_SOL_ID != '099' "
+	sv_s = sv_s + "  AND c1.cif_id = c2.cif_id AND c2.bank_id =?SVAR AND c1.bank_id =c2.bank_id "
+	sv_s = sv_s + "  AND c2.num_of_accounts ='0' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	sv_d = 0
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 20000 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'CUMMs without account exist: "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'CUMMs without account exist' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	#### end cust_ids without accounts ####
+	
+	GOTO SKIP4
+	#-----------------------------------------------------------------------------------------------
+	# Validation of customer with shared national id
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|SELECT count(1) from "
+	sv_s = sv_s + "(SELECT primary_sol_id sol_id,count(cif_id)acust_id, NAT_ID_CARD_NUM Nat_id FROM TBAADM.cmg WHERE del_flg = 'N' AND bank_id= ?SVAR GROUP BY NAT_ID_CARD_NUM, primary_sol_id"
+	sv_s = sv_s + " HAVING COUNT (cif_id) > 1 )A,TBAADM.cmg where A.Nat_id=cmg.NAT_ID_CARD_NUM  "
+	sv_s = sv_s + " AND del_flg!='Y' "
+	sv_s = sv_s + " AND CMG.PRIMARY_SOL_ID = ?SVAR"
+	sv_s = sv_s + " AND CMG.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		print(BANCS.OUTPARAM.Count)
+		IF (CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'CUMMs WITH SHARED NATIONAL ID exist: "+BANCS.OUTPARAM.Count+"' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'CUMMs WITH SHARED NATIONAL ID exist' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	### end start cumm shared IDS ####
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation of proxy accounts zeroization
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|SELECT count(1) from GAM where CLR_BAL_AMT !=0 "
+	sv_s = sv_s + " AND bacid='PROXY' "
+	sv_s = sv_s + " AND GAM.sol_id = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+	sv_s = sv_s + " AND GAM.del_flg = 'N'"
+	sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND GAM.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 1000 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unzerolised Proxy Account Exist for the sol' >>"+CUST.DATA.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "1"
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_s = "echo 'Unzerolised Proxy Account Exist for the sol' >>"+CUST.DATA.fileName
+		print(sv_s)
+		sv_a = system(sv_s)
+		print(sv_a)
+		sv_y = 1
+	#}
+	ENDIF
+	
+	SKIP4:
+		
+		IF ( sv_y == 1 ) THEN
+		#{
+			#--------------------------------------------------------------------------------------------------------------
+			# For HPR Entry
+			#--------------------------------------------------------------------------------------------------------------
+			sv_s = "babx4040 ${B2K_SESSION_ID} "+CUST.DATA.fileName+' '+'"'+"EOD Validation Failure Report" + '"' + " MANAGER 1 N"
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

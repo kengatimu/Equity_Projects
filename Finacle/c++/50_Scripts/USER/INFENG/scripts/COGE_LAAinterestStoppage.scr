@@ -1,0 +1,236 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : LAAinterestStoppage.scr
+#  Description     : stop interest for lOAN accounts whose system classification is NPA
+#  Date            : 24-02-2022
+#  Author          : James Maina
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             24-02-2022      James Maina          Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","LAA") == 0) THEN
+#{
+        CREATECLASS("CUST","LAA",5)
+#}
+ENDIF
+
+CUST.LAA.min_int_pcnt_dr="0.000000"
+CUST.LAA.max_int_pcnt_dr="0.000000"
+CUST.LAA.acctpref="0"
+CUST.LAA.intTblVerNum=""
+CUST.LAA.custpref="0"
+CUST.LAA.tablecode = "LZERO"
+CUST.LAA.pegged="N"
+
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print (sv_a)
+
+
+        #------------------------------------------------------------------------------------------------------------------------
+        #FETCHING ELIGIBLE LAA ACCOUNTS
+        #------------------------------------------------------------------------------------------------------------------------
+
+        lv_q = " Foracid,acctpref | select FORACID,INTREST_RATE from CUSTOM.COGE_INTREST_CHANGE WHERE INTREST_UPDATED_FLAG = 'N' "
+        PRINT(lv_q)
+
+        lv_u = urhk_dbcursorOpenWithBind(lv_q)
+        PRINT(lv_q)
+
+        IF(lv_u == 0)THEN
+        #{
+                CUST.LAA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                print(CUST.LAA.CURSOR_NUMBER)
+                sv_b = urhk_dbCursorFetch(CUST.LAA.CURSOR_NUMBER)
+                print(sv_b)
+
+                WHILE(sv_b == "0")
+                #{
+
+                        CUST.LAA.Foracid = BANCS.OUTPARAM.Foracid
+                        print(CUST.LAA.Foracid)
+                        CUST.LAA.acctpref = BANCS.OUTPARAM.acctpref
+                        PRINT(CUST.LAA.acctpref)
+
+                        sv_s="pegged |"
+                        sv_s = sv_s + " SELECT PEGGED_FLG FROM TBAADM.ITC WHERE "
+                        sv_s = sv_s + " BANK_ID=?SVAR AND ENTITY_ID=(SELECT ACID FROM TBAADM.GAM WHERE FORACID = ?SVAR) order by INT_TBL_CODE_SRL_NUM desc "
+                        sv_s = sv_s + " OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY "
+                        print(sv_s)
+
+                        BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.LAA.Foracid
+                        print(BANCS.INPARAM.BINDVARS)
+
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        IF(sv_d==0)THEN
+                        #{
+                                CUST.LAA.pegged= BANCS.OUTPARAM.pegged
+                                print(CUST.LAA.pegged)
+                        #}
+                        ENDIF
+
+                        sv_u = urhk_SetUrhkInp("loanIntTblCrit.funcCode|M")
+                        PRINT(sv_u)
+                        sv_u = urhk_SetUrhkInp("loanIntTblCrit.laAcct.foracid|" + CUST.LAA.Foracid)
+                        PRINT(sv_u)
+
+                        sv_u = urhk_ExecSrv("SRV_FetchLoanIntTblDtl|retain_all_output = Y|same_user_verify = Y")
+                        PRINT(sv_u)
+
+                        IF(sv_u==0)THEN
+                        #{
+                                PRINT("SUCCESS1")
+                                sv_u = urhk_CopyOutToIn("")
+                                PRINT(sv_u)
+
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.key.serial_num|1")
+                                PRINT(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.intTblCode.tblCode|" + CUST.LAA.tablecode)
+                                PRINT(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.intTblVerNum|" + CUST.LAA.intTblVerNum)
+                                print(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.minInt|" + CUST.LAA.min_int_pcnt_dr)
+                                print(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.maxInt|" + CUST.LAA.max_int_pcnt_dr)
+                                print(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.acctPrefInt|" + CUST.LAA.acctpref)
+                                print(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.custPrefInt|" + CUST.LAA.custpref)
+                                print(sv_u)
+                                sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.peggedFlg|" + CUST.LAA.pegged)
+                                print(sv_u)
+
+                                sv_u = urhk_ExecSrv("SRV_processLoanIntTblDtlAndVerify|retain_all_output = Y|same_user_verify = Y")
+                                PRINT(sv_u)
+
+                                IF(sv_u==0)THEN
+                                #{
+                                        CUST.LAA.error = "SUCCESS FULLY CHANGED"
+                                        lv_q = "UPDATE CUSTOM.COGE_INTREST_CHANGE SET INTREST_UPDATED_FLAG = 'Y',ERROR_IN_REC = ?SVAR WHERE FORACID = ?SVAR "
+                                        PRINT(lv_q)
+
+                                        BANCS.INPARAM.BINDVARS = CUST.LAA.error +"|"+ CUST.LAA.Foracid
+
+                                        lv_u = urhk_dbSqlWithBind(lv_q)
+                                        PRINT(lv_u)
+
+                                        IF(lv_u == 0)THEN
+                                        #{
+                                                PRINT("SUCCESS2")
+                                                lv_u = urhk_dbSqlWithBind("COMMIT")
+                                        #}
+                                        ELSE
+                                        #{
+                                                PRINT("FAILED TO UPDATE")
+                                        #}
+                                        ENDIF
+
+                                        PRINT("SUCCESS3")
+
+                                #}
+                                ELSE
+                                #{
+                                        GOTO CHECKERROR
+                                #}
+                                ENDIF
+
+                        #}
+                        ELSE
+                        #{
+                                GOTO CHECKERROR
+
+                        #}
+                        ENDIF
+
+                        CHECKERROR:
+                        #----------------------------------------------------------------------------------------------------
+                        # SRV Error check
+                        #----------------------------------------------------------------------------------------------------
+                        IF (sv_u != 0) THEN
+                        #{
+                                IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+                                #{
+                                print(BANCS.OUTPARAM.Error_num)
+                                sv_v = BANCS.OUTPARAM.Error_num
+                                #}
+                                ELSE
+                                #{
+                                        sv_v = 0
+                                #}
+                                ENDIF
+                                IF (sv_v > 0) then
+                                #{
+                                        sv_u = system("echo 'Error'")
+                                        sv_i = 1
+                                        WHILE (sv_i <= sv_v)
+                                        #{
+                                                sv_f = FORMAT$(sv_i,"%d")
+                                                sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+                                                sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+                                                sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+                                                print(sv_e)
+                                                CUST.LAA.error = sv_e
+                                                lv_q = " UPDATE CUSTOM.COGE_INTREST_CHANGE SET ERROR_IN_REC = ?SVAR WHERE FORACID = ?SVAR "
+                                                PRINT(lv_q)
+
+                                                BANCS.INPARAM.BINDVARS = CUST.LAA.error +"|"+ CUST.LAA.Foracid
+                                                PRINT(BANCS.INPARAM.BINDVARS)
+
+                                                lv_u = urhk_dbSQLWithBind(lv_q)
+                                                PRINT(lv_u)
+
+                                                IF(lv_u == 0)THEN
+                                                #{
+                                                        PRINT("ERROR UPDATED")
+                                                        lv_u = urhk_dbSQLWithBind("COMMIT")
+                                                #}
+                                                ELSE
+                                                #{
+                                                        PRINT("NOT UPDATED")
+                                                #}
+                                                ENDIF
+
+                                                sv_i = sv_i + 1
+                                                sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+                                                print(sv_u)
+
+                                        #}
+                                        DO
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+
+                        GOTO NEXTREC
+
+                         BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+                         PRINT(BANCS.INPUT.RECCOUNT)
+
+                         NEXTREC:
+                         sv_b = urhk_dbCursorFetch(CUST.LAA.CURSOR_NUMBER)
+                         print(sv_b)
+                #}
+                DO
+        #}
+        ENDIF
+
+
+
+TRACE OFF
+END-->
+

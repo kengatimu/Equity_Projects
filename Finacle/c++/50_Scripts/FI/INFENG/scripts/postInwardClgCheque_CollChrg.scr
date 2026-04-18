@@ -1,0 +1,412 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       postInwardClgCheque_CollChrg.scr
+# Description           :       Collects charges for postInwardClgCheque
+# Input                 :       none
+# Output                :       None
+# Called Script         :       None
+#				
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           25-06-2013      	Venki	         Original Version		 1.0
+#  1           01-04-2014      	Jane	         Adding charge waive to CA218    2.0
+#-----------------------------------------------------------------------------------------------------------
+<--start
+trace on
+
+
+#--------------------------------------------------------------------------
+# For staff scheme charge should not be collected
+#--------------------------------------------------------------------------
+BANCS.INPUT.moduleName="CLEARING"
+BANCS.INPUT.parameterId="SCHM_COD1_SB190"
+call("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.INTERFACE.staffSchemeCode = BANCS.OUTPUT.parameterVal
+	print(CUST.INTERFACE.staffSchemeCode)
+#}
+ELSE
+#{
+	CUST.INTERFACE.staffSchemeCode = ""
+#}
+ENDIF
+
+#--------------------------------------------------------------------------
+# For restricting charge on accounts
+#--------------------------------------------------------------------------
+BANCS.INPUT.moduleName="CLEARING"
+BANCS.INPUT.parameterId="FORACIDS_ALL"
+call("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.INTERFACE.foracidv1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.INTERFACE.foracidv1=""
+#}
+ENDIF
+
+BANCS.INPUT.moduleName="CLEARING"
+BANCS.INPUT.parameterId="FORACIDS_ALL2"
+call("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.INTERFACE.foracidv2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.INTERFACE.foracidv2=""
+#}
+ENDIF
+
+CUST.INTERFACE.exemptflg = "N"
+sv_s = "COUNT|SELECT COUNT(1) FROM CUSTOM.ACCT_EXEMPTION_TABLE "
+sv_s = sv_s + " WHERE FORACID = ?SVAR"
+sv_s = sv_s + " AND bank_id = ?SVAR and EXEMPT_CODE='INWDEXEMPT' "
+PRINT(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.INTERFACE.DrAcct + "|" + BANCS.STDIN.contextBankId
+PRINT(BANCS.INPARAM.BINDVARS)
+sv_u =  urhk_dbSelectWithBind(sv_s)
+IF(sv_u == 0) THEN
+#{ 
+	PRINT(BANCS.OUTPARAM.COUNT)
+	IF (CINT(BANCS.OUTPARAM.COUNT) > 0) THEN
+	#{
+		CUST.INTERFACE.exemptflg ="Y"
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.exemptflg = "N"
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	CUST.INTERFACE.exemptflg = "N"
+#}
+ENDIF					
+			
+
+
+IF(FIELDEXISTS(CUST.INTERFACE.DrSchmCode)) THEN
+#{
+	print(CUST.INTERFACE.DrSchmCode)
+		IF(CUST.INTERFACE.DrSchmCode == CUST.INTERFACE.staffSchemeCode) THEN
+		#{
+					print("For Staff accounts no charge is to be collected")
+					CUST.GCHRG.successOrFailure = "S"
+					CUST.GCHRG.tranId = ""
+					CUST.GCHRG.chrgAmt = "0"
+					GOTO ENDOFCHRGSCR
+				
+			
+		#}
+		ELSE
+		#{
+			print(CUST.INTERFACE.DrSchmCode)
+			IF((CUST.INTERFACE.DrSchmCode == "CA202") OR (CUST.INTERFACE.DrSchmCode == "CA204") AND (BANCS.STDIN.contextBankId =="50")) THEN
+			#{
+					print("no charge is to be collected")
+					CUST.GCHRG.successOrFailure = "S"
+					CUST.GCHRG.tranId = ""
+					CUST.GCHRG.chrgAmt = "0"
+					GOTO ENDOFCHRGSCR
+			#}
+			ELSE
+			#{		
+			
+				print(CUST.INTERFACE.DrSchmCode)
+				IF((CUST.INTERFACE.DrSchmCode == "CA218") OR (CUST.INTERFACE.DrSchmCode == "CA217") OR (CUST.INTERFACE.DrSchmCode == "CA219") OR (CUST.INTERFACE.exemptflg=="Y") AND (BANCS.STDIN.contextBankId !="56")) THEN
+				#{
+					print("no charge is to be collected")
+					CUST.GCHRG.successOrFailure = "S"
+					CUST.GCHRG.tranId = ""
+					CUST.GCHRG.chrgAmt = "0"
+					GOTO ENDOFCHRGSCR
+				
+				#}
+				ELSE
+				#{
+					sv_w = getPosition(CUST.INTERFACE.foracidv1,"|" +  CUST.INTERFACE.DrAcct + "|")
+					print(sv_w)
+
+			
+					IF(sv_w > 0)  THEN
+					#{
+						print("No charge is to be collected")
+						CUST.GCHRG.successOrFailure = "S"
+						CUST.GCHRG.tranId = ""
+						CUST.GCHRG.chrgAmt = "0"
+						GOTO ENDOFCHRGSCR
+					#}
+					ELSE
+					#{
+
+					sv_n = getPosition(CUST.INTERFACE.foracidv2,"|" +  CUST.INTERFACE.DrAcct + "|")
+					print(sv_n)
+
+						IF(sv_n > 0)  THEN
+						#{
+							print("No charge is to be collected")
+							CUST.GCHRG.successOrFailure = "S"
+							CUST.GCHRG.tranId = ""
+							CUST.GCHRG.chrgAmt = "0"
+							GOTO ENDOFCHRGSCR
+
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+#}
+ENDIF
+
+
+
+						
+
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+sv_r = REPEXISTS("MTT")
+IF (sv_r == 0) THEN
+        CREATEREP("MTT")
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","TranDetails")
+IF (sv_r == 0) THEN
+        CREATECLASS("MTT","TranDetails",5)
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","PartTranDetails")
+IF (sv_r == 0) THEN
+        CREATECLASS("MTT","PartTranDetails",5)
+ENDIF
+sv_r = CLASSEXISTS("MTT","InputDetails")
+IF (sv_r == 0) THEN
+        CREATECLASS("MTT","InputDetails",5)
+ENDIF
+
+CUST.INTERFACE.eventType = "GCHRG"
+CUST.INTERFACE.eventId = CUST.INTERFACE.InwdEventId
+CUST.INTERFACE.chargeDrAcctId = CUST.INTERFACE.DrAcct
+
+print(CUST.INTERFACE.eventId)
+print(CUST.INTERFACE.chargeDrAcctId)
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="BI"
+
+BANCS.INPARAM.PostTranFlg="X"
+BANCS.INPARAM.CommitFlg="Y"
+BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw="N"
+BANCS.INPARAM.CheckExceptions="Y"
+BANCS.INPARAM.InsertTranWithValidnFlg="Y"
+
+sv_r = urhk_MTTS_Initialize("")
+print(sv_r)
+
+sv_r = urhk_MTTS_DefineTransaction("charges")
+
+
+MTT.ChargeDetails.EventId = CUST.INTERFACE.eventId
+MTT.ChargeDetails.EventType = CUST.INTERFACE.eventType
+MTT.ChargeDetails.ChrgInpCrncy = BANCS.STDIN.homeCrncyCode
+
+sv_u = urhk_MTTS_InitPtt("charges")
+IF(sv_u != 0 ) THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "F"
+        BANCS.OUTPUT.scriptError = "urhk_MTTS_InitPtt returns FAILURE"
+		sv_u = urhk_MTTS_Close("")
+		print(sv_u)
+        sv_u = urhk_SRV_SetErr(BANCS.OUTPUT.scriptError)
+        goto ENDOFSCRIPT
+#}
+ENDIF
+
+sv_u = urhk_MTTS_GetPttRec("charges")
+sv_k = 0
+WHILE (sv_u < 1)
+#{
+        MTT.PartTranDetails.TranIdentifier = "charges"
+        #MTT.PartTranDetails.Particulars = "HOCCM charges"
+        MTT.PartTranDetails.Consolidate ="N"
+        sv_t = CDOUBLE(MTT.PartTranDetails.RefAmount)
+        sv_c = MTT.PartTranDetails.RefCurrency
+
+        #Get the total charge amount
+        sv_k = sv_k + sv_t
+        print(MTT.PartTranDetails.RefAmount)
+        print(MTT.PartTranDetails.RefCurrency)
+        print(MTT.PartTranDetails.Account)
+       
+	print(MTT.PartTranDetails.Particulars)
+        print(MTT.PartTranDetails.Remarks)
+	IF(MTT.PartTranDetails.Remarks == "Inward clearing charges")THEN
+	#{
+		sv_n = urhk_getAdvanceDetailsForAccount(CUST.INTERFACE.chargeDrAcctId)
+		IF (sv_n != 0)THEN
+			sv_e="Invalid Account"
+			sv_u = urhk_SetOrbErr(sv_e)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+
+		ELSE
+
+			PRINT(BANCS.OUTPARAM.FreeCode1)
+
+			IF(BANCS.OUTPARAM.FreeCode1 == "COGE")THEN
+			#{
+				MTT.PartTranDetails.RefAmount = "0.00"
+				sv_k = "0.00"
+				PRINT("RAWANDA")
+			#}
+			ELSE
+			#{
+				PRINT("RAWANDA")
+			#}
+			endif
+		ENDIF
+	#}
+	ENDIF
+        CUST.INTERFACE.Particulars = MTT.PartTranDetails.Particulars
+        CUST.INTERFACE.Remarks = MTT.PartTranDetails.Remarks 
+        #------------------------------------------------------
+        # Credit to placeholder mentioned in HPTTM
+        #------------------------------------------------------
+        print(MTT.PartTranDetails.RefAmount)
+        print(MTT.PartTranDetails.RefCurrency)
+        print(MTT.PartTranDetails.Account)
+        #MTT.PartTranDetails.Particulars = "charges"
+        MTT.PartTranDetails.Consolidate="N"
+        MTT.PartTranDetails.TranIdentifier="charges"
+        #MTT.PartTranDetails.Remarks = "postInwardClgCheque Charges"
+        MTT.ChargeDetails.EventType = CUST.INTERFACE.eventType
+        MTT.ChargeDetails.EventId = CUST.INTERFACE.eventId
+        #MTT.ChargeDetails.CompB2kId = CUST.LADISB.disbTranId + "/" + CUST.LADISB.disbTranDate
+        MTT.ChargeDetails.TargetAcctId = CUST.INTERFACE.chargeDrAcctId
+        CUST.INTERFACE.refCurrency = BANCS.STDIN.homeCrncyCode
+        print(MTT.PartTranDetails.RefCurrency)
+        print(MTT.PartTranDetails.Account)
+        print(MTT.PartTranDetails.RefAmount)
+        
+        sv_u = urhk_MTTS_DefineChargePartTran("CREDIT")
+        print(sv_u)
+        IF(sv_u != 0) THEN
+        #{
+                BANCS.OUTPUT.successOrFailure = "F"
+                BANCS.OUTPUT.scriptError = "urhk_MTTS_DefineChargePartTran returns FAILURE"
+				sv_u = urhk_MTTS_Close("")
+				print(sv_u)
+                sv_u = urhk_SRV_SetErr(BANCS.OUTPUT.scriptError)
+                goto ENDOFSCRIPT
+        #}
+        ENDIF
+        sv_u = urhk_MTTS_GetPttRec("charges")
+        print(sv_u)
+#}
+DO
+
+IF(sv_k == "0.00")then
+#{
+	sv_k = sv_k
+#}
+ELSE
+#{
+	sv_k = -1 * sv_k
+#}
+ENDIF
+print(sv_k)
+#------------------------------------------------------
+# Debit for charge amount from Customer oper a/c
+#------------------------------------------------------
+MTT.PartTranDetails.Account = CUST.INTERFACE.chargeDrAcctId
+MTT.PartTranDetails.RefAmount = sv_k
+MTT.PartTranDetails.RefCurrency = CUST.INTERFACE.refCurrency
+MTT.PartTranDetails.Particulars = CUST.INTERFACE.Particulars 
+MTT.PartTranDetails.Remarks = CUST.INTERFACE.Remarks 
+MTT.PartTranDetails.Consolidate = "N"
+MTT.PartTranDetails.TranIdentifier = "charges"
+MTT.PartTranDetails.RateCode = "MEAN"
+MTT.PartTranDetails.TODRefType      = "IN"
+MTT.PartTranDetails.TodEntityType   = "TODIN"
+MTT.PartTranDetails.TodEntityId     = CUST.INTERFACE.chargeDrAcctId
+MTT.PartTranDetails.TodLevIntFlg    = "N"
+MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+MTT.PartTranDetails.TodRemarks      = "Auto Renewal Charges TOD"
+
+print(MTT.PartTranDetails.RefAmount)
+print(MTT.PartTranDetails.Account)
+print(MTT.PartTranDetails.RefCurrency)
+sv_u = urhk_MTTS_DefinePartTran("DEBIT")
+print(sv_u)
+IF(sv_u != 0) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.scriptError = "urhk_MTTS_DefineChargePartTran returns FAILURE"
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	sv_u = urhk_SRV_SetErr(BANCS.OUTPUT.scriptError)
+	goto ENDOFSCRIPT
+#}
+ENDIF
+sv_u = urhk_MTTS_EndDefinition("")
+print(sv_u)
+IF(sv_u != 0) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.scriptError = "urhk_MTTS_EndDefinition returns FAILURE"
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	sv_u = urhk_SRV_SetErr(BANCS.OUTPUT.scriptError)
+	goto ENDOFSCRIPT
+#}
+ENDIF
+
+sv_r = urhk_MTTS_HandleExceptions("POST")
+print(sv_r)
+
+sv_u = urhk_MTTS_Close("")
+print(sv_u)
+IF(sv_u != 0) THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.scriptError = "urhk_MTTS_Close returns FAILURE"
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	sv_u = urhk_SRV_SetErr(BANCS.OUTPUT.scriptError)
+	goto ENDOFSCRIPT
+#}
+ENDIF
+print(BANCS.OUTPARAM.MTTTranId)
+sv_t = BANCS.OUTPARAM.MTTTranId
+IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+#{
+	sv_u = urhk_SRV_SetErr(BANCS.OUTPARAM.MTTPostingError)
+	print(sv_u)
+#}
+ELSE
+#{
+	CUST.GCHRG.successOrFailure = "S"
+	CUST.GCHRG.tranId = BANCS.OUTPARAM.MTTTranId
+#}
+ENDIF
+
+ENDOFCHRGSCR:
+
+ENDOFSCRIPT:
+trace off
+end-->

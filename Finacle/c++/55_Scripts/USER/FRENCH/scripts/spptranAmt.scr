@@ -1,0 +1,304 @@
+##########################################################################################
+# Source Name           : spptranAmt.scr
+# Date                  : 12-Aug-2013
+# Description           : This script is used to fetch the charge amount 
+# Author                : Pankaj Gaur
+# Input                 : AcctId,beginChqNum and No of leaves
+# Output                : Charge Amount, Accoutn Currency,Effective balance,Status flag
+# Author                : Pankaj Gaur
+# Called Script         : None
+# Calling Script        : None
+# Calling js            : Java script function appFnExecuteScript from the front end
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        12-Aug-2013   Pankaj Gaur		Base Version
+###########################################################################################
+
+<--START
+TRACE ON
+
+###########################################################################################
+# Creating Repositories and Classes
+###########################################################################################
+
+###########################################################################################
+# Check whether CUST Repository exists else create it
+###########################################################################################
+
+        sv_r = REPEXISTS("CUST")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATEREP ("CUST")
+        #}
+        ENDIF
+
+###########################################################################################
+# Check whether SPPDATA Class exists else create it
+###########################################################################################
+
+        sv_r = CLASSEXISTS("CUST","SPPDATA")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","SPPDATA",5)
+        #}
+        ENDIF
+
+	#sv_t = urhk_B2K_printRepos("BANCS")
+
+###########################################################################################
+# Include Library CUSTOMSO
+###########################################################################################
+
+        InclLib:
+        #{
+                libname CUSTOMSO
+                RETURN
+        #}
+
+###########################################################################################
+# Initializing local variables
+###########################################################################################
+
+CUST.SPPDATA.amt = ""
+CUST.SPPDATA.foracid = ""
+CUST.SPPDATA.beginChqNum = ""
+CUST.SPPDATA.noOfLvs = ""
+CUST.SPPDATA.acid = ""
+CUST.SPPDATA.comp = ""
+CUST.SPPDATA.effBal = ""
+CUST.SPPDATA.acctCurr = ""
+CUST.SPPDATA.Lvs = ""
+
+#print(BANCS.INPUT.acctId)
+#print(BANCS.INPUT.beginChqNum)
+#print(BANCS.INPUT.noOfLvs)
+
+###########################################################################################
+# Get the input from the front end 
+###########################################################################################
+
+	IF(FIELDEXISTS(BANCS.INPUT.acctId) ==1) THEN
+	#{	
+		CUST.SPPDATA.foracid = BANCS.INPUT.acctId
+		#PRINT(CUST.SPPDATA.foracid)
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.beginChqNum) ==1) THEN
+	#{
+		CUST.SPPDATA.beginChqNum = BANCS.INPUT.beginChqNum
+		#PRINT(CUST.SPPDATA.beginChqNum)
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.noOfLvs) ==1) THEN
+	#{
+		CUST.SPPDATA.Lvs = BANCS.INPUT.noOfLvs
+		print(CUST.SPPDATA.Lvs)
+		CUST.SPPDATA.noOfLvs = LPAD(CUST.SPPDATA.Lvs,3,'0')
+		PRINT(CUST.SPPDATA.noOfLvs)
+	#}
+	ENDIF
+
+###########################################################################################
+# Fetching Acid from Gam
+###########################################################################################
+	
+	sv_s = "acid,ACCT_CRNCY_CODE|SELECT acid,ACCT_CRNCY_CODE "
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE foracid=?SVAR"
+	sv_s = sv_s + " AND entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND del_flg = 'N'"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	#print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.SPPDATA.foracid+"|"+BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.SPPDATA.acid =  BANCS.OUTPARAM.acid
+		print(CUST.SPPDATA.acid)
+		CUST.SPPDATA.ACCT_CRNCY_CODE =  BANCS.OUTPARAM.ACCT_CRNCY_CODE
+		print(CUST.SPPDATA.ACCT_CRNCY_CODE)
+        #}
+	ELSE
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+        ENDIF
+
+###########################################################################################
+# Creating CompB2k field which is used to get Charge Amount from tbaadm.cxl table
+# COMP_B2KID in CXL will have the value of acid, begin cheque no and SPT serial number appeneded
+# for stop payment the serial number is always going as "001" so instead of No of leaves being
+# appeneded we are appended "001"
+###########################################################################################
+#CUST.SPPDATA.comp=CUST.SPPDATA.acid+CUST.SPPDATA.beginChqNum+CUST.SPPDATA.noOfLvs
+CUST.SPPDATA.comp=CUST.SPPDATA.acid+CUST.SPPDATA.beginChqNum+"001"
+print(CUST.SPPDATA.comp)
+
+##########################################################################################
+# Fetching Charge Amount from tbaadm.cxl table
+##########################################################################################
+
+	sv_s = "amt,COLL_CRNCY_CODE|SELECT actual_amt_coll, COLL_CRNCY_CODE "
+	sv_s = sv_s + " FROM TBAADM.CXL"
+	sv_s = sv_s + " WHERE COMP_B2KID_TYPE = 'SPCHG' and replace(COMP_B2KID,' ','')=?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR and rownum = 1"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.SPPDATA.comp+"|"+BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+        IF(sv_d == 0)THEN
+        #{
+                CUST.SPPDATA.amt = BANCS.OUTPARAM.amt
+		print(CUST.SPPDATA.amt)
+		CUST.SPPDATA.COLL_CRNCY_CODE = BANCS.OUTPARAM.COLL_CRNCY_CODE
+		print(CUST.SPPDATA.COLL_CRNCY_CODE)
+
+		IF (CUST.SPPDATA.COLL_CRNCY_CODE!=CUST.SPPDATA.ACCT_CRNCY_CODE) THEN
+			###
+			CUST.SPPDATA.from_cncy =CUST.SPPDATA.COLL_CRNCY_CODE
+			print(CUST.SPPDATA.from_cncy)
+			CUST.SPPDATA.to_crncy = CUST.SPPDATA.ACCT_CRNCY_CODE
+			print(CUST.SPPDATA.to_crncy)
+			####
+			CUST.SPPDATA.rate_code="TTB"
+			print(CUST.SPPDATA.rate_code)
+			CUST.SPPDATA.transactiontype ="T"
+			sv_q = " FXratecode| select CUSTOM.RETURN_FX_RATE_CODE(?SVAR,?SVAR,?SVAR,?SVAR) from dual"
+			print(sv_q)
+			BANCS.INPARAM.BINDVARS=CUST.SPPDATA.ACCT_CRNCY_CODE + "|" + CUST.SPPDATA.COLL_CRNCY_CODE + "|" + CUST.SPPDATA.transactiontype + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w=urhk_dbSelectWithBind(sv_q)
+			print(sv_w)
+			IF ( sv_w != 0 ) then
+				print("No Rate Mainatained")
+			ELSE
+				CUST.SPPDATA.rate_code = BANCS.OUTPARAM.FXratecode
+				print(CUST.SPPDATA.rate_code)
+			ENDIF
+			####
+
+			BANCS.INPARAM.BINDVARS =CUST.SPPDATA.from_cncy + "|" + CUST.SPPDATA.to_crncy
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.SPPDATA.rate_code + "|" +BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+			sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+			sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+			sv_u = sv_u + " AND RATECODE= ?SVAR "
+			sv_u = sv_u + " AND BANK_ID = ?SVAR  and rownum<2 "
+			print(sv_u)
+			sv_y=urhk_dbSelectWithBind(sv_u)
+			print(sv_y)
+			if (sv_y == "0") then
+				sv_k = BANCS.OUTPARAM.fxdcrncycode
+				print(sv_k)
+				sv_j = BANCS.OUTPARAM.ratecode
+				print(sv_j)
+				sv_p = BANCS.OUTPARAM.Rate
+				print(sv_p)
+				CUST.SPPDATA.rate = sv_p
+				print(CUST.SPPDATA.rate)
+				sv_x= BANCS.OUTPARAM.treaRate
+				print(sv_x)
+				CUST.SPPDATA.treaRate = sv_x
+				print(CUST.SPPDATA.treaRate)
+				CUST.SPPDATA.fixed_crncy = CUST.SPPDATA.from_cncy
+				print(CUST.SPPDATA.fixed_crncy)
+				CUST.SPPDATA.var_crncy = CUST.SPPDATA.to_crncy
+				print(CUST.SPPDATA.var_crncy)
+				CUST.SPPDATA.amt = CDOUBLE(CUST.SPPDATA.amt) * CDOUBLE(CUST.SPPDATA.rate)
+				print(CUST.SPPDATA.amt)
+			else
+				BANCS.INPARAM.BINDVARS = CUST.SPPDATA.to_crncy + "|" + CUST.SPPDATA.from_cncy 
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.SPPDATA.rate_code + "|" +BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+				sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+				sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+				sv_u = sv_u + " AND RATECODE= ?SVAR "
+				sv_u = sv_u + " AND BANK_ID = ?SVAR and rownum<2 "
+				print(sv_u)
+				sv_y=urhk_dbSelectWithBind(sv_u)
+				print(sv_y)
+				if (sv_y == "0") then
+					sv_k = BANCS.OUTPARAM.fxdcrncycode
+					print(sv_k)
+					sv_j = BANCS.OUTPARAM.ratecode
+					print(sv_j)
+					sv_p = BANCS.OUTPARAM.Rate
+					print(sv_p)
+					CUST.SPPDATA.rate = sv_p
+					print(CUST.SPPDATA.rate)
+					sv_x= BANCS.OUTPARAM.treaRate
+					print(sv_x)
+					CUST.SPPDATA.treaRate = sv_x
+					print(CUST.SPPDATA.treaRate)
+					CUST.SPPDATA.fixed_crncy = CUST.SPPDATA.to_crncy
+					print(CUST.SPPDATA.fixed_crncy)
+					CUST.SPPDATA.var_crncy = CUST.SPPDATA.from_cncy
+					print(CUST.SPPDATA.var_crncy)
+					CUST.SPPDATA.amt = CDOUBLE(CUST.SPPDATA.amt) / CDOUBLE(CUST.SPPDATA.rate)
+					print(CUST.SPPDATA.amt)
+					CUST.SPPDATA.amt = FORMAT$(CDOUBLE(CUST.SPPDATA.amt),"%.2f")
+					print(CUST.SPPDATA.amt)
+				ELSE
+					print("Rate Not Maintained")
+				endif
+			endif
+			###
+		ENDIF
+        #}
+        ENDIF
+
+###########################################################################################
+# Fetching Account Currency and Effective Balance of the given account
+###########################################################################################
+
+	sv_h = urhk_getAcctDetailsInRepository(CUST.SPPDATA.foracid)
+
+	CUST.SPPDATA.acctCurr = BANCS.OUTPARAM.acctCrncyCode
+	print(CUST.SPPDATA.acctCurr)
+
+	#CUST.SPPDATA.effBal = BANCS.OUTPARAM.FullEffAvailableAmt
+	#print(CUST.SPPDATA.effBal)
+	#CORRECT BALANCE
+	CUST.SPPDATA.effBal = BANCS.OUTPARAM.EffAvailableAmt
+	print(CUST.SPPDATA.effBal)
+	#for testing purpose
+	#CUST.SPPDATA.effBal=BANCS.OUTPARAM.clearBalance
+	#print(CUST.SPPDATA.effBal)
+
+###########################################################################################
+# Checking Whether effective balance is less than Charge Amount
+###########################################################################################
+
+	IF(CDOUBLE(CUST.SPPDATA.effBal) < CDOUBLE(CUST.SPPDATA.amt)) THEN
+	#{
+
+##########################################################################################
+# Sending data to the Front end
+##########################################################################################
+
+		sv_u = urhk_SetOrbOut("stat|Y")
+		sv_u = urhk_SetOrbOut("chgAmt|"+CUST.SPPDATA.amt)
+		sv_u = urhk_SetOrbOut("tranCurr|"+CUST.SPPDATA.acctCurr)
+		sv_u = urhk_SetOrbOut("effBal|"+CUST.SPPDATA.effBal)	
+	#}
+	ELSE
+	#{
+		sv_u = urhk_SetOrbOut("stat|N")
+	#}
+	ENDIF
+
+
+ENDOFSCRIPT:
+
+EXITSCRIPT
+
+TRACE OFF
+END-->

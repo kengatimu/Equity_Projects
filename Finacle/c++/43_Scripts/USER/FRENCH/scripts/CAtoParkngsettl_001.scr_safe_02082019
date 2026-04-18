@@ -1,0 +1,264 @@
+<--START
+TRACE ON
+
+        IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+        #{
+                CREATECLASS ("CUST","RATE",5)
+        #}
+        ENDIF
+
+	CUST.DATA.tranAmt = "0"
+	CUST.DATA.lienAmt = "0"
+	CUST.DATA.lienFlg = "N"
+		
+	sv_s = "caacnt|SELECT FORACID FROM TBAADM.GAM WHERE ACID=?SVAR AND BANK_ID=?SVAR"
+	BANCS.INPARAM.BINDVARS = CUST.DATA.caacid +"|"+ BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	
+	IF (sv_d != 0 ) THEN
+	#{
+           CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ " DB Error In fetching curernt accoutn for OD account"
+           PRINT(CUST.DATA.errMsg)
+           sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+           PRINT(sv_b)
+           GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.DATA.caacnt = BANCS.OUTPARAM.caacnt	
+	sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.caacnt)
+	IF(sv_u != "0")THEN
+	#{
+        CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ " Invalid curernt accoutn for OD account"
+        PRINT(CUST.DATA.errMsg)
+        sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+        PRINT(sv_b)
+        GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.DATA.caaAmt 	= BANCS.OUTPARAM.EffAvailableAmt
+	PRINT(CUST.DATA.caaAmt)
+	CUST.DATA.caCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+	PRINT(CUST.DATA.caCrncyCode)
+	
+        CUST.DATA.rateCode      =""
+        CUST.DATA.rate          =""
+
+	PRINT(CUST.DATA.outstnAmt)
+	PRINT(CUST.DATA.acntCrncyCode)
+
+	IF(CUST.DATA.caCrncyCode != CUST.DATA.acntCrncyCode)THEN
+	#{
+        	CUST.RATE.acctCrncy = CUST.DATA.acntCrncyCode
+        	CUST.RATE.refCrncy = CUST.DATA.caCrncyCode
+        	CUST.RATE.TranType = "T"
+		CALL("fetchRateCode.scr")
+        	IF(CUST.RATE.errorFlg != "Y")THEN
+        	#{
+			CUST.DATA.rateCode      =       CUST.RATE.rateCode
+			CUST.DATA.rate          =       CUST.RATE.rate
+		#}
+		ENDIF
+		
+		PRINT(CUST.DATA.outstnAmt)
+		PRINT(CUST.DATA.acntCrncyCode)
+		PRINT(CUST.DATA.caCrncyCode)	
+		BANCS.INPARAM.InputAmount  = CUST.DATA.outstnAmt
+        	BANCS.INPARAM.FromCurrency = CUST.DATA.acntCrncyCode
+        	BANCS.INPARAM.ToCurrency   = CUST.DATA.caCrncyCode
+        	BANCS.INPARAM.RateCode     = CUST.DATA.rateCode
+        	BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+        	#----------------------------------------------------------------------
+        	#Convert The Uncollected Amount Into AED for Storing Into Custom Table
+        	#----------------------------------------------------------------------
+        	lv_f = urhk_B2k_ConvertAmount("")
+        	IF(lv_f == 0)THEN
+        	#{
+                	CUST.DATA.outstnAmt = BANCS.OUTPARAM.OutputAmount
+                	PRINT(CUST.DATA.outstnAmt)
+                #}
+        	ENDIF
+
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.DATA.caaAmt) >= CDOUBLE(CUST.DATA.outstnAmt))THEN
+	#{
+		CUST.DATA.tranAmt = CUST.DATA.outstnAmt
+		CUST.DATA.lienAmt = "0"
+		#CUST.DATA.lienFlg = "N"
+		GOTO  CAODTRAN
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.DATA.caaAmt) > CDOUBLE("0"))THEN
+	#{
+		CUST.DATA.tranAmt = CUST.DATA.caaAmt
+		CUST.DATA.lienAmt = CDOUBLE(CUST.DATA.outstnAmt)- CDOUBLE(CUST.DATA.caaAmt)
+		#CUST.DATA.lienFlg = "Y"
+		GOTO  CAODTRAN
+	#}
+	ELSE
+	#{
+		GOTO ENDOFSCRIPT
+	#}	
+	ENDIF
+	CAODTRAN:
+        sv_z = urhk_MTTS_Close("")
+        PRINT(sv_z)
+
+	BANCS.INPARAM.PostTranFlg = "Y"
+        BANCS.INPARAM.CommitFlg = "N"
+        BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+        BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw = "Y"
+        BANCS.INPARAM.CheckExceptions = "Y"
+        sv_r = urhk_MTTS_Initialize("")
+        PRINT(sv_r)
+        IF(sv_r != 0)THEN
+        #{
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            PRINT(MTT.Error.Description)
+            CUST.DATA.ErrorMessage=MTT.Error.Description
+            PRINT(CUST.DATA.ErrorMessage)
+            CUST.DATA.remark = CUST.DATA.ErrorMessage
+            CUST.DATA.errMsg = CUST.DATA.caacnt +"|"+ " Error Encountered in Initializing the Transaction"
+            PRINT(CUST.DATA.errMsg)
+	    sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+	    PRINT(sv_b)
+        #}
+        ENDIF
+        ############################################
+        #Define Transaction
+        #############################################
+        MTT.TranDetails.TranID                                  = ""
+        MTT.TranDetails.TranDate                = "0"
+        MTT.TranDetails.TranType                = "T"
+        MTT.TranDetails.PostFlag                = "Y"
+        #MTT.TranDetails.TranSubType            = "BI"
+        MTT.TranDetails.TranSubType             = "CI"
+        MTT.TranDetails.ReversalFlag            = "N"
+        MTT.TranDetails.IgnoreExcp              = "I"
+        MTT.TranDetails.ReversalFlg             = "N"
+        MTT.TranDetails.Consolidate             = "N"
+        MTT.TranDetails.Remarks                 = "Parking Account oustanding amount collection from CA"
+
+
+        sv_t = urhk_MTTS_DefineTransaction("Parking_Tran")
+
+        IF(sv_t != 0) THEN
+        #{
+            PRINT(MTT.Error.Description)
+            CUST.DATA.ErrorMessage=MTT.Error.Description
+            PRINT(CUST.DATA.ErrorMessage)
+            CUST.DATA.remark = CUST.DATA.caacnt +"|"+ CUST.DATA.ErrorMessage
+	    sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            PRINT(sv_b)
+	    GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+		
+        MTT.PartTranDetails.Account     = CUST.DATA.caacnt
+        MTT.PartTranDetails.RefCurrency = CUST.DATA.caCrncyCode
+        MTT.PartTranDetails.Particulars = CUST.DATA.foracid+" Parking acnt outstanding clearance for OD"
+        MTT.PartTranDetails.Remarks = "Parking acnt outstanding clearance for OD"
+        MTT.PartTranDetails.RateCode= CUST.DATA.rateCode
+        #MTT.PartTranDetails.Rate = CUST.DATA.rate
+        MTT.PartTranDetails.RefAmount = -cdouble(CUST.DATA.tranAmt)
+        PRINT(MTT.PartTranDetails.RefAmount)
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.TranIdentifier = "Parking_Tran"
+        MTT.PartTranDetails.CarveAmtFlg="N"
+	#MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	#MTT.PartTranDetails.ACPARTB2kId=CUST.DATA.foracid
+
+        #----------------------------------------------------------------------------------
+        # Defining the Debit Part Tran for Charge amount
+        #----------------------------------------------------------------------------------
+        sv_u = urhk_MTTS_DefinePartTran("Parking_debit_Tran")
+        PRINT(sv_u)
+
+        IF (sv_u != 0) THEN
+        #{
+            CUST.DATA.errMsg = CUST.DATA.caacnt +"|"+ " Error in Defining Debit part Transaction"
+            PRINT(CUST.DATA.errMsg)
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            PRINT(MTT.Error.Description)
+            CUST.DATA.ErrorMessage=MTT.Error.Description
+            PRINT(CUST.DATA.ErrorMessage)
+            sv_u = urhk_SetOrbErr(CUST.DATA.ErrorMessage)
+            CUST.DATA.remark = CUST.DATA.ErrorMessage
+	    sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+	    PRINT(sv_b)
+	    GOTO ENDOFSCRIPT
+            
+        #}
+        ENDIF
+
+        MTT.PartTranDetails.Account     = CUST.DATA.prkngAcnt
+        MTT.PartTranDetails.RefCurrency = CUST.DATA.caCrncyCode
+        MTT.PartTranDetails.Particulars = CUST.DATA.foracid+" outstanding clearance for OD"
+        MTT.PartTranDetails.Remarks = "Parking acnt outstanding clearance for OD"
+        MTT.PartTranDetails.RateCode= CUST.DATA.rateCode
+        #MTT.PartTranDetails.Rate = CUST.DATA.rate
+        #MTT.PartTranDetails.RefAmount = -cdouble(CUST.DATA.collChargeAmt)
+        MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.tranAmt)
+        PRINT(MTT.PartTranDetails.RefAmount)
+        MTT.PartTranDetails.Consolidate = "N"
+        MTT.PartTranDetails.TranIdentifier = "Parking_Tran"
+        MTT.PartTranDetails.CarveAmtFlg="N"
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.ACPARTB2kId=CUST.DATA.ODacnt
+
+        #----------------------------------------------------------------------------------
+        # Defining the Debit Part Tran for Charge amount
+        #----------------------------------------------------------------------------------
+        sv_u = urhk_MTTS_DefinePartTran("Parking_credit_Tran")
+        PRINT(sv_u)
+
+        IF (sv_u != 0) THEN
+        #{
+            CUST.DATA.errMsg = CUST.DATA.caacnt +"|"+ " Error in Defining Credit part Transaction"
+            PRINT(CUST.DATA.errMsg)
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            PRINT(MTT.Error.Description)
+            CUST.DATA.ErrorMessage=MTT.Error.Description
+            PRINT(CUST.DATA.ErrorMessage)
+            sv_u = urhk_SetOrbErr(CUST.DATA.ErrorMessage)
+            CUST.DATA.remark = CUST.DATA.ErrorMessage
+	    sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+	    PRINT(sv_b)
+	    GOTO ENDOFSCRIPT
+            
+        #}
+        ENDIF
+
+	sv_r = urhk_MTTS_EndDefinition("")
+        PRINT(sv_r)
+        PRINT(BANCS.OUTPARAM.MTTTranId)
+        CUST.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+        IF(CUST.DATA.tranid == "" )THEN
+        #{
+                CUST.DATA.tranFlg = "N"
+                CUST.DATA.BODDate = ""
+                #}
+        ELSE
+                #{
+                CUST.DATA.tranFlg = "Y"
+        #}
+        ENDIF
+        sv_z = urhk_MTTS_Close("")
+        PRINT(sv_z)
+
+		#IF((CUST.DATA.tranFlg == "Y") AND (CUST.DATA.lienFlg == "Y"))THEN
+		IF(CUST.DATA.tranFlg == "Y")THEN
+		#{
+			CALL("CALienRemove.scr")
+		#}
+		ENDIF
+	
+	ENDOFSCRIPT:
+	TRACE OFF
+	END-->

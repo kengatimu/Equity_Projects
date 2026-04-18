@@ -1,0 +1,629 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebodlaOvdueRecov.scr 
+#  Description     : batch olrec
+#  Date            : 16-07-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-07-2021      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Caution : Do not Change any variables and logics whitout proper change request and business rules
+#-------------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+	if(repexists("ODLA")==0)then
+		createrep("ODLA")
+	endif
+	if(classexists("ODLA","GLBDATA")==0)then
+		createclass("ODLA","GLBDATA",5)
+	endif
+	ODLA.GLBDATA.srvErrCode = ""
+	ODLA.GLBDATA.srvErrMsg  = ""
+	ODLA.GLBDATA.srvSucFail = ""
+	ODLA.GLBDATA.isLienAddYN = ""
+	ODLA.GLBDATA.lienAmt = ""
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                ODLA.GLBDATA.srvErrCode = "MTT"
+                ODLA.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "OD Loan Ovdue Recovery"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        sv_u = urhk_MTTS_DefineTransaction("ODLoanRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                ODLA.GLBDATA.srvErrCode = "MTT"
+                ODLA.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+	lv_q = "shdlNum,flowId,crAcid,drAcid,dmdAmt,totAdjAmt,outstanAmt,numOfInstall,dmdDate,numOfpay,monthofPay | "
+	lv_q = lv_q + " select a.shdl_num,a.flow_id,a.od_acid,a.op_acid,a.dmd_amt,a.tot_adj_amt, " 
+	lv_q = lv_q + " a.dmd_amt-a.tot_adj_amt,b.number_of_payments,b.next_dmd_date,a.free_text_1,a.free_text_2 " 
+	lv_q = lv_q + " from custom.odla_dmd_tbl a,custom.odla_schl_tbl b " 
+	lv_q = lv_q + " where a.bank_id=?SVAR "  
+	lv_q = lv_q + " and b.bank_id=?SVAR "
+	lv_q = lv_q + " and a.od_acid = b.od_acid " 
+	lv_q = lv_q + " and a.op_acid = b.op_acid " 
+	lv_q = lv_q + " and a.shdl_num= b.schl_number " 
+	lv_q = lv_q + " and a.op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+	lv_q = lv_q + " and entity_cre_flg='Y' " 
+	lv_q = lv_q + " and del_flg='N' and set_id=?SVAR) "  
+	lv_q = lv_q + " and a.dmd_amt- a.tot_adj_amt = 0 " 
+	lv_q = lv_q + " and a.dmd_date < to_date(?SVAR,'DD-MM-RR') " 
+	lv_q = lv_q + " and exists (select 1 from tbaadm.gam where bank_id=?SVAR and acid=a.od_acid "
+	lv_q = lv_q + " and acct_cls_flg<>'Y' and acct_cls_date is null and clr_bal_amt <0) "
+	lv_q = lv_q + " and a.entity_cre_flg='Y' and a.del_flg='N' and b.entity_cre_flg='Y' and b.del_flg='Y' "
+	lv_q = lv_q + " order by a.dmd_date,a.flow_id "
+	print(lv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.mySolId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+                ODLA.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                ODLA.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                ODLA.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                ODLA.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        ODLA.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(ODLA.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+                ODLA.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                ODLA.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                ODLA.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                ODLA.GLBDATA.shdlNum = BANCS.OUTPARAM.shdlNum
+                ODLA.GLBDATA.flowId = BANCS.OUTPARAM.flowId
+                ODLA.GLBDATA.crAcid = BANCS.OUTPARAM.crAcid
+                ODLA.GLBDATA.drAcid = BANCS.OUTPARAM.drAcid
+                ODLA.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+                ODLA.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+                ODLA.GLBDATA.outstanAmt = BANCS.OUTPARAM.outstanAmt
+                ODLA.GLBDATA.numOfInstall = BANCS.OUTPARAM.numOfInstall
+                ODLA.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+                ODLA.GLBDATA.numOfpay = BANCS.OUTPARAM.numOfpay
+                ODLA.GLBDATA.monthofPay = BANCS.OUTPARAM.monthofPay
+#Dr/Cr Account Derivation
+                sv_a= urhk_B2k_AcidToForacid(ODLA.GLBDATA.drAcid)
+                if(sv_a==0)then
+                        ODLA.GLBDATA.drAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        ODLA.GLBDATA.drAcctId = ""
+                endif
+                sv_a= urhk_B2k_AcidToForacid(ODLA.GLBDATA.crAcid)
+                if(sv_a==0)then
+                        ODLA.GLBDATA.crAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        ODLA.GLBDATA.crAcctId = ""
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(ODLA.GLBDATA.drAcctId)
+                if(sv_u == 0)then
+                        ODLA.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        ODLA.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                        ODLA.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                        ODLA.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                        ODLA.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        ODLA.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                else
+                        ODLA.GLBDATA.drdrawingPower = 0
+                        ODLA.GLBDATA.drEffBal = 0
+                        ODLA.GLBDATA.drclearBalance = 0
+                        ODLA.GLBDATA.drsanLim = 0
+                        ODLA.GLBDATA.dravalAmt = 0
+                        ODLA.GLBDATA.drlienamt = 0
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(ODLA.GLBDATA.crAcctId)
+                if(sv_u == 0)then
+                        ODLA.GLBDATA.crEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        ODLA.GLBDATA.crclearBalance = BANCS.OUTPARAM.clearBalance
+                        ODLA.GLBDATA.crsanLim = BANCS.OUTPARAM.sanctionLimit
+                        ODLA.GLBDATA.crdrawingPower = BANCS.OUTPARAM.drawingPower
+                        ODLA.GLBDATA.cravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        ODLA.GLBDATA.crlienamt = BANCS.OUTPARAM.lienAmt
+                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                else
+                        ODLA.GLBDATA.crdrawingPower = 0
+                        ODLA.GLBDATA.crEffBal = 0
+                        ODLA.GLBDATA.crclearBalance = 0
+                        ODLA.GLBDATA.crsanLim = 0
+                        ODLA.GLBDATA.cravalAmt = 0
+                        ODLA.GLBDATA.crlienamt = 0
+                endif
+                print(ODLA.GLBDATA.dmdDate)
+                print(ODLA.GLBDATA.flowId)
+                print(ODLA.GLBDATA.dmdAmt)
+                print(ODLA.GLBDATA.totAdjAmt)
+                print(ODLA.GLBDATA.outstanAmt)
+                print(ODLA.GLBDATA.dravalAmt)
+                print(ODLA.GLBDATA.drclearBalance)
+                print(ODLA.GLBDATA.drlienamt)
+		if(ODLA.GLBDATA.flowId=="INDEM")then
+			goto NXTREC
+		endif
+#fully recovered
+		if(cdouble(ODLA.GLBDATA.crclearBalance)>=cdouble("0"))then
+			goto NXTREC
+		endif
+		if(cdouble(ODLA.GLBDATA.crclearBalance)<0)then
+			ODLA.GLBDATA.crclearBalance = cdouble(ODLA.GLBDATA.crclearBalance) * -1 
+		endif
+#lift existing lien
+                if(cdouble(ODLA.GLBDATA.drclearBalance)<=0)then
+                #{
+                if(cdouble(ODLA.GLBDATA.drlienamt)!=cdouble("0"))then
+                #{
+                        if(cdouble(ODLA.GLBDATA.dravalAmt)>=0)then
+                        #{
+                        print("Lien Lift")
+                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                        sv_s = sv_s + " where acid =?SVAR "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and bank_id =?SVAR) "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and acid =?SVAR "
+                        sv_s = sv_s + " and bank_id =?SVAR "
+                        BANCS.INPARAM.BINDVARS = ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        if(sv_d == 0)then
+                        #{
+                                ODLA.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                ODLA.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                ODLA.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                        #}
+                        else
+                        #{
+                                ODLA.GLBDATA.amount1 = "0"
+                                ODLA.GLBDATA.acid = ""
+                                ODLA.GLBDATA.b2kid = ""
+                        #}
+                        endif
+                        BANCS.INPARAM.b2kId = ODLA.GLBDATA.b2kid
+                        BANCS.INPARAM.acctNum = ODLA.GLBDATA.drAcctId
+                        BANCS.INPARAM.blockMode = "M"
+                        BANCS.INPARAM.lienAmt = cdouble(ODLA.GLBDATA.drlienamt) * -1
+                        BANCS.INPARAM.expiryDate = left$(BANCS.STDIN.BODDate,10)
+                        BANCS.INPARAM.remarks = "Lien Lifted during OD Loan Payment"
+                        BANCS.INPARAM.reasonCode = "ODLA"
+                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                        sv_u = urhk_updateLien("")
+                        if( sv_u != 0 )then
+                        #{
+                                print("od loans lien lift failed")
+                                sv_u = urhk_getAcctDetailsInRepository(ODLA.GLBDATA.drAcctId)
+                                if(sv_u == 0)then
+                                #{
+                                        ODLA.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                        ODLA.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                        ODLA.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                        ODLA.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                        ODLA.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                        ODLA.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                        print(BANCS.OUTPARAM.AvailableAmt)
+                                        print(BANCS.OUTPARAM.lienAmt)
+                                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                                else
+                                        ODLA.GLBDATA.dravalAmt = 0
+                                        ODLA.GLBDATA.drclearBalance = 0
+                                #}
+                                endif
+                        #}
+                        else
+                        #{
+                                print("od loand lien lift success")
+                                sv_y = urhk_dbSqlWithBind("Commit")
+                                print(sv_y)
+                                sv_u = urhk_getAcctDetailsInRepository(ODLA.GLBDATA.drAcctId)
+                                if(sv_u == 0)then
+                                #{
+                                        ODLA.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                        ODLA.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                        ODLA.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                        ODLA.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                        ODLA.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                        ODLA.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                        print(BANCS.OUTPARAM.AvailableAmt)
+                                        print(BANCS.OUTPARAM.lienAmt)
+                                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                                else
+                                        ODLA.GLBDATA.dravalAmt = 0
+                                        ODLA.GLBDATA.drclearBalance = 0
+                                #}
+                                endif
+                        #}
+                        endif
+                        #}
+                        endif
+                #}
+                endif
+                #}
+                endif
+#Operative Account With Dr Balance after lien lift
+                if(cdouble(ODLA.GLBDATA.drclearBalance)<=0)then
+                #{
+                        ODLA.GLBDATA.isTranYN = "N"
+                        print(ODLA.GLBDATA.shdlNum)
+                        print(ODLA.GLBDATA.flowId)
+                        print(ODLA.GLBDATA.outstanAmt)
+                        print(ODLA.GLBDATA.numOfInstall)
+                        print(ODLA.GLBDATA.dmdDate)
+                        print(ODLA.GLBDATA.numOfpay)
+                        print(ODLA.GLBDATA.monthofPay)
+                        ODLA.GLBDATA.LienAmt = cdouble(ODLA.GLBDATA.crclearBalance)
+                        #Exiting Lien Rec
+                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                        sv_s = sv_s + " where acid =?SVAR "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and bank_id =?SVAR) "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and acid =?SVAR "
+                        sv_s = sv_s + " and bank_id =?SVAR "
+                        BANCS.INPARAM.BINDVARS = ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        if(sv_d == 0)then
+                                ODLA.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                ODLA.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                ODLA.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                        else
+                                ODLA.GLBDATA.amount1 = "0"
+                                ODLA.GLBDATA.acid = ""
+                                ODLA.GLBDATA.b2kid = ""
+                        endif
+                        if(cdouble(ODLA.GLBDATA.amount1)<=0)then
+                        #{
+                                BANCS.INPARAM.acctNum = ODLA.GLBDATA.drAcctId
+                                BANCS.INPARAM.blockMode = "A"
+                                BANCS.INPARAM.lienAmt = cdouble(ODLA.GLBDATA.LienAmt)
+                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                BANCS.INPARAM.remarks = "Lien for overdue loans on od"
+                                BANCS.INPARAM.reasonCode = "ODLA"
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                                if(sv_u != 0)then
+                                        ODLA.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for overdue loan recovery"
+                                        ODLA.GLBDATA.srvErrCode = "Lien"
+                                        ODLA.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                else
+                                        ODLA.GLBDATA.srvErrMsg =  "Lien on operative account for overdue loan recovery"
+                                        ODLA.GLBDATA.srvErrCode = "Lien"
+                                        ODLA.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                endif
+                        else
+                                print(ODLA.GLBDATA.LienAmt)
+                                print(ODLA.GLBDATA.amount1)
+                                ODLA.GLBDATA.LienAmt = cdouble(ODLA.GLBDATA.LienAmt) + cdouble(ODLA.GLBDATA.amount1)
+                                print(ODLA.GLBDATA.LienAmt)
+                                BANCS.INPARAM.b2kId = ODLA.GLBDATA.b2kid
+                                BANCS.INPARAM.acctNum = ODLA.GLBDATA.drAcctId
+                                BANCS.INPARAM.blockMode = "M"
+                                BANCS.INPARAM.lienAmt = cdouble(ODLA.GLBDATA.LienAmt) * 1
+                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                BANCS.INPARAM.remarks = "Lien for overdue loans on od"
+                                BANCS.INPARAM.reasonCode = "ODLA"
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                                if(sv_u!=0)then
+                                        ODLA.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for overdue loan recovery"
+                                        ODLA.GLBDATA.srvErrCode = "Lien"
+                                        ODLA.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                else
+                                        ODLA.GLBDATA.srvErrMsg =  "Lien on operative account for overdue loan recovery"
+                                        ODLA.GLBDATA.srvErrCode = "Lien"
+                                        ODLA.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+#Transaction & Lien
+                if(cdouble(ODLA.GLBDATA.drclearBalance)>0)then
+		#{
+			print(ODLA.GLBDATA.drclearBalance)
+			print(ODLA.GLBDATA.crclearBalance)
+			if(cdouble(ODLA.GLBDATA.drclearBalance)>cdouble(ODLA.GLBDATA.crclearBalance))then
+			#{
+				print("only transaction")
+				ODLA.GLBDATA.tranAmt = cdouble(ODLA.GLBDATA.crclearBalance)
+				ODLA.GLBDATA.lienAmt = 0
+				print(ODLA.GLBDATA.tranAmt)
+				print(ODLA.GLBDATA.lienAmt)
+			#}
+			else
+			#{
+				print("transaction & lien")
+				ODLA.GLBDATA.tranAmt = cdouble(ODLA.GLBDATA.drclearBalance) 
+				ODLA.GLBDATA.lienAmt = cdouble(ODLA.GLBDATA.crclearBalance) - cdouble(ODLA.GLBDATA.drclearBalance)
+				print(ODLA.GLBDATA.tranAmt)
+				print(ODLA.GLBDATA.lienAmt)
+				sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+				sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+				sv_s = sv_s + " where acid =?SVAR "
+				sv_s = sv_s + " and b2k_type = 'ULIEN' "
+				sv_s = sv_s + " and bank_id =?SVAR) "
+				sv_s = sv_s + " and b2k_type = 'ULIEN' "
+				sv_s = sv_s + " and acid =?SVAR "
+				sv_s = sv_s + " and bank_id =?SVAR "
+				BANCS.INPARAM.BINDVARS = ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + ODLA.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				print(sv_s)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				if(sv_d == 0)then
+					ODLA.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+					ODLA.GLBDATA.acid = BANCS.OUTPARAM.acid
+					ODLA.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+				else
+					ODLA.GLBDATA.amount1 = "0"
+					ODLA.GLBDATA.acid = ""
+					ODLA.GLBDATA.b2kid = ""
+				endif
+				print(ODLA.GLBDATA.amount1)
+				if(cdouble(ODLA.GLBDATA.amount1)<=0)then
+				#{
+					print(ODLA.GLBDATA.lienAmt)
+					print(ODLA.GLBDATA.drlienamt)
+					ODLA.GLBDATA.isLienAddYN = "Y"
+				else
+					print(ODLA.GLBDATA.amount1)
+					print(ODLA.GLBDATA.lienAmt)
+					print(ODLA.GLBDATA.drlienamt)
+					ODLA.GLBDATA.lienAmt = cdouble(ODLA.GLBDATA.lienAmt) + cdouble(ODLA.GLBDATA.amount1)
+					print(ODLA.GLBDATA.lienAmt)
+					ODLA.GLBDATA.isLienAddYN = "N"
+				#}
+				endif
+
+			#}
+			endif
+		else
+			goto NXTREC 
+		#}
+		endif
+#Transaction
+                if((ODLA.GLBDATA.drAcctId!="")and(ODLA.GLBDATA.crAcctId!="")and(cdouble(ODLA.GLBDATA.tranAmt)>0))then
+                #{
+                                MTT.PartTranDetails.Account = ODLA.GLBDATA.drAcctId
+                                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate   =  "0"
+				MTT.PartTranDetails.Particulars = "Overdue recovery for:" + ODLA.GLBDATA.crAcctId
+                                MTT.PartTranDetails.RefAmount = -1*cdouble(ODLA.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "Overdue Recovery"
+                                MTT.PartTranDetails.RefNum = ""
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                ##MTT.PartTranDetails.CarveAmtFlg = "Y"
+                                MTT.PartTranDetails.Consolidate = "Y"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                print(MTT.PartTranDetails.TranIdentifier)
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                print(sv_r)
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Debit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        ODLA.GLBDATA.srvErrCode = "MTT"
+                                        ODLA.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                MTT.PartTranDetails.Account = ODLA.GLBDATA.crAcctId
+                                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate           =  "0"
+				MTT.PartTranDetails.Particulars = "Overdue recovery from:" + ODLA.GLBDATA.drAcctId
+                                MTT.PartTranDetails.RefAmount = 1 * cdouble(ODLA.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "Overdue Recovery"
+                                MTT.PartTranDetails.RefNum = ""
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "Y"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Credit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        ODLA.GLBDATA.srvErrCode = "MTT"
+                                        ODLA.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                sv_u = urhk_MTTS_EndDefinition("")
+                                print(sv_u)
+                                if (sv_u != 0) then
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        print (MTT.Error.Description)
+                                        ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        ODLA.GLBDATA.srvErrCode = "MTT"
+                                        ODLA.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                        ODLA.GLBDATA.TranId = ""
+                                else
+                                        ODLA.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                                        print(ODLA.GLBDATA.TranId)
+                                endif
+
+                                print(MTT.XCPN.NumExceptions)
+                                print(MTT.XCPN.NumWarnings)
+                                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                                #{
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                ODLA.GLBDATA.srvErrCode = "MTT"
+                                                ODLA.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                else
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                ODLA.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                ODLA.GLBDATA.srvErrCode = "MTT"
+                                                ODLA.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                #}
+                                endif
+				if(ODLA.GLBDATA.TranId!="")then
+				#{
+					print("overdue record & lien mark")
+					lv_u = " Insert into custom.odla_overdue_tbl (BANK_ID,OD_ACID,OP_ACID,OVERDUE_AMT,OVERDUE_DATE,RECOV_TRAN_ID,RECOV_TRAN_DATE,RCRE_USER_ID,RCRE_TIME,LCHG_USER_ID,LCHG_TIME,ENTITY_CRE_FLG,DEL_FLG,FREE_TEXT_1,FREE_TEXT_2,FREE_TEXT_3,FREE_TEXT_4,FREE_TEXT_5) values (?SVAR,?SVAR,?SVAR,?NVAR,to_date(?SVAR,'DD-MM-RRRR'),?SVAR,to_date(?SVAR,'DD-MM-RRRR'),?SVAR,sysdate,?SVAR,sysdate,'Y','N',null,null,null,null,null) "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + ODLA.GLBDATA.crAcid + "|" + ODLA.GLBDATA.drAcid + "|" + ODLA.GLBDATA.tranAmt + "|" + ODLA.GLBDATA.dmdDate + "|" + ODLA.GLBDATA.TranId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId   
+					print(lv_u)
+					print(BANCS.INPARAM.BINDVARS)
+					lv_o = urhk_dbSqlWithBind(lv_u)
+					print(lv_o)
+					if((ODLA.GLBDATA.isLienAddYN=="Y")and (cdouble(ODLA.GLBDATA.lienAmt)!=cdouble("0")))then 
+					#{
+						BANCS.INPARAM.acctNum = ODLA.GLBDATA.drAcctId
+						BANCS.INPARAM.blockMode = "A"
+						BANCS.INPARAM.lienAmt = cdouble(ODLA.GLBDATA.lienAmt)
+						BANCS.INPARAM.expiryDate = "31-12-2099"
+						BANCS.INPARAM.remarks = "Lien for overdue loans on od"
+						BANCS.INPARAM.reasonCode = "ODLA"
+						BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+						BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+						sv_u = urhk_updateLien("")
+						if(sv_u != 0)then
+							ODLA.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for overdue loan recovery"
+							ODLA.GLBDATA.srvErrCode = "Lien"
+							ODLA.GLBDATA.srvSucFail = "S"
+							goto NXTREC
+						else
+							ODLA.GLBDATA.srvErrMsg =  "Lien on operative account for overdue loan recovery"
+							ODLA.GLBDATA.srvErrCode = "Lien"
+							ODLA.GLBDATA.srvSucFail = "S"
+							goto NXTREC
+						endif
+					#}
+					endif
+					if((ODLA.GLBDATA.isLienAddYN=="N")and (cdouble(ODLA.GLBDATA.lienAmt)!=cdouble("0")))then 
+					#{
+						BANCS.INPARAM.b2kId = ODLA.GLBDATA.b2kid
+						BANCS.INPARAM.acctNum = ODLA.GLBDATA.drAcctId
+						BANCS.INPARAM.blockMode = "M"
+						BANCS.INPARAM.lienAmt = cdouble(ODLA.GLBDATA.lienAmt) * 1
+						BANCS.INPARAM.expiryDate = "31-12-2099"
+						BANCS.INPARAM.remarks = "Lien for overdue loans on od"
+						BANCS.INPARAM.reasonCode = "ODLA"
+						BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+						BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+						sv_u = urhk_updateLien("")
+						if(sv_u!=0)then
+							ODLA.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for overdue loan recovery"
+							ODLA.GLBDATA.srvErrCode = "Lien"
+							ODLA.GLBDATA.srvSucFail = "S"
+							goto NXTREC
+						else
+							ODLA.GLBDATA.srvErrMsg =  "Lien on operative account for overdue loan recovery"
+							ODLA.GLBDATA.srvErrCode = "Lien"
+							ODLA.GLBDATA.srvSucFail = "S"
+							goto NXTREC
+						endif
+					#}
+					endif
+				#}
+				endif
+				
+		#}
+		else
+		#{
+			print("No Tran")
+			goto NXTREC
+		#}
+		endif
+                NXTREC:
+                        print(ODLA.GLBDATA.srvErrMsg)
+                        print(ODLA.GLBDATA.srvErrCode)
+                        print(ODLA.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(ODLA.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(ODLA.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                ODLA.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                ODLA.GLBDATA.srvErrCode = "DBCursor"
+                                ODLA.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        endif
+                        ODLA.GLBDATA.ddaRec = cint(ODLA.GLBDATA.ddaRec) + 1
+                        ODLA.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + ODLA.GLBDATA.ddaRec
+                        print(ODLA.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(ODLA.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+        print(ODLA.GLBDATA.srvErrCode)
+        print(ODLA.GLBDATA.srvErrMsg)
+        print(ODLA.GLBDATA.srvSucFail)
+        exitscript
+trace off
+end-->

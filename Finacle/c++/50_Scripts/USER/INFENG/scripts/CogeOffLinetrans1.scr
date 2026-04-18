@@ -1,0 +1,659 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : CogeOffLinetrans.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 31-12-2023
+#  Author          : James Irungu
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             31-12-2023      James Irungu		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","MOBIL") == 0) THEN
+	#{
+		CREATECLASS("CUST","MOBIL",5)
+	#}
+ENDIF
+
+
+
+sv_b = "MBDate|select to_char(sysdate,'MON-yyyy') from dual "
+print (sv_b)
+sv_d = urhk_dbselectWithBind(sv_b)
+print(sv_d)
+
+IF (sv_d == 0) THEN
+#{
+CUST.MOBIL.MBDATE =  BANCS.OUTPARAM.MBDate 
+print(CUST.MOBIL.MBDATE)
+
+#}
+ENDIF
+
+
+sv_q=" EVENT_NUMBER ,EVENT_STATUS ,DEBIT_ACCOUNT ,CURRENCY1 ,MON1 ,LIB1 ,CREDIT_ACCOUNT ,CURRENCY2 , CHANNELS ,LIB2 , LIB6 ,LIB10 ,AMT_LCY ,PST_FLAG ,TRN_ID ,FRETXT |"
+sv_q = sv_q + " select EVENT_NUMBER ,EVENT_STATUS ,DEBIT_ACCOUNT ,CURRENCY1 ,MON1 ,LIB1 ,CREDIT_ACCOUNT ,CURRENCY2 , CHANNELS ,LIB2 , LIB6 ,LIB10 ,AMT_LCY ,PST_FLAG ,TRN_ID ,FRETXT   "
+sv_q = sv_q + " from CUSTOM.COGE_OFFLINE_TRANSACTIONS where PST_FLAG = 'E' "
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+IF(sv_e==0) THEN
+#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+			IF(sv_q == 1) THEN
+				sv_x = urhk_dbCursorClose(sv_m)
+				print(sv_x)
+				exitscript
+			ENDIF
+		print(sv_q)
+
+WHILE (sv_q==0)
+	
+	CUST.MOBIL.DEBIT_ACCOUNT =""
+	CUST.MOBIL.CREDIT_ACCOUNT =""
+
+	CUST.MOBIL.EVENT_NUMBER =BANCS.OUTPARAM.EVENT_NUMBER
+	CUST.MOBIL.EVENT_STATUS =BANCS.OUTPARAM.EVENT_STATUS
+	CUST.MOBIL.DEBIT_ACCOUNT =BANCS.OUTPARAM.DEBIT_ACCOUNT
+	CUST.MOBIL.CURRENCY1 =BANCS.OUTPARAM.CURRENCY1
+	CUST.MOBIL.CURRENCY2 =BANCS.OUTPARAM.CURRENCY2
+	CUST.MOBIL.MON1 =BANCS.OUTPARAM.MON1
+	CUST.MOBIL.LIB1 =BANCS.OUTPARAM.LIB1
+	CUST.MOBIL.CREDIT_ACCOUNT =BANCS.OUTPARAM.CREDIT_ACCOUNT
+	CUST.MOBIL.CHANNELS =BANCS.OUTPARAM.CHANNELS
+	CUST.MOBIL.LIB2 =BANCS.OUTPARAM.LIB2
+	CUST.MOBIL.LIB6 =BANCS.OUTPARAM.LIB6
+	CUST.MOBIL.LIB10 =BANCS.OUTPARAM.LIB10
+
+	Print (CUST.MOBIL.DEBIT_ACCOUNT)
+	Print (CUST.MOBIL.CREDIT_ACCOUNT)
+	Print (CUST.MOBIL.MON1)
+	Print (CUST.MOBIL.EVENT_NUMBER)
+
+
+	##Convert Credit
+
+	BANCS.INPARAM.iban_number =CUST.MOBIL.CREDIT_ACCOUNT
+	sv_u = urhk_getForacidFromIBANnumber("")
+	PRINT(sv_u)
+	IF(sv_u ==0) THEN	
+		IF (BANCS.OUTPARAM.foracid=="")THEN
+			sv_u = "1"
+		ELSE
+			CUST.MOBIL.ConvCREDIT_ACCOUNT = BANCS.OUTPARAM.foracid
+		ENDIF
+	ENDIF
+
+	IF (sv_u!=0) THEN
+		
+		lv_q = " cnt | SELECT count (*) FROM CUSTOM.COGE_GLS where COGE_GL = ?SVAR and CRNCY_CODE =?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.MOBIL.CREDIT_ACCOUNT + "|" + CUST.MOBIL.CURRENCY1
+		lv_u = urhk_dbSelectWithBind(lv_q)
+		IF(lv_u ==0 )THEN
+			if (cint (BANCS.OUTPARAM.cnt) =="1") then			
+				lv_q = " foracid | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+				lv_q = lv_q + "(SELECT EQTY_GL FROM CUSTOM.COGE_GLS where COGE_GL = ?SVAR and CRNCY_CODE =?SVAR) "
+				PRINT(lv_q)
+				BANCS.INPARAM.BINDVARS = CUST.MOBIL.CREDIT_ACCOUNT + "|" + CUST.MOBIL.CURRENCY1
+				print (BANCS.INPARAM.BINDVARS)
+				lv_u = urhk_dbSelectWithBind(lv_q)
+				IF(lv_u ==0 )THEN
+					CUST.MOBIL.ConvCREDIT_ACCOUNT = BANCS.OUTPARAM.foracid
+				ELSE
+					
+					IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+						IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+							CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013666"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+							CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013667"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+							CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013668"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+							CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013669"
+						ENDIF						
+					ELSE
+						sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Credit Convertion failed' WHERE EVENT_NUMBER = ?SVAR "
+						print(sv_s)
+						BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+						print (BANCS.INPARAM.BINDVARS)
+						sv_d=urhk_dbSqlWithBind(sv_s)
+						IF (sv_d == 0)  THEN
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+						ENDIF
+						goto NEXTREC
+					ENDIF
+				ENDIF
+			ELSE
+				
+						
+				IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+					IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013666"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013667"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013668"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013669"
+					ENDIF						
+				ELSE
+					sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Multiple Credit Accts' WHERE EVENT_NUMBER = ?SVAR "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+					print (BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					IF (sv_d == 0)  THEN
+						sv_d = urhk_dbSQLWithBind("COMMIT")
+					ENDIF
+					goto NEXTREC
+				ENDIF
+				
+				
+			ENDIF
+		ENDIF
+	ENDIF
+
+##Convert Debit 
+
+	BANCS.INPARAM.iban_number =CUST.MOBIL.DEBIT_ACCOUNT
+	sv_u = urhk_getForacidFromIBANnumber("")
+	PRINT(sv_u)
+	IF(sv_u ==0) THEN	
+		IF (BANCS.OUTPARAM.foracid=="")THEN
+			sv_u = "1"
+		ELSE
+			CUST.MOBIL.ConvDEBIT_ACCOUNT = BANCS.OUTPARAM.foracid
+		ENDIF
+	ENDIF
+
+	IF (sv_u!=0) THEN
+		
+		lv_q = " cnt | SELECT count (*) FROM CUSTOM.COGE_GLS where COGE_GL = ?SVAR and CRNCY_CODE =?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.MOBIL.DEBIT_ACCOUNT + "|" + CUST.MOBIL.CURRENCY2
+		lv_u = urhk_dbSelectWithBind(lv_q)
+		IF(lv_u ==0 )THEN
+			if (cint (BANCS.OUTPARAM.cnt) =="1") then
+		
+				lv_q = " foracid | SELECT FORACID FROM TBAADM.GAM WHERE FORACID = "
+				lv_q = lv_q + "(SELECT EQTY_GL FROM CUSTOM.COGE_GLS where COGE_GL = ?SVAR and CRNCY_CODE =?SVAR) "
+				PRINT(lv_q)
+				BANCS.INPARAM.BINDVARS = CUST.MOBIL.DEBIT_ACCOUNT + "|" + CUST.MOBIL.CURRENCY2
+				print (BANCS.INPARAM.BINDVARS)
+				lv_u = urhk_dbSelectWithBind(lv_q)
+				IF(lv_u ==0 )THEN
+					CUST.MOBIL.ConvDEBIT_ACCOUNT = BANCS.OUTPARAM.foracid
+
+				ELSE						
+					IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+						IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013662"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013663"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013664"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013665"
+						ENDIF						
+					ELSE
+						sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Debit Convertion failed' WHERE EVENT_NUMBER = ?SVAR "
+						print(sv_s)
+						BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+						sv_d=urhk_dbSqlWithBind(sv_s)
+						IF (sv_d == 0)  THEN
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+						ENDIF
+						goto NEXTREC
+					ENDIF			
+					
+				ENDIF
+			ELSE
+
+					IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+						IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013662"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013663"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013664"
+						ENDIF
+						IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+							CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013665"
+						ENDIF						
+					ELSE
+						sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Multiple Debits Accsts' WHERE EVENT_NUMBER = ?SVAR "
+						print(sv_s)
+						BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+						print (BANCS.INPARAM.BINDVARS)
+						sv_d=urhk_dbSqlWithBind(sv_s)
+						IF (sv_d == 0)  THEN
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+						ENDIF
+						goto NEXTREC
+					ENDIF				
+
+			ENDIF
+
+
+		ENDIF
+	ENDIF
+
+	Print (CUST.MOBIL.ConvCREDIT_ACCOUNT)
+	Print (CUST.MOBIL.ConvDEBIT_ACCOUNT)
+	CUST.MOBIL.LIB2 = trim(CUST.MOBIL.LIB2) + "/" + trim(CUST.MOBIL.LIB6)
+	print ( CUST.MOBIL.LIB2)
+
+	sv_h = urhk_getAcctDetailsInRepository(CUST.MOBIL.ConvDEBIT_ACCOUNT)
+        print(sv_h)
+        if(sv_h==0)then
+                CUST.MOBIL.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt      
+		CUST.MOBIL.DrfreezeCode = BANCS.OUTPARAM.freezeCode
+		CUST.MOBIL.DracctOwnerShip = BANCS.OUTPARAM.acctOwnerShip
+		CUST.MOBIL.DracctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		CUST.MOBIL.DrschmType = BANCS.OUTPARAM.schmType
+		IF(CUST.MOBIL.DracctOwnerShip!="O")THEN
+			IF  ((CUST.MOBIL.DrfreezeCode =="D") OR  (CUST.MOBIL.DrfreezeCode =="T"))THEN
+					IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+					IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+						CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013662"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+						CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013663"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+						CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013664"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+						CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013665"
+					ENDIF						
+				ELSE
+					sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Debits Accst Frozen' WHERE EVENT_NUMBER = ?SVAR "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+					print (BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					IF (sv_d == 0)  THEN
+						sv_d = urhk_dbSQLWithBind("COMMIT")
+					ENDIF
+					goto NEXTREC
+				ENDIF			
+			ENDIF
+			IF((CUST.MOBIL.DrschmType=="SBA") OR  (CUST.MOBIL.DrschmType=="CAA"))THEN
+				sv_z = urhk_B2k_ForacidToAcid(CUST.MOBIL.ConvDEBIT_ACCOUNT)
+				print(sv_z)
+				IF(sv_z == 0)THEN
+					BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+					sv_u = urhk_getAcctStatus("")
+					IF(sv_u == 0)THEN
+						CUST.MOBIL.DracctStatus = BANCS.OUTPARAM.acctStatus                                
+						IF  (CUST.MOBIL.DracctStatus =="D")THEN
+							
+							IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+								IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+									CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013662"
+								ENDIF
+								IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+									CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013663"
+								ENDIF
+								IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+									CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013664"
+								ENDIF
+								IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+									CUST.MOBIL.ConvDEBIT_ACCOUNT ="4000130013665"
+								ENDIF						
+							ELSE
+								sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Dormant Debit Accts' WHERE EVENT_NUMBER = ?SVAR "
+								print(sv_s)
+								BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+								print (BANCS.INPARAM.BINDVARS)
+								sv_d=urhk_dbSqlWithBind(sv_s)
+								IF (sv_d == 0)  THEN
+									sv_d = urhk_dbSQLWithBind("COMMIT")
+								ENDIF
+								goto NEXTREC
+							ENDIF						
+						ENDIF
+					ENDIF
+				ENDIF
+			
+			ENDIF
+		ENDIF
+        ENDIF
+
+	sv_h = urhk_getAcctDetailsInRepository(CUST.MOBIL.ConvCREDIT_ACCOUNT)
+        print(sv_h)
+        if(sv_h==0)then
+		CUST.MOBIL.CrfreezeCode = BANCS.OUTPARAM.freezeCode
+		CUST.MOBIL.CracctOwnerShip = BANCS.OUTPARAM.acctOwnerShip
+		CUST.MOBIL.CracctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		CUST.MOBIL.glSubHeadCode = BANCS.OUTPARAM.glSubHeadCode
+		IF(CUST.MOBIL.CracctOwnerShip!="O")THEN
+			IF  ((CUST.MOBIL.CrfreezeCode =="C") OR  (CUST.MOBIL.CrfreezeCode =="T"))THEN				
+				IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+					IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013666"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013667"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013668"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013669"
+					ENDIF						
+				ELSE
+					sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Credit Accsts Frozen' WHERE EVENT_NUMBER = ?SVAR "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+					print (BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					IF (sv_d == 0)  THEN
+						sv_d = urhk_dbSQLWithBind("COMMIT")
+					ENDIF
+					goto NEXTREC
+				ENDIF				
+			ENDIF
+		ELSE
+
+			print(CUST.MOBIL.glSubHeadCode)
+			IF (CUST.MOBIL.glSubHeadCode == "10001") THEN
+
+				IF  ((CUST.MOBIL.CURRENCY1 == "RWF") or(CUST.MOBIL.CURRENCY1 == "USD") or (CUST.MOBIL.CURRENCY1 == "EUR") or (CUST.MOBIL.CURRENCY1 == "GBP")) THEN
+					IF (CUST.MOBIL.CURRENCY1 == "RWF") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013666"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "USD") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013667"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "EUR") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013668"
+					ENDIF
+					IF (CUST.MOBIL.CURRENCY1 == "GBP") THEN
+						CUST.MOBIL.ConvCREDIT_ACCOUNT ="4000300013669"
+					ENDIF						
+				ELSE
+					sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'ATM Gls No Funds' WHERE EVENT_NUMBER = ?SVAR "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+					print (BANCS.INPARAM.BINDVARS)
+					sv_d=urhk_dbSqlWithBind(sv_s)
+					IF (sv_d == 0)  THEN
+						sv_d = urhk_dbSQLWithBind("COMMIT")
+					ENDIF
+					goto NEXTREC
+				ENDIF	
+
+
+
+			ENDIF
+		ENDIF
+        ENDIF
+
+
+	Print (CUST.MOBIL.ConvCREDIT_ACCOUNT)
+	Print (CUST.MOBIL.ConvDEBIT_ACCOUNT)
+
+		#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+	
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF				
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF				
+		sv_r = REPEXISTS("BANCS")
+		IF (sv_r == 0) THEN
+			CREATEREP("BANCS")
+		ENDIF				
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+			CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+	
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+		
+		BANCS.INPARAM.PostTranFlg 		= "Y"
+		BANCS.INPARAM.CommitFlg 		= "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+		BANCS.INPARAM.ValidationFlag 		= "Y"
+		BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+		BANCS.INPARAM.CheckExceptions 		= "N"						
+		sv_u = urhk_MTTS_PopulateInputDetails("")			
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = CUST.MOBIL.EVENT_NUMBER				
+		sv_v = "PurchaseComm"
+		PRINT(sv_v)
+		sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+	
+		
+	#--------------------------------------------------
+	# Credit to Branch Mobile Charges A/c
+	#--------------------------------------------------
+	
+		MTT.PartTranDetails.Account = CUST.MOBIL.ConvCREDIT_ACCOUNT
+		MTT.PartTranDetails.RefCurrency = CUST.MOBIL.CURRENCY1
+			if (CUST.MOBIL.CracctCrncyCode != CUST.MOBIL.CURRENCY1)then
+				MTT.PartTranDetails.RateCode ="MEAN"
+			else
+				MTT.PartTranDetails.RateCode ="MEAN"
+			endif			
+		#MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.ValueDate = "03-01-2024 00:00:00"
+		MTT.PartTranDetails.Particulars = mid$(trim(CUST.MOBIL.LIB1),0,50) 
+		MTT.PartTranDetails.RefAmount = CDOUBLE(CUST.MOBIL.MON1)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Remarks = mid$(trim(CUST.MOBIL.LIB2),0,30) 
+		MTT.PartTranDetails.RefNum = mid$(trim(CUST.MOBIL.LIB10),0,20) 
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+		print(sv_r)
+			
+		IF(fieldexists(MTT.Error.Description)) THEN
+			print(MTT.Error.Description)
+			CUST.MOBIL.MTTErrDesc = MTT.Error.Description
+		ENDIF
+	
+	#------------------------------------------------------------------
+	# Debit From Customer A/c
+	#------------------------------------------------------------------
+	
+			MTT.PartTranDetails.Account = CUST.MOBIL.ConvDEBIT_ACCOUNT
+			MTT.PartTranDetails.RefCurrency = CUST.MOBIL.CURRENCY1
+			
+				if (CUST.MOBIL.DracctCrncyCode != CUST.MOBIL.CURRENCY1)then
+					MTT.PartTranDetails.RateCode ="MEAN"
+				else
+					MTT.PartTranDetails.RateCode ="MEAN"
+				endif			
+			
+			#MTT.PartTranDetails.ValueDateDiff = "0"
+			MTT.PartTranDetails.ValueDate = "03-01-2024 00:00:00"
+			MTT.PartTranDetails.Particulars = CUST.MOBIL.LIB1
+			sv_a = CDOUBLE(CUST.MOBIL.MON1)
+			sv_a = -(sv_a)
+			PRINT(sv_a)
+			MTT.PartTranDetails.RefAmount = sv_a
+			PRINT(MTT.PartTranDetails.RefAmount)
+				if (cdouble(CUST.MOBIL.EffAvailableAmt) < cdouble(CUST.MOBIL.MON1)) then
+					MTT.PartTranDetails.TODRefType      = "IN"
+					MTT.PartTranDetails.TodEntityType   = "TODIN"
+					MTT.PartTranDetails.TodEntityId     = CUST.MOBIL.ConvDEBIT_ACCOUNT
+					MTT.PartTranDetails.TodLevIntFlg    = "N"
+					MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+					MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+					MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+					MTT.PartTranDetails.TodRemarks      = "REPLAY TOD"
+					MTT.PartTranDetails.Consolidate     = "N"
+				endif
+			MTT.PartTranDetails.Remarks = mid$(trim(CUST.MOBIL.LIB2),0,30) 
+			MTT.PartTranDetails.RefNum = mid$(trim(CUST.MOBIL.LIB10),0,20) 
+			MTT.PartTranDetails.IgnoreExcp = "I"
+			MTT.PartTranDetails.Consolidate = "N"
+			MTT.PartTranDetails.TranIdentifier = sv_v
+			sv_r = urhk_MTTS_DefinePartTran("WITHIncome")
+			print(sv_r)
+			
+			IF(fieldexists(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.MOBIL.MTTErrDesc = MTT.Error.Description
+			#}
+			ENDIF
+
+
+		
+			
+	#############################
+	# Commit the transaction
+	#############################
+	sv_u = urhk_MTTS_EndDefinition("")
+	PRINT(sv_u)
+	
+	CUST.MOBIL.TranId = BANCS.OUTPARAM.MTTTranId
+	PRINT(CUST.MOBIL.TranId)
+	
+	
+	##################################################
+	# If any error tran id will not be created
+	##################################################
+	IF ((sv_u != 0)  OR (CUST.MOBIL.TranId==""))THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		PRINT (MTT.Error.Description)
+		CUST.MOBIL.ResStatus = "F"
+		CUST.MOBIL.Response = "Transaction creation Failed."
+		BANCS.OUTPUT.successOrFailure = "F"
+		
+		sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'E' , Freetext = 'Tran Creation failed' WHERE EVENT_NUMBER = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.MOBIL.EVENT_NUMBER
+		sv_d=urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0)  THEN
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+		ENDIF
+	ELSE
+
+		sv_s = " UPDATE CUSTOM.COGE_OFFLINE_TRANSACTIONS SET PST_FLAG = 'Y',TRN_ID =?SVAR WHERE EVENT_NUMBER = ?SVAR "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.MOBIL.TranId + "|"  + CUST.MOBIL.EVENT_NUMBER
+		sv_d=urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0)  THEN
+			sv_d = urhk_dbSQLWithBind("COMMIT")
+		ENDIF
+
+		
+		sv_s = "tranId,trandate|  SELECT distinct( tran_id), TO_CHAR(tran_date, 'DD-MM-YYYY HH24:MI:SS' ) tran_date  from tbaadm.dtd where bank_id= '"+BANCS.STDIN.contextBankId+"'   "
+		sv_s = sv_s + " and  pstd_flg ='N' and tran_id =?SVAR  and del_flg ='N' group by tran_id,tran_date "
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.MOBIL.TranId
+		sv_o = urhk_dbCursorOpenWithBind(sv_s)
+		print(sv_o)
+		print(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+		CUST.MOBIL.MainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.MOBIL.MainCursor)
+		while (sv_o == 0)
+			sv_c = urhk_dbCursorFetch(CUST.MOBIL.MainCursor)
+			print(sv_c)
+			IF (sv_c != 0) THEN
+				print(sv_c)
+				sv_o = 1
+			ELSE
+
+				CUST.MOBIL.TranId = BANCS.OUTPARAM.tranId
+				CUST.MOBIL.trandate = BANCS.OUTPARAM.trandate
+				###
+				sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranId|" + CUST.MOBIL.TranId)
+				print(sv_a)
+				sv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|" + CUST.MOBIL.trandate)
+				print(sv_a)
+				sv_a = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|Y")
+				print (sv_a)
+				sv_r = urhk_ExecSrv("SRV_FetchTranDtlsForPost|retain_all_output = Y")
+				print(sv_r)
+				sv_a = urhk_CopyOutToIn("")
+				print(sv_a)
+				sv_a = urhk_ExecSrvNoCommit("SRV_PostTran|retain_all_output = Y|same_user_verify = Y")
+				print(sv_a)
+
+				IF (sv_a != 0) THEN
+
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+						print(sv_v)
+					ELSE
+						sv_v = 0
+					ENDIF
+					IF (sv_v > 0) then
+						sv_u = system("echo 'Error for Tranid:"+ CUST.MOBIL.tranId +" ' >>errortran.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							print(sv_i)
+							sv_u = system("echo '"+sv_e+"' >>errortran.log")
+							print(sv_u)
+						DO
+					ENDIF
+				ENDIF
+			ENDIF
+		DO
+
+        sv_c = urhk_dbCursorClose(CUST.MOBIL.MainCursor)
+	ENDIF
+
+	NEXTREC:
+
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	DO
+#}
+ENDIF
+
+ENDOFSCRIPT:
+
+trace off
+end-->

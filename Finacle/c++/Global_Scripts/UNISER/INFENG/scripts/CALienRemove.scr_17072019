@@ -1,0 +1,162 @@
+<--START
+TRACE ON
+
+	CUST.DATA.reasonCode = "ODLIN"
+    #----------------------Query for choice of ADD or MODIFY Operation ---------------#
+    BANCS.INPARAM.BINDVARS = CUST.DATA.caacid + "|" + BANCS.STDIN.contextBankId
+    sv_a = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND b2k_type='ULIEN' AND BANK_ID= ?SVAR"
+    PRINT(sv_a)
+
+    sv_s = urhk_dbSelectWithBind(sv_a)
+    PRINT(sv_s)
+    IF (sv_s !=0) THEN
+    #{
+            CUST.DATA.errMsg = CUST.DATA.caacnt+"|"+" No Lien exists for the account"
+            PRINT(CUST.DATA.errMsg)
+            sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            PRINT(sv_b)
+
+            GOTO ENDOFSCRIPT_LIEN_MOD
+    #}
+    ENDIF
+
+    CUST.DATA.NewRecNum = BANCS.OUTPARAM.count
+    PRINT(CUST.DATA.NewRecNum)
+
+    sv_a="0"
+    IF (CINT(CUST.DATA.NewRecNum) > 0) THEN
+    #{
+        #The query to decide whether a lien record needs to be modified or a new lien
+        #has to be added
+        #BANCS.INPARAM.BINDVARS = CUST.DATA.caacid + "|" +CUST.DATA.reasonCode + "|" +  CUST.DATA.lienRemarks + "|" + BANCS.STDIN.contextBankId
+	BANCS.INPARAM.BINDVARS = CUST.DATA.caacid + "|" +CUST.DATA.reasonCode + "|" + BANCS.STDIN.contextBankId
+        sv_a = "b2kid,b2ktype,expdate,startdate,lienamt,altCrncyCode|"
+        sv_a = sv_a + "select TRIM(B2K_ID),TRIM(B2K_TYPE),LIEN_EXPIRY_DATE,to_char(LIEN_START_DATE,'DD-MM-YYYY'),TRIM(lien_amt),alt_crncy_code"
+        sv_a = sv_a + " from tbaadm.ALT "
+        sv_a = sv_a + " where ACID = ?SVAR"
+        sv_a = sv_a + " AND LIEN_REASON_CODE = ?SVAR"
+        #sv_a = sv_a + " AND LIEN_REMARKS = ?SVAR "
+        sv_a = sv_a + " AND BANK_ID= ?SVAR"
+        PRINT(sv_a)
+
+        sv_s = urhk_dbSelectWithBind(sv_a)
+        PRINT(sv_s)
+
+        IF (sv_s != 0) THEN
+        #{
+            GOTO ENDOFSCRIPT_LIEN_MOD
+
+        #}
+        ELSE
+	#{
+	#--------------Increment and decrement of Lien--------------------#
+	
+		CUST.DATA.B2KID=BANCS.OUTPARAM.b2kid
+		CUST.DATA.OldLienAmt = BANCS.OUTPARAM.lienamt
+	
+		PRINT(CUST.DATA.B2KID)
+		PRINT(CUST.DATA.OldLienAmt)
+
+		CUST.DATA.NewLienAmt = CDOUBLE(CUST.DATA.OldLienAmt) - CDOUBLE(CUST.DATA.tranAmt)
+	
+		PRINT(CUST.DATA.NewLienAmt)
+	
+		IF (CDOUBLE(CUST.DATA.NewLienAmt) <= 0) THEN
+		#{
+			CUST.DATA.NewLienAmt = "0"
+			#GOTO ENDOFSCRIPT_LIEN_MOD
+		#}
+		ENDIF
+	
+		#Exisiting lien needs to be modified. Populate the criteria to
+		#fetch all the details of the exisiting lien.
+	
+		sv_a = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUST.DATA.caacnt)
+		sv_a = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+		sv_a = urhk_SetUrhkInp("acctLienMaintCrit.moduleId|" + CUST.DATA.B2KID)
+
+		#Call the SRV to fetch the details for the given criteria
+		sv_a = urhk_ExecSrvNoCommit("SRV_FetchLienDtlsOnAcForMod|retain_all_output = Y")
+		PRINT(sv_a)
+	
+		IF (sv_a != 0) THEN
+		#{
+			GOTO ERROR_HANDLING
+		#}
+		ENDIF
+	
+		#Copy the result to the input message structure
+		sv_a = urhk_CopyOutToIn("")
+		PRINT(sv_a)
+	
+		#setting new input
+		sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.newLienAmt|" + CUST.DATA.NewLienAmt + "|"+CUST.DATA.caCrncyCode)
+	
+		#Call the service to modify and verify the changes.
+		sv_a = urhk_ExecSrvNoCommit("SRV_ModifyLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+		PRINT(sv_a)
+	
+		IF (sv_a != 0) THEN
+		#{
+			GOTO ERROR_HANDLING
+		#}
+		ENDIF
+        #}
+        ENDIF
+    #}
+    ENDIF
+
+        ERROR_HANDLING:
+
+                #-------------Error handling when the SRV returns failure.--------------------#
+                IF (sv_a != 0) THEN
+                #{
+                        CUST.DATA.LienSuccessOrFailure = "F"
+                        PRINT(CUST.DATA.LienSuccessOrFailure)
+                        sv_c = BANCS.OUTPARAM.Error_num
+                        PRINT(sv_c)
+
+                        IF (sv_c > 0) THEN
+                        #{
+                                IF (STRLEN(BANCS.OUTPARAM.ErrorMesg_1) > 0) THEN
+                                #{
+                                        CUST.DATA.LienFailureReason = BANCS.OUTPARAM.ErrorMesg_1
+                                        PRINT(CUST.DATA.LienFailureReason)
+
+                                        sv_s = CUST.DATA.caacnt+ "|" + CUST.DATA.LienFailureReason
+                                        PRINT(sv_s)
+                                        sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + sv_s)
+                                        PRINT(sv_b)
+                                #}
+                                ENDIF
+
+                                sv_d = 1
+                                PRINT(sv_c)
+                                PRINT(sv_d)
+
+                                WHILE(sv_d <= sv_c)
+                                #{
+                                        sv_f = FORMAT$(sv_d, "%d")
+                                        sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_" + sv_f)
+                                        PRINT(sv_e)
+                                        sv_e = ("BANCS").("OUTPARAM").("ErrorCode_" + sv_f)
+                                        PRINT(sv_e)
+                                        sv_e = ("BANCS").("OUTPARAM").("Tag_" + sv_f)
+                                        PRINT(sv_e)
+                                        sv_d = sv_d + 1
+                                #}
+                                DO
+                        #}
+                        ENDIF
+                        #}
+                ELSE
+                        #{
+                        CUST.DATA.LienSuccessOrFailure = "S"
+                	PRINT(CUST.DATA.LienSuccessOrFailure)
+                #}
+                ENDIF
+
+        ENDOFSCRIPT_LIEN_MOD:
+                #PRINT(CUST.DATA.LienSuccessOrFailure)
+                EXITSCRIPT
+END-->

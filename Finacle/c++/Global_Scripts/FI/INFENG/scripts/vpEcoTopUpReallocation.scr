@@ -1,0 +1,209 @@
+#------------------------------------
+#  Description     : This script will allocate account Managers to overdrafts accounts on topup
+#  Date            : 28-01-2025
+#  Author          : Dennis Chirchir
+#  Calling Script  : vpEcoTopUpReallocation.scr
+#  Menu Option     : FI
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             28-01-2025      Dennis Chirchir	Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+		lv_p = urhk_b2k_sleep("4")
+		
+		#------------------------------------------------------------------------------
+		#Creating repository and class
+		#------------------------------------------------------------------------------
+		IF (REPEXISTS("CUSTS") == 0) THEN
+		#{
+			CREATEREP("CUSTS")
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("CUSTS","ACMOD") == 0) THEN
+		#{
+			CREATECLASS("CUSTS","ACMOD",5)
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("CUSTS","ACMOD") == 0) THEN
+		#{
+    			CREATECLASS("CUSTS","ACMOD", 5)
+		#}
+		ENDIF
+        		sv_u = urhk_MTTS_PopulateInputDetails("")
+        		print(sv_u)
+
+        		if(sv_u == 0)then
+                		print(MTT.InputDetails.Argument1)
+                		CUSTS.ACMOD.odAcctId = MTT.InputDetails.Argument1
+                		CUSTS.ACMOD.CUSTACCTMGR = MTT.InputDetails.Argument2
+			else
+                		CUSTS.ACMOD.odAcctId = ""
+                		CUSTS.ACMOD.CUSTACCTMGR = ""
+			endif
+
+			print(CUSTS.ACMOD.odAcctId)
+			print(CUSTS.ACMOD.CUSTACCTMGR)
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.ACMOD.odAcctId
+
+			sv_s="existAcctMgr|"
+			sv_s = sv_s + " select ACCT_MGR_USER_ID from tbaadm.gam where gam.bank_id = ?SVAR and foracid = ?SVAR "
+			print(sv_s)
+
+			sv_c = urhk_dbSelectWithBind(sv_s)
+			if(sv_c == 0) then
+				CUSTS.ACMOD.existAcctMgr = BANCS.OUTPARAM.existAcctMgr
+			else
+				CUSTS.ACMOD.existAcctMgr = ""
+			endif
+			print(CUSTS.ACMOD.existAcctMgr)
+
+			IF(CUSTS.ACMOD.existAcctMgr == CUSTS.ACMOD.CUSTACCTMGR) THEN
+			#{
+				print("same")
+				exitscript
+			#}
+			ENDIF
+			
+			##########Validate RM
+			IF(CUSTS.ACMOD.CUSTACCTMGR != "") THEN
+			#{
+				sv_a  = "count|SELECT count(*) FROM tbaadm.RMG,tbaadm.upr WHERE 1 = 1 AND RMG.bank_id = ?SVAR and upr.USER_ID=rmg.LOGIN_ID and  LOGIN_ID =?SVAR and upr.del_flg='N' and rownum<2 ORDER BY  RMG.login_id "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.ACMOD.CUSTACCTMGR
+				sv_c = urhk_dbSelectWithBind(sv_a)
+				if(sv_c == 0) then
+					CUSTS.ACMOD.count = BANCS.OUTPARAM.count
+				else
+					CUSTS.ACMOD.count = 0
+				endif
+				print(CUSTS.ACMOD.count)
+				if(cdouble(CUSTS.ACMOD.count) <= 0) then
+					exitscript
+				endif
+			#}
+			ELSE
+			#{
+					exitscript
+			#}
+			ENDIF
+			############Validate end
+			
+				lv_j = urhk_getAcctDetailsInRepository(CUSTS.ACMOD.odAcctId)
+				print(lv_j)
+
+				IF (lv_j == 0) THEN
+				#{
+					CUSTS.ACMOD.acid = BANCS.OUTPARAM.acid
+					PRINT(CUSTS.ACMOD.acid)
+					CUSTS.ACMOD.AcctsolId = BANCS.OUTPARAM.acctSolId
+					PRINT(CUSTS.ACMOD.AcctsolId)
+					CUSTS.ACMOD.schmCode = BANCS.OUTPARAM.schmCode
+					PRINT(CUSTS.ACMOD.schmCode)
+					CUSTS.ACMOD.schmType = BANCS.OUTPARAM.schmType
+					PRINT(CUSTS.ACMOD.schmType)
+					CUSTS.ACMOD.acctClsFlag = BANCS.OUTPARAM.acctCloseflg
+					PRINT(CUSTS.ACMOD.acctClsFlag)
+					#CUSTS.ACMOD.sweeps = BANCS.OUTPARAM.AllowSweepsFlg
+					#PRINT(CUSTS.ACMOD.sweeps)
+					CUSTS.ACMOD.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+					PRINT(CUSTS.ACMOD.acctCrncyCode)
+				#}
+				ELSE
+				#{
+					GOTO ERROR
+				#}
+				ENDIF
+
+				#--------------------------------------------------------------------------------------------------------------
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMOD.odAcctId)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMOD.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMOD.schmCode)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMOD.schmType)
+				PRINT(sv_u)
+			
+				sv_u = urhk_ExecSrv("SRV_FetchODAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF (sv_u == 0) THEN
+				#{			
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.ACMOD.odAcctId)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.ACMOD.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.ACMOD.schmType)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.ACMOD.schmCode)
+				PRINT(sv_u)
+				#sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|" + CUSTS.ACMOD.sweeps)
+				#PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctClsFlag|" + CUSTS.ACMOD.acctClsFlag)
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+				PRINT(sv_u)
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+				PRINT(sv_u)
+
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId|" + CUSTS.ACMOD.CUSTACCTMGR)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|" + CUSTS.ACMOD.acctCrncyCode)
+				PRINT(sv_u)
+
+				sv_u = urhk_ExecSrv("SRV_ModifyODAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF (sv_u == 0) THEN
+				print("SUCCESS")
+				ENDIF
+
+				ENDIF
+
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF (sv_v > 0) then
+					#{
+						sv_u = system("echo 'Error for Acct:"+CUSTS.ACMOD.odAcctId+" ' >>ODAMgr.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							sv_u = system("echo '"+sv_e+"' >>ODAMgr.log")
+							print(sv_u)
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+EXITSCRIPT
+END-->

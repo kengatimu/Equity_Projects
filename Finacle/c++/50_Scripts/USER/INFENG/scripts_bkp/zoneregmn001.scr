@@ -1,0 +1,322 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: zoneregmn001.scr
+# Type: NA|default
+# Description: zoneregmn001.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#-------------------------------------------------------------------------------------
+#    Name				: zoneregmn001.scr
+#    Description     	: This script is execute through batch job RGZN1 to regularize
+#						: sales to stabic accounts
+#    Date            	: 01-01-2013
+#    Author          	: Divya
+#    Input           	: NA
+#    Output				: NA
+#    Called Script	 	: NA
+#    Calling Script	 	: getcparamvalue.scr
+#    Menu Option		: HBJSTM, HBJE
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0			01-01-2013		Divya	 		Original Version
+#   2.0            24-02-2013  	Divya			Added rate code
+#
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2799a09c399c2efe464a49342bbd1b95c58b35c0b361135f7c81bca5d229c7bd"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CUSREG") == 0) THEN
+	#{
+		CREATECLASS("CUST","CUSREG",5)
+	#}
+	ENDIF
+	
+	CUST.CUSREG.errMsg    = ""
+	CUST.CUSREG.crAccount = ""
+	CUST.CUSREG.drAccount = ""
+	CUST.CUSREG.zoneCode  = ""
+	CUST.CUSREG.zoneSolid = ""
+	CUST.CUSREG.desc      = ""
+	CUST.CUSREG.amount    = "0"
+	CUST.CUSREG.zoneDate  = ""
+	CUST.CUSREG.refCode   = ""
+	
+	BANCS.INPUT.moduleName  = "ZONEREG"
+	BANCS.INPUT.parameterId = "CUSREG_STAN"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.crAccount = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.CUSREG.crAccount)
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.errMsg = "Credit Account setup not done CPARAM"
+		PRINT(CUST.CUSREG.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	PRINT(CUST.CUSREG.crAccount)
+	
+	BANCS.INPUT.moduleName  = "ZONEREG"
+	BANCS.INPUT.parameterId = "CUSREG_PARK"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.drAccount = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.errMsg = "Debit Account setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.CUSREG.drAccount)
+	BANCS.INPUT.moduleName  = "ZONEREG"
+	BANCS.INPUT.parameterId = "CUSREG_CODE"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.zoneCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.errMsg = "Zone Setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.CUSREG.zoneCode)
+	
+	BANCS.INPUT.moduleName  = "ZONEREG"
+	BANCS.INPUT.parameterId = "CUSREG_SOLID"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.zoneSolid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.errMsg = "Zone Sol Id not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.CUSREG.zoneSolid)
+	BANCS.INPUT.moduleName  = "ZONEREG"
+	BANCS.INPUT.parameterId = "CUSREG_DESC"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.desc = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.desc = ""
+	#}
+	ENDIF
+	
+	PRINT(CUST.CUSREG.desc)
+	BANCS.INPUT.moduleName  = "GENERAL"
+	BANCS.INPUT.parameterId = "NORRATECODE"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUSREG.refCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.errMsg = "NORRATECODE Code not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	PRINT(CUST.CUSREG.refCode)
+	PRINT(BANCS.STDIN.contextBankId)
+	#------------------------------------------------------------------------------
+	# Getting zoneDate, amount
+	# Creating narration for tran remarks
+	#------------------------------------------------------------------------------
+	sv_s = "zoneDate,amount|SELECT clg_zone_date,SUM(instrmnt_amt)"
+	sv_s = sv_s + " FROM TBAADM.OCI"
+	sv_s = sv_s + " WHERE clg_zone_code = ?SVAR AND"
+	sv_s = sv_s + " value_date =  TO_DATE(?SVAR ,'DD-MM-YYYY HH24:MI:SS') AND"
+	sv_s = sv_s + " sol_id = ?SVAR AND"
+	sv_s = sv_s + " status_flg = 'G' AND"
+	sv_s = sv_s + " bank_id = ?SVAR"
+	sv_s = sv_s + " GROUP BY sol_id, clg_zone_date, clg_zone_code"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CUSREG.zoneCode + "|" + BANCS.STDIN.BODDate + "|" + CUST.CUSREG.zoneSolid + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbselectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.CUSREG.amount = BANCS.OUTPARAM.amount
+		PRINT(CUST.CUSREG.amount)
+		CUST.CUSREG.zoneDate = BANCS.OUTPARAM.zoneDate
+		PRINT(CUST.CUSREG.zoneDate)
+		#}
+	ELSE
+		#{
+		CUST.CUSREG.amount = "0"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CUSREG.narr = CUST.CUSREG.zoneDate + " " + CUST.CUSREG.desc
+	PRINT(CUST.CUSREG.narr)
+	#---------------------------------------------------------------
+	# Passing transaction inputs to the service
+	# Adding and Posting the transaction
+	#---------------------------------------------------------------
+	sv_u = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+	sv_u = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|BI")
+	sv_u = urhk_SetUrhkInp("tranHdr.tranRmks|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|I")
+	sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+	
+	sv_w = "tranDtl.partTranDetailLL.<rec_0>."
+	sv_u = urhk_SetUrhkInp(sv_w + "key.serial_num|1")
+	sv_u = urhk_SetUrhkInp(sv_w + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "partTranType.code|C")
+	sv_u = urhk_SetUrhkInp(sv_w + "acctId.foracid|"+CUST.CUSREG.crAccount)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranParticulars|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranRmks|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp(sv_w + "refNum| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "valueDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "glDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranAmt|"+CUST.CUSREG.amount+"|"+ BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refAmt|"+CUST.CUSREG.amount+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "entryUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "vfdUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "rateCode.refCode|" + CUST.CUSREG.refCode)
+	
+	sv_w = "tranDtl.partTranDetailLL.<rec_1>."
+	sv_u = urhk_SetUrhkInp(sv_w + "key.serial_num|2")
+	sv_u = urhk_SetUrhkInp(sv_w + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "partTranType.code|D")
+	sv_u = urhk_SetUrhkInp(sv_w + "acctId.foracid|"+CUST.CUSREG.drAccount)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranParticulars|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranRmks|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp(sv_w + "refNum| ")
+	sv_u = urhk_SetUrhkInp(sv_w + "valueDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "glDate|"+BANCS.STDIN.BODDate)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranAmt|"+CUST.CUSREG.amount+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "tranParticulars|"+CUST.CUSREG.narr)
+	sv_u = urhk_SetUrhkInp(sv_w + "refCrncyCode.crncyCode|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "refAmt|"+CUST.CUSREG.amount+"|"+BANCS.STDIN.homeCrncyCode)
+	sv_u = urhk_SetUrhkInp(sv_w + "entryUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "vfdUserId.userId|" + BANCS.STDIN.userId)
+	sv_u = urhk_SetUrhkInp(sv_w + "rateCode.refCode|" + CUST.CUSREG.refCode)
+	
+	sv_u = urhk_ExecSrv("SRV_AddXferTran|retain_all_output = Y")
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		sv_u = urhk_ExecSrv("SRV_AddXferTran|retain_all_output = Y")
+		PRINT(sv_u)
+	#}
+	ENDIF
+	
+	IF (sv_u == 0) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		sv_u = urhk_ExecSrv("SRV_FetchTranDtlsForPost|retain_all_output = Y")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+			sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+			sv_u = urhk_ExecSrv("SRV_PostTran|retain_all_output = Y")
+			PRINT(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+				sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+				sv_u = urhk_ExecSrv("SRV_PostTran|retain_all_output = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (sv_u != 0) THEN
+	#{
+		IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			PRINT(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+			#}
+		ELSE
+			#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) THEN
+		#{
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				PRINT(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				PRINT(sv_e)
+				sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				PRINT(sv_e)
+				sv_i = sv_i + 1
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.tranId)
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.CUSREG.errMsg != "") THEN
+		#{
+			PRINT(CUST.CUSREG.errMsg)
+			sv_u = SYSTEM("echo '"+CUST.CUSREG.errMsg+"' >>RGZN1.log")
+		#}
+		ENDIF
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

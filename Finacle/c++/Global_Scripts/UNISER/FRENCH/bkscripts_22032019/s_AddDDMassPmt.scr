@@ -1,0 +1,183 @@
+###############################################################################
+#   Source Name         :   SRV_CreateTranForDDMassPmt_post_process_data.scr
+#   Date                :   22-JUNE-2010
+#   Description         :   This script is for DENOM module to capture denominations
+#   Author              :   Irenpreet
+#   Called Script       :   1) denomdp011.scr
+#                           - to parse the front end value into denom repositories
+#                           2) denomdp016.scr
+#                           - for C_DENM_CR or C_DENM_DR table update and C_DETD table value insertion
+#                       :   3)denomdp015.scr
+#                           - for C_DERD table update
+#   Calling Script      :
+#   MODULE CODE         :  DENOM
+#   Modification History:
+#   <Serial No.>   <Date>   <Author Name>    <Description>
+#	0.01	 26-05-2011 Hamsa Priya		Commented the Delete Repository statements for UAT-8940
+#################################################################################
+<--START
+TRACE ON
+sv_r = 	REPEXISTS("CUST")
+IF (sv_r == 0) THEN
+	CREATEREP("CUST")
+ENDIF
+sv_r = CLASSEXISTS("CUST", "DENOM")
+IF (sv_r == 0) THEN
+	CREATECLASS("CUST", "DENOM", 5)
+ENDIF
+
+IF(BANCS.STDIN.moduleIdentity == "FI") THEN
+	GOTO FINISH
+ELSE
+#{	
+	sv_a = urhk_B2K_PrintRepos("BANCS")
+	print(sv_a)
+	IF (FIELDEXISTS(BANCS.INPUT.srvcallmode)) THEN
+	#{
+	    IF (BANCS.INPUT.srvcallmode == "S") THEN
+	    #{
+		  sv_d = urhk_SRV_GetVal("ddMassPmtDtl.ddMassPmtHdr.tranDate")
+		  BANCS.INPUT.tranDate = MID$(BANCS.OUTPARAM.srvValue,0,10)
+		  print(BANCS.INPUT.tranDate)
+		  sv_d = urhk_B2k_getDateDiffFromBODDate(BANCS.INPUT.tranDate)
+		print(sv_d)
+		  IF (sv_d == 0) THEN
+		  #{
+			IF(CINT(BANCS.OUTPARAM.DateDiff) < 0) THEN
+			#{
+				sv_s = urhk_SRV_SetErr("Approval has expired for this referral. Kindly withdraw and Submit afresh.")
+				print(sv_s)
+				GOTO FINISH
+			#}
+			ENDIF
+		  #}
+		  ENDIF
+	    #}
+	    ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+print(ONS.CUSTOM.custDataIn)
+IF((FIELDEXISTS(ONS.CUSTOM.custDataIn)==0) OR (TRIM(ONS.CUSTOM.custDataIn) == "")) THEN
+	GOTO FINISH
+ENDIF
+
+print("Reached here")
+
+sv_q = urhk_SRV_GetVal("ddMassPmtHdr.tranId")
+CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+sv_q = urhk_SRV_GetVal("ddMassPmtHdr.tranDate")
+CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue,10)
+PRINT(CUST.DENOM.tranId)
+PRINT(CUST.DENOM.tranDate)
+
+sv_a = ONS.CUSTOM.custDataIn
+sv_u = urhk_ParseONSCustData(sv_a)
+sv_q = urhk_B2k_PRINTRepos("BANCS")
+PRINT(sv_q)
+
+CUST.DENOM.Flag = BANCS.INPUT.ddmpdet_FIELD_1
+CUST.DENOM.cucycnt = BANCS.INPUT.ddmpdet_FIELD_2
+CUST.DENOM.authMatrixId = ""
+PRINT(CUST.DENOM.Flag)
+PRINT(CUST.DENOM.cucycnt)
+
+#----- Check on denom captured - will help in case BANCS repositories are not flushed ------
+sv_q = "disFlg|SELECT 1 FROM DUAL WHERE EXISTS (SELECT 1 FROM c_solmnt WHERE sol_id = ?SVAR AND dis_flg = 'Y' AND bank_id = ?SVAR)"
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId  + "|" + BANCS.STDIN.contextBankId
+sv_r = urhk_dbSelectWithBind(sv_q)
+PRINT(sv_r)
+IF((sv_r!=0) AND (CUST.DENOM.Flag!="Y")) THEN
+#{
+	#sv_r = urhk_SRV_SetErr("Run time error - commit again")
+	GOTO FINISH
+#}
+ENDIF
+
+IF(CUST.DENOM.Flag == "Y") THEN
+#{
+	CALL("denomdp011.scr")
+	sv_k = 1
+	WHILE(sv_k <= CINT(CUST.DENOM.cucycnt))
+	#{
+		CUST.DENOM.serialno = sv_k
+		CUST.DENOM.tellerId = ("CUST").("DENOM").("tellerId"+ FORMAT$(sv_k,"%d"))
+		CUST.DENOM.solId = ("CUST").("DENOM").("solId"+ FORMAT$(sv_k,"%d"))
+		CALL("denomdp016.scr")
+		#------------------------------------------------------------
+		# Below code added to validate for -ve denom value
+		# - Sandeep Patil
+		#------------------------------------------------------------
+		IF(CUST.DENOM.ERRORMESSAGE !="") THEN
+		#{
+		GOTO ERRORMESSAGE
+		#}
+		ENDIF
+
+		CUST.DENOM.tellerId = ("CUST").("DENOM").("tellerId"+ FORMAT$(sv_k,"%d"))
+		CUST.DENOM.solId = ("CUST").("DENOM").("solId"+ FORMAT$(sv_k,"%d"))
+		CALL("denomdp015.scr")
+		sv_k = sv_k + 1
+		PRINT(sv_k)
+	#}
+	DO
+#}
+ENDIF
+
+GOTO FINISH 
+
+ERRORMESSAGE:
+        sv_r = urhk_SRV_SetErr("Error: Please re-create the transaction")
+	print(sv_r)
+	goto ENDOFSCRIPT
+FINISH:
+
+#added by samme for advice MANAGERS CHEQUE PAYMENT - CREDIT report
+print("This will gen MANAGERS CHEQUE PAYMENT - CREDIT report.")
+	IF(REPEXISTS("CUST") == 0) then
+		CREATEREP("CUST")
+	ENDIF
+	IF(CLASSEXISTS("CUST","CHK")==0)  THEN
+	#{
+		CREATECLASS("CUST","CHK",5)
+		#}
+	ELSE
+		#{
+		DELETECLASS("CUST","CHK")
+		CREATECLASS("CUST","CHK",5)
+	#}
+	ENDIF
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.tranId")
+	print(sv_b)
+	CUST.CHK.tranid = BANCS.OUTPARAM.srvValue
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.tranDate")
+	print(sv_b)
+	CUST.CHK.tranDate = BANCS.OUTPARAM.srvValue
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.payeeAcct.acid")
+	print(sv_b)
+	CUST.CHK.acid = BANCS.OUTPARAM.srvValue
+	print(CUST.CHK.tranid)
+	print(CUST.CHK.tranDate)
+	print(CUST.CHK.acid)
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.ddAcct.foracid")
+	print(sv_b)
+	CUST.CHK.ddacct = BANCS.OUTPARAM.srvValue
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.ddAcct.crncyCode")
+	print(sv_b)
+	CUST.CHK.ddcry = BANCS.OUTPARAM.srvValue
+	sv_b = urhk_SRV_GetVal("ddMassPmtHdr.ddAcct.acctName")
+	print(sv_b)
+	CUST.CHK.ddacct_desc = BANCS.OUTPARAM.srvValue
+	print(CUST.CHK.ddacct)
+	print(CUST.CHK.ddcry)
+	print(CUST.CHK.ddacct_desc)
+	
+
+ENDOFSCRIPT:
+		
+		EXITSCRIPT
+
+TRACE OFF
+END-->

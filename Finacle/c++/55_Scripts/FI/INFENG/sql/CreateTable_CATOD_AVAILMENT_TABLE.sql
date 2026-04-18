@@ -1,0 +1,68 @@
+-- Module : ATM
+-- Table Name : CATOD_AVAILMENT_TABLE
+
+--DROP TABLE CUSTOM.CATOD_AVAILMENT_TABLE CASCADE CONSTRAINTS;
+
+
+CREATE TABLE CUSTOM.CATOD_AVAILMENT_TABLE
+(
+  REQUEST_ID      VARCHAR2(16 BYTE),
+  SANCT_ID        VARCHAR2(16 BYTE),
+  ACCT_NUM        VARCHAR2(16 BYTE),
+  CUST_ID         VARCHAR2(9 BYTE),
+  CARD_NUM        VARCHAR2(19 BYTE),
+  ACCT_NAME       VARCHAR2(80 BYTE),
+  SOL_ID          VARCHAR2(8 BYTE),
+  REQ_AMT         NUMBER(20,2),
+  PERIOD          NUMBER(3),
+  STATUS_FLG      CHAR(1 BYTE)                  DEFAULT 'P',
+  REMARKS         VARCHAR2(30 BYTE),
+  CREATED_BY      VARCHAR2(15 BYTE)             NOT NULL,
+  CREATED_DATE    DATE,
+  MODIFIED_BY     VARCHAR2(15 BYTE),
+  MODIFIED_DATE   DATE,
+  VERIFY_BY       VARCHAR2(15 BYTE),
+  VERIFY_DATE     DATE,
+  ADV_AMT         NUMBER(20,2),
+  PERMITTED_USER  VARCHAR2(15 BYTE),
+  FREE_TEXT       VARCHAR2(100 BYTE),
+  UPLOAD_STATUS   VARCHAR2(3 BYTE),
+  GRANT_DATE      DATE,
+  EXPIRY_DATE     DATE,
+  LODGED_USER     VARCHAR2(15 BYTE),
+  LODGED_DATE     DATE,
+  VERIFIED_USER   VARCHAR2(15 BYTE),
+  VERIFIED_DATE   DATE,
+  RCRE_USER       VARCHAR2(15 BYTE),
+  RCRE_DATE       DATE,
+  LCHG_USER       VARCHAR2(15 BYTE),
+  LCHG_DATE       DATE,
+  MSG_IND         CHAR(1 BYTE)                  DEFAULT 'B',
+  EMAIL_FLG       CHAR(1 BYTE)                  DEFAULT 'N',
+  SMS_FLG         CHAR(1 BYTE)                  DEFAULT 'N',
+  IS_DELETED      CHAR(1 BYTE)                  DEFAULT 'N',
+  MAX_LIMIT       NUMBER(20,2),
+  FREE_TEXT_1     VARCHAR2(50 BYTE),
+  BANK_ID         VARCHAR2(10 BYTE),
+  CHARGE_AMT      NUMBER(20,2),
+  TOD_AMT         NUMBER(20,2)
+)/
+
+create synonym custom.C_TODA
+    for CUSTOM.CATOD_AVAILMENT_TABLE
+/
+create synonym tbaadm.C_TODA
+    for CUSTOM.CATOD_AVAILMENT_TABLE
+/
+create synonym tbagen.C_TODA
+    for CUSTOM.CATOD_AVAILMENT_TABLE
+/
+create synonym tbautil.C_TODA
+    for CUSTOM.CATOD_AVAILMENT_TABLE
+/
+grant select, insert, update, delete on custom.C_TODA to tbagen,tbautil,tbaadm
+/
+
+grant select, insert, update, delete on CUSTOM.CATOD_AVAILMENT_TABLE to tbagen,tbautil,tbaadm
+/
+

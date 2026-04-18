@@ -1,0 +1,186 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_swiftGPI.scr
+#  Description     : fetchs Term Deposit accounts attached to a CIF
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             08-01-2024     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+###
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "EZB")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "EZB", 5)
+	#}
+	ENDIF
+
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNo"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="please enter Account Number"
+        lv_a = "E9999"
+        lv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        sv_u = urhk_SetOrbErr(lv_c)
+        exitscript
+   	ELSE 
+   		CUST.EZB.accountNo = trim(BANCS.INPUT.AccountNo)
+   		print(CUST.EZB.accountNo)
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("Flag"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="please enter IN/OUT Flag"
+		lv_a = "E9999"
+        sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        lv_u = urhk_SetOrbErr(lv_c)
+        exitscript
+   	ELSE 
+   		CUST.EZB.flag = BANCS.INPUT.Flag
+   		print(CUST.EZB.flag)
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+
+
+	#----------------------------------------------------------------------------------------------
+	# validations
+	#----------------------------------------------------------------------------------------------
+
+	sv_q = "sender,refNum |"
+	sv_q = sv_q + "SELECT ord_party_name, pymt_ref_num "
+	sv_q = sv_q + " FROM tbaadm.porh  "
+	sv_q = sv_q + " WHERE ord_party_acct=?SVAR AND bank_id=?SVAR AND del_flg='N' AND entity_cre_flg='Y' "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS =  CUST.EZB.accountNo +"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbcursorOpenWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF (sv_c == 0)THEN
+	#{
+		CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(CUST.EZB.cursor_number)
+
+		sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+		print(sv_d)
+
+		sv_q = 0
+		print(sv_q)
+
+		WHILE (sv_d == 0)
+		#{
+			sv_q = sv_q + 1
+			print(sv_q)
+
+			CUST.EZB.sender = BANCS.OUTPARAM.sender
+			print(CUST.EZB.sender)
+
+			sv_v = "RefNum_" + FORMAT$(sv_q, "%d") 
+			("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.refNum
+
+			lv_q = "amount,crncy,value_date,refNum,utr,receiver|"
+    		lv_q = lv_q + " SELECT * FROM (SELECT instructed_amt, instructed_crncy,value_date,sender_ref_num,utr, "
+    		lv_q = lv_q + " (SELECT benef_party_name FROM tbaadm.pord WHERE PYMT_REF_NUM=s.sender_ref_num AND bank_id=s.bank_id) receiver "
+    		lv_q = lv_q + " FROM tbaadm.smh s WHERE in_out_ind=?SVAR and sender_ref_num=?SVAR AND bank_id=?SVAR) "
+    		print(lv_q)
+    		BANCS.INPARAM.BINDVARS = CUST.EZB.flag +"|"+ ("CUST").("EZB").(sv_v) +"|"+ BANCS.STDIN.contextBankId
+    		print(BANCS.INPARAM.BINDVARS)
+
+    		sv_c = urhk_dbSelectWithBind(lv_q)
+    		PRINT(sv_c)
+
+    		IF(sv_c == 0)THEN
+    		#{
+	    		CUST.EZB.amount = BANCS.OUTPARAM.amount
+	    		print(CUST.EZB.amount)
+	    		CUST.EZB.crncy = BANCS.OUTPARAM.crncy
+	    		print(CUST.EZB.crncy)
+	    		CUST.EZB.value_date = BANCS.OUTPARAM.value_date
+	    		print(CUST.EZB.value_date)
+	    		CUST.EZB.refNum = BANCS.OUTPARAM.refNum
+	    		print(CUST.EZB.refNum)
+	    		CUST.EZB.utr = BANCS.OUTPARAM.utr
+	    		print(CUST.EZB.utr)
+	    		CUST.EZB.receiver = BANCS.OUTPARAM.receiver
+	    		print(CUST.EZB.receiver)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Account| " + CUST.EZB.accountNo
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "RefNum_" + FORMAT$(sv_q, "%d")
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Reference| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Sender| " + CUST.EZB.sender
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Receiver| " + CUST.EZB.receiver
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.ValueDate| " + CUST.EZB.value_date
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Currency| " + CUST.EZB.crncy
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Amount| " + CUST.EZB.amount
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_t = "SWIFTGPI_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.UETR| " + CUST.EZB.utr
+				sv_u = urhk_SetOrbOut(sv_t)
+	    	ELSE 
+	    		CUST.EZB.errMsg="Unable to fetch the record or it does not exist"
+				sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+				sv_t = "SWIFTGPI_RES.Error| " +CUST.EZB.errMsg
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ENDIF 
+
+			sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+			print(sv_d)
+
+		#} 
+		DO 
+
+		sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+		print(sv_x)
+		print(CUST.EZB.cursor_number)
+
+	ELSE
+		CUST.EZB.errMsg="Unable to fetch the record or it does not exist["+CUST.EZB.accountNo+" ]"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "SWIFTGPI_RES.Error| " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+	#}
+	ENDIF
+
+
+ENDSCRIPT:
+trace off
+END-->
+

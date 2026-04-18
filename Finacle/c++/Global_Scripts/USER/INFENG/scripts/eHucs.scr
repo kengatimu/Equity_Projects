@@ -1,0 +1,338 @@
+##########################################################################################
+# Source Name           : eHucs.scr
+# Date                  : 08-jan-2024
+# Description           : HUCS mod
+# Author                : Edwin zico
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        08-jan-2024   Edwin zico                Base Version
+###########################################################################################
+
+<--START
+TRACE ON
+sv_p = urhk_B2k_PrintRepos("BANCS")
+print(sv_p)
+
+#-----------------------------------------------------------------------------------------------
+# CREATING NEW REPOSITORY AND CLASS
+#-----------------------------------------------------------------------------------------------
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+#{
+	CREATECLASS("CUST", "INTERFACE", 5)
+#}
+ENDIF
+IF(REPEXISTS("EQSRV") == 0 ) THEN
+#{
+    CREATEREP("EQSRV")
+#}
+ENDIF
+IF (CLASSEXISTS("EQSRV","GLBDATA") == 0) THEN
+#{
+    CREATECLASS("EQSRV","GLBDATA",5)
+#}
+ENDIF
+
+#-------------------------------------------------------------------------------
+# Calling the service to Fetch Cheque Details for Update
+#-------------------------------------------------------------------------------
+
+##CUST.INTERFACE.CrAcct = "0020290425633"
+CUST.INTERFACE.InstrType = "CHQ"
+##CUST.INTERFACE.InstNum = "1"
+
+sv_q="foracid,InstNum|"
+sv_q = sv_q + "select foracid,ACCT_PREF  from custom.int_change where bank_id =?SVAR and ENTITY_CRE_FLG='CHQ'"
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+IF(sv_e==0) THEN
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+
+	IF(sv_q == 1) THEN
+		sv_x = urhk_dbCursorClose(sv_m)
+		print(sv_x)
+		exitscript
+	ENDIF
+	print(sv_q)
+
+WHILE (sv_q==0)
+	CUST.INTERFACE.CrAcct =	BANCS.OUTPARAM.foracid
+	 print(CUST.INTERFACE.CrAcct)
+	 print(CUST.INTERFACE.InstrType)
+	 CUST.INTERFACE.InstNum = BANCS.OUTPARAM.InstNum
+	 print(CUST.INTERFACE.InstNum)
+
+	 sv_a = urhk_SetUrhkInp("acct.foracid|" + CUST.INTERFACE.CrAcct)
+	 sv_a = urhk_SetUrhkInp("instrmnt.instrmntType|" + CUST.INTERFACE.InstrType)
+	 sv_a = urhk_SetUrhkInp("instrmnt.instrmntNum|" + CUST.INTERFACE.InstNum)
+	 sv_a = urhk_SetUrhkInp("instrmnt.instrmntAlpha|")
+
+	sv_d = urhk_ExecSrvNoCommit("SRV_FetchChqStatForModify|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	IF (sv_d != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+		ENDIF
+
+		IF (sv_v > 0) THEN
+		#{
+			sv_u = system("echo 'Error for Acct:"+CUST.INTERFACE.CrAcct+" ' >>closed.log")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>closed.log")
+				print(sv_u)
+
+				sv_s = "UPDATE CUSTOM.INT_CHANGE "
+				sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'CHQF',"
+				sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE,"
+				sv_s = sv_s + " INT_CHANGE.FREE_TEXT1= ?SVAR "
+				sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+				sv_s = sv_s + " AND ENTITY_CRE_FLG='CHQ' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = sv_e + "|" + CUST.INTERFACE.CrAcct + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+					goto NEXTREC
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to copy all details.
+	#-------------------------------------------------------------------------------
+	sv_a = urhk_CopyOutToIn("")
+	sv_a = urhk_SetUrhkInp("newStat.code|P")
+	#sv_a = urhk_SetUrhkInp("newStat.code|U")
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to Update Cheque Status in Finacle
+	#-------------------------------------------------------------------------------
+	sv_d = urhk_ExecSrvNoCommit("SRV_UpdateChqStat|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	IF (sv_d != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+		ENDIF
+
+		IF (sv_v > 0) THEN
+		#{
+			sv_u = system("echo 'Error for Acct:"+CUST.INTERFACE.CrAcct+" ' >>closed.log")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>closed.log")
+				print(sv_u)
+
+				sv_s = "UPDATE CUSTOM.INT_CHANGE "
+				sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'CHQF',"
+				sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE,"
+				sv_s = sv_s + " INT_CHANGE.FREE_TEXT1= ?SVAR "
+				sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+				sv_s = sv_s + " AND ENTITY_CRE_FLG='CHQ' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = sv_e + "|" + CUST.INTERFACE.CrAcct + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+					goto NEXTREC
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to copy all details.
+	#-------------------------------------------------------------------------------
+	sv_a = urhk_CopyOutToIn("")
+
+	#-------------------------------------------------------------------------------
+	# Calling the service to Fetch Cheque Details for verify
+	#-------------------------------------------------------------------------------
+	sv_d = urhk_ExecSrvNoCommit("SRV_FetchChqStatForVerify|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	IF (sv_d != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+		ENDIF
+
+		IF (sv_v > 0) THEN
+		#{
+			sv_u = system("echo 'Error for Acct:"+CUST.INTERFACE.CrAcct+" ' >>closed.log")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>closed.log")
+				print(sv_u)
+
+				sv_s = "UPDATE CUSTOM.INT_CHANGE "
+				sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'CHQF',"
+				sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE,"
+				sv_s = sv_s + " INT_CHANGE.FREE_TEXT1= ?SVAR "
+				sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+				sv_s = sv_s + " AND ENTITY_CRE_FLG='CHQ' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = sv_e + "|" + CUST.INTERFACE.CrAcct + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+					goto NEXTREC
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#-------------------------------------------------------------------------------
+	# Calling the service to copy all details.
+	#-------------------------------------------------------------------------------
+	sv_a = urhk_CopyOutToIn("")
+	print(sv_a)
+	#-------------------------------------------------------------------------------
+	# Calling the service to Verify Cheque Status in Finacle
+	#-------------------------------------------------------------------------------
+	sv_d = urhk_ExecSrvNoCommit("SRV_VerifyChqStat|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+	print(sv_d)
+	IF (sv_d != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+		ENDIF
+
+		IF (sv_v > 0) THEN
+		#{
+			sv_u = system("echo 'Error for Acct:"+CUST.INTERFACE.CrAcct+" ' >>closed.log")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>closed.log")
+				print(sv_u)
+
+				sv_s = "UPDATE CUSTOM.INT_CHANGE "
+				sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'CHQF',"
+				sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE,"
+				sv_s = sv_s + " INT_CHANGE.FREE_TEXT1= ?SVAR "
+				sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+				sv_s = sv_s + " AND ENTITY_CRE_FLG='CHQ' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = sv_e + "|" + CUST.INTERFACE.CrAcct + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+					goto NEXTREC
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	NEXTREC:
+        sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+DO
+print("ALL Checks unused")
+ENDIF
+
+
+trace off
+end-->

@@ -1,0 +1,380 @@
+#--------------------------------------------------------------------------------------------------------------------------
+#    Name            : cdaamn001.scr
+#    Description     : This script is used for DORMANT Account activation
+#    Date            : 19-02-2013 
+#    Author          : Prakash
+#    Input           : BANCS.INPUT.funcCode,BANCS.INPUT.foracid,BANCS.INPUT.currsts,BANCS.INPUT.newsts
+#    Output          : NA
+#    Called Script   : getcparamvalue.scr
+#    Calling Script  : NA
+#    Menu Option     : CDAA
+#    Srl. No            Date            Author          Description.
+#    ------         ----------          -------         ---------------
+#    8.0             21-12-2013		jane		 Adding cancellation
+#---------------------------------------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+IF(REPEXISTS("CUST") == 0) THEN
+#{
+    CREATEREP("CUST")
+#}
+ENDIF 
+
+IF(CLASSEXISTS("CUST","DORM") == 0) THEN
+#{
+    CREATECLASS("CUST","DORM",5)
+#}
+ENDIF
+
+CUST.DORM.schm_type = ""
+	CUST.DORM.acid = "" 
+	CUST.DORM.acctcrncycode = ""
+	CUST.DORM.solid = ""
+	CUST.DORM.schmCode = ""
+	CUST.DORM.sweeps = "N"
+ 	 
+	
+CUST.DORM.acctcrncycode	= ""
+CUST.DORM.solid			= ""
+CUST.DORM.foracid 		= TRIM(CUST.DATA.foracid)
+print(CUST.DORM.foracid)
+
+sv_s = "acid,schm_type,acctcrncycode,solid,schmCode,sweeps|SELECT acid,schm_type,acct_crncy_code,sol_id,schm_code,allow_sweeps "
+sv_s = sv_s + "FROM TBAADM.GAM "
+sv_s = sv_s + "WHERE bank_id  = ?SVAR "
+sv_s = sv_s + "AND foracid = ?SVAR "
+sv_s = sv_s + "AND schm_type IN ('SBA','CAA') "
+sv_s = sv_s + "AND acct_cls_flg = 'N' "
+sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+sv_s = sv_s + "AND del_flg = 'N' "
+
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.DORM.foracid 
+
+sv_u = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_u)
+
+
+IF( sv_u == 0) THEN 
+#{
+
+	CUST.DORM.schm_type = BANCS.OUTPARAM.schm_type
+	CUST.DORM.acid = BANCS.OUTPARAM.acid 
+	CUST.DORM.acctcrncycode = BANCS.OUTPARAM.acctcrncycode
+	CUST.DORM.solid = BANCS.OUTPARAM.solid
+	CUST.DORM.schmCode = BANCS.OUTPARAM.schmCode
+	CUST.DORM.sweeps = BANCS.OUTPARAM.sweeps
+
+	IF (CUST.DORM.sweeps == "") THEN
+	#{
+		CUST.DORM.sweeps = "N" 
+	#}
+	ENDIF
+#}
+ENDIF
+
+BANCS.INPARAM.acid = CUST.DORM.acid
+
+sv_s = "acctStatus|SELECT acct_status "
+sv_s = sv_s + "FROM TBAADM.SMT "
+sv_s = sv_s + "WHERE bank_id  = ?SVAR "
+sv_s = sv_s + "AND acid = ?SVAR "
+	
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.DORM.acid 
+
+sv_u = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_u)
+
+IF( sv_u == 0) THEN 
+#{
+	CUST.DORM.acctStatus = BANCS.OUTPARAM.acctStatus
+
+	IF (BANCS.OUTPARAM.acctStatus  == "A") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "addressCount|SELECT count(*) "
+	sv_s = sv_s + "FROM crmuser.address "
+	sv_s = sv_s + "WHERE bank_id  = ?SVAR "
+	sv_s = sv_s + "AND (ADDRESSCATEGORY,orgkey) in(select NMA_KEY_TYPE,NMA_KEY_ID from tbaadm.aas where bank_id =?SVAR and acid = ?SVAR) "
+	
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DORM.acid 
+
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_u)
+	
+	IF( sv_u == 0) THEN 
+	#{
+	
+		IF (BANCS.OUTPARAM.addressCount  == "0") THEN
+		#{
+		
+			CUST.DORM.errMsg="Address details Missing...Data issue " + CUST.DORM.foracid 
+			sv_u = system("echo '"+CUST.DORM.errMsg+"' >>acctivated.log")
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+	ELSE
+	 
+	#}
+	ENDIF
+	
+#}
+ELSE
+#{
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+lv_q = "swiftStmtReqdFlg|select SWIFT_STMT_REQD_FLG from tbaadm.ast where bank_id  = ?SVAR and ACID = ?SVAR"
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.DORM.acid
+
+sv_u = urhk_dbSelectWithBind(lv_q)
+PRINT(sv_u)
+
+IF( sv_u == 0) THEN
+#{
+        CUST.DORM.swiftStmtReqdFlg = BANCS.OUTPARAM.swiftStmtReqdFlg
+#}
+ENDIF
+
+IF( CUST.DORM.schm_type == "SBA" ) THEN
+#{
+
+	#--------------------------------------------------------------------------------------------------------------
+	# Inputs for Account Modify services
+	# urhk_SetUrhkInp is used to set inputs 
+	#--------------------------------------------------------------------------------------------------------------
+
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkOut("acctCommonInfo.acctSwiftStatement.swiftStmtReqdFlg|swiftStmtReqdFlg")
+	PRINT(sv_u)
+
+	#--------------------------------------------------------------------------------------------------------------
+	# Fetch the account data for modify
+	#--------------------------------------------------------------------------------------------------------------
+	sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|same_user_verify = Y|retain_all_output = Y|call mode = E|ignore_excp_flg = I")
+	PRINT(sv_u)
+
+	IF (sv_u == 0 ) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		PRINT(sv_u)
+
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|"+CUST.DORM.sweeps)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+                PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("operAcctSchmDtls.acctStat.code|A")
+		PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+		PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_0>.psNextPrintDate|"+BANCS.STDIN.BODDate)
+		PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+		PRINT(sv_u)
+		IF(CUST.DORM.swiftStmtReqdFlg == "Y")THEN
+		#{
+			sv_u =urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.swiftNextDueDate|" + BANCS.STDIN.BODDate)
+			PRINT(sv_u)
+		#}
+		ENDIF
+		sv_u =urhk_SetUrhkInp("operAcctSchmDtls.acctSchemeEntered|1")
+		PRINT(sv_u)
+		sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|same_user_verify = Y|retain_all_output = Y|call mode = E|ignore_excp_flg = I")
+		PRINT(sv_u)
+	#}
+	ENDIF
+
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF (sv_v > 0) THEN
+		#{
+			#sv_u = system("echo 'Error for Acct:"+EQSRV.GLBDATA.AcctId+" ' >>acctivated.log")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				print(sv_f)
+				IF (FIELDEXISTS(("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)) == 1) THEN
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					IF (FIELDEXISTS(("BANCS").("OUTPARAM").("Tag_"+sv_f)) == 1) THEN
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = "Account Cannot Activated, Finacle Error : " + sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						lv_e = sv_e + " " + CUST.DORM.foracid
+                        sv_u = system("echo '"+lv_e+"' >>acctivated.log")
+						sv_z = "SuccessOrFailure|Failure"
+						sv_u = urhk_SetOrbOut(sv_z)
+						sv_o=urhk_SetOrbOut("MSG|"+sv_e+"'")
+						print(sv_u)
+					ELSE
+						sv_i = sv_i + 1
+						print(sv_i)
+					ENDIF
+				ELSE
+					sv_i = sv_i + 1
+					print(sv_i)
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF	
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+IF( CUST.DORM.schm_type == "CAA" ) THEN
+#{
+
+	#--------------------------------------------------------------------------------------------------------------
+	# Inputs for Account Modify services
+	# urhk_SetUrhkInp is used to set inputs 
+	#--------------------------------------------------------------------------------------------------------------
+
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+	PRINT(sv_u)
+	sv_u = urhk_SetUrhkOut("acctCommonInfo.acctSwiftStatement.swiftStmtReqdFlg|swiftStmtReqdFlg")
+        PRINT(sv_u)
+
+	#--------------------------------------------------------------------------------------------------------------
+	#	 Fetch the account data for modify
+	#--------------------------------------------------------------------------------------------------------------
+	sv_u = urhk_ExecSrv("SRV_FetchCAAcctMaintDtlForModify|same_user_verify = Y|retain_all_output = Y|call mode = E|ignore_excp_flg = I")
+	PRINT(sv_u)
+
+	IF (sv_u ==0 ) THEN
+	#{
+		sv_u = urhk_CopyOutToIn("")
+		PRINT(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUST.DORM.foracid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUST.DORM.acid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUST.DORM.schm_type)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUST.DORM.schmCode)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|"+CUST.DORM.sweeps)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.psNextPrintDate|"+BANCS.STDIN.BODDate)
+                PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("schmDtls.acctStat.code|A")
+		PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+		PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_0>.psNextPrintDate|"+BANCS.STDIN.BODDate)
+                PRINT(sv_u)
+		sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+		PRINT(sv_u)
+		IF(CUST.DORM.swiftStmtReqdFlg == "Y")THEN
+                #{
+                        sv_u =urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.swiftNextDueDate|" + BANCS.STDIN.BODDate)
+                        PRINT(sv_u)
+                #}
+                ENDIF
+		sv_u =urhk_SetUrhkInp("schmDtls.acctSchemeEntered|1")
+		PRINT(sv_u)		
+		sv_u = urhk_ExecSrv("SRV_ModifyCAAcctAndVerify|same_user_verify = Y|retain_all_output = Y|call mode = E|ignore_excp_flg = I")
+		PRINT(sv_u)
+	#}
+	ENDIF
+
+	IF (sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+                #{
+                        print(BANCS.OUTPARAM.Error_num)
+                        sv_v = BANCS.OUTPARAM.Error_num
+                #}
+                ELSE
+                #{
+                        sv_v = 0
+                #}
+                ENDIF
+                IF (sv_v > 0) THEN
+                #{
+                        #sv_u = system("echo 'Error for Acct:"+EQSRV.GLBDATA.AcctId+" ' >>acctivated.log")
+                        sv_i = 1
+                        WHILE (sv_i <= sv_v)
+                        #{
+                                sv_f = FORMAT$(sv_i,"%d")
+                                print(sv_f)
+                                IF (FIELDEXISTS(("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)) == 1) THEN
+                                        sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+                                        IF (FIELDEXISTS(("BANCS").("OUTPARAM").("Tag_"+sv_f)) == 1) THEN
+                                                sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+                                                sv_e = "Account Cannot Activated, Finacle Error : " + sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+                                                print(sv_e)
+                                                sv_i = sv_i + 1
+												lv_e = sv_e + " " + CUST.DORM.foracid
+                                                sv_u = system("echo '"+lv_e+"' >>acctivated.log")
+                                                sv_z = "SuccessOrFailure|Failure"
+                                                sv_u = urhk_SetOrbOut(sv_z)
+                                                sv_o=urhk_SetOrbOut("MSG|"+sv_e+"'")
+                                                print(sv_u)
+                                        ELSE
+                                                sv_i = sv_i + 1
+                                                print(sv_i)
+                                        ENDIF
+                                ELSE
+                                        sv_i = sv_i + 1
+                                        print(sv_i)
+                                ENDIF
+                        #}
+                        DO
+                #}
+                ENDIF	
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+#}
+ENDIF
+
+ENDOFSCRIPT:
+TRACE OFF
+EXITSCRIPT
+END-->

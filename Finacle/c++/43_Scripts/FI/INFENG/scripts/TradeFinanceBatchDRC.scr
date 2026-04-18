@@ -1,0 +1,495 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       TradeFinanceBatchDRC.scr
+# Author                :       Bharath
+# Description           :       This script to collection charges
+# Input                 :       NA
+# Output                :       NA
+# Called Script         :       NA
+# Calling Script        :       NA
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           26-09-2013         Bharath	    original Version		1.0
+#  1           11-12-2018         Irungu	    Check_4_Days_Prior_BOD	2.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="1aa54181614143a1a3339b3f3aa79e09ffcbd529c404aa1c4e796c008ac5fe80"
+	TRACE ON
+	
+	#--------------------------------------------------------------------------
+	#  Creation of MISS repository and CHRG class
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("BANCS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("BANCS")
+	#}
+	ENDIF
+	
+	sv_r = REPEXISTS("MISS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("MISS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("MISS", "CHRG")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("MISS", "CHRG", 5)
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of accounts which are not charged
+	#--------------------------------------------------------------------------
+	
+sv_s = "boddate|select to_char((db_stat_date),'DD-MON-YYYY') from tbaadm.gct where bank_id=?SVAR"
+PRINT(sv_s)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+PRINT(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbselectWithBind(sv_s)
+IF (sv_d =="0") THEN
+#{
+	MISS.CHRG.boddate = BANCS.OUTPARAM.boddate
+	print(MISS.CHRG.boddate)
+#}
+
+ENDIF
+
+	sv_a = " Dates |  select to_char(dt,'DD-MON-RRRR') DT from (select to_date((sysdate - 10), 'DD-MM-RRRR') + rownum -1 dt from dual connect by level <= to_date(sysdate, 'DD-MM-RRRR') - to_date((sysdate - 10), 'DD-MM-RRRR') + 1) "
+	print(sv_a)
+	#BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId  + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	#PRINT(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbCursorOpenWithBind(sv_a)
+	IF(sv_e==0) THEN
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+				IF(sv_q == 1) THEN
+					sv_x = urhk_dbCursorClose(sv_m)
+					print(sv_x)
+					exitscript
+				ENDIF
+			print(sv_q)
+
+		WHILE (sv_q==0)
+		
+		MISS.CHRG.Dates = BANCS.OUTPARAM.Dates
+		print(MISS.CHRG.Dates)		
+	
+					MISS.CHRG.getboddate =MISS.CHRG.Dates 
+					MISS.CHRG.uploadstatus="N"
+					print(MISS.CHRG.uploadstatus)								
+					
+					sv_s = " update CUSTOM.trade_finance_CHARGES set Del_flg  = 'Y' where  ENTITY_CRE_FLG='Y' AND TOTAL_FEES =AMORTIZED_AMT   AND bank_id=?SVAR   "
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)								
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					print(sv_d)
+					sv_d = urhk_dbSQLWithBind("COMMIT")
+					print(sv_d)
+			
+					
+					
+					sv_s = "dtd_Count|"
+					sv_s = sv_s + " SELECT count(*) "
+					sv_s = sv_s + " from CUSTOM.trade_finance_CHARGES where ENTITY_CRE_FLG='Y' AND del_flg ='N' AND ( NEXT_RUN_DATE=?SVAR or NEXT_RUN_DATE is null)  AND BANK_ID=?SVAR and  TOTAL_FEES !=AMORTIZED_AMT  "
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS = MISS.CHRG.getboddate + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbselectWithBind(sv_s)
+					print(sv_d)
+					sv_q = BANCS.OUTPARAM.dtd_Count
+					print(sv_q)
+					IF (sv_q == "0") THEN
+					#{
+						GOTO Finish
+					#}
+					ENDIF
+					
+					#--------------------------------------------------------------------------
+					# Selecting accounts from Custom table; Check TOTAL_FEES = AMORTIZED_AMT 
+					#--------------------------------------------------------------------------
+					
+					
+					sv_s = "BILL_NUMBER, charge_acc,total_fees,transactionamount, charge_currency,AMORTIZED_AMT , CREDIT_ACC , CTYPE  |"
+					sv_s = sv_s + " select BILL_NUMBER, CHARGE_ACC ,TOTAL_FEES, MTHLY_AMT,CHARGE_CURRENCY, AMORTIZED_AMT, CREDIT_ACC,CHARGE_TYPE from CUSTOM.trade_finance_CHARGES   "
+					sv_s = sv_s + "  where ENTITY_CRE_FLG='Y' AND ( NEXT_RUN_DATE=?SVAR or NEXT_RUN_DATE is null) AND BANK_ID=?SVAR  and TOTAL_FEES !=AMORTIZED_AMT  and Del_flg ='N' "
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS = MISS.CHRG.getboddate + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					
+					sv_o = urhk_dbCursorOpenWithBind(sv_s)
+					print(sv_o)
+					
+					print(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+					MISS.CHRG.MainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+					print(MISS.CHRG.MainCursor)
+					
+					#--------------------------------------------------------------------------
+					# Initialise the Local Variables
+					#--------------------------------------------------------------------------
+					
+					#------------------------------------------------------------------
+					#  Variable Initialisation for counter. It should be Zero
+					#------------------------------------------------------------------
+					sv_z = 0
+					#------------------------------------------------------------------
+					#  Variable Initialisation for credit amount to the bank income
+					#  account. It should be Zero.
+					#------------------------------------------------------------------
+					MISS.CHRG.done = "N"
+					
+					
+					#--------------------------------------------------------------------------
+					# Initialise the MTT repository
+					#--------------------------------------------------------------------------
+						
+
+					sv_u = urhk_MTTS_PopulateInputDetails("")
+					print(sv_u)
+					
+					MTT.TranDetails.TranDate="0"
+					MTT.TranDetails.TranType = "T"
+					MTT.TranDetails.TranSubType = "BI"
+					MTT.TranDetails.Remarks = "TradeFin Upload"
+					MTT.TranDetails.IgnoreExcp = "I"
+					MTT.TranDetails.PSTUpdateFlg ="N"
+					
+					
+					sv_v = "bCashWithCrg"
+					print(sv_v)
+					
+					sv_u = urhk_MTTS_DefineTransaction("bCashWithCrg")
+					
+					#--------------------------------------------------------------------------
+					# MTT code for creating tranxs like individual debit from customer and
+					# consolidated credit to the income Account.
+					#--------------------------------------------------------------------------
+					
+					WHILE (sv_o == 0)
+					#{
+						sv_c = urhk_dbCursorFetch(MISS.CHRG.MainCursor)
+						print(sv_c)
+						IF (sv_c != 0) THEN
+						#{
+							sv_r = urhk_MTTS_EndDefinition("")
+							print(sv_r)
+							
+							
+							print(sv_c)
+							sv_o = 1
+							
+							#}
+						ELSE
+							#{
+							
+							MISS.CHRG.ClsFlg ="N"
+
+							MISS.CHRG.Bill_ID =BANCS.OUTPARAM.BILL_NUMBER
+							print(MISS.CHRG.Bill_ID)
+							MISS.CHRG.charge_acc = BANCS.OUTPARAM.charge_acc
+							print(MISS.CHRG.charge_acc)
+							MISS.CHRG.CREDIT_ACC =BANCS.OUTPARAM.CREDIT_ACC
+							print(MISS.CHRG.CREDIT_ACC)							
+							MISS.CHRG.total_fees =BANCS.OUTPARAM.total_fees
+							print(MISS.CHRG.total_fees)							
+							MISS.CHRG.transactionamount = BANCS.OUTPARAM.transactionamount
+							print(MISS.CHRG.transactionamount)
+							MISS.CHRG.AMORTIZED_AMT =BANCS.OUTPARAM.AMORTIZED_AMT 
+							print(MISS.CHRG.AMORTIZED_AMT)							
+							MISS.CHRG.BALANCE = cdouble (MISS.CHRG.total_fees)  - cdouble(MISS.CHRG.AMORTIZED_AMT)
+							PRINT(MISS.CHRG.BALANCE)
+
+							IF (cdouble(MISS.CHRG.transactionamount) > cdouble (MISS.CHRG.BALANCE)) then							
+								MISS.CHRG.transactionamount = MISS.CHRG.BALANCE
+								Print (MISS.CHRG.transactionamount)							
+							else
+								Print (MISS.CHRG.transactionamount)
+							endif
+							
+							
+							MISS.CHRG.transaction_currencycode = BANCS.OUTPARAM.charge_currency
+							print(MISS.CHRG.transaction_currencycode)
+
+							MISS.CHRG.CHARGE_TYPE= BANCS.OUTPARAM.CTYPE
+							Print(MISS.CHRG.CHARGE_TYPE)
+						
+
+						 IF  (MISS.CHRG.CHARGE_TYPE =="MATURITY") THEN
+								sv_s = " CLS_FLG | SELECT CLS_FLG  FROM tbaadm.fbm  WHERE  bank_id = ?SVAR AND ENTITY_CRE_FLG ='Y'  and  BILL_ID = ?SVAR "
+								PRINT(sv_s)
+								BANCS.INPARAM.BINDVARS =   BANCS.STDIN.contextBankId + "|" + MISS.CHRG.Bill_ID
+								PRINT(BANCS.INPARAM.BINDVARS)
+								sv_d = urhk_dbselectWithBind(sv_s)
+								print(sv_d)
+								MISS.CHRG.ClsFlg = BANCS.OUTPARAM.CLS_FLG
+								print(MISS.CHRG.ClsFlg)
+								IF (MISS.CHRG.ClsFlg == "Y") THEN								
+									
+									sv_s = " update CUSTOM.trade_finance_CHARGES set Del_flg  = 'Y' where  ENTITY_CRE_FLG='Y' AND BILL_NUMBER =?SVAR  AND bank_id=?SVAR    "
+									PRINT(sv_s)
+									BANCS.INPARAM.BINDVARS =  MISS.CHRG.Bill_ID + "|" + BANCS.STDIN.contextBankId
+									PRINT(BANCS.INPARAM.BINDVARS)								
+									sv_d = urhk_dbSQLWithBind(sv_s)
+									print(sv_d)
+									sv_d = urhk_dbSQLWithBind("COMMIT")
+									print(sv_d)
+
+									GOTO STEP3
+
+								ENDIF
+						ENDIF
+							
+							IF (FIELDEXISTS(MISS.CHRG.charge_acc) == 1)  THEN												
+								sv_h = urhk_getAcctDetailsInRepository(MISS.CHRG.charge_acc)
+								print(sv_h)
+								IF (sv_h==0) THEN
+									MISS.CHRG.DRacctCrncy=BANCS.OUTPARAM.acctCrncyCode
+									Print (MISS.CHRG.DRacctCrncy)
+								ENDIF
+							#}
+							ENDIF
+
+							IF (FIELDEXISTS(MISS.CHRG.CREDIT_ACC) == 1)  THEN												
+								sv_h = urhk_getAcctDetailsInRepository(MISS.CHRG.CREDIT_ACC)
+								print(sv_h)
+								IF (sv_h==0) THEN
+									MISS.CHRG.CRacctCrncy=BANCS.OUTPARAM.acctCrncyCode
+									Print (MISS.CHRG.CRacctCrncy)
+								ENDIF
+							#}
+							ENDIF
+							
+							MISS.CHRG.credit_accountid = MISS.CHRG.CREDIT_ACC
+							
+							
+							MISS.CHRG.rate="0"
+							MISS.CHRG.ratecode="TTB"
+							
+							
+							MISS.CHRG.stamp = "Y"
+							
+							#------------------------------------------
+							# counter setting for defining different PartTran
+							#------------------------------------------
+							sv_z = sv_z + 1
+							MISS.CHRG.Counter = sv_z
+							
+							#--------------------------------------------------------------------------
+							# Create the narration
+							#--------------------------------------------------------------------------
+
+							
+							MISS.CHRG.id =MISS.CHRG.charge_acc
+							print(MISS.CHRG.id)
+							
+							MISS.CHRG.parttrnrmks = MISS.CHRG.Bill_ID
+							print(MISS.CHRG.parttrnrmks)
+							
+							
+							MISS.CHRG.narr1 = "Frais Bill Amortization " +MISS.CHRG.parttrnrmks 
+							print(MISS.CHRG.narr1)						
+
+							#------------------------------------------------------------------
+							#  Credit Partran customer 1
+							#------------------------------------------------------------------
+							print(MISS.CHRG.credit_accountid)
+							MTT.PartTranDetails.Account = MISS.CHRG.credit_accountid
+							print(MTT.PartTranDetails.Account)
+							MTT.PartTranDetails.RefCurrency = MISS.CHRG.transaction_currencycode
+
+							if ( MISS.CHRG.transaction_currencycode != MISS.CHRG.CRacctCrncy)then
+								MTT.PartTranDetails.RateCode ="TTB"
+							else
+								MTT.PartTranDetails.RateCode ="MEAN"
+							endif
+
+							MTT.PartTranDetails.Rate = ""
+							MTT.PartTranDetails.ValueDateDiff = "0"
+							MTT.PartTranDetails.Particulars = MISS.CHRG.narr1
+							MTT.PartTranDetails.Particulars2 = MISS.CHRG.parttrnrmks
+							MTT.PartTranDetails.RefAmount = cdouble(MISS.CHRG.transactionamount)
+							print(MTT.PartTranDetails.RefAmount)
+							MTT.PartTranDetails.Remarks = MISS.CHRG.parttrnrmks
+							MTT.PartTranDetails.RefNum = MISS.CHRG.id
+							MTT.PartTranDetails.IgnoreExcp = "I"
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.TranIdentifier = sv_v
+							print(MISS.CHRG.Counter)
+							sv_e = "Credt" + MISS.CHRG.Counter
+							print(sv_e)
+							sv_r = urhk_MTTS_definePartTran(sv_e)
+							print(sv_r)
+							IF(sv_r != 0) THEN
+							#{
+								MISS.CHRG.finalstatus="E"
+								print(MISS.CHRG.finalstatus)
+								MISS.CHRG.error_desc="Transaction not Posted check data"
+								print(MISS.CHRG.error_desc)
+								GOTO STEP3
+							#}
+							ENDIF
+							
+							
+							#------------------------------------------------------------------
+							# Debit Partran customer 1
+							#------------------------------------------------------------------
+							
+							print(MISS.CHRG.charge_acc)
+							MTT.PartTranDetails.Account = MISS.CHRG.charge_acc
+							MTT.PartTranDetails.RefCurrency = MISS.CHRG.transaction_currencycode
+							
+							if ( MISS.CHRG.transaction_currencycode != MISS.CHRG.DRacctCrncy)then
+								MTT.PartTranDetails.RateCode ="TTB"
+							else
+								MTT.PartTranDetails.RateCode ="MEAN"
+							endif
+
+							MTT.PartTranDetails.Rate = ""
+							MTT.PartTranDetails.ValueDateDiff = "0"
+							MTT.PartTranDetails.Particulars = MISS.CHRG.narr1
+							MTT.PartTranDetails.Particulars2 = MISS.CHRG.parttrnrmks
+							sv_a = cdouble(MISS.CHRG.transactionamount)
+							print(sv_a)
+							sv_a = -(sv_a)
+							print(sv_a)
+							MTT.PartTranDetails.RefAmount = sv_a
+							print(MTT.PartTranDetails.RefAmount)
+							MTT.PartTranDetails.Remarks = MISS.CHRG.parttrnrmks
+							MTT.PartTranDetails.RefNum = MISS.CHRG.id
+							MTT.PartTranDetails.IgnoreExcp = "I"
+							MTT.PartTranDetails.Consolidate = "N"
+							MTT.PartTranDetails.TranIdentifier = sv_v
+							print(MISS.CHRG.Counter)
+							sv_h = "Debit" + MISS.CHRG.Counter
+							print(sv_h)
+							sv_u = urhk_MTTS_definePartTran(sv_h)
+							print(sv_u)
+							IF(sv_u != 0) THEN
+							#{
+								MISS.CHRG.finalstatus="E"
+								print(MISS.CHRG.finalstatus)
+								MISS.CHRG.error_desc="Transaction not Posted check data"
+								print(MISS.CHRG.error_desc)
+								GOTO STEP3
+							#}
+							ENDIF
+							
+							#######
+							
+							sv_r = urhk_MTTS_EndDefinition("")
+							print(sv_r)
+							
+							sv_r = urhk_MTTS_HandleExceptions("POST")
+							print(sv_r)
+							
+							IF (FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) THEN
+							#{
+								print(BANCS.OUTPARAM.tranId)
+							#}
+							ENDIF
+							
+							IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId) == 1) THEN
+							#{
+								MISS.CHRG.tranid = BANCS.OUTPARAM.MTTTranId
+								print(MISS.CHRG.tranid)
+								
+								print(BANCS.STDIN.userId)
+								
+								print(BANCS.STDIN.sysDate)
+								
+								print(BANCS.STDIN.BODDate)
+								
+								
+								sv_g = mid$(BANCS.STDIN.sysDate,0,10)
+								print(sv_g)
+								sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+								print(sv_h)
+								#}
+							ELSE
+								#{
+								
+								MISS.CHRG.tranid="NULL"
+							#}
+							ENDIF
+
+							
+							print(MISS.CHRG.getboddate)
+							#+30
+							sv_s = "getboddatenx|select  CONCAT ( '15' , ( to_char((to_date(?SVAR,'DD-MM-YYYY') + 29),'-MON-YYYY')) )  from dual"
+							BANCS.INPARAM.BINDVARS =  MISS.CHRG.getboddate
+							sv_d = urhk_dbSelectWithBind(sv_s)
+							print(sv_d)
+							IF (sv_d =="0") THEN
+							#{
+								MISS.CHRG.getboddatenx = BANCS.OUTPARAM.getboddatenx
+								print(MISS.CHRG.getboddatenx)
+							#}
+							ENDIF
+							
+							
+							#+1							
+							sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+							sv_h = MISS.CHRG.Dates
+							print(sv_h)
+							sv_s = "getboddatenow|select to_char((to_date(?SVAR,'DD-MM-YYYY')+1),'DD-MON-YYYY') from dual"
+							BANCS.INPARAM.BINDVARS =  sv_h
+							sv_d = urhk_dbSelectWithBind(sv_s)
+							print(sv_d)
+							IF (sv_d =="0") THEN
+							#{
+								MISS.CHRG.getboddatenx = BANCS.OUTPARAM.getboddatenow
+								print(MISS.CHRG.getboddatenx)
+							#}
+							ENDIF
+							
+							sv_h = mid$(BANCS.STDIN.BODDate,0,10)							
+							print(sv_h)
+							sv_s = "getboddatenow|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+							BANCS.INPARAM.BINDVARS =  sv_h
+							sv_d = urhk_dbSelectWithBind(sv_s)
+							print(sv_d)
+							IF (sv_d =="0") THEN
+							#{
+								MISS.CHRG.getboddatenow = BANCS.OUTPARAM.getboddatenow
+								print(MISS.CHRG.getboddatenow)
+							#}
+							ENDIF
+							
+
+							MISS.CHRG.AMRT_AMT  = cdouble(MISS.CHRG.transactionamount) + cdouble (MISS.CHRG.AMORTIZED_AMT)
+							print (MISS.CHRG.AMRT_AMT)
+
+							sv_s = " update CUSTOM.trade_finance_CHARGES set AMORTIZED_AMT = ?SVAR,  NEXT_RUN_DATE=?SVAR, LAST_UPDATED=?SVAR, LAST_RUN_DATE=?SVAR "
+							sv_s = sv_s + "  where  ENTITY_CRE_FLG='Y' AND BILL_NUMBER =?SVAR  AND bank_id=?SVAR   "
+							PRINT(sv_s)
+							BANCS.INPARAM.BINDVARS = MISS.CHRG.AMRT_AMT + "|" + MISS.CHRG.getboddatenx + "|" + MISS.CHRG.getboddatenow + "|" + MISS.CHRG.getboddatenow + "|" +  MISS.CHRG.Bill_ID + "|" + BANCS.STDIN.contextBankId
+							PRINT(BANCS.INPARAM.BINDVARS)
+							
+							sv_d = urhk_dbSQLWithBind(sv_s)
+							print(sv_d)
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+							print(sv_d)
+							########
+							
+							STEP3:
+							#}
+							ENDIF
+						#}
+						DO
+						
+						sv_c = urhk_dbCursorClose(MISS.CHRG.MainCursor)
+						Finish:
+
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		DO
+	ENDIF
+
+EXITSCRIPT
+END-->

@@ -1,0 +1,318 @@
+###################################################################
+# File Name: FI_InquireLAAcct_post_process_data.scr
+# Purpose   : Addition of outstnding amount,fee amount,open date fields in the Reponse.
+# Description: Called for FI customization -API name:	LoanAcctInq
+# Calling File/Menu: None
+# Called Files: None
+# Date        : 22-May-2018
+# Created By: Bhushan Suryawanshi
+# Revision Details:
+# Change Desc			Modified By			Modified On
+#  NA				NA					NA
+###################################################################
+
+<--start
+trace on
+
+if (BANCS.STDIN.contextBankId == "99") then
+#{
+
+###################################################################
+#       CREATING REPOSITORIES
+###################################################################
+sv_r=""
+print(sv_r)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST", "INT") == 0) THEN
+#{
+        CREATECLASS("CUST","INT",5)
+#}
+ENDIF
+sv_a=""
+
+###############################################################
+
+CUST.INT.bankId	 			= BANCS.STDIN.contextBankId
+CUST.INT.acid				= ""
+CUST.INT.errorCode			= ""
+CUST.INT.errorMsg 			= ""
+CUST.INT.orbString			= ""
+CUST.INT.foracid        = ""
+CUST.INT.CIFID			 = ""
+CUST.INT.fromDate			 = ""
+CUST.INT.toDate			 = ""
+CUST.INT.totintamt		 = ""
+
+sv_a = urhk_B2K_printRepos("BANCS")
+
+print(BANCS.STDIN.BODDate)
+CUST.INT.toDate = MID$(BANCS.STDIN.BODDate,0,10)
+CUST.INT.fromDate = MID$(BANCS.STDIN.BODDate,0,10)
+
+################Getting Channel Id###################################
+
+sv_x = urhk_GetChannelInfo("")
+print(sv_x)
+if(sv_x == 0) then
+#{
+        print(BANCS.OUTPARAM.DccId)
+        print(BANCS.OUTPARAM.DccReqRefNum)
+        print(BANCS.OUTPARAM.DccReqType)
+        print(BANCS.OUTPARAM.DccReqOriginTime)
+
+        CUST.INT.ChannelId = BANCS.OUTPARAM.DccId
+        print(CUST.INT.ChannelId)
+#}
+endif
+
+
+sv_u = urhk_SRV_GetVal("acctCommonInfo.acctGeneralInfo.acctBasic.foracid")
+IF (sv_u == 0) THEN
+#{
+	CUST.INT.foracid	= BANCS.OUTPARAM.srvValue
+	print(CUST.INT.foracid)
+#}
+ELSE
+#{
+	###############################################################################################
+	# Setting Error Messages
+	###############################################################################################
+	CUST.INDATA.errorCode = "CINB000197"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+#####
+BANCS.OUTPUT.successOrFailure = "S"
+
+
+	sv_a = "fee_amt,loan_open_date,acid,CIFID,schm_type |select lam.CUM_CAPITALIZE_FEES, lam.REP_SHDL_DATE,gam.acid,gam.cif_id,gam.schm_type "
+	sv_a = sv_a + " from tbaadm.gam,tbaadm.lam where lam.acid = gam.acid and gam.acid = (select acid from tbaadm.gam where foracid= '"+CUST.INT.foracid+"') "
+	sv_a = sv_a + " and gam.bank_id='"+BANCS.STDIN.contextBankId+"'"
+
+	print(sv_a)
+	sv_r = urhk_dbSelectWithBind(sv_a)
+	print(sv_r)
+	if(sv_r == 0) THEN
+	#{
+		CUST.INT.fee_amt	 =  BANCS.OUTPARAM.fee_amt
+		CUST.INT.CIFID	 =  BANCS.OUTPARAM.CIFID
+		CUST.INT.loan_open_date	 =  BANCS.OUTPARAM.loan_open_date
+		CUST.INT.acid	 =  BANCS.OUTPARAM.acid
+		CUST.INT.schm_type	 =  BANCS.OUTPARAM.schm_type
+		print(CUST.INT.CIFID)
+		print(CUST.INT.fee_amt)
+		print(CUST.INT.loan_open_date)
+		print(CUST.INT.acid)
+		print(CUST.INT.schm_type)
+		if(CUST.INT.schm_type  != "LAA") then
+		#{
+			CUST.INT.errorCode = "ERR11"
+			CUST.INT.errorMsg = "Scheme Type should be LAA "
+			GOTO ENDOFSCRIPT
+		#}
+		endif
+	#}
+	ELSE
+	#{
+		CUST.INT.errorCode = "ERR11"
+		CUST.INT.errorMsg = "Invalid account"
+		GOTO ENDOFSCRIPT
+	#}
+	endif
+
+
+	sv_e = "intRouteFlg,chrgRouteFlg,intDmdOS,bchgDmdOS,ochgDmdOS,clrBalAmt|"
+	sv_e = sv_e + " select lam.int_route_flg, lam.chrg_route_flg, lam.int_dmd_os, lam.bchg_dmd_os, lam.ochg_dmd_os, gam.clr_bal_amt "
+	sv_e = sv_e + " from tbaadm.lam,tbaadm.gam "
+	sv_e = sv_e + " where gam.acid = lam.acid and gam.acid = '" + CUST.INT.acid + "'"
+	#+++++vp
+	sv_e = sv_e + " and gam.schm_type='LAA' and gam.bank_id = '"+ BANCS.STDIN.contextBankId +"' and lam.bank_id = gam.bank_id "
+	#+++++vp
+	print(sv_e)
+
+	sv_r = urhk_dbSelectWithBind(sv_e)
+	print(sv_r)
+	
+	IF (sv_r != 0) THEN
+	#{
+                print("error in fetching the loan outstanding amount")
+		CUST.INT.loanOutstandinAmt = "error in fetching the loan outstanding amount"
+	#}
+	ELSE
+	#{	
+	
+	CUST.INT.intRouteFlg		=	BANCS.OUTPARAM.intRouteFlg
+	CUST.INT.chrgRouteFlg           = 	BANCS.OUTPARAM.chrgRouteFlg
+	CUST.INT.intDmdOS   		= 	BANCS.OUTPARAM.intDmdOS
+	CUST.INT.bchgDmdOS              = 	BANCS.OUTPARAM.bchgDmdOS
+	CUST.INT.ochgDmdOS              = 	BANCS.OUTPARAM.ochgDmdOS
+	CUST.INT.clrBalAmt    		=  -1 * CDOUBLE(BANCS.OUTPARAM.clrBalAmt)
+
+	
+	IF ((CUST.INT.intRouteFlg == "L") AND (CUST.INT.chrgRouteFlg == "L")) THEN
+	#{
+                CUST.INT.loanOutstandinAmt = CDOUBLE(CUST.INT.clrBalAmt)
+                print(CUST.INT.loanOutstandinAmt)
+	#}
+	ENDIF
+
+	IF ((CUST.INT.intRouteFlg == "O") AND (CUST.INT.chrgRouteFlg == "O")) THEN
+	#{
+                CUST.INT.loanOutstandinAmt = CDOUBLE(CUST.INT.clrBalAmt)-(CDOUBLE(CUST.INT.bchgDmdOS) + CDOUBLE(CUST.INT.ochgDmdOS) + CDOUBLE(CUST.INT.intDmdOS))
+                print(CUST.INT.loanOutstandinAmt)
+	#}
+	ENDIF
+
+	IF ((CUST.INT.intRouteFlg == "L") AND (CUST.INT.chrgRouteFlg == "O")) THEN
+	#{
+                CUST.INT.loanOutstandinAmt = CDOUBLE(CUST.INT.clrBalAmt) -(CDOUBLE(CUST.INT.bchgDmdOS) + CDOUBLE(CUST.INT.ochgDmdOS))
+                print(CUST.INT.loanOutstandinAmt)
+	#}
+	ENDIF
+
+	IF ((CUST.INT.intRouteFlg == "O") AND (CUST.INT.chrgRouteFlg == "L")) THEN
+	#{
+                CUST.INT.loanOutstandinAmt = CDOUBLE(CUST.INT.clrBalAmt) - CDOUBLE(CUST.INT.intDmdOS)
+                print(CUST.INT.loanOutstandinAmt)
+	#}
+	ENDIF
+	#}
+	ENDIF
+
+	###################################################################################
+        # Sending data from script to java file
+        ##################################################################################
+
+
+        print("inside custom fi inquire loan account script")
+
+        sv_m = "FICustResp.Fee_Amt="                            +        CUST.INT.fee_amt               +       "|"
+        sv_m = sv_m + "FICustResp.Loan_Open_Date="                      +        CUST.INT.loan_open_date     +       "|"
+        sv_m = sv_m + "FICustResp.OutStandingLoanAmount="               +        CUST.INT.loanOutstandinAmt     +       "|"
+
+
+
+
+############################Mini-Statement for Loan acct###############################
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INT.acid
+	print(BANCS.INPARAM.BINDVARS)
+	sv_b = "trandate,tranamt,trancrncycode,trantype,tranpart | select tran_date,tran_amt, TRAN_CRNCY_CODE,PART_TRAN_TYPE,TRAN_PARTICULAR "
+	sv_b = sv_b + "from TBAADM.CTD_DTD_ACLI_VIEW where bank_id =?SVAR and rownum<10 and acid=?SVAR order by LCHG_TIME desc"
+
+	print(sv_b)
+
+	sv_d= urhk_dbCursorOpenWithBind(sv_b)
+
+        CUST.INT.RecordCount= 0
+        sv_g =0
+
+	IF (sv_d != 0 ) THEN
+        #{
+
+                                BANCS.OUTPUT.ErrorMsg="Database Error Contact Admin"
+                                sv_e=urhk_SetOrbOut("Error|"+BANCS.OUTPUT.ErrorMsg)
+                                GOTO ENDOFSCRIPT
+        #}
+        ELSE
+        #{
+                                sv_p = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                                print(sv_p)
+                                sv_n = urhk_dbCursorFetch(sv_p)
+                                print(sv_n)
+                                CUST.INT.number = 0
+
+			IF (sv_n == 1) THEN
+                        #{
+
+                                sv_c = urhk_dbCursorClose(sv_p)
+
+                                BANCS.OUTPUT.ErrorMsg="Record Not Found"
+                                sv_e=urhk_SetOrbOut("Error|"+BANCS.OUTPUT.ErrorMsg)
+                                GOTO ENDOFSCRIPT
+
+                        #}
+                        endif
+
+	WHILE(sv_n == 0)
+       	#{
+
+                        CUST.INT.trandate = BANCS.OUTPARAM.trandate
+	                CUST.INT.tranamt = BANCS.OUTPARAM.tranamt
+                        CUST.INT.trancrncycode = BANCS.OUTPARAM.trancrncycode
+                        CUST.INT.trantype = BANCS.OUTPARAM.trantype
+                        CUST.INT.tranpart = BANCS.OUTPARAM.tranpart
+
+		IF (CUST.INT.trandate != "") THEN
+        	#{
+                	sv_a = "Statement.<rec_" + CUST.INT.number + ">.TRAN_DATE|" + CUST.INT.trandate
+                	print(sv_a)
+                	#sv_u = urhk_SetOrbOut(sv_a)
+        		sv_m = sv_m + "Statement.<rec_" + CUST.INT.number + ">.TRAN_DATE="               +        CUST.INT.trandate     +       "|"
+			
+        	#}
+        	ENDIF
+
+		IF (CUST.INT.tranamt != "") THEN
+                #{
+                        sv_a = "Statement.<rec_" + CUST.INT.number + ">.TRAN_AMT|" + CUST.INT.tranamt
+                        print(sv_a)
+                        #sv_u = urhk_SetOrbOut(sv_a)
+			sv_m = sv_m + "Statement.<rec_" + CUST.INT.number + ">.TRAN_AMT="               +        CUST.INT.tranamt     +       "|"
+                #}
+                ENDIF
+
+		IF (CUST.INT.trancrncycode != "") THEN
+                #{
+                        sv_a = "Statement.<rec_" + CUST.INT.number + ">.TRAN_CRNCY_CODE|" + CUST.INT.trancrncycode
+                        print(sv_a)
+                        #sv_u = urhk_SetOrbOut(sv_a)
+			sv_m = sv_m + "Statement.<rec_" + CUST.INT.number + ">.TRAN_CRNCY_CODE="               +        CUST.INT.trancrncycode     +       "|"
+                #}
+                ENDIF
+
+		IF (CUST.INT.trantype != "") THEN
+                #{
+                        sv_a = "Statement.<rec_" + CUST.INT.number + ">.TRAN_TYPE|" + CUST.INT.trantype
+                        print(sv_a)
+                        #sv_u = urhk_SetOrbOut(sv_a)
+			sv_m = sv_m + "Statement.<rec_" + CUST.INT.number + ">.TRAN_TYPE="               +        CUST.INT.trantype     +       "|"
+                #}
+                ENDIF
+
+		IF (CUST.INT.tranpart != "") THEN
+                #{
+                        sv_a = "Statement.<rec_" + CUST.INT.number + ">.TRAN_PARTICULAR|" + CUST.INT.tranpart
+                        print(sv_a)
+                        #sv_u = urhk_SetOrbOut(sv_a)
+			sv_m = sv_m + "Statement.<rec_" + CUST.INT.number + ">.TRAN_PARTICULAR="               +        CUST.INT.tranpart     +       "|"
+                #}
+                ENDIF
+		
+		 sv_n = urhk_dbCursorFetch(sv_p)
+                                sv_g = sv_g + 1
+                                CUST.INT.number = sv_g
+         #}
+         DO
+	
+	sv_c = urhk_dbCursorClose(sv_p)
+
+	#}
+	ENDIF
+
+	ONS.CUSTOM.custDataOut = sv_m
+        print(ONS.CUSTOM.custDataOut)
+
+
+#}
+endif
+
+trace off
+end-->
+

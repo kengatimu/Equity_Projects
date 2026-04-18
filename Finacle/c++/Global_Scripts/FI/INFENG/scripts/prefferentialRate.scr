@@ -1,0 +1,259 @@
+me               :gvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvyht6
+#Date               :20-01-2014
+#Author             :
+#Description        :This script is used to fetch Rate details from The DB
+#Called script      :None
+#Calling Script     :None
+#Input              :
+#Output             :
+########################################################################################################
+<--start
+trace on
+
+
+####################################################################
+#section      :creating new repository if required
+#Description  :Checks for the existence of the repository CUST and
+#              creates a new one by that name if it does not exist
+#####################################################################
+
+IF (REPEXISTS("CUST") == 0 ) THEN
+#{
+    CREATEREP("CUST")
+    #}
+ENDIF
+
+############################################################################
+#section      :creating new class if required
+#Desscription :checks for the existence of the class DATA in the
+#repository and create a new one if it does not exist
+##############################################################################
+
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+#ELSE
+	#{
+	#	DELETECLASS("CUST","DATA")
+	#	CREATECLASS("CUST","DATA",5)}
+	#ENDIF
+#}
+ENDIF
+
+############################################
+#Assigns the values to the variables
+###########################################
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("From"))== 0) ) THEN
+   CUST.DATA.errMsg="Kindly Supply From which Currency "
+sv_z = urhk_SetOrbOut("SuccessOrFailure|Failed")
+   GOTO HandleError
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("To"))== 0) ) THEN
+   CUST.DATA.errMsg="Kindly Supply To Which Currency"
+sv_z = urhk_SetOrbOut("SuccessOrFailure|Failed")
+   GOTO HandleError
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("Trantype"))== 0) ) THEN
+sv_z = urhk_SetOrbOut("SuccessOrFailure|Failed")
+   CUST.DATA.errMsg="Kindly Supply The Trantype C-cash or T-Transfer"
+
+   GOTO HandleError
+ENDIF
+IF( (FIELDEXISTS(("BANCS").("INPUT").("RateCode"))== 0) ) THEN
+   CUST.DATA.errMsg="Kindly Supply The Rate code TTB1 OR TTS1"
+   GOTO HandleError
+ENDIF
+
+
+
+
+
+CUST.DATA.from=BANCS.INPUT.From
+CUST.DATA.to=BANCS.INPUT.To
+CUST.DATA.BankId=BANCS.STDIN.contextBankId
+CUST.DATA.TranType=BANCS.INPUT.Trantype
+CUST.DATA.ratecode=BANCS.INPUT.RateCode
+
+   IF ((CUST.DATA.TranType=="T") OR (CUST.DATA.TranType=="C")) THEN
+
+     if (CUST.DATA.TranType=="T") then 
+            
+            BANCS.INPUT.RateCode="TTB1"
+	     CUST.DATA.ratecode1="TTB2"
+             BANCS.INPUT.RateCode="TTB3"
+	     CUST.DATA.ratecode1="TTS1"
+             BANCS.INPUT.RateCode="TTS2"
+	     CUST.DATA.ratecode1="TTS3"
+
+
+       else
+               CUST.DATA.ratecode="CNS"
+	      CUST.DATA.ratecode1="CNB"
+       endif
+
+  ELSE
+       
+   CUST.DATA.errMsg="Invalid Trantype Supply C-cash or T-Transfer"
+sv_z = urhk_SetOrbOut("SuccessOrFailure|Failed")
+    GOTO HandleError
+   ENDIF
+  
+
+########################################################################
+#Check in the Database to see if the combination from/to Currency Exists
+########################################################################
+
+sv_s="count|select count(RATECODE) from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and RateCode = ?SVAR and bank_id =?SVAR" 
+BANCS.INPARAM.BINDVARS=CUST.DATA.from + "|" + CUST.DATA.to + "|" + CUST.DATA.ratecode+ "|" + CUST.DATA.BankId
+
+PRINT(sv_s)
+PRINT(BANCS.INPARAM.BINDVARS)
+sv_u =  urhk_dbSelectWithBind(sv_s)
+
+
+
+print(CUST.DATA.ratecode)
+### print(CUST.DATA.ratecode1)
+
+IF (sv_u == 0) THEN
+#{
+   CUST.DATA.count = BANCS.OUTPARAM.count
+
+        ########################################################################
+	#IF there is No Record use TTS and CNS   Else Use TTB and CNB
+	######################################################################
+     
+   IF (CUST.DATA.count == 0) THEN
+      #{ 
+
+       sv_f="FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS|select FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE, VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+       sv_f = sv_f + " and RATECODE in(?SVAR)"
+        
+       print(sv_f)
+
+       BANCS.INPARAM.BINDVARS=CUST.DATA.to + "|" + CUST.DATA.from + "|" + CUST.DATA.BankId+ "|" + CUST.DATA.ratecode
+       print(BANCS.INPARAM.BINDVARS)
+       sv_f= urhk_dbCursorOpenWithBind(sv_f)
+
+
+                   IF( sv_f == 0 ) THEN
+			 #{
+				sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				 print(sv_m)
+				sv_n = urhk_dbCursorFetch(sv_m)
+				 print(sv_n)
+				   ############################################
+				   #Invalid Currency or Currency Combination
+				   ###########################################
+				IF (sv_n==1) THEN
+					CUST.DATA.errMsg="The Currency or  Combination is Invalid"
+                                  sv_z = urhk_SetOrbOut("SuccessOrFailure|Failed")
+                #sv_t = "Msg| " +CUST.DATA.errMsg
+                #sv_u = urhk_SetOrbOut(sv_t)
+
+					GOTO HandleError
+			        ENDIF
+                          #}
+                     ELSE
+		          #{
+			     GOTO continue
+			  #}
+                     ENDIF
+
+
+      #}
+   ELSE
+     #{
+       
+        sv_f="FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS|select FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE, VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+	sv_f = sv_f + " and RATECODE in(?SVAR)"
+
+	BANCS.INPARAM.BINDVARS=CUST.DATA.from + "|" + CUST.DATA.to + "|" + CUST.DATA.BankId + "|" + CUST.DATA.ratecode
+        print(BANCS.INPARAM.BINDVARS) 
+	sv_f= urhk_dbCursorOpenWithBind(sv_f)
+
+
+
+	                IF( sv_f == 0 ) THEN
+			 #{
+				sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				 print(sv_m)
+				sv_n = urhk_dbCursorFetch(sv_m)
+				 print(sv_n)
+				   ############################################
+				   #Invalid Currency or Combination
+				   ###########################################
+				IF (sv_n==1) THEN
+                                        
+					CUST.DATA.errMsg="The Currency or Combination is Invalid"
+sv_t = "ERROR | " +CUST.DATA.errMsg
+                        sv_u = urhk_SetOrbOut(sv_t)
+
+					GOTO HandleError
+			        ENDIF
+                          #}
+                     ELSE
+		          #{
+			     GOTO continue
+			  #}
+                     ENDIF
+
+      #}
+
+   ENDIF
+ELSE
+   #{
+    sv_e=urhk_SetOrbOut("Error | Database Error Contact Admin")
+    GOTO HandleError
+   #}
+
+#}
+ENDIF
+
+
+
+
+
+
+continue:
+    CUST.DATA.number = 0
+    sv_g =0
+      WHILE(sv_n == 0)
+         #{
+               CUST.DATA.RateCode = BANCS.OUTPARAM.RATECODE
+	       CUST.DATA.CustomerRate = BANCS.OUTPARAM.VAR_CRNCY_UNITS
+	       CUST.DATA.TreasuryRate = BANCS.OUTPARAM.CUST_VAR_CRNCY_UNITS
+
+               sv_p = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.RateCode|" + CUST.DATA.ratecode 								
+	       sv_k = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.PreffRate|" + CUST.DATA.CustomerRate
+	       #sv_r = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.TreasuryRate|" + CUST.DATA.TreasuryRate
+	       
+	   sv_u = urhk_SetOrbOut(sv_p)
+           sv_u = urhk_SetOrbOut(sv_k)
+           #sv_u = urhk_SetOrbOut(sv_r)
+
+           sv_n = urhk_dbCursorFetch(sv_m)
+	   sv_g = sv_g + 1  
+	   CUST.DATA.number = sv_g
+	 #}					
+	DO
+	 sv_u = urhk_dbCursorClose(sv_m)
+	 print(sv_u)
+	 EXITSCRIPT
+  #}
+   
+
+
+
+HandleError:
+  sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg) 
+
+EXITSCRIPT
+trace off
+end-->	
+

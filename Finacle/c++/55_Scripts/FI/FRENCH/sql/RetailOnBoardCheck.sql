@@ -1,0 +1,355 @@
+DROP VIEW CRMUSER.SEARCHALL;
+
+/* Formatted on 2013/12/19 22:38 (Formatter Plus v4.8.8) */
+CREATE OR REPLACE FORCE VIEW crmuser.searchall (firstname,
+                                                lastname,
+                                                middlename,
+                                                firstname_alt1,
+                                                lastname_alt1,
+                                                middlename_alt1,
+                                                searchallid,
+                                                securityguhint,
+                                                securityglhint,
+                                                securityiuhint,
+                                                securityilhint,
+                                                extensionid,
+                                                boaclid,
+                                                concurdetect_x,
+                                                bodatecreated,
+                                                bocreatedby,
+                                                bodatemodified,
+                                                bomodifiedby,
+                                                birth_day,
+                                                birth_month,
+                                                birth_year,
+                                                city,
+                                                manager,
+                                                designation,
+                                                assistant,
+                                                orgkey,
+                                                cin,
+                                                gender,
+                                                blacklisted,
+                                                negated,
+                                                suspended,
+                                                recordstatus,
+                                                education,
+                                                occupation,
+                                                email,
+                                                pan,
+                                                passportno,
+                                                licenceno,
+                                                relationshipopeningdate,
+                                                customerrelationshipno,
+                                                industry,
+                                                competitor,
+                                                region,
+                                                annualrevenue,
+                                                autoapproval,
+                                                placeofbirth,
+                                                countryofbirth,
+                                                uniqueid,
+                                                uniqueidtype,
+                                                segmentation_class,
+                                                preferredphonetype,
+                                                preferredphone,
+                                                preferredemail,
+                                                ssn,
+                                                flg2,
+                                                flg3,
+                                                alert2,
+                                                alert3,
+                                                dtdate2,
+                                                dtdate3,
+                                                amount2,
+                                                amount3,
+                                                strfield2,
+                                                strfield3,
+                                                str1,
+                                                str2,
+                                                str3,
+                                                str4,
+                                                str5,
+                                                faxwork,
+                                                phonehome,
+                                                phonecell,
+                                                emailhome,
+                                                emailpalm,
+                                                urlinfo,
+                                                searchalltype,
+                                                phonework,
+                                                salutation,
+                                                dob,
+                                                maidenname,
+                                                extension,
+                                                householdid,
+                                                householdname,
+                                                hshlduflag,
+                                                address_line1,
+                                                address_line2,
+                                                address_line3,
+                                                state,
+                                                country,
+                                                zip,
+                                                accessownergroup,
+                                                accessownersegment,
+                                                accessownerbc,
+                                                accessowneragent,
+                                                accessassigneeagent,
+                                                bank_id,
+                                                gcifid,
+                                                status
+                                               )
+AS
+   (SELECT acc.cust_first_name AS firstname, acc.cust_last_name AS lastname,
+           acc.cust_middle_name AS middlename,
+           acc.cust_first_name_alt1 AS firstname_alt1,
+           acc.cust_last_name_alt1 AS lastname_alt1,
+           acc.cust_middle_name_alt1 AS middlename_alt1,
+           acc.accountid AS searchallid, acc.securityguhint,
+           acc.securityglhint, acc.securityiuhint, acc.securityilhint,
+           acc.extensionid, acc.boaclid, acc.concurdetect_x,
+           acc.bodatecreated, acc.bocreatedby, acc.bodatemodified,
+           acc.bomodifiedby, acc.birth_day, acc.birth_month, acc.birth_year,
+           acc.city, acc.manager, acc.designation, acc.assistant, acc.orgkey,
+           acc.cin, acc.gender, acc.blacklisted, acc.negated, acc.suspended,
+           acc.recordstatus, acc.education, acc.occupation,
+           acc.email AS email, acc.pan, acc.passportno,
+           acc.licenseno AS licenceno, acc.relationshipopeningdate,
+           acc.customerrelationshipno, acc.industry, acc.competitor,
+           acc.region, acc.annualrevenue, acc.autoapproval, acc.placeofbirth,
+           acc.countryofbirth, acc.uniqueid, acc.uniqueidtype,
+           acc.segmentation_class, acc.preferredphonetype, acc.preferredphone,
+           acc.preferredemail, acc.ssn, flg2, flg3, alert2, alert3, dtdate2,
+           dtdate3, amount2, amount3, acc.strfield2, acc.strfield3,
+           acc.strfield1 AS str1, acc.strfield6 AS str2,
+           acc.strfield7 AS str3, acc.strfield4 AS str4,
+           acc.strfield5 AS str5, acc.fax AS faxwork,
+           acc.phone_home AS phonehome, acc.phone_cell AS phonecell,
+           acc.email_home AS emailhome, acc.email_palm AS emailpalm,
+           acc.url AS urlinfo, 'Customer' AS searchalltype,
+           acc.phone AS phonework, acc.salutation AS salutation,
+           acc.cust_dob AS dob, acc.maidenname AS maidenname,
+           acc.extension AS extension, acc.householdid AS householdid,
+           acc.householdname AS householdname, acc.hshlduflag AS hshlduflag,
+           addr.address_line1 AS address_line1,
+           addr.address_line2 AS address_line2,
+           addr.address_line3 AS address_line3, addr.state AS state,
+           addr.country AS country, addr.zip AS zip,
+           acc.accessownergroup AS accessownergroup,
+           acc.accessownersegment AS accessownersegment,
+           acc.accessownerbc AS accessownerbc,
+           acc.accessowneragent AS accessowneragent,
+           acc.accessassigneeagent AS accessassigneeagent,
+           acc.bank_id AS bank_id,
+                                  /*Changes for Call Id:376910 starts*/
+                                  acc.gcifid AS gcifid,
+                                                       /*Changes for Call Id:376910 ends*/
+                                                       acc.status AS status
+      FROM accounts acc,
+           (SELECT address_line1 AS address_line1,
+                   address_line2 AS address_line2,
+                   address_line3 AS address_line3, state AS state,
+                   country AS country, zip AS zip, accountid AS accountid,
+                   end_date AS end_date, start_date AS start_date,
+                   addresscategory AS addresscategory
+              FROM address
+             WHERE addresscategory = 'Mailing'
+               AND SYSDATE BETWEEN start_date AND end_date) addr
+     WHERE acc.accountid = addr.accountid(+)
+       AND acc.entity_cre_flag IS NOT NULL
+       AND acc.corp_id IS NULL
+       AND acc.isdummy != 'Y'
+    UNION
+    SELECT cont.contact_first_name AS firstname,
+           cont.contact_last_name AS lastname,
+           cont.contact_middle_name AS middlename,
+           cont.contact_first_name_alt1 AS firstname_alt1,
+           cont.contact_last_name_alt1 AS lastname_alt1,
+           cont.contact_middle_name_alt1 AS middlename_alt1,
+           cont.contactid AS searchallid, cont.securityguhint,
+           cont.securityglhint, cont.securityiuhint, cont.securityilhint,
+           cont.extensionid, cont.boaclid, cont.concurdetect_x,
+           cont.bodatecreated, cont.bocreatedby, cont.bodatemodified,
+           cont.bomodifiedby, cont.birth_day, cont.birth_month,
+           cont.birth_year, cont.city, cont.manager, cont.designation,
+           cont.assistant, cont.contactskey, cont.cin, cont.gender,
+           cont.blacklisted, cont.negated, cont.suspended, cont.recordstatus,
+           cont.education, cont.occupation, cont.email_work AS email,
+           cont.pan, cont.passportno, cont.licenceno AS licenceno,
+           cont.relationshipopeningdate, cont.customerrelationshipno,
+           cont.industry, cont.competitor, cont.region, cont.annualrevenue,
+           cont.autoapproval, cont.placeofbirth, cont.countryofbirth,
+           cont.uniqueid, cont.uniqueidtype, cont.segmentation_class,
+           cont.preferredphonetype, cont.preferredphone, cont.preferredemail,
+           cont.ssn, flg2, flg3, alert2, alert3, dtdate2, dtdate3, amount2,
+           amount3, cont.strfield2, cont.strfield3, cont.strfield1 AS str1,
+           cont.strfield6 AS str2, cont.strfield7 AS str3,
+           cont.strfield4 AS str4, cont.strfield5 AS str5,
+           cont.fax_work AS faxwork, cont.phone_home1 AS phonehome,
+           cont.phone_cell AS phonecell, cont.email_home AS emailhome,
+           cont.email_palm AS emailpalm, cont.url AS urlinfo,
+           'Contact' AS searchalltype, cont.phone_work AS phonework,
+           cont.salutation AS salutation, cont.contact_dob AS dob,
+           cont.maidenname AS maidenname, cont.extn AS extension,
+           cont.householdid AS householdid,
+           cont.householdname AS householdname, cont.hshlduflag AS hshlduflag,
+           addr.address_line1 AS address_line1,
+           addr.address_line2 AS address_line2,
+           addr.address_line3 AS address_line3, addr.state AS state,
+           addr.country AS country, addr.zip AS zip,
+           cont.accessownergroup AS accessownergroup,
+           cont.accessownersegment AS accessownersegment,
+           cont.accessownerbc AS accessownerbc,
+           cont.accessowneragent AS accessowneragent,
+           cont.accessassigneeagent AS accessassigneeagent,
+           cont.bank_id AS bank_id,
+                                   /*Changes for Call Id:376910 starts*/
+           NULL AS gcifid,
+                          /*Changes for Call Id:376910 ends*/
+           NULL AS status
+      FROM contacts cont,
+           (SELECT address_line1 AS address_line1,
+                   address_line2 AS address_line2,
+                   address_line3 AS address_line3, state AS state,
+                   country AS country, zip AS zip, contactid AS contactid,
+                   end_date AS end_date, start_date AS start_date,
+                   addresscategory AS addresscategory
+              FROM address
+             WHERE addresscategory = 'Mailing'
+               AND SYSDATE BETWEEN start_date AND end_date) addr
+     WHERE (cont.orgkey = '' OR cont.orgkey IS NULL)
+       AND (cont.convflag = 'N')
+       AND (cont.orgid IS NULL OR cont.orgid = '')
+       AND (   cont.iscustomer IS NULL
+            OR cont.iscustomer = ''
+            OR cont.iscustomer = 'N'
+           )
+       AND cont.contactid = addr.contactid(+)
+    UNION
+    SELECT susp.firstname AS firstname, susp.lastname AS lastname,
+           susp.middlename AS middlename,
+           susp.firstname_alt1 AS firstname_alt1,
+           susp.lastname_alt1 AS lastname_alt1,
+           susp.middlename_alt1 AS middlename_alt1,
+           susp.suspectid AS searchallid, susp.securityguhint,
+           susp.securityglhint, susp.securityiuhint, susp.securityilhint,
+           susp.extensionid, susp.boaclid, susp.concurdetect_x,
+           susp.bodatecreated, susp.bocreatedby, susp.bodatemodified,
+           susp.bomodifiedby, susp.birth_day, susp.birth_month,
+           susp.birth_year, susp.city, susp.manager, susp.designation,
+           susp.assistant, susp.suspectskey, susp.cin, susp.gender,
+           susp.blacklisted, susp.negated, susp.suspended, susp.recordstatus,
+           susp.education, susp.occupation, susp.email_work AS email,
+           susp.pan, susp.passportno, susp.licenceno AS licenceno,
+           susp.relationshipopeningdate, susp.customerrelationshipno,
+           susp.industry, susp.competitor, susp.region, susp.annualrevenue,
+           susp.autoapproval, susp.placeofbirth, susp.countryofbirth,
+           susp.uniqueid, susp.uniqueidtype, susp.segmentation_class,
+           susp.preferredphonetype, susp.preferredphone, susp.preferredemail,
+           susp.ssn, flg2, flg3, alert2, alert3, dtdate2, dtdate3, amount2,
+           amount3, susp.strfield2, susp.strfield3, susp.strfield1 AS str1,
+           susp.strfield6 AS str2, susp.strfield7 AS str3,
+           susp.strfield4 AS str4, susp.strfield5 AS str5,
+           susp.fax_work AS faxwork, susp.phone_home1 AS phonehome,
+           susp.phone_cell AS phonecell, susp.email_home AS emailhome,
+           susp.email_palm AS emailpalm, susp.url AS urlinfo,
+           'Prospect' AS searchalltype, susp.phone_work AS phonework,
+           susp.salutation AS salutation, susp.suspects_dob AS dob,
+           susp.maidenname AS maidenname, susp.extension AS extension,
+           susp.householdid AS householdid,
+           susp.householdname AS householdname, susp.hshlduflag AS hshlduflag,
+           addr.address_line1 AS address_line1,
+           addr.address_line2 AS address_line2,
+           addr.address_line3 AS address_line3, addr.state AS state,
+           addr.country AS country, addr.zip AS zip,
+           susp.accessownergroup AS accessownergroup,
+           susp.accessownersegment AS accessownersegment,
+           susp.accessownerbc AS accessownerbc,
+           susp.accessowneragent AS accessowneragent,
+           susp.accessassigneeagent AS accessassigneeagent,
+           susp.bank_id AS bank_id,
+                                   /*Changes for Call Id:376910 starts*/
+           NULL AS gcifid,
+                          /*Changes for Call Id:376910 ends*/
+           NULL AS status
+      FROM suspects susp, address addr
+     WHERE (susp.orgkey = '' OR susp.orgkey IS NULL)
+       AND (susp.contactid IS NULL OR susp.contactid = '')
+       AND (susp.convflag = 'N')
+       AND (   susp.iscustomer IS NULL
+            OR susp.iscustomer = ''
+            OR susp.iscustomer = 'N'
+           )
+       AND (   susp.iscontact IS NULL
+            OR susp.iscontact = ''
+            OR susp.iscontact = 'N'
+           )
+       AND (susp.entity_cre_flag = 'Y')
+       AND addr.suspectid = susp.suspectid
+       AND addr.addresscategory = 'Mailing'
+       AND SYSDATE BETWEEN addr.start_date AND addr.end_date
+    UNION
+    SELECT noncust.first_name AS firstname, noncust.last_name AS lastname,
+           noncust.middle_name AS middlename,
+           noncust.first_name_alt1 AS firstname_alt1,
+           noncust.last_name_alt1 AS lastname_alt1,
+           noncust.middle_name_alt1 AS middlename_alt1,
+           noncust.noncustomerid AS searchallid, noncust.securityguhint,
+           noncust.securityglhint, noncust.securityiuhint,
+           noncust.securityilhint, noncust.extensionid, noncust.boaclid,
+           noncust.concurdetect_x, noncust.bodatecreated, noncust.bocreatedby,
+           noncust.bodatemodified, noncust.bomodifiedby,
+           TO_NUMBER (TO_CHAR (noncust.dob, 'dd')) AS birth_day,
+           TO_NCHAR (noncust.dob, 'Month') AS birth_month,
+           TO_NUMBER (TO_CHAR (noncust.dob, 'yyyy')) AS birth_year,
+           noncust.homeaddcity city, NULL manager, NULL designation,
+           NULL assistant, noncust.orgkey, NULL cin, noncust.gender,
+           noncust.blacklisted, noncust.negated, noncust.suspended,
+           noncust.recordstatus, NULL education, noncust.occupation,
+           noncust.emailadd email, noncust.pan, noncust.passportno,
+           noncust.licenceno AS licenceno, NULL relationshipopeningdate,
+           NULL customerrelationshipno, NULL industry, NULL competitor,
+           NULL region, noncust.annualincome, NULL autoapproval,
+           NULL placeofbirth, NULL countryofbirth, noncust.uniqueid,
+           noncust.uniqueidtype, NULL segmentation_class,
+           noncust.preferredphonetype, noncust.preferredphone,
+           noncust.preferredemail, noncust.ssn, noncust.flg1 flg2,
+           noncust.flg2 flg3, noncust.alert1 alert2, noncust.alert2 alert3,
+           noncust.dtdate1 dtdate2, noncust.dtdate2 dtdate3,
+           noncust.amount1 amount2, noncust.amount2 amount3,
+           noncust.strfield2, NULL strfield3, noncust.strfield1 str1,
+           noncust.strfield2 str2, NULL str3, NULL str4, NULL str5,
+           NULL faxwork, noncust.homephoneno phonehome,
+           noncust.workphoneno phonecell, noncust.emailadd emailhome,
+           noncust.emailadd emailpalm, NULL urlinfo,
+           'NonCustomer' searchalltype, noncust.workphoneno phonework,
+           noncust.salutation salutation, noncust.dob dob, NULL maidenname,
+           NULL extension, NULL householdid, NULL householdname,
+           NULL hshlduflag, addr.address_line1 AS address_line1,
+           addr.address_line2 AS address_line2,
+           addr.address_line3 AS address_line3, addr.state AS state,
+           addr.country AS country, addr.zip AS zip,
+           noncust.accessownergroup AS accessownergroup,
+           noncust.accessownersegment AS accessownersegment,
+           noncust.accessownerbc AS accessownerbc,
+           noncust.accessowneragent AS accessowneragent,
+           noncust.accessassigneeagent AS accessassigneeagent,
+           noncust.bank_id AS bank_id,
+                                      /*Changes for Call Id:376910 starts*/
+           NULL AS gcifid,
+                          /*Changes for Call Id:376910 ends*/
+           NULL AS status
+      FROM non_customers noncust, address addr
+     WHERE addr.addresscategory = 'Mailing'
+       AND SYSDATE > addr.start_date
+       AND SYSDATE < addr.end_date
+       AND noncust.entity_cre_flg = 'Y'
+       AND noncust.convflag = 'N'
+       AND addr.noncustomerid = noncust.noncustomerid);
+
+
+DROP SYNONYM CRMBATCHUSER.SEARCHALL;
+
+CREATE SYNONYM CRMBATCHUSER.SEARCHALL FOR CRMUSER.SEARCHALL;
+

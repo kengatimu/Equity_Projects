@@ -1,0 +1,665 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : EcoSysLadgen_wbmyhq.scr 
+#  Description     : batch
+#  Date            : 25-01-2022
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+	EQSRV.GLBDATA.machineId = ""
+	sv_u = urhk_getEnv("HOST_NAME")
+	print(BANCS.OUTPARAM.envValue)
+	EQSRV.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        sv_u = urhk_MTTS_PopulateInputDetails("")
+        print(sv_u)
+        if(sv_u == 0)then
+		if(fieldexists(MTT.InputDetails.Argument1)==1)then
+                print(MTT.InputDetails.Argument1)
+                EQSRV.GLBDATA.odAcctId = MTT.InputDetails.Argument1
+                EQSRV.GLBDATA.OperativeAcctId = MTT.InputDetails.Argument2
+                EQSRV.GLBDATA.odAcid = MTT.InputDetails.Argument3
+                EQSRV.GLBDATA.odSolId = MTT.InputDetails.Argument4
+                EQSRV.GLBDATA.opSolId = MTT.InputDetails.Argument5
+                EQSRV.GLBDATA.opAcid = MTT.InputDetails.Argument6
+		EQSRV.GLBDATA.repayFeq = MTT.InputDetails.Argument7
+                EQSRV.GLBDATA.sanLim = MTT.InputDetails.Argument8
+                EQSRV.GLBDATA.drIntPcnt = MTT.InputDetails.Argument9
+                EQSRV.GLBDATA.expiryDate = MTT.InputDetails.Argument10
+                EQSRV.GLBDATA.sanctDate = MTT.InputDetails.Argument11
+                EQSRV.GLBDATA.disbSrlNum = MTT.InputDetails.Argument12
+		EQSRV.GLBDATA.isBatch='N'
+		else
+		EQSRV.GLBDATA.isBatch="Y"
+		endif
+        else
+		EQSRV.GLBDATA.odAcctId = ""
+		EQSRV.GLBDATA.OperativeAcctId = ""
+		EQSRV.GLBDATA.odAcid = ""
+		EQSRV.GLBDATA.odSolId = ""
+		EQSRV.GLBDATA.opSolId = ""
+		EQSRV.GLBDATA.opAcid = ""
+		EQSRV.GLBDATA.repayFeq = ""
+		EQSRV.GLBDATA.isBatch='Y'
+        endif
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+#F-FlatRate / V-Variable Rate
+	EQSRV.GLBDATA.loanMethod = "V"
+#get schedule data to generate demand either from batch or runtime
+	lv_q = " crAcctId,crAcid,drAcctId,drAcid,schlNum,schlDate,numOfInstall,emiAmt,IntAmt,PrinAmt,dmdDate,dmdOverdueDate,repayFeqs | "
+	lv_q = lv_q + " select od_acct_id,od_acid,op_acct_id,op_acid,schl_number,schl_date,number_of_payments,"
+	lv_q = lv_q + " emi_amt,emi_int_amt,emi_principal_amt,"
+	lv_q = lv_q + " to_char(next_dmd_date,'DD-MM-YYYY'),to_char(next_dmd_date+1,'DD-MM-YYYY'),free_text6 "
+	lv_q = lv_q + " from custom.ecosystem_schl_tbl "
+	lv_q = lv_q + " where bank_id=?SVAR "
+	if(EQSRV.GLBDATA.isBatch=="N")then
+	lv_q = lv_q + " and od_acct_id=?SVAR and od_acid=?SVAR and op_acct_id=?SVAR and op_acid=?SVAR "
+	endif
+	if(EQSRV.GLBDATA.isBatch=="Y")then
+	lv_q = lv_q + " and op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+	lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) " 
+	endif
+	lv_q = lv_q + " and next_dmd_date>=to_date(?SVAR,'DD-MM-RR') "
+	lv_q = lv_q + " and free_text1 is null "
+	lv_q = lv_q + " and schl_number in (select max(schl_number) from custom.ecosystem_schl_tbl "
+	lv_q = lv_q + " where bank_id=?SVAR and disb_srl_num=?NVAR "
+	if(EQSRV.GLBDATA.isBatch=="N")then
+	lv_q = lv_q + " and od_acct_id=?SVAR and od_acid=?SVAR and op_acct_id=?SVAR and op_acid=?SVAR "
+	endif
+	if(EQSRV.GLBDATA.isBatch=="Y")then
+	lv_q = lv_q + " and op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+	lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) " 
+	endif
+	lv_q = lv_q + " and next_dmd_date>=to_date(?SVAR,'DD-MM-RR') "
+	lv_q = lv_q + " and free_text1 is null "
+	lv_q = lv_q + " and entity_cre_flg='Y' "
+	lv_q = lv_q + " and del_flg='N') "
+	lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' "
+	if(EQSRV.GLBDATA.isBatch=="Y")then
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+	endif
+	if(EQSRV.GLBDATA.isBatch=="N")then
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.odAcctId + "|" + EQSRV.GLBDATA.odAcid + "|" + EQSRV.GLBDATA.OperativeAcctId + "|" + EQSRV.GLBDATA.opAcid + "|" +  mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbSrlNum + "|" + EQSRV.GLBDATA.odAcctId + "|" + EQSRV.GLBDATA.odAcid + "|" + EQSRV.GLBDATA.OperativeAcctId + "|" + EQSRV.GLBDATA.opAcid + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+	endif
+	print(lv_q)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		EQSRV.GLBDATA.crAcctId = BANCS.OUTPARAM.crAcctId
+		EQSRV.GLBDATA.crAcid = BANCS.OUTPARAM.crAcid
+		EQSRV.GLBDATA.drAcctId = BANCS.OUTPARAM.drAcctId
+		EQSRV.GLBDATA.drAcid = BANCS.OUTPARAM.drAcid
+		EQSRV.GLBDATA.schlNum = BANCS.OUTPARAM.schlNum
+		EQSRV.GLBDATA.schlDate = BANCS.OUTPARAM.schlDate
+		EQSRV.GLBDATA.numOfInstall = BANCS.OUTPARAM.numOfInstall
+		EQSRV.GLBDATA.emiAmt = BANCS.OUTPARAM.emiAmt
+		EQSRV.GLBDATA.IntAmt = BANCS.OUTPARAM.IntAmt
+		EQSRV.GLBDATA.PrinAmt = BANCS.OUTPARAM.PrinAmt
+		EQSRV.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+		EQSRV.GLBDATA.dmdOverdueDate = BANCS.OUTPARAM.dmdOverdueDate
+		EQSRV.GLBDATA.orgdmdDate = BANCS.OUTPARAM.dmdDate
+		EQSRV.GLBDATA.orgdmdOverdueDate = BANCS.OUTPARAM.dmdOverdueDate
+		EQSRV.GLBDATA.repayFeqs = BANCS.OUTPARAM.repayFeqs
+		sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+		if(sv_u == 0)then
+			EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+			EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+			EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+			EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+			EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+		else
+			EQSRV.GLBDATA.drdrawingPower = 0
+			EQSRV.GLBDATA.drEffBal = 0
+			EQSRV.GLBDATA.drclearBalance = 0
+			EQSRV.GLBDATA.drsanLim = 0
+			EQSRV.GLBDATA.dravalAmt = 0
+		endif
+if(EQSRV.GLBDATA.loanMethod=="V")then
+#{
+        EQSRV.GLBDATA.fIntPcnt = cdouble(EQSRV.GLBDATA.drIntPcnt)/100
+        print(EQSRV.GLBDATA.fIntPcnt)
+        lv_u = "numMonths,numofWeeks | select to_char(months_between(to_date(?SVAR,'DD-MM-RR'),to_date(?SVAR,'DD-MM-RR')),99),floor((to_date(?SVAR,'DD-MM-RR') - to_date(?SVAR,'DD-MM-RR'))/7)  from dual "
+        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.expiryDate + "|" + EQSRV.GLBDATA.sanctDate + "|" + EQSRV.GLBDATA.expiryDate + "|" + EQSRV.GLBDATA.sanctDate
+        print(lv_u)
+        print(BANCS.INPARAM.BINDVARS)
+        lv_o = urhk_dbSelectWithBind(lv_u)
+        if(lv_o==0)then
+	#{
+                BANCS.INPUT.numofMnths = BANCS.OUTPARAM.numMonths
+                EQSRV.GLBDATA.numofWeeks = BANCS.OUTPARAM.numofWeeks
+                EQSRV.GLBDATA.numofMnths = BANCS.INPUT.numofMnths
+                print(BANCS.INPUT.numofMnths)
+                print(EQSRV.GLBDATA.numofWeeks)
+                print(EQSRV.GLBDATA.numofMnths)
+	#}
+        endif
+#Monthly
+        if(EQSRV.GLBDATA.repayFeq=="M")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/12
+                EQSRV.GLBDATA.emiPyCnt = BANCS.INPUT.numofMnths
+        endif
+#Quaterly
+        if(EQSRV.GLBDATA.repayFeq=="Q")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/3
+                EQSRV.GLBDATA.emiPyCnt = cdouble(BANCS.INPUT.numofMnths)/3
+        endif
+#Half-Yearly
+        if(EQSRV.GLBDATA.repayFeq=="H")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/6
+                EQSRV.GLBDATA.emiPyCnt = cdouble(BANCS.INPUT.numofMnths)/6
+        endif
+#Yearly
+        if(EQSRV.GLBDATA.repayFeq=="Y")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/12
+                EQSRV.GLBDATA.emiPyCnt =  cdouble(BANCS.INPUT.numofMnths)/12
+        endif
+#Weekly
+        if(EQSRV.GLBDATA.repayFeq=="W")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/52
+                EQSRV.GLBDATA.emiPyCnt = EQSRV.GLBDATA.numofWeeks
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="D")then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/52
+                EQSRV.GLBDATA.emiPyCnt = EQSRV.GLBDATA.numofWeeks
+        endif
+#BiWeekly
+        if((EQSRV.GLBDATA.repayFeq=="F") OR (EQSRV.GLBDATA.repayFeq=="B"))then
+                EQSRV.GLBDATA.fiIntPcnt = cdouble(EQSRV.GLBDATA.fIntPcnt)/26
+                EQSRV.GLBDATA.emiPyCnt = cdouble(BANCS.INPUT.numofMnths) * 2
+        endif
+        print(EQSRV.GLBDATA.fiIntPcnt)
+        print(EQSRV.GLBDATA.emiPyCnt)
+#emi-amount
+	if(cdouble(EQSRV.GLBDATA.fiIntPcnt) != cdouble("0")) then
+	#{
+        lv_p = "pmtamt | select to_char(custom.fn_pmt_val(?NVAR,?NVAR,?NVAR,0),999999999999999.99) as pmtamt from dual "
+        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.fiIntPcnt + "|" + EQSRV.GLBDATA.emiPyCnt + "|" +  EQSRV.GLBDATA.sanLim
+        print(lv_p)
+        print(BANCS.INPARAM.BINDVARS)
+        lv_o = urhk_dbSelectWithBind(lv_p)
+        if(lv_o==0)then
+	#{
+                EQSRV.GLBDATA.pmtamt = BANCS.OUTPARAM.pmtamt
+                if(cdouble(EQSRV.GLBDATA.pmtamt)<=0)then
+                        EQSRV.GLBDATA.pmtamt = -1 * cdouble(EQSRV.GLBDATA.pmtamt)
+                endif
+	#}
+        else
+	#{
+                EQSRV.GLBDATA.pmtamt = 0
+	#}
+        endif
+	else
+		EQSRV.GLBDATA.pmtamt = cdouble(EQSRV.GLBDATA.sanLim)
+	endif
+
+        print(EQSRV.GLBDATA.fiIntPcnt)
+        print(cint(EQSRV.GLBDATA.fiIntPcnt))
+        print(cdouble(EQSRV.GLBDATA.fiIntPcnt))
+        EQSRV.GLBDATA.IntAmt = cdouble(EQSRV.GLBDATA.sanLim) * cdouble(EQSRV.GLBDATA.fiIntPcnt)
+        print(EQSRV.GLBDATA.IntAmt)
+	EQSRV.GLBDATA.IntAmt = FORMAT$(cdouble(EQSRV.GLBDATA.IntAmt),"%.2f")
+	print(EQSRV.GLBDATA.IntAmt)
+        EQSRV.GLBDATA.PrinAmt = cdouble(EQSRV.GLBDATA.pmtamt) - cdouble(EQSRV.GLBDATA.IntAmt)
+        print(EQSRV.GLBDATA.PrinAmt)
+        if(cdouble(EQSRV.GLBDATA.PrinAmt)<0)then
+                EQSRV.GLBDATA.PrinAmt = -1 * cdouble(EQSRV.GLBDATA.PrinAmt)
+        endif
+	EQSRV.GLBDATA.PrinAmt = FORMAT$(cdouble(EQSRV.GLBDATA.PrinAmt),"%.2f")
+	print(EQSRV.GLBDATA.PrinAmt)
+        BANCS.INPUT.prinAmt = cdouble(EQSRV.GLBDATA.sanLim)
+        BANCS.INPUT.instAmt = cdouble(EQSRV.GLBDATA.pmtamt)
+        BANCS.INPUT.intRate = cdouble(EQSRV.GLBDATA.drIntPcnt)
+        BANCS.INPUT.tenorMnths = cdouble(EQSRV.GLBDATA.emiPyCnt)
+        BANCS.INPUT.ebodDate = mid$(BANCS.STDIN.BODDate,0,10)
+        lv_h = "emifreqDate,loanBal,interestAmt,prinAmt,emiAmt| "
+        if(EQSRV.GLBDATA.repayFeq=="M")then
+        lv_h = lv_h + " select add_months(trunc(to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RR'),'MONTH'), rownumber) as EMI_Month,"
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="Q")then
+        lv_h = lv_h + " select add_months(trunc(to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RR'),'MONTH'), 3*rownumber) as EMI_Month,"
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="H")then
+        lv_h = lv_h + " select add_months(trunc(to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RR'),'MONTH'), 6*rownumber) as EMI_Month,"
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="Y")then
+        lv_h = lv_h + " select add_months(trunc(to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RR'),'MONTH'), 12*rownumber) as EMI_Month,"
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="W")then
+        lv_h = lv_h + " select to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RRRR') + (7 *(rownumber)) as EMI_Month,"
+        endif
+        if(EQSRV.GLBDATA.repayFeq=="D")then
+        lv_h = lv_h + " select to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RRRR') + (7 *(rownumber)) as EMI_Month,"
+        endif
+        if((EQSRV.GLBDATA.repayFeq=="F") OR (EQSRV.GLBDATA.repayFeq=="B"))then
+        lv_h = lv_h + " select to_date('"+BANCS.INPUT.ebodDate+"','DD-MM-RRRR') + (26 *(rownumber)) as EMI_Month,"
+        endif
+        lv_h = lv_h + " to_char(a,'999999999999999990D0000') Loan_balance,"
+        lv_h = lv_h + " to_char(b,'999999999999999990D0000') Interest_amt,"
+        lv_h = lv_h + " to_char(c,'999999999999999990D0000') Preinciple_amt,"
+        lv_h = lv_h + " to_char(d,'999999999999999990D0000') EMI_amt from dual "
+        lv_h = lv_h + " MODEL DIMENSION BY (rownum rownumber) "
+        lv_h = lv_h + " MEASURES ("+BANCS.INPUT.prinAmt+ " a,0 b,0 c,"+BANCS.INPUT.instAmt+ " d,"+BANCS.INPUT.intRate +" e) "
+        lv_h = lv_h + " RULES SEQUENTIAL ORDER ITERATE (" +BANCS.INPUT.tenorMnths+ ") "
+        lv_h = lv_h + " UNTIL (a[ITERATION_NUMBER + 1] <= 0) ( b[ITERATION_NUMBER + 1] = a[cv(rownumber)] * e[cv(rownumber)] / 1200, d[ITERATION_NUMBER + 1] = least(d[cv(rownumber)], a[cv(rownumber)] + b[cv(rownumber)]), c[ITERATION_NUMBER + 1] = d[cv(rownumber)] - b[cv(rownumber)], a[ITERATION_NUMBER + 2] = a[cv(rownumber)-1] - c[cv(rownumber) - 1], e[ITERATION_NUMBER + 2] = e[cv(rownumber)-1], d[ITERATION_NUMBER + 2] = d[cv(rownumber)-1]  ) order by rownumber "
+        print(lv_h)
+        lv_u = urhk_dbCursorOpenWithBind(lv_h)
+        if(lv_u == 0)then
+	#{
+                EQSRV.GLBDATA.gmainCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	#}
+        else
+	#{
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+                sv_u = urhk_SetOrbOut("Message|Database Error ")
+                goto SIFNO
+	#}
+        endif
+        EQSRV.GLBDATA.recNum = 0
+	EQSRV.GLBDATA.loanBal = cdouble("0")
+	EQSRV.GLBDATA.interestAmt = cdouble("0")
+	EQSRV.GLBDATA.prinAmt = cdouble("0")
+	EQSRV.GLBDATA.emiAmt = cdouble("0")
+        lv_w = urhk_dbCursorFetch(EQSRV.GLBDATA.gmainCurNum)
+        if(lv_w !=0)then
+	#{
+                lv_w = urhk_dbCursorClose(EQSRV.GLBDATA.gmainCurNum)
+                print(lv_f)
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+                sv_u = urhk_SetOrbOut("Message|Database Error ")
+                EQSRV.GLBDATA.isRecYN="N"
+                goto SIFNO
+	#}
+        else
+	#{
+                EQSRV.GLBDATA.isRecYN="Y"
+	#}
+        endif
+	lv_e = 1
+	print(lv_w)
+        while(lv_w ==0)
+        #{
+		print(lv_e)
+                EQSRV.GLBDATA.emifreqDate = BANCS.OUTPARAM.emifreqDate
+                EQSRV.GLBDATA.loanBal = BANCS.OUTPARAM.loanBal
+		EQSRV.GLBDATA.loanBal = FORMAT$(cdouble(EQSRV.GLBDATA.loanBal),"%.2f")
+		print(EQSRV.GLBDATA.loanBal)
+                EQSRV.GLBDATA.interestAmt = BANCS.OUTPARAM.interestAmt
+		print(EQSRV.GLBDATA.interestAmt)
+                EQSRV.GLBDATA.prinAmt = BANCS.OUTPARAM.prinAmt
+		print(EQSRV.GLBDATA.prinAmt)
+                EQSRV.GLBDATA.emiAmt = BANCS.OUTPARAM.emiAmt
+		sv_a = getposition(EQSRV.GLBDATA.interestAmt,".")
+                print(sv_a)
+                if (sv_a != "") then
+		#{
+			sv_l = strlen(EQSRV.GLBDATA.interestAmt)
+                        print(sv_l)
+                        sv_b = mid$(EQSRV.GLBDATA.interestAmt,0,sv_a-1)
+                        print(sv_b)
+                        sv_c = mid$(EQSRV.GLBDATA.interestAmt,sv_a,sv_l)
+                        print(sv_c)
+                        if (sv_c >=50) then
+			#{
+				BANCS.INPARAM.InputAmount=FORMAT$((CDOUBLE(EQSRV.GLBDATA.interestAmt)),"%17.02f")
+				BANCS.INPARAM.RoundOffAmt="0.10"
+				BANCS.INPARAM.RoundOffFlag="N"
+				sv_r=urhk_B2k_RoundOff("")
+				print(sv_r)
+				if(0 == sv_r )then
+					print(BANCS.OUTPARAM.OutputAmount)
+					EQSRV.GLBDATA.interestAmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+					print(EQSRV.GLBDATA.interestAmt)
+				endif
+			#}
+			endif
+		#}
+		endif
+		EQSRV.GLBDATA.interestAmt = FORMAT$(cdouble(EQSRV.GLBDATA.interestAmt),"%.2f")
+		print(EQSRV.GLBDATA.interestAmt)
+		sv_a = getposition(EQSRV.GLBDATA.prinAmt,".")
+                print(sv_a)
+                if (sv_a != "") then
+		#{
+			sv_l = strlen(EQSRV.GLBDATA.prinAmt)
+                        print(sv_l)
+                        sv_b = mid$(EQSRV.GLBDATA.prinAmt,0,sv_a-1)
+                        print(sv_b)
+                        sv_c = mid$(EQSRV.GLBDATA.prinAmt,sv_a,sv_l)
+                        print(sv_c)
+                        if (sv_c >=50) then
+			#{
+				BANCS.INPARAM.InputAmount=FORMAT$((CDOUBLE(EQSRV.GLBDATA.prinAmt)),"%17.02f")
+				BANCS.INPARAM.RoundOffAmt="0.10"
+				BANCS.INPARAM.RoundOffFlag="N"
+				sv_r=urhk_B2k_RoundOff("")
+				print(sv_r)
+				if(0 == sv_r )then
+					print(BANCS.OUTPARAM.OutputAmount)
+					EQSRV.GLBDATA.prinAmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+					print(EQSRV.GLBDATA.prinAmt)
+				endif
+			#}
+			endif
+		#}
+		endif
+		EQSRV.GLBDATA.prinAmt = FORMAT$(cdouble(EQSRV.GLBDATA.prinAmt),"%.2f")
+		print(EQSRV.GLBDATA.prinAmt)
+		sv_a = getposition(EQSRV.GLBDATA.emiAmt,".")
+                print(sv_a)
+                if (sv_a != "") then
+		#{
+			sv_l = strlen(EQSRV.GLBDATA.emiAmt)
+                        print(sv_l)
+                        sv_b = mid$(EQSRV.GLBDATA.emiAmt,0,sv_a-1)
+                        print(sv_b)
+                        sv_c = mid$(EQSRV.GLBDATA.emiAmt,sv_a,sv_l)
+                        print(sv_c)
+                        if (sv_c >=50) then
+			#{
+				BANCS.INPARAM.InputAmount=FORMAT$((CDOUBLE(EQSRV.GLBDATA.emiAmt)),"%17.02f")
+				BANCS.INPARAM.RoundOffAmt="0.10"
+				BANCS.INPARAM.RoundOffFlag="N"
+				sv_r=urhk_B2k_RoundOff("")
+				print(sv_r)
+				if(0 == sv_r )then
+					print(BANCS.OUTPARAM.OutputAmount)
+					EQSRV.GLBDATA.emiAmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+					print(EQSRV.GLBDATA.emiAmt)
+				endif
+			#}
+			endif
+		#}
+		endif
+		EQSRV.GLBDATA.emiAmt = FORMAT$(cdouble(EQSRV.GLBDATA.emiAmt),"%.2f")
+		print(EQSRV.GLBDATA.emiAmt)
+                        print(EQSRV.GLBDATA.emifreqDate)
+                        print(EQSRV.GLBDATA.loanBal)
+                        print(EQSRV.GLBDATA.interestAmt)
+                        print(EQSRV.GLBDATA.prinAmt)
+                        print(EQSRV.GLBDATA.emiAmt)
+		EQSRV.GLBDATA.recInstNum = lv_e
+		if(lv_e==1)then
+		#{
+			print(EQSRV.GLBDATA.dmdDate)
+			print(EQSRV.GLBDATA.dmdOverdueDate)
+		else
+			print(EQSRV.GLBDATA.repayFeq)
+			print(EQSRV.GLBDATA.repayFeqs)
+			print(EQSRV.GLBDATA.orgdmdDate)
+			print(EQSRV.GLBDATA.orgdmdOverdueDate)
+			if(EQSRV.GLBDATA.repayFeq=="M")then
+				print(lv_e)
+				lv_f = lv_e-1
+				lv_p = "0"
+				print(lv_f)
+				print(lv_p)
+			endif
+			if(EQSRV.GLBDATA.repayFeq=="W")then
+				print(lv_e)
+				lv_f = "0"
+				lv_p = 7 * (lv_e-1)
+				print(lv_f)
+				print(lv_p)
+			endif
+			if(EQSRV.GLBDATA.repayFeq=="D")then
+				print(lv_e)
+				lv_f = "0"
+				lv_p = 7 * (lv_e-1)
+				print(lv_f)
+				print(lv_p)
+			endif
+			if(EQSRV.GLBDATA.repayFeq=="B")then
+				print(lv_e)
+				lv_f = "0"
+				lv_p = 14 * (lv_e-1)
+				print(lv_f)
+				print(lv_p)
+			endif
+			EQSRV.GLBDATA.addmnths = lv_f
+			EQSRV.GLBDATA.adddays = lv_p
+			EQSRV.GLBDATA.balDate = (EQSRV.GLBDATA.orgdmdDate + "|" + EQSRV.GLBDATA.addmnths + "|" + EQSRV.GLBDATA.adddays)
+			print(EQSRV.GLBDATA.balDate)
+			sv_u = urhk_B2k_Add_MonthsDays_To_date(EQSRV.GLBDATA.balDate)
+			if(sv_u == 0)then
+				print(BANCS.OUTPARAM.MODIFIED_DATE)
+				EQSRV.GLBDATA.dmdDate = mid$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+			endif
+			EQSRV.GLBDATA.addmnths = "0"
+			EQSRV.GLBDATA.adddays = "1"
+			EQSRV.GLBDATA.balDate = (EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.addmnths + "|" + EQSRV.GLBDATA.adddays)
+			print(EQSRV.GLBDATA.balDate)
+			sv_u = urhk_B2k_Add_MonthsDays_To_date(EQSRV.GLBDATA.balDate)
+			if(sv_u == 0)then
+				print(BANCS.OUTPARAM.MODIFIED_DATE)
+				EQSRV.GLBDATA.dmdOverdueDate = mid$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+			endif
+			print(EQSRV.GLBDATA.dmdDate)
+			print(EQSRV.GLBDATA.dmdOverdueDate)
+		#}
+		endif
+		if(cdouble(EQSRV.GLBDATA.loanBal)>0)then
+		#{
+		lv_d = " insert into custom.ecosystem_dmd_tbl (bank_id,disb_srl_num,shdl_num,flow_id,op_sol_id,od_acid,op_acid,dmd_date,dmd_ovdu_date,dmd_amt,last_adj_date,tot_adj_amt,rcre_user_id,rcre_time,lchg_user_id,lchg_time,entity_cre_flg,del_flg,free_text_1,free_text_2,free_text_3,free_text_4,free_text_5,free_text_6,host_machine_id,PENAL_INT,PENAL_RUN_DATE) values (?SVAR,?NVAR,?NVAR,'PRDEM',?SVAR,?SVAR,?SVAR,to_date(?SVAR,'DD-MM-RR'),to_date(?SVAR,'DD-MM-RR'),?NVAR,null,0,?SVAR,sysdate,?SVAR,sysdate,'Y','N',?SVAR,?SVAR,null,null,null,?SVAR,?SVAR,'0',to_date(?SVAR,'DD-MM-YYYY')) "
+		if(EQSRV.GLBDATA.isBatch=="Y")then
+		#{
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbSrlNum + "|" + EQSRV.GLBDATA.schlNum + "|" +BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.emiAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.loanBal + "|" + EQSRV.GLBDATA.machineId + "|" + EQSRV.GLBDATA.dmdDate 
+		else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbSrlNum + "|" + EQSRV.GLBDATA.schlNum + "|" +EQSRV.GLBDATA.opSolId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.emiAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.loanBal + "|" + EQSRV.GLBDATA.machineId + "|" + EQSRV.GLBDATA.dmdDate 
+		#}
+		endif
+		print(lv_d)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_p = urhk_dbSqlWithBind(lv_d)
+		print(lv_p)
+		#}
+		endif
+		if((cdouble(EQSRV.GLBDATA.loanBal)>0) and (cdouble(EQSRV.GLBDATA.interestAmt) != cdouble("0"))) then
+		#{
+		lv_d = " insert into custom.ecosystem_dmd_tbl (bank_id,disb_srl_num,shdl_num,flow_id,op_sol_id,od_acid,op_acid,dmd_date,dmd_ovdu_date,dmd_amt,last_adj_date,tot_adj_amt,rcre_user_id,rcre_time,lchg_user_id,lchg_time,entity_cre_flg,del_flg,free_text_1,free_text_2,free_text_3,free_text_4,free_text_5,free_text_6,host_machine_id,PENAL_INT,PENAL_RUN_DATE) values (?SVAR,?NVAR,?SVAR,'INDEM',?SVAR,?SVAR,?SVAR,to_date(?SVAR,'DD-MM-RR'),to_date(?SVAR,'DD-MM-RR'),?NVAR,null,0,?SVAR,sysdate,?SVAR,sysdate,'Y','N',?SVAR,?SVAR,null,null,null,?SVAR,?SVAR,'0',to_date(?SVAR,'DD-MM-YYYY')) "
+		if(EQSRV.GLBDATA.isBatch=="Y")then
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbSrlNum + "|" + EQSRV.GLBDATA.schlNum + "|" + BANCS.STDIN.mySolId + "|" +  EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.interestAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.loanBal + "|" + EQSRV.GLBDATA.machineId + "|" + EQSRV.GLBDATA.dmdDate 
+		else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.disbSrlNum + "|" + EQSRV.GLBDATA.schlNum + "|" + EQSRV.GLBDATA.opSolId + "|" +  EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" +EQSRV.GLBDATA.interestAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.loanBal + "|" + EQSRV.GLBDATA.machineId + "|" + EQSRV.GLBDATA.dmdDate 
+		endif
+		print(lv_d)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_i = urhk_dbSqlWithBind(lv_d)
+		print(lv_i)
+		#}
+		endif
+                NXTREC:
+                        lv_e = lv_e +1
+                        print(lv_e)
+			sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.gmainCurNum)
+			print(sv_u)
+			if(sv_u!=0)then
+			#{
+				print("fetch failed")
+				sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.gmainCurNum)
+				print(sv_u)
+				if(lv_p==0)then
+				#{
+				lv_u = "update custom.ecosystem_schl_tbl set FREE_TEXT1='Demand Generated',del_flg='Y',lchg_user_id=?SVAR,lchg_time=sysdate where bank_id=?SVAR and SCHL_NUMBER=?NVAR and od_acid=?SVAR and op_acid=?SVAR  " 
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid 
+				print(lv_u)
+				print(BANCS.INPARAM.BINDVARS)
+				lv_o = urhk_dbSqlWithBind(lv_u)
+				print(lv_o)
+				lv_o = urhk_dbSqlWithBind("commit")
+				print(lv_o)
+				#}
+				endif
+				goto MNXTREC
+			#}
+			endif
+			EQSRV.GLBDATA.recNum = cint(EQSRV.GLBDATA.recNum) + 1
+        #}
+        do
+        lv_w = urhk_dbCursorClose(EQSRV.GLBDATA.gmainCurNum)
+        print(lv_w)
+
+#}
+endif
+#to generate demand based on latest schedule & flat rate
+if(EQSRV.GLBDATA.loanMethod=="F")then
+#{
+		print(EQSRV.GLBDATA.numOfInstall)
+		lv_z = cint(EQSRV.GLBDATA.numOfInstall)
+		print(lv_z)
+		lv_e = 1
+		while(lv_e<=lv_z)
+		#{
+			EQSRV.GLBDATA.recInstNum = lv_e
+			if(lv_e==1)then
+				print(EQSRV.GLBDATA.dmdDate)
+				print(EQSRV.GLBDATA.dmdOverdueDate)
+			else
+				print(EQSRV.GLBDATA.repayFeq)
+				print(EQSRV.GLBDATA.repayFeqs)
+				print(EQSRV.GLBDATA.orgdmdDate) 
+				print(EQSRV.GLBDATA.orgdmdOverdueDate)
+				if(EQSRV.GLBDATA.repayFeq=="M")then
+					print(lv_e)
+					lv_f = lv_e-1
+					lv_p = "0"
+					print(lv_f)
+					print(lv_p)
+				endif
+				if(EQSRV.GLBDATA.repayFeq=="W")then
+					print(lv_e)
+					lv_f = "0" 
+					lv_p = 7 * (lv_e-1) 
+					print(lv_f)
+					print(lv_p)
+				endif
+				if((EQSRV.GLBDATA.repayFeq=="F") OR (EQSRV.GLBDATA.repayFeq=="B"))then
+					print(lv_e)
+					lv_f = "0" 
+					lv_p = 14 * (lv_e-1)
+					print(lv_f)
+					print(lv_p)
+				endif
+				EQSRV.GLBDATA.addmnths = lv_f 
+				EQSRV.GLBDATA.adddays = lv_p 
+				EQSRV.GLBDATA.balDate = (EQSRV.GLBDATA.orgdmdDate + "|" + EQSRV.GLBDATA.addmnths + "|" + EQSRV.GLBDATA.adddays)
+				print(EQSRV.GLBDATA.balDate)
+				sv_u = urhk_B2k_Add_MonthsDays_To_date(EQSRV.GLBDATA.balDate)
+				if(sv_u == 0)then
+					print(BANCS.OUTPARAM.MODIFIED_DATE)
+					EQSRV.GLBDATA.dmdDate = mid$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+				endif
+				EQSRV.GLBDATA.addmnths = "0" 
+				EQSRV.GLBDATA.adddays = "1"
+				EQSRV.GLBDATA.balDate = (EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.addmnths + "|" + EQSRV.GLBDATA.adddays)
+				print(EQSRV.GLBDATA.balDate)
+				sv_u = urhk_B2k_Add_MonthsDays_To_date(EQSRV.GLBDATA.balDate)
+				if(sv_u == 0)then
+					print(BANCS.OUTPARAM.MODIFIED_DATE)
+					EQSRV.GLBDATA.dmdOverdueDate = mid$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+				endif
+				print(EQSRV.GLBDATA.dmdDate)
+				print(EQSRV.GLBDATA.dmdOverdueDate)
+			endif
+		if(cdouble(EQSRV.GLBDATA.PrinAmt)>0)then
+		lv_d = " insert into custom.ecosystem_dmd_tbl (bank_id,shdl_num,flow_id,op_sol_id,od_acid,op_acid,dmd_date,dmd_ovdu_date,dmd_amt,last_adj_date,tot_adj_amt,rcre_user_id,rcre_time,lchg_user_id,lchg_time,entity_cre_flg,del_flg,free_text_1,free_text_2,free_text_3,free_text_4,free_text_5,free_text_6,PENAL_INT,PENAL_RUN_DATE) values (?SVAR,?NVAR,'PRDEM',?SVAR,?SVAR,?SVAR,to_date(?SVAR,'DD-MM-RR'),to_date(?SVAR,'DD-MM-RR'),?NVAR,null,0,?SVAR,sysdate,?SVAR,sysdate,'Y','N',?SVAR,?SVAR,null,null,null,null,'0',to_date(?SVAR,'DD-MM-YYYY')) "
+		if(EQSRV.GLBDATA.isBatch=="Y")then
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" +BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.PrinAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.dmdDate 
+		else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" +EQSRV.GLBDATA.opSolId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.PrinAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.dmdDate 
+		endif
+		print(lv_d)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_p = urhk_dbSqlWithBind(lv_d)
+		print(lv_p)
+		endif
+		if(cdouble(EQSRV.GLBDATA.IntAmt)>0)then
+		lv_d = " insert into custom.ecosystem_dmd_tbl (bank_id,shdl_num,flow_id,op_sol_id,od_acid,op_acid,dmd_date,dmd_ovdu_date,dmd_amt,last_adj_date,tot_adj_amt,rcre_user_id,rcre_time,lchg_user_id,lchg_time,entity_cre_flg,del_flg,free_text_1,free_text_2,free_text_3,free_text_4,free_text_5,free_text_6,PENAL_INT,PENAL_RUN_DATE) values (?SVAR,?NVAR,'INDEM',?SVAR,?SVAR,?SVAR,to_date(?SVAR,'DD-MM-RR'),to_date(?SVAR,'DD-MM-RR'),?NVAR,null,0,?SVAR,sysdate,?SVAR,sysdate,'Y','N',?SVAR,?SVAR,null,null,null,null,'0',to_date(?SVAR,'DD-MM-YYYY')) "
+		if(EQSRV.GLBDATA.isBatch=="Y")then
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" + BANCS.STDIN.mySolId + "|" +  EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.IntAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.dmdDate 
+		else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" + EQSRV.GLBDATA.opSolId + "|" +  EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.dmdDate + "|" + EQSRV.GLBDATA.dmdOverdueDate + "|" + EQSRV.GLBDATA.IntAmt + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.numOfInstall + "|" + EQSRV.GLBDATA.recInstNum + "|" + EQSRV.GLBDATA.dmdDate 
+		endif
+		lv_i = urhk_dbSqlWithBind(lv_d)
+		print(lv_i)
+		endif
+			lv_e = lv_e +1
+			print(lv_e)
+			if(lv_e>lv_z)then
+				goto STUP
+			endif
+		#}
+		do
+		STUP:
+		if((lv_p==0)and(lv_i==0))then
+		lv_u = "update custom.ecosystem_schl_tbl set FREE_TEXT1='Demand Generated',del_flg='Y',lchg_user_id=?SVAR,lchg_time=sysdate where bank_id=?SVAR and SCHL_NUMBER=?NVAR and od_acid=?SVAR and op_acid=?SVAR  " 
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.schlNum + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid 
+		print(lv_u)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_o = urhk_dbSqlWithBind(lv_u)
+		print(lv_o)
+		lv_o = urhk_dbSqlWithBind("commit")
+		print(lv_o)
+		endif
+#}
+endif
+		MNXTREC:
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+		#{
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "lara Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto Endofscript
+		#}
+                endif
+                EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+print(EQSRV.GLBDATA.srvErrCode)
+print(EQSRV.GLBDATA.srvErrMsg) 
+print(EQSRV.GLBDATA.srvSucFail)
+trace off
+end-->

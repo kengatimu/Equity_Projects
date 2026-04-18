@@ -1,0 +1,143 @@
+##########################################################################################
+# Source Name           : cierevdp008.scr
+# Date                  : 03-Jun-2014
+# Description           : For reversed txns validation
+# Author                : Suhasini Murthi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+###########################################################################################
+<--START
+CHECKSUM="11f05fc05926885de733ba68e6216a78e7ec3f4b8891e96089c2f428303e26e2"
+	TRACE ON
+	
+	sv_a=urhk_B2k_printrepos("BANCS")
+	print(sv_a)
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CIEREV Class exists else create it
+	###########################################################################################
+	
+	IF(CLASSEXISTS("CUST","CIEREV") == 0) THEN
+	#{
+		CREATECLASS ("CUST","CIEREV",5)
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	
+	CUST.CIEREV.ieTxnRefNo = ""
+	CUST.CIEREV.tranDate = ""
+	
+	IF(FIELDEXISTS(BANCS.INPUT.ieTxnRefNo))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.ieTxnRefNo) != "")THEN
+		#{
+			CUST.CIEREV.ieTxnRefNo = TOUPPER(TRIM(BANCS.INPUT.ieTxnRefNo))
+			print(CUST.CIEREV.ieTxnRefNo)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.INPUT.tranDate))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.tranDate) != "")THEN
+		#{
+			CUST.CIEREV.tranDate = TOUPPER(TRIM(BANCS.INPUT.tranDate))
+			print(CUST.CIEREV.tranDate)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	sv_b = "reverseFlg|SELECT REVERSE_FLG FROM CUSTOM.IETD "
+	sv_b = sv_b + " WHERE IE_TXN_REF_NO = ?SVAR "
+	sv_b = sv_b + "AND NVL(entity1_tran_date,charge_Tran_Date) = to_date(?SVAR,'dd-mm-yyyy') "
+	sv_b = sv_b + "AND init_entity_id = ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIEREV.ieTxnRefNo + "|" + CUST.CIEREV.tranDate + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	print(sv_b)
+	
+	sv_d = urhk_dbSelectWithBind(sv_b)
+	print(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		sv_r = BANCS.OUTPARAM.reverseFlg
+		IF(sv_r != "Y")THEN
+		#{
+			sv_r = "N"
+		#}
+		ENDIF
+		sv_z = urhk_SetOrbOut("errorFlg|"+sv_r)
+		print(sv_z)
+		sv_z = urhk_SetOrbOut("errorMsg|The transaction has been already reversed")
+		print(sv_z)
+		#}
+	ELSE
+		#{
+		sv_z = urhk_SetOrbOut("errorFlg|N")
+		print(sv_z)
+		sv_z = urhk_SetOrbOut("errorMsg| ")
+		print(sv_z)
+	#}
+	ENDIF
+	
+	###########################################################
+	# Check for Cash Withdrawal Reversal and Settlement Status
+	###########################################################
+	
+	CUST.CIEREV.entity1SettlementStatus = ""
+	CUST.CIEREV.entity2SettlementStatus = ""
+	CUST.CIEREV.centralSettlementStatus = ""
+	
+	lv_s = "entity1SettlementStatus,entity2SettlementStatus,centralSettlementStatus|"
+	lv_s = lv_s + " SELECT ENTITY1_SETTLEMENT_STATUS,ENTITY2_SETTLEMENT_STATUS,CENTRAL_SETTLEMENT_STATUS"
+	lv_s = lv_s + " FROM CUSTOM.IECWD"
+	lv_s = lv_s + " WHERE IE_TXN_REF_NO = ?SVAR"
+	
+	print(lv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIEREV.ieTxnRefNo
+	print(BANCS.INPARAM.BINDVARS)
+	
+	lv_d = urhk_dbselectWithBind(lv_s)
+	PRINT(lv_d)
+	
+	IF(lv_d == 0)THEN
+	#{
+		CUST.CIEREV.entity1SettlementStatus = BANCS.OUTPARAM.entity1SettlementStatus
+		PRINT(CUST.CIEREV.entity1SettlementStatus)
+		CUST.CIEREV.entity2SettlementStatus = BANCS.OUTPARAM.entity2SettlementStatus
+		PRINT(CUST.CIEREV.entity2SettlementStatus)
+		CUST.CIEREV.centralSettlementStatus = BANCS.OUTPARAM.centralSettlementStatus
+		PRINT(CUST.CIEREV.centralSettlementStatus)
+	#}
+	ENDIF
+	
+	IF((CUST.CIEREV.entity1SettlementStatus == "S") OR (CUST.CIEREV.entity2SettlementStatus == "S") OR (CUST.CIEREV.centralSettlementStatus == "S"))THEN
+	#{
+		sv_z = urhk_SetOrbOut("errorFlg|Y")
+		print(sv_z)
+		sv_z = urhk_SetOrbOut("errorMsg|Settlement Batch is already run for this Transaction Ref No. Hence Reverse operation is not allowed.")
+		print(sv_z)
+	#}
+	ENDIF
+	
+END-->

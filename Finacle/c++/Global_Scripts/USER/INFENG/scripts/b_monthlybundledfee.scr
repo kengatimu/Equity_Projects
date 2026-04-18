@@ -1,0 +1,262 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_monthlybundledfee.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 06-11-2017
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             06-11-2016      Timothy Karemeri		Original Version
+#  1.0             23-09-2020      Irungu James			Lien for unfunded accounts
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="e02a5a0afdf0349edd4491110f3f19cb5d174bb57484f2f02ea35b021ca6b3bd"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_a)
+	
+	BANCS.INPUT.moduleName = "CHARGES"
+	BANCS.INPUT.parameterId = "BUNDLE_FEE1"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.bundlefee1 = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.DATA.bundlefee1)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg = "bundle fee amount setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "BUNDLE_FEE2"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.bundlefee2 = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.DATA.bundlefee2)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg = "bundle fee amount setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+#	BANCS.INPUT.parameterId = "BUNDLE_FCY1"
+#	CALL("getcparamvalue.scr")
+#	PRINT(BANCS.OUTPUT.parameterVal)
+#	IF(BANCS.OUTPUT.parameterVal != "")THEN
+#	#{
+#		CUST.DATA.bundlefcy1 = BANCS.OUTPUT.parameterVal
+#		PRINT(CUST.DATA.bundlefcy1)
+#		#}
+#	ELSE
+#		#{
+#		CUST.DATA.errMsg = "bundle fee amount setup not done in CPARAM"
+#		GOTO ENDOFSCRIPT
+#	#}
+#	ENDIF
+#
+#	BANCS.INPUT.parameterId = "BUNDLE_FCY2"
+#	CALL("getcparamvalue.scr")
+#	PRINT(BANCS.OUTPUT.parameterVal)
+#	IF(BANCS.OUTPUT.parameterVal != "")THEN
+#	#{
+#		CUST.DATA.bundlefcy2 = BANCS.OUTPUT.parameterVal
+#		PRINT(CUST.DATA.bundlefcy2)
+#		#}
+#	ELSE
+#		#{
+#		CUST.DATA.errMsg = "bundle fee amount setup not done in CPARAM"
+#		GOTO ENDOFSCRIPT
+#	#}
+#	ENDIF
+	
+	BANCS.INPUT.parameterId = "BUNDLECHRG"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.bundleevent = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.DATA.bundleevent)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg = "bundle event Code setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_f = "foracid,currCode,acctBal,schmCode| "
+	sv_f = sv_f + "select foracid,acct_crncy_code, clr_bal_amt,schm_code FROM tbaadm.gam "
+	sv_f = sv_f + "where bank_id = ?SVAR AND sol_id = ?SVAR AND schm_code IN('CA288','CA286','SB188') "
+	sv_f = sv_f + "AND acct_cls_flg ='N' AND FREZ_CODE not in ('D','T') AND foracid not in (select foracid from CUSTOM.ACCT_EXEMPTION_TABLE  where EXEMPT_CODE='SUbundle' AND bank_id=?SVAR)  "
+	PRINT (sv_f)
+	sv_o = urhk_dbCursorOpenWithBind(sv_f)
+	PRINT(sv_o)
+	
+	PRINT(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+	CUST.DATA.MainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(CUST.DATA.MainCursor)
+			
+	WHILE (sv_o == 0)
+	#{
+		sv_c = urhk_dbCursorFetch(CUST.DATA.MainCursor)
+		PRINT(sv_c)
+		IF (sv_c != 0) THEN
+		#{
+			PRINT(sv_c)
+			sv_o = 1
+			
+		#}
+		ELSE
+		#{
+			CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+			PRINT(CUST.DATA.foracid)
+			
+			CUST.DATA.acctBal = BANCS.OUTPARAM.acctBal
+			PRINT(CUST.DATA.acctBal)
+			
+			CUST.DATA.currCode = BANCS.OUTPARAM.currCode
+			PRINT(CUST.DATA.currCode)
+			
+			CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+			PRINT(CUST.DATA.schmCode)
+			PRINT(BANCS.STDIN.homeCrncyCode)
+		
+			sv_h = urhk_getAcctDetailsInRepository(CUST.DATA.foracid)
+			PRINT(sv_h)
+			IF (sv_h==0) THEN
+			#{
+				CUST.DATA.solidsh = BANCS.OUTPARAM.acctSolId
+				PRINT(CUST.DATA.solidsh)
+				CUST.DATA.schmcodesh = BANCS.OUTPARAM.schmCode
+				PRINT(CUST.DATA.schmcodesh)
+				CUST.DATA.schmType = BANCS.OUTPARAM.schmType
+				PRINT(CUST.DATA.schmType)
+				CUST.DATA.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+				PRINT(CUST.DATA.EffAvailableAmttr)
+				CUST.DATA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+				PRINT(CUST.DATA.acctCrncyCode)
+				IF (CUST.DATA.schmcodesh == "CA286") THEN
+				#{
+					CUST.DATA.amt = CDOUBLE(CUST.DATA.bundlefee2)
+					PRINT(CUST.DATA.amt)
+				#}
+				ELSE
+				#{
+					CUST.DATA.amt = CDOUBLE(CUST.DATA.bundlefee1)
+					PRINT(CUST.DATA.amt)
+				#}
+				ENDIF
+
+			#}
+			ENDIF
+			CUST.DATA.EffAvailableAmttr = CDOUBLE(CUST.DATA.EffAvailableAmttr)
+			PRINT(CUST.DATA.EffAvailableAmttr)
+			
+			
+			#--------------------------------------------------------------------------
+			# Create the narration
+			#--------------------------------------------------------------------------
+			IF (CUST.DATA.acctCrncyCode != BANCS.STDIN.homeCrncyCode)THEN
+			#{
+				BANCS.INPARAM.ToCurrency   = CUST.DATA.acctCrncyCode
+				BANCS.INPARAM.InputAmount  = CDOUBLE(CUST.DATA.amt)
+				BANCS.INPARAM.FromCurrency = BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.RateCode     = "TTB"
+				BANCS.INPARAM.Rate	   = cdouble("0")
+				sv_u = urhk_B2k_ConvertAmount("") 
+				IF (sv_u == 1) THEN
+				#{
+					PRINT("hai")
+					sv_m = 0
+					sv_m = sv_m + 1
+					#sv_u = urhk_SRV_SetErr("Checking for minimum balance charge failed" )
+					GOTO NEXTREC	
+				#}
+				ELSE
+				#{
+					CUST.DATA.chrgAmt = BANCS.OUTPARAM.OutputAmount 
+					PRINT(CUST.DATA.chrgAmt)
+				#}
+				ENDIF
+
+			ELSE
+			#{
+					CUST.DATA.chrgAmt = CUST.DATA.amt 
+					PRINT(CUST.DATA.chrgAmt)
+			#}
+			ENDIF
+			
+			IF (CDOUBLE(CUST.DATA.EffAvailableAmttr ) >= CDOUBLE(CUST.DATA.chrgAmt)) THEN
+			#{
+				CUST.GCHRG.tranType = "T"
+				CUST.GCHRG.tranSubType = "BI"
+				CUST.GCHRG.drAcctId = CUST.DATA.foracid
+				CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+				CUST.GCHRG.chrgAmt = CUST.DATA.amt + "|" + BANCS.STDIN.homeCrncyCode
+				PRINT(CUST.DATA.bundleevent)
+				#CUST.GCHRG.eventId = "INWCHRG"
+				CUST.GCHRG.eventId = CUST.DATA.bundleevent
+				
+				CALL("gchrgcommon.scr")
+ 		
+					PRINT("Charge collected")
+			
+			ELSE
+			#{
+				PRINT("Failure")
+					CUST.DATA.foracid = CUST.DATA.foracid
+					CUST.DATA.amt = CUST.DATA.amt
+					CUST.DATA.EventID = CUST.DATA.bundleevent
+					CUST.DATA.RateCode  = "TTB"
+					CUST.DATA.lienRemarks = "Monthly fee Supreme Lien"	
+					CALL("AutoLienMain.scr")
+			#}
+			ENDIF	
+
+		#}
+		ENDIF
+	#}
+	DO
+	sv_c = urhk_dbCursorClose(CUST.DATA.MainCursor)
+
+EXITSCRIPT
+
+TRACE OFF
+END-->

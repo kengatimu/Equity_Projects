@@ -1,0 +1,207 @@
+#------------------------------------------------------------------------------------------------    
+#  Name            : laadisbdp003.scr
+#  Description     : This script is used for calculating insurance amount for stima loan.
+#  Date            : 31-03-2013
+#  Author          : Saurabh Sinha
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  :
+#  Menu Option     : HLADISB
+
+#  Srl. No			Date			Author			Description.
+#  -------			------			------			------------
+#  1.0				31-03-2013		Saurabh Sinha		Original Version
+#  2.0				21-08-2013	 Vijaya V	modified for TOL 368522
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="877ddda3f48550453253224a15a81022e8df6801886e0bf6450b3c5b0ac33e0d"
+	TRACE ON
+	
+	#--------------------------------------------------------------------------
+	#  Declaring Variable
+	#--------------------------------------------------------------------------
+	CUST.LADISB.freeText1 	= ""
+	CUST.LADISB.freeText2 	= ""
+	CUST.LADISB.company		= ""
+	CUST.LADISB.pattrns		= ""
+	CUST.LADISB.ttlFee		= ""
+	
+	PRINT(CUST.LADISB.disbAmt)
+	print(CUST.LADISB.loanAcctId)
+	print(CUST.LADISB.laSchmCode)
+	
+	#-------------------------------------------------------------------------
+	# Selecting the FreeText1 in table gac
+	#--------------------------------------------------------------------------
+	sv_s = "freeText1,freeText2|"
+	sv_s = sv_s + "SELECT GAC.free_text_1,GAC.free_text_2"
+	sv_s = sv_s + " FROM TBAADM.GAC, TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAC.acid = GAM.acid"
+	sv_s = sv_s + " AND GAC.bank_id = GAM.bank_id"
+	sv_s = sv_s + " AND GAM.foracid=?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id=?SVAR"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d =urhk_dbSelectWithBind(sv_s)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.LADISB.freeText1 = BANCS.OUTPARAM.freeText1
+		CUST.LADISB.freeText2 = BANCS.OUTPARAM.freeText2
+		print(CUST.LADISB.freeText1)
+		print(CUST.LADISB.freeText2)
+		
+		IF (CINT(CUST.LADISB.freeText1) > 0 ) THEN
+		#{
+			CUST.LADISB.pattrns = CUST.LADISB.freeText1
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.freeText2 != "" ) THEN
+		#{
+			CUST.LADISB.company = CUST.LADISB.freeText2
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.LADISB.errMsg = "Error in finding freetext code"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Selecting the period,SchmCode from table lam
+	# if the period is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = 		  " repPerdMths|"
+	sv_s = sv_s + " SELECT LAM.rep_perd_mths"
+	sv_s = sv_s + " FROM TBAADM.LAM, TBAADM.GAM"
+	sv_s = sv_s + " WHERE LAM.acid = GAM.acid"
+	sv_s = sv_s + " AND LAM.bank_id = GAM.bank_id"
+	sv_s = sv_s + " AND LAM.bank_id = ?SVAR"
+	sv_s = sv_s + " AND GAM.foracid = ?SVAR"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.LADISB.loanAcctId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.LADISB.repPerdMths = BANCS.OUTPARAM.repPerdMths
+		#}
+	ELSE
+		#{
+		CUST.LADISB.errMsg = "Error in finding repayment period months code"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------
+	#--calling cparam script
+	#----------------------------------------------------
+	
+	CUST.LADISB.stepVal	="3"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "" ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	#  Comparing Charge Amount and calculating GLFee & PTDFee
+	#--------------------------------------------------------------------------
+	
+	IF (CDOUBLE(CUST.LADISB.chrgAmt) > CDOUBLE(CUST.CPARAM.stLimChrgAmt)) THEN
+	#{
+		CUST.LADISB.chrgAmt = CUST.CPARAM.stLimChrgAmt
+	#}
+	ENDIF
+	
+	CUST.LADISB.GLfee=CDOUBLE(CUST.LADISB.chrgAmt) *CDOUBLE(CUST.CPARAM.GLpcnt)*CDOUBLE(CUST.LADISB.repPerdMths)
+	CUST.LADISB.GLfee=CDOUBLE(CUST.LADISB.GLfee) / CDOUBLE("12")
+	print(CUST.LADISB.GLfee)
+	
+	CUST.LADISB.PTDfee=CDOUBLE(CUST.LADISB.chrgAmt) * CDOUBLE(CUST.CPARAM.PTDpcnt) * CDOUBLE(CUST.LADISB.repPerdMths)
+	CUST.LADISB.PTDfee=CDOUBLE(CUST.LADISB.PTDfee) / CDOUBLE("12")
+	print(CUST.LADISB.PTDfee)
+	
+	#--------------------------------------------------------------------------
+	#  Calculating PTDADD, PTDFee & ttlFee
+	#--------------------------------------------------------------------------
+	CUST.LADISB.PTDadd = CDOUBLE(CUST.LADISB.PTDfee) * CDOUBLE(CUST.CPARAM.PTDadd)
+	print(CUST.LADISB.PTDadd)
+	CUST.LADISB.PTDfee = CDOUBLE(CUST.LADISB.PTDadd) + CDOUBLE(CUST.LADISB.PTDfee)
+	print(CUST.LADISB.PTDfee)
+	
+	#--------------------------------------------------------------------------
+	#  Calculating ttlFee with Pattrn
+	#--------------------------------------------------------------------------
+	CUST.LADISB.TTLfee=CDOUBLE(CUST.LADISB.GLfee) + CDOUBLE(CUST.LADISB.PTDfee)
+	
+	IF (FIELDEXISTS(CUST.LADISB.pattrns)) THEN
+	#{
+		IF (CUST.LADISB.pattrns > 1) THEN
+		#{
+			CUST.LADISB.TTLfee= CDOUBLE(CUST.LADISB.TTLfee)*CDOUBLE(CUST.LADISB.pattrns)*CDOUBLE(CUST.CPARAM.discount)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	CUST.LADISB.insuAmt = CUST.LADISB.TTLfee
+	print(CUST.LADISB.insuAmt)
+	
+	#--------------------------------------------------------------------------
+	#  Comparing Company and Period
+	#--------------------------------------------------------------------------
+	IF (CUST.LADISB.company == CUST.CPARAM.company) THEN
+	#{
+		CUST.LADISB.TTLfee = CUST.CPARAM.TTLfee1
+		CUST.LADISB.insuAmt = CUST.CPARAM.insuAmt1
+	#}
+	ENDIF
+	
+	IF (CUST.LADISB.repPerdMths > CUST.CPARAM.period) THEN
+	#{
+		CUST.LADISB.TTLfee = CUST.CPARAM.TTLfee2
+		CUST.LADISB.insuAmt= CUST.CPARAM.insuAmt2
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------
+	# Rounding Off the amount to nearest five cents
+	#---------------------------------------------------------
+	BANCS.INPARAM.InputAmount	= CUST.LADISB.insuAmt
+	BANCS.INPARAM.RoundOffAmt	=.05
+	BANCS.INPARAM.RoundOffFlag	= "N"
+	sv_r=urhk_B2k_Roundoff("")
+	IF (sv_r == 0) THEN
+	#{
+		CUST.LADISB.insuAmt = BANCS.OUTPARAM.OutputAmount
+		print(CUST.LADISB.insuAmt)
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		#---------------------------------------------------------------------
+		# Error Logging
+		#---------------------------------------------------------------------
+		IF (CUST.LADISB.errMsg != "") THEN
+		#{
+			print(CUST.LADISB.errMsg)
+			
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

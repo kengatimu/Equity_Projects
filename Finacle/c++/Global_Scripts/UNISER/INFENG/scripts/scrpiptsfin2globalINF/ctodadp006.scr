@@ -1,0 +1,172 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       ctodadp006.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This is the script to do Modify functionality of the CTODA menu on submit click.
+# Input                 :       Criteria page values.
+# Output                :       Details page values.
+# Called Script         :       None
+# Calling Script        :       ctodamn006.scr
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           12-04-2013         Nitin Prabhakar   original Version          1.0
+#  2           25-07-2013         Bharath			Modifed for expiry date field
+#  3		27-08-2013	  Kalvin		Modified for TO361667  1.3
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="b6a86b241f6019cb1e330df0d8d420111816b0e3220c6837dfec2a3e42a47fc5"
+	TRACE ON
+	CUST.CTODA.modifyFlg = "N"
+	#------------------------------------------------------------------------------
+	#  Fetching Old data from table C_TODA
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CTODA.bankId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "oldAvailPeriodMM,oldChrgAmt,oldNetTodAmount,oldRemarks|"
+	sv_s = sv_s + " SELECT PERIOD,CHARGE_AMT,REQ_AMT,REMARKS"
+	sv_s = sv_s + " FROM CUSTOM.C_TODA "
+	sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+	sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+	sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+	sv_s = sv_s + " AND VERIFY_BY IS NULL"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		CUST.INTERFACE.errorCode = "CTODA_ERR_009"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+		CUST.CTODA.fieldName = "abc"
+		CUST.CTODA.successFlg = "F"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.CTODA.oldAvailPeriodMM = BANCS.OUTPARAM.oldAvailPeriodMM
+		print(CUST.CTODA.oldAvailPeriodMM)
+		CUST.CTODA.oldChrgAmt = BANCS.OUTPARAM.oldChrgAmt
+		CUST.CTODA.oldChrgAmt = FORMAT$(CDOUBLE(CUST.CTODA.oldChrgAmt),"%.2f")
+		print(CUST.CTODA.oldChrgAmt)
+		CUST.CTODA.oldNetTodAmount = BANCS.OUTPARAM.oldNetTodAmount
+		CUST.CTODA.oldNetTodAmount = FORMAT$(CDOUBLE(CUST.CTODA.oldNetTodAmount),"%.2f")
+		print(CUST.CTODA.oldNetTodAmount)
+		CUST.CTODA.oldRemarks = BANCS.OUTPARAM.oldRemarks
+		print(CUST.CTODA.oldRemarks)
+		# calculating the TOD availment amount.
+		CUST.CTODA.oldAvailAmt = CDOUBLE(CUST.CTODA.oldNetTodAmount) - CDOUBLE(CUST.CTODA.oldChrgAmt)
+		CUST.CTODA.oldAvailAmt = FORMAT$(CDOUBLE(CUST.CTODA.oldAvailAmt),"%.2f")
+		print(CUST.CTODA.oldAvailAmt)
+	#}
+	ENDIF
+	#-------------------------------------------------------------------
+	#  comparing old and new values for modification.
+	#-------------------------------------------------------------------
+	sv_y = STRICMP(CUST.CTODA.availPeriodMM,CUST.CTODA.oldAvailPeriodMM)
+	IF(sv_y == 0) THEN
+	#{
+		CUST.CTODA.modifyFlg = "Y"
+		#------------------------------------------------------------------------------
+		# Grant date is equal to BOD date.
+		#------------------------------------------------------------------------------
+		CUST.CTODA.grantDate = MID$(BANCS.STDIN.BODDate,0,10)
+		print(CUST.CTODA.grantDate)
+		#------------------------------------------------------------------------------
+		# Caculating the Expiry Date.
+		#------------------------------------------------------------------------------
+		sv_f = CUST.CTODA.grantDate + "|" + CUST.CTODA.availPeriodMM + "|" + "0"
+		sv_u = urhk_B2k_Add_MonthsDays_To_date(sv_f)
+		IF ( sv_u == 1 ) THEN
+		#{
+			CUST.INTERFACE.errorCode = "CTODA_ERR_007"
+			CALL("Common_Interface_GetErrorDesc.scr")
+			CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+			CUST.CTODA.fieldName = "abc"
+			CUST.CTODA.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		CUST.CTODA.expiryDate = MID$(BANCS.OUTPARAM.MODIFIED_DATE,0,10)
+		print(CUST.CTODA.expiryDate)
+		GOTO MODIFY
+	#}
+	ENDIF
+	sv_y = STRICMP(CUST.CTODA.availAmt,CUST.CTODA.oldAvailAmt)
+	IF(sv_y == 0) THEN
+	#{
+		CUST.CTODA.modifyFlg = "Y"
+		GOTO MODIFY
+	#}
+	ENDIF
+	sv_y = STRICMP(CUST.CTODA.remarks,CUST.CTODA.oldRemarks)
+	IF(sv_y == 0) THEN
+	#{
+		CUST.CTODA.modifyFlg = "Y"
+		GOTO MODIFY
+	#}
+	ENDIF
+	
+	MODIFY:
+		IF (CUST.CTODA.modifyFlg == "Y") THEN
+		#{
+			#------------------------------------------------------------------------------
+			#  Updating data from table C_TODA
+			#------------------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = CUST.CTODA.availPeriodMM
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.chrgAmt
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.netTodAmount
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.remarks
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.expiryDate
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.userId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.userId
+			
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.bankId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.accNum
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CTODA.availReqId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_s = " UPDATE CUSTOM.C_TODA SET"
+			sv_s = sv_s + " PERIOD = ?SVAR,"
+			sv_s = sv_s + " CHARGE_AMT = ?SVAR,"
+			sv_s = sv_s + " REQ_AMT = ?SVAR,"
+			sv_s = sv_s + " REMARKS = ?SVAR,"
+			sv_s = sv_s + " EXPIRY_DATE = TO_DATE(?SVAR,'DD-MM-YYYY'),"
+			
+			sv_s = sv_s + " MODIFIED_BY = ?SVAR,"
+			sv_s = sv_s + " MODIFIED_DATE = SYSDATE,"
+			sv_s = sv_s + " LCHG_USER = ?SVAR,"
+			sv_s = sv_s + " LCHG_DATE = SYSDATE"
+			
+			sv_s = sv_s + " WHERE BANK_ID = ?SVAR "
+			sv_s = sv_s + " AND ACCT_NUM = ?SVAR"
+			sv_s = sv_s + " AND REQUEST_ID = ?SVAR"
+			print(sv_s)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+			IF(sv_d != 0)THEN
+			#{
+				CUST.INTERFACE.errorCode = "CTODA_ERR_010"
+				CALL("Common_Interface_GetErrorDesc.scr")
+				CUST.CTODA.errorMsg = CUST.INTERFACE.errorDesc
+				CUST.CTODA.fieldName = "abc"
+				CUST.CTODA.successFlg = "F"
+				GOTO ENDOFSCRIPT
+				#}
+				
+			#}
+			ENDIF
+			#------------------changed for TO :361667-----------------------------#
+			
+			CALL("ctodadp017.scr")
+			#------------------changed for TO :361667-----------------------------#
+			
+		#}
+		ENDIF
+		CUST.CTODA.resultPageMsg = "TOD Availment modified successfully."
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

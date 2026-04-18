@@ -1,0 +1,185 @@
+###############################################################################
+# Source Name		: s_bankgrntValmn05.scr
+# Date				: 21-02-2013
+# Description		: This script will  update the freecode 7 in GAC table
+# Input				: NA
+# Output			: Status code will be store in GAC table.
+# Called Script		: SRV_VerifyOutwardBGDtls_post_process_data.scr
+# Calling Script	: None
+# Author			: Manoj
+# Modification History :
+#< Version No.>		<Date>			<Author Name>		 	<Description>
+#  0.1				21-FEB-2013			Manoj 			Original Version
+#################################################################################
+
+<--START
+CHECKSUM="cf6335c68a279d862e2348509c14dafe00da080564b59c5f2583161afa350302"
+	TRACE ON
+	
+	#----------------------------------------------------------------------------------------------------
+	# Creating Repository
+	#----------------------------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	CUST.DATA.rate = ""
+	
+	sv_a = urhk_SRV_GetVal("bgCritDtl.bgSrlNum")
+	print(sv_a)
+	CUST.DATA.bgNum = BANCS.OUTPARAM.srvValue
+	print(CUST.DATA.bgNum)
+	
+	sv_a = urhk_SRV_GetVal("bgGeneralDtl.bgStatus")
+	print(sv_a)
+	CUST.DATA.bgStatus  = BANCS.OUTPARAM.srvValue
+	print(CUST.DATA.bgStatus )
+	
+	sv_a = urhk_SRV_GetVal("bgCritDtl.bgSolId.solId")
+	print(sv_a)
+	CUST.DATA.bgSol = BANCS.OUTPARAM.srvValue
+	print(CUST.DATA.bgSol)
+	
+	sv_a = urhk_SRV_GetVal("bgCritDtl.bgType.type")
+	print(sv_a)
+	CUST.DATA.bgTyp = BANCS.OUTPARAM.srvValue
+	print(CUST.DATA.bgTyp)
+	
+	sv_s = "rateCode|"
+	sv_s = sv_s + " SELECT RATE_CODE "
+	sv_s = sv_s + " FROM TBAADM.BGM"
+	sv_s = sv_s + " WHERE SOL_ID = ?SVAR "
+	sv_s = sv_s + " AND BG_SRL_NUM = ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.bgSol + "|" + CUST.DATA.bgNum + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	
+	
+	CUST.DATA.rate = BANCS.OUTPARAM.rateCode
+	print(CUST.DATA.rate)
+	
+	IF(CUST.DATA.bgStatus == "R") THEN
+	#{
+		#----------------------------------------------------------------------------------------------------
+		# To fetch the bg
+		#----------------------------------------------------------------------------------------------------
+		sv_u = urhk_SetUrhkInp("bgCritDtl.bgSrlNum|" + CUST.DATA.bgNum)
+		print(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("bgCritDtl.bgSolId.solId|" + CUST.DATA.bgSol)
+		print(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("bgCritDtl.bgFuncCode|Z")
+		print(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("bgCritDtl.inOutInd|O")
+		print(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("bgCritDtl.bgType.type|" + CUST.DATA.bgTyp)
+		print(sv_u)
+		
+		sv_u = urhk_ExecSrv("SRV_FetchBGDtlsForClose|retain_all_output = Y")
+		print(sv_u)
+		IF ((sv_u != 0)) THEN
+		#{
+			sv_m = "Fetch failed for bg: " + CUST.DATA.bgNum + " due to :"
+			print(sv_m)
+			GOTO SRVERROR
+		#}
+		ENDIF
+		
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		
+		sv_u = urhk_SetUrhkInp("bgInstDtls.bgInstHeader.rateCode.refCode|"+CUST.DATA.rate)
+		print(sv_u)
+		
+		sv_u = urhk_ExecSrv("SRV_CloseOutwardBGDtls|retain_all_output = Y|same_user_verify = Y")
+		print(sv_u)
+		
+		IF ((sv_u != 0)) THEN
+		#{
+			sv_m = "Close failed for bg: " + CUST.DATA.bgNum + " due to :"
+			print(sv_m)
+			GOTO SRVERROR
+		#}
+		ENDIF
+		
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		
+		#--------------------------------------------------------------------------------------------------------------
+		# Verifying the close
+		#--------------------------------------------------------------------------------------------------------------
+		sv_u = urhk_SetUrhkInp("bgCritDtl.bgSrlNum|" + CUST.DATA.bgNum)
+		print(sv_u)
+		
+		sv_u = urhk_ExecSrv("SRV_FetchBGDtlsForVerify|retain_all_output = Y")
+		print(sv_u)
+		
+		IF ((sv_u != 0)) THEN
+		#{
+			sv_m = "Fetch for verify failed for bg: " + CUST.DATA.bgNum + " due to :"
+			print(sv_m)
+			GOTO SRVERROR
+		#}
+		ENDIF
+		
+		sv_u = urhk_CopyOutToIn("")
+		print(sv_u)
+		
+		sv_u = urhk_ExecSrv("SRV_VerifyOutwardBGDtls|retain_all_output = Y|same_user_verify = Y")
+		print(sv_u)
+		
+		IF ((sv_u != 0)) THEN
+		#{
+			sv_m = "Verification failed for bg: " + CUST.DATA.bgNum + " due to :"
+			print(sv_m)
+		#}
+		ENDIF
+		
+		SRVERROR :
+			#--------------------------------------------------------------------------------------------------------------
+			# Printing the errors
+			#--------------------------------------------------------------------------------------------------------------
+			IF ((sv_u != 0)) THEN
+			#{
+				print("Error")
+				sv_k = BANCS.OUTPARAM.Error_num
+				print (sv_k)
+				
+				IF (sv_k > 0) THEN
+				#{
+					sv_l = 1
+					sv_p = FORMAT$(sv_l,"%d")
+					CUST.DATA.ErrMsg = ("BANCS").("OUTPARAM").("ErrorMesg_"+ sv_p)
+					CUST.DATA.ErrMsg = sv_m + CUST.DATA.ErrMsg
+					sv_m = ""
+					print(CUST.DATA.ErrMsg)
+					CUST.DATA.ErrCode = ("BANCS").("OUTPARAM").("ErrorCode_"+ sv_p)
+					print(CUST.DATA.ErrCode)
+					CUST.DATA.Tag = ("BANCS").("OUTPARAM").("Tag_"+ sv_p)
+					print(CUST.DATA.Tag)
+					CUST.DATA.successFailure = "F"
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

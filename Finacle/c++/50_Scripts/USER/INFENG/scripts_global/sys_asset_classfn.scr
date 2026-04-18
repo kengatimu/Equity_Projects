@@ -1,0 +1,625 @@
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: sys_asset_classfn.scr
+# event: NA
+# description: Classify an Asset
+#=================================================
+
+#***********************************************************************************************************************
+# Filename              : sys_asset_classfn.scr
+# Description           : This script is used to check the various condtions and update teh classification IN ACD  table
+#			:
+# Input                 :
+# Output                :
+# Called Script         :astclsdp001.scr
+# Calling Script        :NONE
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----          ------           --------          ----------------        ---------
+#   1          17-06-2013       Venkatesh 	      Original Version          1.0
+#              13-jan-2013       sospeter            Modified                 CHG0031670
+#***********************************************************************************************************************
+<--START
+CHECKSUM="abbf0646dd560636dad9f646dd926eff45b37e5b18783f36d54ec5e6794bc291"
+	trace on
+	
+	#call("astclsdp000.scr")
+	
+	#------------------------------------------------------------------------
+	# Create required repositories
+	#------------------------------------------------------------------------
+	IF(REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","ASSETS") == 0) THEN
+	#{
+		CREATECLASS("CUST","ASSETS",5)
+	#}
+	ENDIF
+	
+	print(BANCS.INPUT.b2kType)
+	print(BANCS.INPUT.b2kId)
+	print(BANCS.INPUT.mainClassificationSystem)
+	print(BANCS.INPUT.subClassificationSystem)
+	print(BANCS.INPUT.mainClassificationUser)
+	print(BANCS.INPUT.subClassificationUser)
+	print(BANCS.INPUT.setupMainClassificationSystem)
+	print(BANCS.INPUT.setupSubClassificationSystem)
+	print(BANCS.INPUT.liability)
+	print(BANCS.INPUT.foracid)
+	
+	CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+	CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+	
+	#-------------------------------------------------------------------------
+	#Fetch the intereset and non interest overdue periods
+	#----------------------------------------------------------------------------
+	BANCS.INPARAM.b2kId=BANCS.INPUT.b2kId
+	BANCS.INPARAM.b2kType= BANCS.INPUT.b2kType
+	BANCS.INPARAM.schmType = BANCS.INPUT.schmType
+	BANCS.INPARAM.Ovd_SLimit_Flg="O"
+	sv_u= urhk_getOverdueDetails("")
+	PRINT(sv_u)
+	print(BANCS.OUTPARAM.nonIntOverduePeriod)
+	print(BANCS.OUTPARAM.intOverduePeriod)
+	
+	CUST.ASSETS.nonIntOverduePeriod = BANCS.OUTPARAM.nonIntOverduePeriod
+	CUST.ASSETS.intOverduePeriod = BANCS.OUTPARAM.intOverduePeriod
+	CUST.ASSETS.currentDPD = "0"
+	print(CUST.ASSETS.nonIntOverduePeriod)
+	print(CUST.ASSETS.intOverduePeriod)
+	
+	IF(BANCS.INPUT.b2kType != "ACCNT") THEN
+	#{
+		CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+		CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------
+	# Initializing variables
+	#------------------------------------------------------------------------
+	CUST.ASSETS.mainClassificationUser = BANCS.INPUT.mainClassificationUser
+	CUST.ASSETS.subClassificationUser = BANCS.INPUT.subClassificationUser
+	CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.mainClassificationSystem
+	CUST.ASSETS.subClassificationSystem = BANCS.INPUT.subClassificationSystem
+	CUST.ASSETS.mainClassificationSystem1 = CUST.ASSETS.mainClassificationSystem
+	CUST.ASSETS.subClassificationSystem1 = CUST.ASSETS.subClassificationSystem
+	CUST.ASSETS.acctId = BANCS.INPUT.b2kId
+	CUST.ASSETS.foracid = BANCS.INPUT.foracid
+	CUST.ASSETS.rshdlDate = ""
+	CUST.ASSETS.watchUpgrDate = ""
+	CUST.ASSETS.normalUpgrDate = ""
+	CUST.ASSETS.Rshdl_Flg = ""
+	CUST.ASSETS.upgradeNrmlPrd = ""
+	CUST.ASSETS.upgradeWatchPrd = ""
+	CUST.ASSETS.getWatchUpgrDate = "N"
+	CUST.ASSETS.getNrmlUpgrDate = "N"
+	CUST.ASSETS.lastAdjDate = ""
+	CUST.ASSETS.normUpgrDateCAC = ""
+	CUST.ASSETS.watcUpgrDateCAC = ""
+	BANCS.OUTPUT.trgEntityType="ACCNT"
+	BANCS.OUTPUT.trgEntityId =CUST.ASSETS.foracid
+	
+	#-----------------------------------------------------------------------
+	# Fetching DPD
+	#-----------------------------------------------------------------------
+	IF(CINT(CUST.ASSETS.nonIntOverduePeriod) > CINT(CUST.ASSETS.intOverduePeriod)) THEN
+	#{
+		CUST.ASSETS.currentDPD = CINT(CUST.ASSETS.nonIntOverduePeriod)
+		PRINT(CINT(CUST.ASSETS.nonIntOverduePeriod))
+		#}
+	ELSE
+		#{
+		CUST.ASSETS.currentDPD = CUST.ASSETS.intOverduePeriod
+		PRINT(CINT(CUST.ASSETS.intOverduePeriod))
+	#}
+	ENDIF
+	PRINT(CUST.ASSETS.currentDPD)
+
+	sv_u = "acid,interst,principal|"
+	sv_u = sv_u + "select ACID,(select  SUM(DMD_AMT-TOT_ADJ_AMT)from    tbaadm.ldth where   acid=?SVAR AND SHDL_NUM=(SELECT MAX(SHDL_NUM) FROM TBAADM.LDTH WHERE BANK_ID=?SVAR and acid=?SVAR) and   dmd_amt!=tot_adj_amt  and dmd_flow_id IN('INDEM','PIDEM'))INTEREST,  "
+	sv_u = sv_u + " (select  SUM(DMD_AMT-TOT_ADJ_AMT) from tbaadm.ldth where acid= ?SVAR AND SHDL_NUM=(SELECT MAX(SHDL_NUM) FROM TBAADM.LDTH WHERE BANK_ID=?SVAR and acid=?SVAR) and dmd_amt!=tot_adj_amt  and dmd_flow_id IN('PRDEM'))PRINCIPAL "
+	sv_u = sv_u + " from tbaadm.lrh  where   bank_id= ?SVAR  and SHDL_NUM <>01 and RESHDL_DATE>='01-jan-2022' and acid= ?SVAR "
+	sv_u = sv_u + " AND REPHASE_FLG='Y'"		
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.b2kId  + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.b2kId + "|" + BANCS.INPUT.b2kId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.b2kId  + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.b2kId 
+	print(BANCS.INPARAM.BINDVARS)
+			
+	sv_w =  urhk_dbSelectWithBind(sv_u)
+	print(sv_w)
+			
+	IF (sv_w==0) THEN
+
+		CUST.ASSETS.acid=BANCS.OUTPARAM.acid
+		print(CUST.ASSETS.acid)
+		CUST.ASSETS.interst=BANCS.OUTPARAM.interst
+		print(CUST.ASSETS.interst)
+		CUST.ASSETS.principal=BANCS.OUTPARAM.principal
+		print(CUST.ASSETS.principal)
+		CUST.ASSETS.Rshdl_Flg="Y"
+
+		IF (CUST.ASSETS.interst=="") THEN
+			CUST.ASSETS.interst="0"
+		ENDIF
+		IF (CUST.ASSETS.principal=="") THEN
+			CUST.ASSETS.principal="0"
+		ENDIF
+
+		sv_o=cint(CUST.ASSETS.interst)+cint(CUST.ASSETS.principal)
+		IF (sv_o=="0") THEN
+			CUST.ASSETS.Rshdl_Flg="YY"
+		ENDIF
+		IF (( CUST.ASSETS.interst!="0") AND (CUST.ASSETS.principal!="0")) THEN
+			CUST.ASSETS.Rshdl_Flg="Y"
+		ENDIF
+		IF (( CUST.ASSETS.interst=="0") AND (CUST.ASSETS.principal!="0")) THEN
+			CUST.ASSETS.Rshdl_Flg="YYY"
+		ENDIF
+	ELSE
+		CUST.ASSETS.Rshdl_Flg="N"
+	ENDIF
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ASSETS.foracid
+		sv_s = "foracid,cacUpgrNrmlDate|SELECT FORACID,TO_CHAR(UPGR_NORMAL_DATE,'DD-MM-YYYY') FROM CUSTOM.C_CAC WHERE"
+		sv_s = sv_s + " BANK_ID = ?SVAR AND FORACID = ?SVAR AND DEL_FLG != 'Y'"
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		IF(sv_d == 0) THEN
+			CUST.ASSETS.cacUpgrNrmlDate = BANCS.OUTPARAM.cacUpgrNrmlDate
+			print(CUST.ASSETS.cacUpgrNrmlDate)
+			print(BANCS.STDIN.BODDate)
+			sv_u = urhk_B2k_getDateDiffFromBODDate(CUST.ASSETS.cacUpgrNrmlDate)
+			print(sv_u)
+			CUST.ASSETS.dateDiff = BANCS.OUTPARAM.DateDiff
+			PRINT(CUST.ASSETS.dateDiff)
+			IF(CINT(CUST.ASSETS.dateDiff)>=0) THEN
+				IF (CUST.ASSETS.Rshdl_Flg=="Y") THEN
+					CUST.ASSETS.Rshdl_Flg="YU"
+				ENDIF
+			ENDIF
+		ENDIF
+
+
+
+
+	#------------------------------------------------------------------------------------------
+	# Check for System/User classification
+	#------------------------------------------------------------------------------------------
+	IF((BANCS.INPUT.subClassificationUser == "SUBS") OR (BANCS.INPUT.subClassificationUser == "DBTL") OR (BANCS.INPUT.subClassificationUser == "LOSS") OR (BANCS.INPUT.subClassificationSystem == "DBTL") OR (BANCS.INPUT.subClassificationSystem == "SUBS") OR (BANCS.INPUT.subClassificationSystem == "LOSS")) THEN
+	#{
+		CUST.ASSETS.isDowngrade = "N"
+		IF(BANCS.INPUT.subClassificationSystem == "SUBS") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "DBTL") OR (BANCS.INPUT.setupSubClassificationSystem == "LOSS")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "Y"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF(BANCS.INPUT.subClassificationSystem == "DBTL") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "LOSS")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "Y"
+				
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		IF(BANCS.INPUT.subClassificationSystem == "DBTL") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "NORM")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="DBTL"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+				GOTO DBTL
+			#}
+			ENDIF
+			IF((BANCS.INPUT.setupSubClassificationSystem == "WATC")	OR (BANCS.INPUT.setupSubClassificationSystem == "SUBS")	) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="DBTL"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="DBTL"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="DBTL"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+				GOTO DBTL
+			#}
+			ENDIF
+			DBTL:
+			IF (CUST.ASSETS.Rshdl_Flg=="YY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="WATC"
+				BANCS.INPUT.setupMainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem="WATC"
+				CUST.ASSETS.mainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem1="WATC"
+				CUST.ASSETS.mainClassificationSystem1="PA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="Y") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="DBTL"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="DBTL"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="DBTL"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="YU") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="YYY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+		#DBTL:
+		
+				
+		#}
+		ENDIF
+		IF(BANCS.INPUT.subClassificationSystem == "LOSS") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "NORM")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="DBTL"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="DBTL"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="LOSS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			GOTO LOSS	
+			#}
+			ENDIF
+			IF((BANCS.INPUT.setupSubClassificationSystem == "WATC")	OR (BANCS.INPUT.setupSubClassificationSystem == "SUBS") OR (BANCS.INPUT.setupSubClassificationSystem == "DBTL")	) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="LOSS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="LOSS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="LOSS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+				GOTO LOSS			
+			#}
+			ENDIF
+			LOSS:	
+			IF (CUST.ASSETS.Rshdl_Flg=="YY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="Y") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="LOSS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="LOSS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="LOSS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="YU") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="DBTL"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="DBTL"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="DBTL"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+
+			IF (CUST.ASSETS.Rshdl_Flg=="YYY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="DBTL"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="DBTL"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="DBTL"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+		#
+			#LOSS:
+		ENDIF
+		IF(BANCS.INPUT.subClassificationSystem == "SUBS") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "NORM")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="WATC"
+				BANCS.INPUT.setupMainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem="WATC"
+				CUST.ASSETS.mainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+				GOTO SUBS	
+			#}
+			ENDIF
+			IF((BANCS.INPUT.setupSubClassificationSystem == "WATC")) THEN
+			#{
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+				GOTO SUBS		
+			#}
+			ENDIF
+		SUBS:	
+			IF (CUST.ASSETS.Rshdl_Flg=="YY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="NORM"
+				BANCS.INPUT.setupMainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="Y") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="SUBS"
+				BANCS.INPUT.setupMainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem="SUBS"
+				CUST.ASSETS.mainClassificationSystem="NPA"
+				CUST.ASSETS.subClassificationSystem1="SUBS"
+				CUST.ASSETS.mainClassificationSystem1="NPA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="YU") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="WATC"
+				BANCS.INPUT.setupMainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem="WATC"
+				CUST.ASSETS.mainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem1="WATC"
+				CUST.ASSETS.mainClassificationSystem1="PA"
+			ENDIF
+			IF (CUST.ASSETS.Rshdl_Flg=="YYY") THEN
+				CUST.ASSETS.isDowngrade = "N"
+				BANCS.INPUT.setupSubClassificationSystem="WATC"
+				BANCS.INPUT.setupMainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem="WATC"
+				CUST.ASSETS.mainClassificationSystem="PA"
+				CUST.ASSETS.subClassificationSystem1="WATC"
+				CUST.ASSETS.mainClassificationSystem1="PA"
+			ENDIF
+		#	SUBS:	
+	#}
+		ENDIF
+		#----------------------------------------------------------------------------------------------------
+		# The reclassification logic needs to be run only if the account is moving from NPA to PA
+		# If account is moving from NPA/DBTL to NPA/SUBS the system dervied classification should take place
+		#----------------------------------------------------------------------------------------------------
+		print(CUST.ASSETS.isDowngrade)
+		IF(CUST.ASSETS.isDowngrade == "N") THEN
+		#{
+				#--------------------------------------------------------------------------------------
+				# Upgradation within NPA is not possible. So retaining the existing classification
+				#--------------------------------------------------------------------------------------
+				print(CUST.ASSETS.subClassificationSystem)
+				print(CUST.ASSETS.mainClassificationSystem)
+				print(CUST.ASSETS.subClassificationSystem1)
+				print(CUST.ASSETS.mainClassificationSystem1)
+				#l
+
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ASSETS.foracid
+				sv_s = "foracid,cacUpgrNrmlDate|SELECT FORACID,TO_CHAR(UPGR_NORMAL_DATE,'DD-MM-YYYY') FROM CUSTOM.C_CAC WHERE"
+				sv_s = sv_s + " BANK_ID = ?SVAR AND FORACID = ?SVAR AND DEL_FLG != 'Y'"
+				sv_d =  urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+					CUST.ASSETS.cacUpgrNrmlDate = BANCS.OUTPARAM.cacUpgrNrmlDate
+					print(CUST.ASSETS.cacUpgrNrmlDate)
+					print(BANCS.STDIN.BODDate)
+					sv_u = urhk_B2k_getDateDiffFromBODDate(CUST.ASSETS.cacUpgrNrmlDate)
+					print(sv_u)
+					CUST.ASSETS.dateDiff = BANCS.OUTPARAM.DateDiff
+					PRINT(CUST.ASSETS.dateDiff)
+					IF(CINT(CUST.ASSETS.dateDiff)>0) THEN
+						CUST.ASSETS.subClassificationSystem=CUST.ASSETS.subClassificationSystem1
+						CUST.ASSETS.mainClassificationSystem=CUST.ASSETS.mainClassificationSystem1
+					ELSE
+						CUST.ASSETS.subClassificationSystem=CUST.ASSETS.subClassificationSystem
+						CUST.ASSETS.mainClassificationSystem=CUST.ASSETS.mainClassificationSystem
+						CUST.ASSETS.getNrmlUpgrDate = "Y"
+						CALL("astclsdp001.scr")
+					ENDIF
+
+				ELSE
+
+					CALL("astclsdp001.scr")
+				ENDIF
+
+				GOTO ENDOFSCRIPT
+
+			#}
+		ELSE
+			#{
+			CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+			CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+			#--------------------------------------------------------------------------------
+			# In case its downgrade and if entry exists in C_CAC then that has to be deleted
+			# upgrade to normal/watch dates are removed
+			#--------------------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = "Y" + "|" + "" + "|" + ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.ASSETS.foracid
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_s = "UPDATE CUSTOM.C_CAC SET"
+			sv_s = sv_s + " DEL_FLG =  ?SVAR, UPGR_WATCH_DATE = ?SVAR, UPGR_NORMAL_DATE = ?SVAR "
+			sv_s = sv_s + " WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			print(sv_d)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+		CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+		IF(BANCS.INPUT.subClassificationSystem == "WATC") THEN
+		#{
+			IF((BANCS.INPUT.setupSubClassificationSystem == "NORM")) THEN
+			#{
+				#-----------------------------------------------------------------------------------
+				# Account is moved to PA/NORM if the current DPD is less than 30 and upgrade to
+				# normal date is less than or equal to BOD
+				#-----------------------------------------------------------------------------------
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ASSETS.foracid
+				sv_s = "foracid,cacUpgrNrmlDate|SELECT FORACID,TO_CHAR(UPGR_NORMAL_DATE,'DD-MM-YYYY') FROM CUSTOM.C_CAC WHERE"
+				sv_s = sv_s + " BANK_ID = ?SVAR AND FORACID = ?SVAR AND DEL_FLG != 'Y'"
+				sv_d =  urhk_dbSelectWithBind(sv_s)
+				IF(sv_d == 0) THEN
+				#{
+					CUST.ASSETS.cacUpgrNrmlDate = BANCS.OUTPARAM.cacUpgrNrmlDate
+					print(CUST.ASSETS.cacUpgrNrmlDate)
+					print(BANCS.STDIN.BODDate)
+					sv_u = urhk_B2k_getDateDiffFromBODDate(CUST.ASSETS.cacUpgrNrmlDate)
+					print(sv_u)
+					CUST.ASSETS.dateDiff = BANCS.OUTPARAM.DateDiff
+					PRINT(CUST.ASSETS.dateDiff)
+					IF(CINT(CUST.ASSETS.dateDiff)>0) THEN
+					#{
+						CUST.ASSETS.mainClassificationSystem = "PA"
+						CUST.ASSETS.subClassificationSystem = "WATC"
+						#}
+					ELSE
+						#{
+						BANCS.INPARAM.BINDVARS = "Y" + "|" + "" + "|" + ""
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.ASSETS.foracid
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+						print(BANCS.INPARAM.BINDVARS)
+						sv_s = "UPDATE CUSTOM.C_CAC SET"
+						sv_s = sv_s + " DEL_FLG = ?SVAR, UPGR_WATCH_DATE = ?SVAR, UPGR_NORMAL_DATE = ?SVAR "
+						sv_s = sv_s + " WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+						sv_d = urhk_dbSqlWithBind(sv_s)
+						print(sv_d)
+						CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+						CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					#------------------------------------------------------------------------------
+					# If no record exist in C_CAC for this account then it can be moved to PA/NORM
+					#------------------------------------------------------------------------------
+					CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+					CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				#---------------------------------------------------------
+				# remove entry in C_CAC
+				#---------------------------------------------------------
+				BANCS.INPARAM.BINDVARS = "Y" + "|" + "" + "|" + ""
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.ASSETS.foracid
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_s = "UPDATE CUSTOM.C_CAC SET"
+				sv_s = sv_s + " DEL_FLG = ?SVAR, UPGR_WATCH_DATE = ?SVAR, UPGR_NORMAL_DATE = ?SVAR "
+				sv_s = sv_s + " WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+				sv_d = urhk_dbSqlWithBind(sv_s)
+				print(sv_d)
+				CUST.ASSETS.mainClassificationSystem = BANCS.INPUT.setupMainClassificationSystem
+				CUST.ASSETS.subClassificationSystem = BANCS.INPUT.setupSubClassificationSystem
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		print(CUST.ASSETS.mainClassificationSystem)
+		print(CUST.ASSETS.subClassificationSystem)
+		BANCS.OUTPUT.mainClassificationSystem = CUST.ASSETS.mainClassificationSystem
+		BANCS.OUTPUT.subClassificationSystem = CUST.ASSETS.subClassificationSystem
+		BANCS.OUTPUT.maxDPDCounter = CUST.ASSETS.currentDPD
+		
+		IF(BANCS.INPUT.b2kType == "ACCNT")THEN
+		#{
+			#------------------------------------------------------------------------------------------
+			# setting the system derived classification in asset classification reason code
+			#------------------------------------------------------------------------------------------
+			CUST.ASSETS.assetClsReasonCode = ""
+			print(BANCS.INPUT.setupMainClassificationSystem)
+			print(BANCS.INPUT.setupSubClassificationSystem)
+			IF(BANCS.INPUT.setupMainClassificationSystem == "PA") THEN
+			#{
+				IF(BANCS.INPUT.setupSubClassificationSystem == "NORM") THEN
+				#{
+					CUST.ASSETS.assetClsReasonCode = "PANOM"
+					#}
+				ELSE
+					#{
+					CUST.ASSETS.assetClsReasonCode = "PAWAT"
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			IF(BANCS.INPUT.setupMainClassificationSystem == "NPA") THEN
+			#{
+				IF(BANCS.INPUT.setupSubClassificationSystem == "LOSS") THEN
+				#{
+					CUST.ASSETS.assetClsReasonCode = "NPLOS"
+					#}
+				ELSE
+					#{
+					IF(BANCS.INPUT.setupSubClassificationSystem == "DBTL") THEN
+					#{
+						CUST.ASSETS.assetClsReasonCode = "NPDBT"
+						#}
+					ELSE
+						#{
+						CUST.ASSETS.assetClsReasonCode = "NPSUB"
+					#}
+					ENDIF
+					
+				#}
+				ENDIF
+			#}
+			ENDIF
+			print(CUST.ASSETS.assetClsReasonCode)
+			BANCS.OUTPUT.assetClsReasonCode = CUST.ASSETS.assetClsReasonCode
+			BANCS.OUTPUT.trgEntityType="ACCNT"
+			BANCS.OUTPUT.trgEntityId =CUST.ASSETS.acctId
+		#}
+		ENDIF
+		
+		print(BANCS.OUTPUT.mainClassificationSystem)
+		print(BANCS.OUTPUT.subClassificationSystem)
+		print(BANCS.OUTPUT.assetClsReasonCode)
+		
+		trace off
+END-->
+

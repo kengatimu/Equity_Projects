@@ -1,0 +1,263 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : eSupremeFee.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 11-08-2021
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             11-08-2021      Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","SFEE") == 0) THEN
+#{
+	CREATECLASS("CUST","SFEE",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUST.SFEE.errMsg = ""
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print(sv_a)
+
+CUST.SFEE.USDCrAcct = "2011650051577"
+CUST.SFEE.SSPCrAcct = "2011650051386"
+
+sv_f = "foracid,solId,cifId,schmCode,acctCrncy,acid| "
+sv_f = sv_f + " select foracid,sol_id,cif_id,schm_code,acct_crncy_code,acid FROM tbaadm.gam where bank_id =?SVAR"
+sv_f = sv_f + " and sol_id =?SVAR and schm_code in ('CA287','CA288','SB188') "
+sv_f = sv_f + " and  ACCT_CLS_FLG ! = 'Y' and del_flg ='N' "
+print (sv_f)
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+PRINT(BANCS.INPARAM.BINDVARS)
+sv_u = urhk_dbCursorOpenWithBind(sv_f)
+if(sv_u==0)then
+	CUST.SFEE.sfeeCursNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+else
+	CUST.SFEE.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+	CUST.SFEE.errMsg = BANCS.OUTPARAM.DB_ERRMSG
+	CUST.SFEE.srvSucFail = "F"
+	goto Endofscript
+endif
+CUST.SFEE.ddaRec = 0
+sv_z = urhk_dbCursorFetch(CUST.SFEE.sfeeCursNum)
+if(sv_z!=0)then
+	CUST.SFEE.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+	CUST.SFEE.errMsg = BANCS.OUTPARAM.DB_ERRMSG
+	CUST.SFEE.srvSucFail = "F"
+	goto Endofscript
+endif
+print(sv_z)
+while(sv_z ==0)
+#{
+	CUST.SFEE.foracid = BANCS.OUTPARAM.foracid
+	CUST.SFEE.solId = BANCS.OUTPARAM.solId
+	CUST.SFEE.cifId = BANCS.OUTPARAM.cifId
+	CUST.SFEE.schmCode = BANCS.OUTPARAM.schmCode
+	CUST.SFEE.acctCrncy = BANCS.OUTPARAM.acctCrncy
+	CUST.SFEE.acid = BANCS.OUTPARAM.acid
+
+	BANCS.INPARAM.acid = CUST.SFEE.acid
+	PRINT(BANCS.INPARAM.acid)
+	if(CUST.SFEE.acid != "")then
+		sv_n = urhk_getAcctStatus("")
+		if(sv_n == 0)then
+			sv_f = BANCS.OUTPARAM.acctStatus
+		endif
+	endif	
+	
+	sv_a = urhk_getAcctDetailsInRepository(CUST.SFEE.foracid)
+	if(sv_a==0)THEN
+		CUST.SFEE.effBal = BANCS.OUTPARAM.EffAvailableAmt
+	endif
+	if(CUST.SFEE.acctCrncy=="USD")then
+		if((CUST.SFEE.schmCode=="CA288") OR (CUST.SFEE.schmCode=="CA287"))then
+			CUST.SFEE.amt="20"
+		else
+			CUST.SFEE.amt="10"
+		endif
+	else
+		if((CUST.SFEE.schmCode=="CA288") OR (CUST.SFEE.schmCode=="CA287"))then
+			CUST.SFEE.amt="900"
+		else
+			CUST.SFEE.amt="450"
+		endif
+	endif
+	print(CUST.SFEE.effBal)
+	print(CUST.SFEE.amt)
+
+	if (cdouble(CUST.SFEE.effBal) >= cdouble(CUST.SFEE.amt)) then
+	#--------------------------------------------------------------------------
+		# Initialise the MTT repository
+		#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+
+		BANCS.INPARAM.PostTranFlg 		= "Y"
+		BANCS.INPARAM.CommitFlg 		= "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+		BANCS.INPARAM.ValidationFlag 		= "Y"
+		BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+		BANCS.INPARAM.CheckExceptions 		= "N"			
+
+
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+		print(sv_a)
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = "SUPREME CHARGE FEE"		
+		
+		sv_v = "WITHTran"
+		print(sv_v)
+
+		sv_r = urhk_MTTS_DefineTransaction("WITHTran")
+
+			
+	#CustomerDebit
+		MTT.PartTranDetails.Account 	= CUST.SFEE.foracid
+		if(CUST.SFEE.acctCrncy=="USD")then
+			MTT.PartTranDetails.RefCurrency = "USD"
+		else
+			MTT.PartTranDetails.RefCurrency = "SSP"	
+		endif
+		MTT.PartTranDetails.RateCode 	="MEAN"
+		MTT.PartTranDetails.Rate 	= "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "SUPREME CHARGE FEE/"
+		MTT.PartTranDetails.RefAmount = -(cdouble(CUST.SFEE.amt))
+		print(MTT.PartTranDetails.RefAmount)
+		#MTT.PartTranDetails.Remarks = "Dr.SUPREME CHARGE FEE" 
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "CustDr"
+		print(sv_e)
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+	#WITH Credit
+		if(CUST.SFEE.acctCrncy=="USD")then
+			MTT.PartTranDetails.Account = CUST.SFEE.USDCrAcct
+		else
+			MTT.PartTranDetails.Account = CUST.SFEE.SSPCrAcct
+		endif		
+		if(CUST.SFEE.acctCrncy=="USD")then
+			MTT.PartTranDetails.RefCurrency = "USD"
+		else
+			MTT.PartTranDetails.RefCurrency = "SSP"	
+		endif
+		MTT.PartTranDetails.RateCode 	="MEAN"
+		MTT.PartTranDetails.Rate 	= "0"
+		MTT.PartTranDetails.ValueDateDiff = "0"
+		MTT.PartTranDetails.Particulars = "SUPREME CHARGE FEE REF/" + CUST.SFEE.foracid
+		MTT.PartTranDetails.RefAmount = (cdouble(CUST.SFEE.amt))
+		print(MTT.PartTranDetails.RefAmount)
+		#MTT.PartTranDetails.Remarks = "Cr from:" + CUST.SFEE.foracid
+		MTT.PartTranDetails.IgnoreExcp = "I"
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = sv_v
+		sv_e = "WITHIncome"
+		print(sv_e)
+		sv_r = urhk_MTTS_definePartTran(sv_e)
+		print(sv_r)
+		
+		IF(fieldexists(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.WITH.MTTErrDesc = MTT.Error.Description
+		#}
+		ENDIF
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+		
+			print(BANCS.OUTPARAM.MTTTranId)
+			CUST.SFEE.tranid = BANCS.OUTPARAM.MTTTranId
+			print(CUST.SFEE.tranid)
+		#}
+		ENDIF
+
+		goto nextrec
+	else
+		goto nextrec
+	endif
+nextrec:
+sv_z = urhk_dbCursorFetch(CUST.SFEE.sfeeCursNum)
+print(sv_z)
+do
+print("ALL CHARGES COLLECTED")
+
+Endofscript:
+if(CUST.SFEE.errMsg != "") then
+#{
+    sv_u = system("echo '"+CUST.SFEE.errMsg+"' >>memberChrg.log")
+#}
+endif
+
+
+trace off
+end-->

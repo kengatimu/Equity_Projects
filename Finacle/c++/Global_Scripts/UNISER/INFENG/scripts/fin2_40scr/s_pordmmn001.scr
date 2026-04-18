@@ -1,0 +1,409 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : s_pordmmn001.scr
+#   Description     : This script is used for population of credit details
+#   Date            : 28-05-2013
+#   Author          : Bharath
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : NA
+#   Calling Script  : SRV_CalculatePaymentDatesAndPaysysId_post_process_data.scr
+#   Menu Option     : HPORDM
+#   Srl. No         Date            	Author          	Description.
+#   -------         ------          	------          	------------
+#   1.0             31-07-2013      	Bharath     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="65d741e6cc95e8b932dd4db2081abc695fae4785dc4d22a5518c0b3cbea96a30"
+	#TRACE ON
+	
+	#-----------------------------------------------------------------------------------------------
+	# Creating Repositories and classes
+	#-----------------------------------------------------------------------------------------------
+	sv_u = REPEXISTS("CUST")
+	IF (sv_u == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_u = CLASSEXISTS("CUST", "DATA")
+	IF (sv_u == 0) THEN
+	#{
+		CREATECLASS("CUST", "DATA", 5)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Initializing required variables
+	#-----------------------------------------------------------------------------------------------
+	CUST.DATA.errorMsg = ""
+	#sv_a = urhk_B2K_printRepos("BANCS")
+	#print(sv_a)
+	
+	#-----------------------------------------------------------------------------------------------
+	# Getting mode of payment
+	#-----------------------------------------------------------------------------------------------
+	sv_b = urhk_SRV_GetVal("pordPaymentDtls.routedPaysysId.refCode")
+	print(sv_b)
+	IF (sv_b == 0) THEN
+	#{
+		CUST.DATA.paysysId	= BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.paysysId)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errorMsg = "Error in getting value of paysysId"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_b = urhk_SRV_GetVal("pordPaymentDtls.remitCrncy")
+	print(sv_b)
+	IF (sv_b == 0) THEN
+	#{
+		CUST.DATA.remitCrncy	= BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.remitCrncy)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errorMsg = "Error in getting value of remitCrncy"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_b = urhk_SRV_GetVal("pordPaymentDtls.finalSettlementAcct.foracid")
+	print(sv_b)
+	CUST.DATA.foracid	= BANCS.OUTPARAM.srvValue
+	print(CUST.DATA.foracid)
+	
+	sv_b = urhk_SRV_GetVal("pordHeaderDtls.slaCategory")
+	print(sv_b)
+	IF (sv_b == 0) THEN
+	#{
+		CUST.DATA.slaCategory	= BANCS.OUTPARAM.srvValue
+		print(CUST.DATA.slaCategory)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errorMsg = "Error in getting value of slaCategory"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Exit script if bank id is not 54
+	#-----------------------------------------------------------------------------------------------
+	#IF ( BANCS.STDIN.contextBankId != "54" ) THEN
+	##{
+	#	GOTO ENDOFSCRIPT
+	##}
+	#ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation currency
+	#-----------------------------------------------------------------------------------------------
+	IF ( (CUST.DATA.remitCrncy != "USD") AND (CUST.DATA.remitCrncy != "EUR") AND (CUST.DATA.remitCrncy != "GBP") ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validation paysysid
+	#-----------------------------------------------------------------------------------------------
+	IF ( CUST.DATA.paysysId == "" ) THEN
+	#{
+		CUST.DATA.errorMsg = "Enter Method of Payment"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF ((CUST.DATA.paysysId != "SWIFT") AND (CUST.DATA.paysysId != "RTGS") ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Getting corresponding bank details and account id from table CCB
+	#-----------------------------------------------------------------------------------------------
+	sv_s = ""
+	sv_s = sv_s + " corrBnkcode,corrBrnCode|"
+	sv_s = sv_s + " SELECT CCB.corr_bk_code, CCB.corr_br_code "
+	sv_s = sv_s + " FROM TBAADM.CCB"
+	sv_s = sv_s + " WHERE CCB.sol_id = ?SVAR"
+	sv_s = sv_s + " AND CCB.bank_id = ?SVAR"
+	sv_s = sv_s + " AND CCB.crncy_code = ?SVAR"
+	IF (CUST.DATA.paysysId == "SWIFT" ) THEN
+	#{
+		sv_s = sv_s + " AND CCB.srl_num = '001' "
+	#}
+	ENDIF
+	
+	IF (CUST.DATA.paysysId == "RTGS" ) THEN
+	#{
+		sv_s = sv_s + " AND CCB.srl_num = '002' "
+	#}
+	ENDIF
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.mySolId  		+ "|" + BANCS.STDIN.contextBankId
+	BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.remitCrncy
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.DATA.corrBnkcode = BANCS.OUTPARAM.corrBnkcode
+		print(CUST.DATA.corrBnkcode)
+		CUST.DATA.corrBrnCode = BANCS.OUTPARAM.corrBrnCode
+		print(CUST.DATA.corrBrnCode)
+		
+		sv_b = urhk_SRV_SetVal("pordPaymentDtls.ourCorrespBankBranch.brCode|"+CUST.DATA.corrBrnCode)
+		print(sv_b)
+		
+		sv_b = urhk_SRV_SetVal("pordPaymentDtls.ourCorrespBankBranch.bankCode|"+CUST.DATA.corrBnkcode)
+		print(sv_b)
+		#}
+	ELSE
+		#{
+		CUST.DATA.corrBnkcode = " "
+		print(CUST.DATA.corrBnkcode)
+		CUST.DATA.corrBrnCode = " "
+		print(CUST.DATA.corrBrnCode)
+		CUST.DATA.errorMsg = "Corresponding bank setup does not exists"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Getting BIC code of bank and branch
+	#-----------------------------------------------------------------------------------------------
+	sv_s = ""
+	sv_s = sv_s + " brbicCode|"
+	sv_s = sv_s + " SELECT BRBIC.BANK_IDENTIFIER "
+	sv_s = sv_s + " FROM TBAADM.BRBIC"
+	sv_s = sv_s + " WHERE BRBIC.bank_code = ?SVAR "
+	sv_s = sv_s + " AND BRBIC.branch_code = ?SVAR"
+	sv_s = sv_s + " AND BRBIC.paysys_id = ?SVAR"
+	sv_s = sv_s + " AND BRBIC.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.DATA.corrBnkcode  	+ "|" + CUST.DATA.corrBrnCode
+	BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.paysysId
+	BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.DATA.brbicCode = BANCS.OUTPARAM.brbicCode
+		print(CUST.DATA.brbicCode)
+		
+		sv_b = urhk_SRV_SetVal("pordPaymentDtls.ourCorrespBic|"+CUST.DATA.brbicCode)
+		print(sv_b)
+		#}
+	ELSE
+		#{
+		CUST.DATA.brbicCode = " "
+		CUST.DATA.errorMsg = "Corresponding bank BRBIC setup does not exists"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CUST.DATA.foracid == "") THEN
+	#{
+		#-----------------------------------------------------------------------------------------------
+		# Getting bacid details
+		#-----------------------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = sv_s + " count|"
+		sv_s = sv_s + " SELECT count(NAMT.mirror_acct_bacid) "
+		sv_s = sv_s + " FROM TBAADM.NAMT"
+		sv_s = sv_s + " WHERE NAMT.bank_code = ?SVAR "
+		sv_s = sv_s + " AND NAMT.br_code = ?SVAR"
+		sv_s = sv_s + " AND NAMT.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND NAMT.del_flg = 'N'"
+		sv_s = sv_s + " AND NAMT.bank_id = ?SVAR"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.DATA.corrBnkcode  	+ "|" + CUST.DATA.corrBrnCode
+		BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.count = BANCS.OUTPARAM.count
+			print(CUST.DATA.count)
+			#}
+		ELSE
+			#{
+			CUST.DATA.count = "0"
+		#}
+		ENDIF
+		
+		sv_s = ""
+		sv_s = sv_s + " bacid|"
+		sv_s = sv_s + " SELECT NAMT.mirror_acct_bacid "
+		sv_s = sv_s + " FROM TBAADM.NAMT"
+		sv_s = sv_s + " WHERE NAMT.bank_code = ?SVAR "
+		sv_s = sv_s + " AND NAMT.br_code = ?SVAR"
+		sv_s = sv_s + " AND NAMT.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND NAMT.del_flg = 'N'"
+		sv_s = sv_s + " AND NAMT.bank_id = ?SVAR"
+		sv_s = sv_s + " AND NAMT.crncy_code = ?SVAR"
+		
+		IF (CINT(CUST.DATA.count) > 1) THEN
+		#{
+			sv_s = sv_s + " AND NAMT.default_flg = 'Y'"
+		#}
+		ENDIF
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.DATA.corrBnkcode  	+ "|" + CUST.DATA.corrBrnCode
+		BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS =  BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.remitCrncy
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.bacid = BANCS.OUTPARAM.bacid
+			print(CUST.DATA.bacid)
+			#}
+		ELSE
+			#{
+			CUST.DATA.bacid = ""
+			CUST.DATA.errorMsg = "Corresponding bank setup does not exists"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#----------------------------------------------------------------------------------------
+		# Bacid to Acid Converter script call added
+		#----------------------------------------------------------------------------------------
+		BANCS.INPUT.inputBacid = CUST.DATA.bacid
+		BANCS.INPUT.inputCcy   = CUST.DATA.remitCrncy
+		BANCS.INPUT.inputSolID = BANCS.STDIN.mySolId
+		BANCS.INPUT.inputBankId = BANCS.STDIN.contextBankId
+		
+		CALL("bacidtoacid.scr")
+		CUST.DATA.foracid = BANCS.OUTPUT.AcctId
+		print(CUST.DATA.foracid)
+		IF (CUST.DATA.foracid == "") THEN
+		#{
+			CUST.DATA.foracid = ""
+			CUST.DATA.errorMsg = "Error in finding account id for bacid"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------------------------
+		# Getting foracid details
+		#-----------------------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = sv_s + " solId,crncyCode,acctName|"
+		sv_s = sv_s + " SELECT GAM.foracid, GAM.sol_id, GAM.acct_crncy_code, GAM.acct_name "
+		sv_s = sv_s + " FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.foracid = ?SVAR "
+		sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+		sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+		sv_s = sv_s + " AND GAM.acct_cls_flg != 'Y'"
+		sv_s = sv_s + " AND GAM.del_flg = 'N'"
+		
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS =  CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.solId = BANCS.OUTPARAM.solId
+			print(CUST.DATA.solId)
+			CUST.DATA.crncyCode = BANCS.OUTPARAM.crncyCode
+			print(CUST.DATA.crncyCode)
+			CUST.DATA.acctName = BANCS.OUTPARAM.acctName
+			print(CUST.DATA.acctName)
+			
+			sv_b = urhk_SRV_SetVal("pordPaymentDtls.finalSettlementAcct.foracid|"+CUST.DATA.foracid)
+			print(sv_b)
+			
+			sv_b = urhk_SRV_SetVal("pordPaymentDtls.finalSettlementAcct.crncyCode|"+CUST.DATA.crncyCode)
+			print(sv_b)
+			
+			sv_b = urhk_SRV_SetVal("pordPaymentDtls.finalSettlementAcct.solId|"+CUST.DATA.solId)
+			print(sv_b)
+			
+			sv_b = urhk_SRV_SetVal("pordPaymentDtls.finalSettlementAcct.acctName|"+CUST.DATA.acctName)
+			print(sv_b)
+			#}
+		ELSE
+			#{
+			CUST.DATA.foracid = " "
+			CUST.DATA.solId = " "
+			CUST.DATA.crncyCode = " "
+			CUST.DATA.acctName = " "
+			CUST.DATA.errorMsg = "Corresponding bank setup does not exists"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Finding charge event Id
+	#-----------------------------------------------------------------------------------------------
+	sv_s = ""
+	sv_s = sv_s + " chrgEventId|"
+	sv_s = sv_s + " SELECT SLA.charge_event_id "
+	sv_s = sv_s + " FROM tbaadm.SLA"
+	sv_s = sv_s + " WHERE other_bank_code= ?SVAR "
+	sv_s = sv_s + " AND other_branch_code= ?SVAR"
+	#sv_s = sv_s + " AND sla_category= ?SVAR "
+	sv_s = sv_s + " AND paysys_id= ?SVAR "
+	sv_s = sv_s + " AND settlement_crncy = ?SVAR "
+	sv_s = sv_s + " AND out_in_ind = ?SVAR "
+	sv_s = sv_s + " AND bank_id= ?SVAR "
+	sv_s = sv_s + " AND del_flg ='N' "
+	sv_s = sv_s + " AND entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND rownum < 2"
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.corrBnkcode  	+ "|" + CUST.DATA.corrBrnCode
+	#BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.slaCategory
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.paysysId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS 	+ "|" + CUST.DATA.remitCrncy
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS 	+ "|" + "O"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS 	+ "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.DATA.chrgEventId = BANCS.OUTPARAM.chrgEventId
+		print(CUST.DATA.chrgEventId)
+		sv_b = urhk_SRV_SetVal("pordPaymentDtls.chrgEventId.eventId|"+CUST.DATA.chrgEventId)
+		print(sv_b)
+		#}
+	ELSE
+		#{
+		CUST.DATA.errorMsg = "Charge event id setup not available"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF(CUST.DATA.errorMsg != "") THEN
+		#{
+			print(CUST.DATA.errorMsg)
+			sv_u = urhk_SRV_setErr("pordPaymentDtls.routedPaysysId.refCode|"+CUST.DATA.errorMsg)
+		#}
+		ENDIF
+		
+		exitscript
+END-->

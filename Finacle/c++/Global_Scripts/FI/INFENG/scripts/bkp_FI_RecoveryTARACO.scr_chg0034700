@@ -1,0 +1,186 @@
+#=================================================
+# IMPORTANT: HTARACO FI Version.
+# category: Script Name Based
+# script: RecoveryTARACOFI.scr
+# Author : Dennis Chirchir
+#=================================================
+<--START
+CHECKSUM="3db140f9b87703bd8fd7b1a2621962aeceb64d3cc76bf198abd494b5df851cda"
+	TRACE ON
+
+	#-------------------------------------------------------------------------------
+	# Calling create repository script
+	#-------------------------------------------------------------------------------
+	CALL("Common_Interface_CreateRepos.scr")
+	CUST.INTERFACE.successOrFailure = "S"
+	CUST.INTERFACE.srvErrFlg = "N"
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(repexists("CUSTOM")==0)then
+                createrep("CUSTOM")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(classexists("CUSTOM","GLBDATA")==0)then
+                createclass("CUSTOM","GLBDATA",5)
+        endif
+	CUST.INTERFACE.accountID = EBSRV.GLBDATA.OdAcctId
+	CUST.INTERFACE.collAcctID = EBSRV.GLBDATA.OpAcctId
+	CUST.INTERFACE.RecovAmt=EBSRV.GLBDATA.RepayAmount
+	print(CUST.INTERFACE.accountID)
+	print(CUST.INTERFACE.collAcctID)
+	print(CUST.INTERFACE.RecovAmt)
+
+	IF(CUST.INTERFACE.accountID != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.accountID)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.INTERFACE.acctCrncyCode)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	IF(CUST.INTERFACE.collAcctID != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.collAcctID)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.OpacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.INTERFACE.OpacctCrncyCode)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------
+	# STEP1.0: initial variable values
+	#----------------------------------------------------------------------
+	CUST.INTERFACE.laAcctforacid = ""
+	CUST.INTERFACE.tranSubType = ""
+	CUST.INTERFACE.tranType = ""
+	CUST.INTERFACE.collAcctforacid = ""
+	CUST.INTERFACE.ChrgValueDate = BANCS.STDIN.BODDate
+	CUST.INTERFACE.laAcctforacid = CUST.INTERFACE.accountID
+	CUST.INTERFACE.tranSubType = "BI"
+	CUST.INTERFACE.tranType = "T"
+	CUST.INTERFACE.collAcctforacid = CUST.INTERFACE.collAcctID
+	CUST.INTERFACE.payoffSol = ""
+	CUST.INTERFACE.payoffAcct = ""
+	CUST.INTERFACE.chrgCrncy = " "
+	CUST.INTERFACE.acctBal = ""
+	
+	#----------------------------------------------------------------------
+	# STEP2: invoke SRV_FetchTranAcctDtlForRecov service
+	#----------------------------------------------------------------------
+
+	sv_b = urhk_SetUrhkInp("recovCrit.tranAcct.foracid|"  + CUST.INTERFACE.laAcctforacid)
+	sv_b = urhk_SetUrhkInp("recovCrit.modeOfOper|C")
+	sv_b = urhk_SetUrhkInp("recovCrit.tranType.code|T")
+	sv_b = urhk_SetUrhkInp("recovCrit.valueDate|" + CUST.INTERFACE.ChrgValueDate)
+	sv_b = urhk_SetUrhkInp("recovCrit.netRecovAmt|" + CUST.INTERFACE.RecovAmt +"|"+ CUST.INTERFACE.acctCrncyCode)
+	sv_b = urhk_SetUrhkInp("recovCrit.srcAcct.foracid|" + CUST.INTERFACE.collAcctforacid)
+	sv_b = urhk_SetUrhkInp("recovCrit.oapRef.tranDate|" + BANCS.STDIN.BODDate) 
+	sv_b = urhk_SetUrhkInp("recovCrit.funcCode|C")
+
+	#----------------------------------------------------------------------
+	#invoke SRV
+	#----------------------------------------------------------------------
+	sv_u = urhk_ExecSrv("SRV_FetchTranAcctDtlForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_FetchTransForRecov service
+	#---------------------------------------------------------
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+	sv_u = urhk_ExecSrv("SRV_FetchTransForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_RecovForTranAcctAndVerify service
+	#---------------------------------------------------------
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranId|tranId")
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranDate|tranDate")
+
+	sv_u = urhk_ExecSrv("SRV_RecovForTranAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	print(BANCS.OUTPARAM.tranId)
+	print(BANCS.OUTPARAM.tranDate)
+
+	CUST.INTERFACE.tranId=BANCS.OUTPARAM.tranId
+	print(BANCS.OUTPARAM.tranId)
+
+	IF(CUST.INTERFACE.tranId != "") THEN
+	#{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|S")
+                        sv_u = urhk_SetOrbOut("Message|OD Loan Collected Successfully")
+                        sv_u = urhk_SetOrbOut("ODLoanAccount|" + EBSRV.GLBDATA.OdAcctId )
+                        sv_u = urhk_SetOrbOut("OperativeAcctId|" + EBSRV.GLBDATA.OpAcctId )
+                        sv_u = urhk_SetOrbOut("TranId|" + CUST.INTERFACE.tranId)
+                        sv_u = urhk_SetOrbOut("TranAmount|" + CUST.INTERFACE.RecovAmt)
+                        sv_u = urhk_SetOrbOut("TranDate|" + mid$(BANCS.STDIN.BODDate,0,10) )
+                        BANCS.OUTPUT.successOrFailure="S"
+                        exitscript
+	#}
+	ENDIF
+
+	ERROREXIT:
+		IF(CUST.INTERFACE.successOrFailure == "F")THEN
+		#{
+			CALL("Common_Interface_ErrorExit.scr")
+		#}
+		ENDIF
+			
+trace off
+END-->

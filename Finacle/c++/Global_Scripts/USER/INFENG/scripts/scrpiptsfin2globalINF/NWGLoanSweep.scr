@@ -1,0 +1,240 @@
+#-------------------------------------------------------------------------------------
+#    Name		: NWGLoanSweep.scr
+#    Description     	: Sweep Loan granted to merchant account
+#						: 
+#    Date            	: 14-03-2019
+#    Author          	: Edwin Zico 
+#    Input           	: NA
+#    Output		: NA
+#    Called Script	: NA
+#    Calling Script	: expsweep.scr
+#    Menu Option	: NA 
+#    Srl. No		Date			Author			Description.   
+#    -------		----			------			----------------
+#    1.0		19-03-2020		Edwin	 		Original Version
+#-------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+	sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+		CREATEREP("MTT")
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","TranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","PartTranDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","PartTranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","PartTranDetails")
+	print(sv_r)
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","PartTranDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","InputDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","InputDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","LAAddnlDetails")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","LAAddnlDetails",5)
+	ENDIF
+
+	sv_r = CLASSEXISTS("MTT","Error")
+	IF (sv_r == 0) THEN
+		CREATECLASS("MTT","Error",5)
+	ENDIF
+
+	sv_r = REPEXISTS("BANCS")
+	IF (sv_r == 0) THEN
+		CREATEREP("BANCS")
+	ENDIF
+
+	sv_r = CLASSEXISTS("BANCS","INPARAM")
+	IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+	ENDIF
+
+	IF (REPEXISTS("CUST")==0)THEN
+		CREATEREP("CUST")
+	ENDIF
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+		CREATECLASS("CUST","CPARAM",5)
+	ENDIF
+
+	IF(CLASSEXISTS("CUST","LADISB")==0)then
+		CREATECLASS("CUST","LADISB",5)
+	ENDIF
+	CUST.LADISB.errMsg = ""
+
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+	BANCS.INPARAM.CommitFlg="Y"
+	BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw="Y"
+	BANCS.INPARAM.CheckExceptions="N"
+
+	sv_r = urhk_MTTS_Initialize("")
+	print(sv_r)
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.IgnoreExcp = "I"
+	MTT.TranDetails.Consolidate = "N"
+	MTT.TranDetails.Remarks = "NEWGEN Sweep"
+
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+	print(sv_a)
+
+	print(CUST.LADISB.loanAcctId)
+	print(CUST.LADISB.laSchmCode)
+	print(BANCS.STDIN.contextBankId)
+	print(CUST.LADISB.operAcct)
+	print(CUST.LADISB.disbursAmt)
+
+	sv_s = "acctname,sweep,crforacid,amt|"
+	sv_s = sv_s + " select a.acct_name,g.free_text_9,l.TO_ACCT_NUM,l.SWEEP_AMOUNT from tbaadm.gac g,custom.eb_lst l,tbaadm.gam a where l.FROM_ACCT_NUM =?SVAR"
+	sv_s = sv_s + " and a.foracid =l.from_acct_num and a.acid =g.acid and l.ENTITY_CRE_FLG ='Y' AND l.DEL_FLG='N' and l.bank_id =?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId 
+	print(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+	IF(sv_e == 0) THEN
+	#{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+			
+			IF(sv_q == 1) THEN
+			#{
+				sv_x = urhk_dbCursorClose(sv_m)
+				print(sv_x)
+				CUST.LADISB.errMsg ="No Data."
+				sv_e=urhk_SetOrbOut("StattusCode|Error")
+				sv_e=urhk_SetOrbOut("Error|"+CUST.LADISB.errMsg )
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		print(sv_q)
+		WHILE (sv_q==0)
+			CUST.LADISB.acctname=BANCS.OUTPARAM.acctname
+			print(CUST.LADISB.acctname)
+			CUST.LADISB.sweep=BANCS.OUTPARAM.sweep
+			print(CUST.LADISB.sweep)
+			CUST.LADISB.crforacid=BANCS.OUTPARAM.crforacid
+			print(CUST.LADISB.crforacid)
+			CUST.LADISB.amt=BANCS.OUTPARAM.amt
+			print(CUST.LADISB.amt)
+				
+		sv_u = urhk_getAcctDetailsInRepository(CUST.LADISB.crforacid)
+		print(sv_u)
+		IF (sv_u==0) THEN
+		#{
+			print(CUST.LADISB.crforacid)
+		#}
+		ELSE
+		#{
+			CUST.LADISB.errMsg	= "Invalid sweep account"
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.LADISB.errMsg )			
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		IF((CUST.LADISB.sweep =="SWEEP")and (CUST.LADISB.crforacid!="") and (CUST.LADISB.amt != ""))THEN
+		#{
+			sv_u = urhk_MTTS_DefineTransaction("NEWGenTran")
+
+		#CustomerDebit
+				MTT.PartTranDetails.Account 	= CUST.LADISB.operAcct 
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.RateCode 	="MEAN"
+				MTT.PartTranDetails.Rate 	= "0"
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = "NEWGEN Loan sweep to " + CUST.LADISB.crforacid
+				MTT.PartTranDetails.Particulars2 = CUST.LADISB.crforacid
+				MTT.PartTranDetails.RefAmount = -(cdouble(CUST.LADISB.amt)) 
+				MTT.PartTranDetails.Amount   = -(cdouble(CUST.LADISB.amt))
+				MTT.PartTranDetails.Remarks = "Dr.for NEW GEN loan" 
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = "NEWGenTran" 
+				sv_r = urhk_MTTS_definePartTran("CustDr")
+				print(sv_r)
+				IF(fieldexists(MTT.Error.Description)) THEN
+					print(MTT.Error.Description)
+					CUST.LADISB.MTTErrDesc = MTT.Error.Description
+				ENDIF
+		#Ecosystem
+				MTT.PartTranDetails.Account 	= CUST.LADISB.crforacid
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.RateCode 	="MEAN"
+				MTT.PartTranDetails.Rate 	= "0"
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = "Loan cr sweep from " + CUST.LADISB.operAcct + "/" + CUST.LADISB.acctname 
+				MTT.PartTranDetails.Particulars2 = CUST.LADISB.loanAcctId
+				MTT.PartTranDetails.RefAmount = (cdouble(CUST.LADISB.amt))  
+				MTT.PartTranDetails.Remarks = "Cr from:" + CUST.LADISB.operAcct 
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = "NEWGenTran"
+				sv_r = urhk_MTTS_definePartTran("CustDr")
+				print(sv_r)
+
+				IF(fieldexists(MTT.Error.Description)) THEN
+					print(MTT.Error.Description)
+					CUST.LADISB.MTTErrDesc = MTT.Error.Description
+				ENDIF
+
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.LADISB.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.LADISB.tranid)
+				#}
+				ENDIF
+		#}
+		ELSE
+		#{
+			sv_r = urhk_MTTS_EndDefinition("")
+			print(sv_r)			
+			GOTO NEXTREC
+		#}
+		ENDIF		
+
+	NEXTREC:
+
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	
+	#}
+	DO
+#}
+ELSE
+#{
+
+	CUST.LADISB.errMsg ="Data Error"
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.LADISB.errMsg)
+	GOTO ENDOFSCRIPT
+	
+
+ENDOFSCRIPT:
+EXITSCRIPT
+END-->
+
+

@@ -1,0 +1,540 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: IslamicPreClsTran.scr
+# Type: NA|default
+# Description: Equityt Finacle 10.2.13 to 10.2.18 Porting
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: IslamicPreClsTran.scr
+# event: NA
+# description: NA
+#=================================================
+
+<--START
+CHECKSUM="03cb736a77c5c2ec9b153e32a5e847737b6006a224356b418b5396b4b7706293"
+	TRACE ON
+	#=================================================================
+	# Name                : IslamicPreClsTran.scr
+	# Date                : 19 OCT 2011
+	# Author              : Sujit Channagire
+	# Called Script       :
+	# Calling Script      :
+	# MODULE              : Murabaha Deposit Product (MDP)
+	#*****************************************************************
+	# Description         : This script is used to post the Pre-closure
+	#			profit distribution transactions only.
+	#=================================================================
+	#############################################################################################################################
+	#This is a sample script for creating the Pre-closure profit distribution transactions only.
+	#For MDP product, the following cases are handled
+	#1) Maturity variant
+	#    If the account is preclosed then the profit for the period for which the account was active should be given  to the
+	#    customer and the remaining to the Adv Interest account
+	#
+	#2)upfront profit distribution variant
+	#  During pre closure of upfront variant, the profit amount is given to the Adv. Interest account by debiting the
+	#  deposit account and the deposit account is debited by the excess interest amt.
+	#
+	#3)Frequency based profit distribution variant
+	#    The account can be pre closed under the following conditions
+	#     a) In the middle of the month.
+	#           In this case , the profit for the period for which the account was active should be given  to the customer
+	#	    and the remaining to the Adv Interest account
+	#     b)On the flow_date i.e profit distribution date.
+	#          if the profit is already given to the customer before pre closing then the remaining profit amt in the
+	#           account should be given to the Adv. Interest account
+	#         else if the profit is not distributed, then  the profit for the period for which the account was active
+	#          should be given  to the customer and the remaining to the Adv Interest account
+	#
+	#Based on the requirement either MTT logic or SRV logic can be used for  posting the transaction
+	#############################################################################################################################
+	
+	
+	#----------------------------------------------------
+	#       Creating the Local Repository and Class
+	#----------------------------------------------------
+	
+	IF (REPEXISTS("CUST")==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","MYCLASS")==0) THEN
+	#{
+		CREATECLASS("CUST","MYCLASS",5)
+	#}
+	ENDIF
+	IF(CLASSEXISTS("CUST","WITHTAX")==0)THEN
+	#{
+		CREATECLASS("CUST","WITHTAX",5)
+	#}
+	ENDIF
+	
+	sv_d = CLASSEXISTS("CUST", "MTT")
+	IF (sv_d == 0) THEN
+	#{
+		CREATECLASS("CUST", "MTT", 5)
+	#}
+	ENDIF
+	
+	IF(REPEXISTS("MTT") == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT","TranDetails") == 0) THEN
+	#{
+		CREATECLASS("MTT","TranDetails",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT","ChargeDetails") == 0) THEN
+	#{
+		CREATECLASS("MTT","ChargeDetails",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT","PartTranDetails") == 0) THEN
+	#{
+		CREATECLASS("MTT","PartTranDetails",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT","Error") == 0) THEN
+	#{
+		CREATECLASS("MTT","Error",5)
+	#}
+	ENDIF
+	
+	#sv_a = urhk_MTTS_Close("")
+	#
+	sv_r=""
+	BANCS.INPARAM.PostTranFlg = "N"
+	BANCS.INPARAM.CommitFlg = "N"
+	BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+	BANCS.INPARAM.ValidationFlag = "Y"
+	BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw = "Y"
+	BANCS.INPARAM.CheckExceptions = "Y"
+	
+	sv_a = urhk_MTTS_Initialize("")
+	IF (sv_a != "0") THEN
+	#{
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+	#sv_a = urhk_MTTS_PopulateInputDetails("")
+	#IF (sv_a != "0") THEN
+	##{
+	#      GOTO ENDOFSCRIPT
+	##}
+	#endif
+	
+	#sv_a = urhk_B2k_PrintRepos("BANCS")
+	
+	
+	sv_s = "schm_code|SELECT schm_code from TBAADM.gam where foracid= ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.DepositAcct
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	IF (sv_d > 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure ="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.MYCLASS.SCHM_CODE = BANCS.OUTPARAM.schm_code
+	CUST.MYCLASS.CLOSURE_DATE = BANCS.STDIN.BODDate
+	
+	#{
+	sv_a = CDOUBLE(BANCS.INPUT.exc_int_amt)
+	sv_b = CDOUBLE(BANCS.INPUT.interest_taken)
+	sv_c = CDOUBLE(BANCS.INPUT.normal_int)
+	sv_g = CDOUBLE(BANCS.INPUT.penalty_int)
+	sv_z = BANCS.INPUT.PreClsFlg
+	
+	sv_s = "int_calc_upto_date,booked_amt,int_cr,int_paid_amt,dep_amt,tot_part_closed_amt,clr_bal_amt,acct_crncy_code,pnlBacid,acctCcy,solId|"
+	sv_s = sv_s + " SELECT to_char(E.INTEREST_CALC_UPTO_DATE_CR,'dd-mm-yyyy')"
+	sv_s = sv_s + " ,E.NRML_BOOKED_AMOUNT_CR,T.CUMULATIVE_INT_CREDITED,"
+	sv_s = sv_s + "	T.CUMULATIVE_INT_PAID,T.DEPOSIT_AMOUNT,T.CUMULATIVE_PART_CLOSE_AMT,G.CLR_BAL_AMT,G.ACCT_CRNCY_CODE,S.INT_PANDL_BACID_CR,"
+	sv_s = sv_s + " G.ACCT_CRNCY_CODE,G.SOl_ID"
+	sv_s = sv_s + "	FROM TBAADM.EIT E, TBAADM.TAM T,TBAADM.GAM G,TBAADM.GSP S "
+	sv_s = sv_s + " WHERE T.ACID = E.ENTITY_ID"
+	sv_s = sv_s + " AND G.ACID = T.ACID AND G.ACID = E.ENTITY_ID"
+	sv_s = sv_s + "	AND G.FORACID='"+BANCS.INPUT.DepositAcct+"'"
+	sv_s = sv_s + " AND G.SCHM_CODE = S.SCHM_CODE"
+	
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	IF (sv_d > 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure ="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.MYCLASS.LAST_DISTRIBUTED_DATE = BANCS.OUTPARAM.int_calc_upto_date
+	CUST.MYCLASS.BOOKED_AMT = BANCS.OUTPARAM.booked_amt
+	CUST.MYCLASS.INT_CR = BANCS.OUTPARAM.int_cr
+	CUST.MYCLASS.INT_PAID_AMT =  BANCS.OUTPARAM.int_paid_amt
+	CUST.MYCLASS.DEP_AMT = BANCS.OUTPARAM.dep_amt
+	CUST.MYCLASS.TOT_PART_CLOSED_AMT = BANCS.OUTPARAM.tot_part_closed_amt
+	CUST.MYCLASS.CLR_BAL_AMT = BANCS.OUTPARAM.clr_bal_amt
+	CUST.MYCLASS.INT_CR = BANCS.OUTPARAM.int_cr
+	CUST.MYCLASS.PNLBACID = BANCS.OUTPARAM.pnlBacid
+	
+	CUST.MYCLASS.AcctCcy  = BANCS.OUTPARAM.acctCcy
+	
+	CUST.MYCLASS.solId = BANCS.OUTPARAM.solId
+	
+	sv_h = BANCS.OUTPARAM.acct_crncy_code
+	
+	CUST.MYCLASS.WITHDRAWAL_AMT = BANCS.INPUT.withdrawal_amt
+	
+	# Getting scale value in sv_e, scale value is ratio of part cls amount to the remaining principal balance
+	# in case of normal / pre closure the scale value will become 1
+	sv_e = CDOUBLE(CUST.MYCLASS.WITHDRAWAL_AMT)/(CDOUBLE(CUST.MYCLASS.DEP_AMT )- CDOUBLE(CUST.MYCLASS.TOT_PART_CLOSED_AMT))
+	
+	sv_f= CDOUBLE(CUST.MYCLASS.BOOKED_AMT) * sv_e
+	
+	#Amt to be debited from deposit account
+	
+	sv_l = CDOUBLE(CUST.MYCLASS.WITHDRAWAL_AMT) + (CDOUBLE(CUST.MYCLASS.INT_CR) * sv_e)
+	
+	#Amt to Adv Int account
+	#	sv_m = (CDOUBLE(CUST.MYCLASS.INT_CR) + CDOUBLE(CUST.MYCLASS.INT_PAID_AMT) - CDOUBLE(CUST.MYCLASS.BOOKED_AMT) ) * sv_e
+	sv_m=sv_b-sv_f
+	
+	#Amt to customer operative account
+	
+	sv_k = sv_l - sv_a
+	PRINT(sv_k)
+	
+	#Amt to P&L
+	#sv_i = sv_l - (sv_k + sv_m)
+	sv_i=sv_f-(sv_b-sv_a)
+	PRINT(sv_f)
+	PRINT(sv_i)
+	PRINT(sv_l)
+	PRINT(sv_a)
+	PRINT(sv_m)
+	PRINT(sv_b)
+	PRINT(CUST.MYCLASS.INT_CR)
+	PRINT(CUST.MYCLASS.INT_PAID_AMT)
+	PRINT(CUST.MYCLASS.BOOKED_AMT)
+	PRINT(CUST.MYCLASS.DEP_AMT)
+	sv_o = CUST.MYCLASS.PNLBACID + "|" + CUST.MYCLASS.AcctCcy  + "|" + CUST.MYCLASS.solId
+	sv_t = urhk_B2k_BacidToAcctId(sv_o)
+	IF(sv_t == 0)THEN
+	#{
+		CUST.MYCLASS.pnlAcct = BANCS.OUTPARAM.AcctId
+	#}
+	ENDIF
+	
+	## Do MTT transactions here
+	#-----------------------------------------------------------------------------------------------#
+	#####   Defining the Transaction
+	#-----------------------------------------------------------------------------------------------#
+	#MTT.Error.Description                   = ""
+	MTT.TranDetails.TranDate                = "0"
+	MTT.TranDetails.PostFlag                = "Y"
+	MTT.TranDetails.TranType                = "T"
+	MTT.TranDetails.TranSubType             = "BI"
+	IF(sv_e == 1) THEN
+	#{
+		MTT.TranDetails.Remarks                 = "PreClosure Profit Tran."
+		#}
+	ELSE
+		#{
+		MTT.TranDetails.Remarks                 = "PartClosure Profit Tran."
+	#}
+	ENDIF
+	MTT.TranDetails.IgnoreExcp              = "I"
+	MTT.TranDetails.Consolidate             = "N"
+	MTT.TranDetails.ReversalFlg             = "N"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.ValidationFlag          = "Y"
+	MTT.TranDetails.RestrictModifyInd       = "FIRST_GROUP"
+	
+	sv_v = urhk_MTTS_DefineTransaction("CLSRTRAN")
+	IF(sv_v != 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		sv_r = BANCS.OUTPARAM.MTTErrorDesc
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#Creating Debit Transaction for clr bal amt (withdrawal amt + int cr)
+	#--------------------------------------------------------------------------
+	PRINT(BANCS.INPUT.DepositAcct)
+	MTT.PartTranDetails.Account= BANCS.INPUT.DepositAcct
+	MTT.PartTranDetails.RefAmount= -1 * sv_l
+	MTT.PartTranDetails.RefCurrency= sv_h
+	
+	# populating TD additional details
+	MTT.PartTranDetails.FlowCode = "PO"
+	MTT.TDAddnlDetails.TDFlowCode = "PO"
+	MTT.PartTranDetails.Refnum= "          "+"PO"
+	
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "CLSRTRAN"
+	MTT.PartTranDetails.PTranBusinessType=""
+	IF(sv_e == 1) THEN
+	#{
+		IF ("Y" == BANCS.INPUT.PreClsFlg) THEN
+		#{
+			MTT.PartTranDetails.Particulars = "Pre Closure Profit credited to [" +BANCS.INPUT.CustomerAcct + "]"
+			#}
+		ELSE
+			#{
+			MTT.PartTranDetails.Particulars = "Closure Profit credited to [" +BANCS.INPUT.CustomerAcct + "]"
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		MTT.PartTranDetails.Particulars = "Part Closure Profit credited to [" +BANCS.INPUT.CustomerAcct + "]"
+	#}
+	ENDIF
+	sv_v = urhk_MTTS_DefinePartTran("DEPACDB")
+	
+	IF (sv_v != 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		MTT.Error.Description="Could not Create Part tran for Debit of Deposit"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		sv_r = BANCS.OUTPARAM.MTTErrorDesc
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#Creating Credit Transaction on operative account (prin + int cr - int exec)
+	#---------------------------------------------------------------------------
+	#Logic to be incorporated to populate the required customer account for the field MTT.PartTranDetails.Account
+	
+	MTT.PartTranDetails.Account= BANCS.INPUT.CustomerAcct
+	MTT.PartTranDetails.RefAmount= sv_k
+	MTT.PartTranDetails.RefCurrency=sv_h
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "CLSRTRAN"
+	IF(sv_e == 1) THEN
+	#{
+		IF ("Y" == BANCS.INPUT.PreClsFlg) THEN
+		#{
+			MTT.PartTranDetails.Particulars = "Pre Closure profit distribution for -" + BANCS.INPUT.DepositAcct
+			#}
+		ELSE
+			#{
+			MTT.PartTranDetails.Particulars = "Closure profit distribution for -" + BANCS.INPUT.DepositAcct
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		MTT.PartTranDetails.Particulars = "Part Closure profit distribution for -" + BANCS.INPUT.DepositAcct
+	#}
+	ENDIF
+	MTT.PartTranDetails.PTranBusinessType=""
+	sv_v = urhk_MTTS_DefinePartTran("OPERCR")
+	
+	IF (sv_v != 0 ) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		MTT.Error.Description="Could not Create Part tran for Credit to Repayment Account "
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		sv_r = BANCS.OUTPARAM.MTTErrorDesc
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	###############################################################################
+	# Customization for collection of With Holding Tax Starts
+	###############################################################################
+	#################################################################
+	# Getting value for "DEP_INSTALL_PAYOUT_FLG" from GSP table
+	#################################################################
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.INPUT.CustomerAcct + "|" + BANCS.STDIN.contextBankId+ "|" + BANCS.STDIN.contextBankId
+	
+	sv_s = "dep_install_payout_flg |SELECT DEP_INSTALL_PAYOUT_FLG"
+	sv_s = sv_s + " FROM TBAADM.GSP"
+	sv_s = sv_s + " WHERE  SCHM_CODE = ( SELECT SCHM_CODE FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR)"
+	sv_s = sv_s + " AND   BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND NVL(DEL_FLG,'N') = 'N'"
+	
+	PRINT(sv_s)
+	sv_v = urhk_dbselectWithBind(sv_s)
+	PRINT(sv_v)
+	IF(sv_v == 0) THEN
+	#{
+		CUST.WITHTAX.dep_install_payout_flg = BANCS.OUTPARAM.dep_install_payout_flg
+		PRINT(CUST.WITHTAX.dep_install_payout_flg)
+		#}
+	ELSE
+		#{
+		BANCS.OUTPUT.successOrFailure ="F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	PRINT(CUST.WITHTAX.dep_install_payout_flg)
+	IF(CUST.WITHTAX.dep_install_payout_flg != "O") THEN
+	#{
+		PRINT(BANCS.INPUT.CustomerAcct)
+		CUST.WITHTAX.wthFlgChkAcct 			= 	BANCS.INPUT.DepositAcct
+		CUST.WITHTAX.drAccount				= 	BANCS.INPUT.CustomerAcct
+		CUST.WITHTAX.tranAmt 				= 	sv_k - CDOUBLE(CUST.MYCLASS.DEP_AMT)
+		#CUST.WITHTAX.RateCode				=	""
+		CUST.WITHTAX.RateCode				=   ""
+		PRINT(CUST.WITHTAX.tranAmt)
+		CUST.WITHTAX.tranIdentifier			=   "CLSRTRAN"
+		IF(CDOUBLE(CUST.WITHTAX.tranAmt)>0) THEN
+		#{
+			CALL("wthmn037.scr")
+			IF(CUST.WITHTAX.successOrFailure == "F") THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				MTT.Error.Description	=	CUST.WITHTAX.scriptError
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				sv_r = BANCS.OUTPARAM.MTTErrorDesc
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	###############################################################################
+	# Customization for collection With Holding Tax Ends
+	###############################################################################
+	CUSTOMEND:
+		#---------------------------------------------------------------------------
+		#Creating Credit Transaction on Advance profit paid out(int cr+int paid - booked amt)
+		#---------------------------------------------------------------------------
+		#Logic to be incorporated to populate the required Adv Interest account for the field MTT.PartTranDetails.Account
+		MTT.PartTranDetails.Account= BANCS.INPUT.AdvPftAcct
+		PRINT(MTT.PartTranDetails.Account)
+		PRINT(sv_m)
+		MTT.PartTranDetails.RefAmount= sv_m
+		MTT.PartTranDetails.RefCurrency=sv_h
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier = "CLSRTRAN"
+		IF(sv_e == 1) THEN
+		#{
+			MTT.PartTranDetails.Particulars = "Excess Advance Profit adjustment"
+			#}
+		ELSE
+			#{
+			MTT.PartTranDetails.Particulars = "Excess Advance Profit adjustment"
+		#}
+		ENDIF
+		MTT.PartTranDetails.PTranBusinessType=""
+		sv_v = urhk_MTTS_DefinePartTran("ADVCR")
+		
+		IF (sv_v != 0 ) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			MTT.Error.Description="Could not Create Part tran for Adjustement to Advance Prodit Account"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			sv_r = BANCS.OUTPARAM.MTTErrorDesc
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#---------------------------------------------------------------------------
+		#Creating Credit Transaction on P &L (booked amt - (int cr - int exe))##
+		#---------------------------------------------------------------------------
+		#Logic to be incorporated to populate the required Adv Interest account for the field MTT.PartTranDetails.Account
+		MTT.PartTranDetails.Account= CUST.MYCLASS.pnlAcct
+		PRINT(MTT.PartTranDetails.Account)
+		PRINT(sv_i)
+		MTT.PartTranDetails.RefAmount= sv_i
+		MTT.PartTranDetails.RefCurrency=sv_h
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier = "CLSRTRAN"
+		IF(sv_e == 1) THEN
+		#{
+			IF ("Y" == BANCS.INPUT.PreClsFlg) THEN
+			#{
+				MTT.PartTranDetails.Particulars = "Penal Profit amount adjustment to P&L "
+				#}
+			ELSE
+				#{
+				MTT.PartTranDetails.Particulars = "Profit amount adjustment to P&L"
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			MTT.PartTranDetails.Particulars = "Penal Profit amount adjustment to P&L "
+		#}
+		ENDIF
+		MTT.PartTranDetails.PTranBusinessType=""
+		sv_v = urhk_MTTS_DefinePartTran("PNLCR")
+		
+		IF (sv_v != 0 ) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			MTT.Error.Description="Could not Create Part tran for Adjustement to Profit AND Loss Account"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			sv_r = BANCS.OUTPARAM.MTTErrorDesc
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------
+		#End of MTT Definition
+		#-----------------------------------------------------------------------------
+		sv_v = urhk_MTTS_EndDefinition("")
+		PRINT(sv_v)
+		IF (sv_v != 0) THEN
+		#{
+			PRINT(MTT.Error.Description)
+			sv_v = urhk_TBAF_DispMesg("Error WHILE creating transaction")
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_r = BANCS.OUTPARAM.MTTErrorDesc
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#}
+		
+	ENDOFSCRIPT:
+		sv_v = urhk_MTTS_Close("")
+		IF (sv_v != 0) THEN
+		#{
+			sv_v = urhk_TBAF_DispMesg("Error WHILE creating transaction")
+			sv_a = urhk_MTTS_ReportErrorCondition("")
+			
+			BANCS.OUTPUT.errorMsg = BANCS.OUTPARAM.MTTErrorDesc
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.tranId=""
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "S"
+			BANCS.OUTPUT.tranId=BANCS.OUTPARAM.MTTTranId
+			BANCS.OUTPUT.errorMsg = sv_r
+		#}
+		ENDIF
+		
+		
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

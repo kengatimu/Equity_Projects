@@ -1,0 +1,109 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebchapoIpChk.scr 
+#  Description     :
+#  Date            : 09-09-2020
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             09-09-2020      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        libname CUSTOMSO
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA") == 0) then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+        sv_r = urhk_MTTS_PopulateInputDetails("")
+        print(sv_r)
+        if(sv_r==0)then
+		EQSRV.GLBDATA.NatIdNum = MTT.InputDetails.Argument1
+	else
+	   	EQSRV.GLBDATA.NatIdNum = "" 
+        endif
+        sv_a = urhk_getEnv("TBA_PROD_ROOT")
+        print(BANCS.OUTPARAM.envValue)
+        if(sv_a == 1)then
+		EQSRV.GLBDATA.rootpath = "/finacle/EQPROD/Fin10218/APP/Finacle/FC/app/cust/INFENG"
+	else
+		EQSRV.GLBDATA.rootpath = BANCS.OUTPARAM.envValue
+		EQSRV.GLBDATA.rootpath = EQSRV.GLBDATA.rootpath + "/cust/INFENG" 
+        endif
+	print(EQSRV.GLBDATA.rootpath)
+        sv_s = "refNum|SELECT CONCAT(CONCAT('EQIPRSCHK',TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS')),(DBMS_RANDOM.STRING('A',5)))"
+        sv_s = sv_s + " FROM DUAL"
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        if(sv_d == 0)then
+                EQSRV.GLBDATA.refNum = BANCS.OUTPARAM.refNum
+                print(EQSRV.GLBDATA.refNum)
+        endif
+        EQSRV.GLBDATA.edResp =  EQSRV.GLBDATA.refNum + ".dat"
+	EQSRV.GLBDATA.SrlNum = "00000" 
+        EQSRV.GLBDATA.httpURL = "http://wsinternal.ebsafrica.com/finacle/ESB/RS/ID/REST/NationalData"
+        EQSRV.GLBDATA.jInp = EQSRV.GLBDATA.NatIdNum + " " + EQSRV.GLBDATA.SrlNum + " " + EQSRV.GLBDATA.httpURL
+        print(EQSRV.GLBDATA.jInp)
+        sv_r=system("java -cp /finacle/jdk1.7.0_80/lib:/finacle/jdk1.7.0_80/custom:/finacle/jdk1.7.0_80/custom/commons-codec.jar:"+EQSRV.GLBDATA.rootpath+ " com.cubpEquityDirect.EBGetIPRSDetails.EBGetIPRSDetails "+ EQSRV.GLBDATA.jInp + " >> " +EQSRV.GLBDATA.edResp )
+	print(sv_r)
+        sv_a = urhk_getEnv("ONS_LOG_DIR")
+        print(BANCS.OUTPARAM.envValue)
+        if(sv_a == 1)then
+                print("Env variable ONS/log not found")
+                goto VAYU
+        endif
+        EQSRV.GLBDATA.ONS_path = BANCS.OUTPARAM.envValue
+        print(EQSRV.GLBDATA.ONS_path)
+        EQSRV.GLBDATA.fileLoc = EQSRV.GLBDATA.ONS_path +"/"+BANCS.STDIN.userId + "/" + EQSRV.GLBDATA.edResp
+        print(EQSRV.GLBDATA.fileLoc)
+        sv_r = urtn_fileAccess(EQSRV.GLBDATA.fileLoc)
+        ###print(sv_r)
+        if(sv_r != 0)then
+                EQSRV.GLBDATA.excmessageField = "File does not exists"
+                sv_z = urhk_SetOrbOut("Error_1|Error^File does not exist^txtFilename")
+                goto VAYU
+        else
+                EQSRV.GLBDATA.fileopen = "Y"
+        endif
+        print(EQSRV.GLBDATA.fileopen)
+        sv_s = urtn_fileOpen(EQSRV.GLBDATA.fileLoc + "|r")
+        if(sv_s < 0)then
+                print("error in openning file")
+        else
+        sv_k = urtn_fileRead(sv_s+"|EQSRV.GLBDATA.Record1")
+        EQSRV.GLBDATA.recNum =1
+        while(sv_k == 0)
+        #{
+                if(EQSRV.GLBDATA.Record1 =="")then
+                        goto NEXTRECORD
+                else
+			print(EQSRV.GLBDATA.Record1)
+			sv_d = "Insert into custom.iprst (bank_id,reg_nat_idnum,http_code,ipout_code,ipout_type,ipout_text,ipout_resp_code,first_name,last_name,middle_name,date_of_birth,gender_code,nationality,occupation,nat_id_num,nat_id_srlnum,id_type,id_issue_date,id_issue_location,id_issue_authority) values (?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR)"
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId+"|"+EQSRV.GLBDATA.NatIdNum + "|" + EQSRV.GLBDATA.Record1
+			print(BANCS.INPARAM.BINDVARS)
+			print(sv_d)
+			sv_u =urhk_dbSqlWithBind(sv_d)
+			if(sv_u==0)then
+				sv_u =urhk_dbSqlWithBind("commit")
+			endif
+                endif
+                NEXTRECORD:
+                sv_k = urtn_fileRead(sv_s+"|EQSRV.GLBDATA.Record1")
+                print(EQSRV.GLBDATA.recNum)
+                EQSRV.GLBDATA.recNum = CINT(EQSRV.GLBDATA.recNum) +1
+                print(EQSRV.GLBDATA.recNum)
+        #}
+        do
+        endif
+VAYU:
+        exitscript
+trace off
+end-->

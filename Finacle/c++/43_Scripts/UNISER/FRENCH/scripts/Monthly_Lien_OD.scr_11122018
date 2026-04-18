@@ -1,0 +1,183 @@
+<--START
+TRACE ON
+
+        LIBNAME CUSTOMSO
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","DATA")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","DATA",5)
+	#}
+	ENDIF
+
+    CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+    CUST.DATA.failureFile = "failfile_ODLIN_" + BANCS.STDIN.mySolId + ".lst"
+
+    CUST.DATA.failFileIndex1 = ""
+    CUST.DATA.failFileIndex1 = urtn_fileOpen(CUST.DATA.failureFile + "|w")
+
+    PRINT(CUST.DATA.failFileIndex1)
+
+    CUST.DATA.list_file_name = CUST.DATA.failureFile
+    CUST.DATA.title = "Lien Update on CAA extent of amount utilized from Parking account"
+    CUST.DATA.mrt_file_name = "ODCALien.mrt"
+    CUST.DATA.rpt_file_name = "ODCALien.rpt"
+    CUST.DATA.rpt =  "ODCALien"
+	
+	
+	#sv_s = "poolId,ODacnt,schmCode,ODacid,solId,acntCrncyCode|SELECT POOL_ID,FORACID,SCHM_CODE,ACID,SOL_ID,ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE BANK_ID=?SVAR"
+	sv_s = "ODacnt,schmCode,ODacid,solId,acntCrncyCode|SELECT FORACID,SCHM_CODE,ACID,SOL_ID,ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE BANK_ID=?SVAR"
+	#sv_s = sv_s + " AND SOL_ID=?SVAR AND DEL_FLG='N' AND ENTITY_CRE_FLG='Y' AND ACCT_CLS_FLG='N' AND SCHM_TYPE='ODA' AND POOL_ID IS NOT NULL ORDER BY FORACID"
+	sv_s = sv_s + " AND SOL_ID=?SVAR AND DEL_FLG='N' AND ENTITY_CRE_FLG='Y' AND ACCT_CLS_FLG='N' AND SCHM_TYPE='ODA' ORDER BY FORACID"
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	IF(sv_c!=0) THEN
+	#{
+            CUST.DATA.errMsg = "DB Error: | Error in opening cursor, Please contact DBA"
+            PRINT(CUST.DATA.errMsg)
+            sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            PRINT(sv_b)
+            GOTO ENDOFSCRIPT
+
+	#}
+	ENDIF
+
+
+    sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+    PRINT(sv_n)
+
+    sv_f = urhk_dbCursorFetch(sv_n)
+    PRINT(sv_f)
+    WHILE(sv_f == 0)
+    #{
+		#CUST.DATA.poolID = BANCS.OUTPARAM.poolId
+		CUST.DATA.ODacnt = BANCS.OUTPARAM.ODacnt
+		CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+		CUST.DATA.ODacid = BANCS.OUTPARAM.ODacid
+		CUST.DATA.solId = BANCS.OUTPARAM.solId
+		CUST.DATA.acntCrncyCode = BANCS.OUTPARAM.acntCrncyCode
+		
+		#PRINT(CUST.DATA.poolID)
+		PRINT(CUST.DATA.ODacnt)
+		PRINT(CUST.DATA.schmCode)
+		PRINT(CUST.DATA.ODacid)
+		PRINT(CUST.DATA.solId)
+		PRINT(CUST.DATA.acntCrncyCode)
+		
+		sv_s = "prkngBacid|SELECT PARKING_BACID FROM TBAADM.GSP WHERE BANK_ID=?SVAR AND SCHM_CODE=?SVAR"
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.schmCode
+		
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbselectWithBind(sv_s)
+
+		IF (sv_d != 0 ) THEN
+		#{
+            		CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ "No Parkng Bacid mapped for SchemeCode: "+CUST.DATA.schmCode
+            		PRINT(CUST.DATA.errMsg)
+            		sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            		PRINT(sv_b)
+            		GOTO NEXTACID
+		#}
+		ENDIF
+		
+		CUST.DATA.prkngBacid = BANCS.OUTPARAM.prkngBacid
+		
+		PRINT(CUST.DATA.prkngBacid)
+		IF(TRIM(CUST.DATA.prkngBacid) == "")THEN
+                #{
+                        CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ "No Parkng Bacid mapped for SchemeCode: "+CUST.DATA.schmCode
+                        PRINT(CUST.DATA.errMsg)
+                        sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+                        PRINT(sv_b)
+                        GOTO NEXTACID
+                #}
+                ENDIF
+
+		sv_a =  CUST.DATA.prkngBacid + "|" + CUST.DATA.acntCrncyCode+ "|" + CUST.DATA.solId
+		sv_u = urhk_B2k_BacidToAcctId(sv_a)
+		CUST.DATA.prkngAcnt = BANCS.OUTPARAM.AcctId
+		
+		PRINT(CUST.DATA.prkngAcnt)
+		
+		sv_s = "acid|SELECT ACID FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.DATA.prkngAcnt + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+	
+		IF (sv_d != 0 ) THEN
+		#{
+            		CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ "No Parkng acid mapped for SchemeCode: "+CUST.DATA.schmCode
+            		PRINT(CUST.DATA.errMsg)
+            		sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            		PRINT(sv_b)
+            		GOTO NEXTACID
+		#}
+		ENDIF
+		CUST.DATA.prkngacid = BANCS.OUTPARAM.acid	
+		
+		sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.prkngAcnt)
+		CUST.DATA.prkngAmt 	= BANCS.OUTPARAM.EffAvailableAmt
+		
+		PRINT(CUST.DATA.prkngAmt)
+		
+		sv_s = "outstnAmt|SELECT -1*(SUM(DECODE(part_tran_type,'D',-1*tran_amt,tran_amt))) FROM TBAADM.ACPART WHERE B2K_ID=?SVAR AND PARTITIONED_ACID=?SVAR AND BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.DATA.ODacid + "|" + CUST.DATA.prkngacid + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+			
+		sv_d = urhk_dbselectWithBind(sv_s)
+	
+		IF (sv_d != 0 ) THEN
+		#{
+            		CUST.DATA.errMsg = CUST.DATA.ODacnt +"|"+ ":DB Error In Accessing ACPART"
+            		PRINT(CUST.DATA.errMsg)
+            		sv_b = urtn_fileWrite(CUST.DATA.failFileIndex1 + "|" + CUST.DATA.errMsg)
+            		PRINT(sv_b)
+            		GOTO NEXTACID
+		#}
+		ENDIF
+		CUST.DATA.outstnAmt = BANCS.OUTPARAM.outstnAmt
+
+		IF(TRIM(CUST.DATA.outstnAmt) == "")THEN
+		#{
+			CUST.DATA.outstnAmt = "0"
+			#CUST.DATA.outstnAmt = "100"
+		#}
+		ENDIF
+		
+		IF(CUST.DATA.outstnAmt != "0")THEN
+		#{
+			CALL("AddLienOD.scr")
+		#}
+		ENDIF
+		
+		NEXTACID:
+			sv_f = urhk_dbCursorFetch(sv_n)
+			PRINT(sv_f)
+			
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(sv_n)
+		PRINT(sv_c)
+
+ENDOFSCRIPT:
+TRACE OFF
+END-->
+	
+	

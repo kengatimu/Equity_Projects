@@ -1,0 +1,217 @@
+#IIMT_API_XML.scr
+
+
+<--START
+	# Script body goes here
+
+	TRACE ON
+
+	sv_r=urhk_B2k_PrintRepos("BANCS")
+	print(sv_r)
+	
+	#==================================================================================================
+	# Repository and Class Creation
+	#==================================================================================================
+	IF (REPEXISTS("CUST")== 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST" , "DATA",5)
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","RATE") == 0) THEN
+	#{
+		CREATECLASS("CUST" , "RATE",5)
+	#}
+	ENDIF
+
+
+	CUST.DATA.CHRG ="2"
+
+	CUST.DATA.eventType = BANCS.INPUT.eventType
+	CUST.DATA.eventId =BANCS.INPUT.EventId
+	#CUST.DATA.inputAmt = BANCS.INPUT.inputAmount 
+	CUST.DATA.inputCrncy = BANCS.INPUT.inputCrncy
+	print(CUST.DATA.inputCrncy)
+
+	CUST.DATA.chrgType= "P"
+	CUST.DATA.MSG = " " 
+	CUST.DATA.errFlg = "N"
+	CUST.DATA.AMTIND = "P"
+
+IF (FIELDEXISTS(BANCS.INPUT.DebitAccount)) THEN
+
+	sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.DebitAccount)
+	PRINT(sv_u)
+
+	IF(sv_u == 0)THEN
+
+		CUST.DATA.ownership = BANCS.OUTPARAM.acctOwnerShip
+		
+		IF(CUST.DATA.ownership == "O")THEN
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.MSG = "Office accts Not Allowed"
+			GOTO ENDOFSCRIPT
+		ENDIF
+
+
+		CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+		CUST.DATA.custId =BANCS.OUTPARAM.custId
+		CUST.DATA.CIF_ID = BANCS.OUTPARAM.cifId
+		CUST.DATA.crncy = BANCS.OUTPARAM.acctCrncyCode
+
+		Print  (CUST.DATA.schmCode)
+		Print  (BANCS.INPUT.DebitAccount)
+		Print  (CUST.DATA.CIF_ID)		
+		Print  (CUST.DATA.custId)
+		Print  (CUST.DATA.crncy)
+
+
+		
+		
+		#check SCHM level		
+
+			sv_s="PRCNT,minAmt,maxAmt|SELECT PRCNT,MIN_AMT,MAX_AMT FROM CUSTOM.CUSTOM_CCPRM WHERE EVENT_TYPE=?SVAR AND EVENT_ID=?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG='Y'"
+			sv_s = sv_s + " AND SCHM_CODE=?SVAR AND  BANK_ID=?SVAR AND  rownum =1"
+			BANCS.INPARAM.BINDVARS = CUST.DATA.eventType + "|" + CUST.DATA.eventId + "|" + CUST.DATA.schmCode + "|" + BANCS.STDIN.contextBankId 
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d=urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+				CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+				PRINT(CUST.DATA.CHRG)
+			ENDIF		
+		
+		#Agremment
+			
+			sv_s = " AMTIND, PRCNT,AMT,MIN_AMT,MAX_AMT| select PERCENT,PERCENT_VALUE ,AMT_VALUE,MIN_AMT,MAX_AMT   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+			sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+			sv_s = sv_s + " and AGREEMENT_CODE = (select employerid from CRMUSER.DEMOGRAPHIC where orgkey ='"+CUST.DATA.CIF_ID+"') "
+			sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"'and rownum=1"
+			print(sv_s)
+			sv_u = urhk_dbselectwithBind(sv_s)
+			print(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+				PRINT(CUST.DATA.CHRG)
+			#{
+			ENDIF
+
+		#check CIF level
+
+			sv_s =" AMTIND, PRCNT,AMT,MIN_AMT,MAX_AMT| select PERCENT,PERCENT_VALUE ,AMT_VALUE,MIN_AMT,MAX_AMT   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+			sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+			sv_s = sv_s + " and cust_id ='"+CUST.DATA.CIF_ID+"'"
+			sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"'	and  rownum=1"
+			print(sv_s)
+			sv_u = urhk_dbselectwithBind(sv_s)
+			print(sv_u)
+			IF (sv_u == 0) THEN				
+				CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+				PRINT(CUST.DATA.CHRG)
+			ENDIF	
+		
+		
+		#check account level
+
+			sv_s =" AMTIND, PRCNT,AMT,MIN_AMT,MAX_AMT | select PERCENT,PERCENT_VALUE ,AMT_VALUE,MIN_AMT,MAX_AMT   from custom.c_cpcm_data where entity_cre_flg='Y' and "
+			sv_s = sv_s + " del_flg='N' and event_type ='"+CUST.DATA.eventType+"' and event_id='"+CUST.DATA.eventId+"'"
+			sv_s = sv_s + " and foracid ='"+BANCS.INPUT.DebitAccount+"'"
+			sv_s = sv_s + " and bank_id='"+BANCS.STDIN.contextBankId+"' and  rownum =1 "
+			print(sv_s)
+			sv_u = urhk_dbselectwithBind(sv_s)
+			print(sv_u)
+			IF (sv_u == 0) THEN
+				CUST.DATA.CHRG=BANCS.OUTPARAM.PRCNT	
+				PRINT(CUST.DATA.CHRG)
+			ENDIF
+		#-----------------------------------------	
+		##MAD New Price
+		#---------------------------------------------------
+
+		IF(CUST.DATA.inputCrncy == "USD")THEN
+			#{
+				CUST.DATA.inputAmt = BANCS.INPUT.inputAmount
+			#}
+
+		ELSE
+			#{
+					
+				BANCS.INPARAM.InputAmount  =  BANCS.INPUT.inputAmount
+				
+				BANCS.INPARAM.FromCurrency = BANCS.INPUT.inputCrncy 
+					
+				BANCS.INPARAM.ToCurrency   = "USD" 
+				BANCS.INPARAM.RateCode     = "TTB"
+				BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+				sv_u = urhk_B2k_ConvertAmount("")
+				CUST.DATA.inputAmt = BANCS.OUTPARAM.OutputAmount
+				
+				PRINT(CUST.DATA.inputAmt)
+
+		#}
+		ENDIF
+		IF(CUST.DATA.inputAmt !="") THEN 
+			
+			IF(CDOUBLE(CUST.DATA.inputAmt) <= 1000)THEN
+			#{
+				CUST.DATA.AMT ="20.00"
+				CUST.DATA.chrgAmt = CDOUBLE(CUST.DATA.AMT)
+				print(CUST.DATA.chrgAmt)
+			#}
+			ENDIF
+
+			IF(CDOUBLE(CUST.DATA.inputAmt) > 1000)THEN
+			#{
+				CUST.DATA.CHRG ="2.5"
+				CUST.DATA.chrgAmt = CDOUBLE(CUST.DATA.inputAmt) * (CDOUBLE(CUST.DATA.CHRG) * (0.01))
+				print(CUST.DATA.chrgAmt)
+			#}
+			ENDIF
+				#CUST.DATA.chrgAmt = CDOUBLE(CUST.DATA.inputAmt) * (CDOUBLE(CUST.DATA.CHRG) * (0.01))
+				#print(CUST.DATA.chrgAmt)
+				#CUST.DATA.chrgAmt = CDOUBLE(CUST.DATA.chrgAmt) + (CDOUBLE(CUST.DATA.chrgAmt ) * (0.16))
+				#print(CUST.DATA.chrgAmt)					
+		ENDIF
+
+
+			IF(CUST.DATA.chrgAmt != "")THEN
+				BANCS.INPARAM.InputAmount  = CUST.DATA.chrgAmt
+				BANCS.INPARAM.FromCurrency = "USD" 
+				#BANCS.INPARAM.FromCurrency = CUST.DATA.crncy
+				BANCS.INPARAM.ToCurrency   = BANCS.INPUT.chrgCollCrncy
+				BANCS.INPARAM.RateCode     = "TTB"
+				BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+				sv_u = urhk_B2k_ConvertAmount("")
+				CUST.DATA.chrgAmt = BANCS.OUTPARAM.OutputAmount
+				print(CUST.DATA.chrgAmt)
+			#ELSE
+				#print(CUST.DATA.chrgAmt)
+			ENDIF
+	ELSE
+		CUST.DATA.errFlg = "Y"
+		CUST.DATA.MSG ="Customer Account Not Valid"
+		GOTO ENDOFSCRIPT
+	ENDIF
+ELSE
+	CUST.DATA.errFlg = "Y"
+	CUST.DATA.MSG = "Customer Account Not Entered"
+	GOTO ENDOFSCRIPT
+
+ENDIF
+
+ENDOFSCRIPT:
+
+		BANCS.OUTPUT.collAmount = CUST.DATA.chrgAmt
+                BANCS.OUTPUT.collCrncy = BANCS.INPUT.chrgCollCrncy
+		#BANCS.OUTPUT.collCrncy = BANCS.OUTPUT.collCrncy
+                BANCS.OUTPUT.AmountWithNoDiscount = CUST.DATA.chrgAmt
+   
+END-->
+
+

@@ -1,0 +1,229 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       BankBranchInq_FetchBankBranchDetails.scr
+# Author                :       Kalvin Joseph
+# Description           :       This script fetches the bankcode,branchcode and bankIdentifier based on the request xml
+# Input                 :       bank_code
+# Output                :       None
+# Called Script         :       BranchInq.scr
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           07-03-2013	Kalvin              Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+
+####################################################################
+#section      :creating new repository if required
+#Description  :Checks for the existence o the repository STDWFS and
+#               creates a new one by that name if it does not exist
+#####################################################################
+
+IF (REPEXISTS("CUST") == 0 ) THEN
+#{
+    CREATEREP("CUST")
+    #}
+ENDIF
+
+############################################################################
+#section      :creating new class if required
+#Desscription :checks for the existence of the class GLBDATA in the
+#repository
+#               create a new one if it does not exist
+##############################################################################
+
+
+IF (CLASSEXISTS("CUST","INTERFACE") == 0) THEN
+#{
+    CREATECLASS("CUST","INTERFACE",5)
+#}
+#ELSE
+	#{
+	#	DELETECLASS("CUST","INTERFACE")
+	#	CREATECLASS("CUST","INTERFACE",5)}
+	#ENDIF
+#}
+ENDIF
+
+IF((FIELDEXISTS(("BANCS").("INPUT").("bankCode"))== "0")) THEN
+			#{
+				print("Enter bankCode")
+				CUST.INTERFACE.successOrFailure="F"
+				CUST.INTERFACE.errorCode="ERR006"
+				GOTO ERROREXIT
+			#}
+			ELSE
+			#{
+				
+				CUST.INTERFACE.bankCode=BANCS.INPUT.bankCode
+
+				print (BANCS.INPUT.bankCode)
+			#}	
+			ENDIF
+#-------------------------------------------------------------------------------
+# Calling create repository script
+#-------------------------------------------------------------------------------
+
+CALL("Common_Interface_CreateRepos.scr")
+CUST.INTERFACE.successOrFailure = "S"
+CUST.INTERFACE.srvErrFlg = "N"
+#-------------------------------------------------------------------------------
+# Handling error conditions
+#-------------------------------------------------------------------------------
+##ERROREXIT:
+	##IF(CUST.INTERFACE.successOrFailure == "F") THEN
+	#{
+		##CALL("Common_Interface_ErrorExit.scr")
+	#}
+	##ENDIF
+############################################
+#Assigns the values to the variables
+############################################
+
+sv_a = urhk_b2k_PrintRepos("BANCS")
+print(sv_a)
+sv_y=0
+
+print(BANCS.INPUT.bankCode)
+
+CUST.INTERFACE.bankCode=BANCS.INPUT.bankCode
+
+CUST.INTERFACE.DccId=""
+sv_a = urhk_GetChannelInfo("")
+print(sv_a)
+if (sv_a!=0) then
+#{
+	sv_u = urhk_SRV_SetErr("Error: Channel ID is not passed/Incorrect")
+	BANCS.OUTPUT.successOrFailure="F"
+	GOTO ERROREXIT
+#}
+else
+#{
+	CUST.INTERFACE.DccId = BANCS.OUTPARAM.DccId
+	print(CUST.INTERFACE.DccId)
+#}
+endif
+
+
+	
+
+#*******************************************
+#Validating inputs
+#******************************************
+
+#IF (strlen(BANCS.INPUT.bankCode)=="0") THEN
+
+
+
+IF (CUST.INTERFACE.bankCode!="")THEN
+	#{
+		sv_u = urhk_B2k_valBankCode(CUST.INTERFACE.bankCode)
+		IF( sv_u != 0 ) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			print(CUST.INTERFACE.successOrFailure)
+			CUST.INTERFACE.errorCode = "ERR030"
+			GOTO ERROREXIT
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+
+
+
+
+#-------------------------------------------------------------------------------------
+#Fetching the bankcode branchcode and Branch name
+#-------------------------------------------------------------------------------------
+
+
+	IF(CUST.INTERFACE.bankCode !="")THEN
+	#{
+
+		BANCS.INPARAM.BINDVARS = CUST.INTERFACE.bankCode + "|" + "N" + "|" + BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|"  + "N" + "|" + BANCS.STDIN.contextBankId
+		sv_s = "bankCode,branchCode,branchName,BankName|"
+		sv_s = sv_s + "SELECT BCT.BANK_CODE,BCT.BR_CODE, BCT.BR_NAME,BKC.BANK_NAME"
+		sv_s = sv_s + " FROM TBAADM.BCT ,TBAADM.BKC"
+		sv_s = sv_s + " WHERE BCT.BANK_CODE = ?SVAR"
+		sv_s = sv_s + " AND BCT.BANK_CODE = BKC.BANK_CODE"
+		sv_s = sv_s + " AND  BKC.DEL_FLG = ?SVAR AND BKC.BANK_ID = ?SVAR"
+		sv_s = sv_s + " AND  BCT.DEL_FLG = ?SVAR AND BCT.BANK_ID = ?SVAR"
+
+		print (BANCS.INPARAM.BINDVARS)
+	#}
+	ENDIF
+	print(sv_s)
+	sv_d = urhk_dbCursorOpenWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		sv_c = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_r = urhk_dbCursorFetch(sv_c)
+		sv_q = 0
+		print(sv_r)
+		#-------------------------------------------------------------------------------------
+		#Assigning the fetched multirecord value to repository variable
+		#-------------------------------------------------------------------------------------
+		WHILE(sv_r == 0)
+		#{
+			sv_q = sv_q + 1
+			sv_v = "bankCode_" + FORMAT$(sv_q, "%d")
+			("CUST").("INTERFACE").(sv_v) = BANCS.OUTPARAM.bankCode
+
+			sv_v = "branchCode_" + FORMAT$(sv_q, "%d")
+			("CUST").("INTERFACE").(sv_v) = BANCS.OUTPARAM.branchCode
+			
+			sv_v = "branchName_" + FORMAT$(sv_q, "%d")
+			("CUST").("INTERFACE").(sv_v) = BANCS.OUTPARAM.branchName
+
+			 sv_v = "BankName_" + FORMAT$(sv_q, "%d")
+			("CUST").("INTERFACE").(sv_v) = BANCS.OUTPARAM.BankName
+			#sv_r = urhk_dbCursorFetch(sv_c)
+
+                       CUST.INTERFACE.bankCode = BANCS.OUTPARAM.bankCode
+			print (CUST.INTERFACE.bankCode)
+			CUST.INTERFACE.branchCode = BANCS.OUTPARAM.branchCode
+			print (CUST.INTERFACE.branchCode)
+			CUST.INTERFACE.branchName = BANCS.OUTPARAM.branchName
+			print (CUST.INTERFACE.branchName)
+			CUST.INTERFACE.BankName = BANCS.OUTPARAM.BankName
+			print (CUST.INTERFACE.BankName)
+
+			sv_z = urhk_SetOrbOut("bankCode|"+CUST.INTERFACE.bankCode)
+				print(sv_z)
+				sv_z = urhk_SetOrbOut("BankName|"+CUST.INTERFACE.BankName)
+				print(sv_z)
+				sv_z = urhk_SetOrbOut("branchCode|"+CUST.INTERFACE.branchCode)
+				print(sv_z)
+				sv_z = urhk_SetOrbOut("branchName|"+CUST.INTERFACE.branchName)
+				print(sv_z)
+				
+
+		
+			sv_r = urhk_dbCursorFetch(sv_c)
+
+
+                      
+		#}
+		DO
+		sv_r = urhk_dbCursorClose(sv_c)
+		CUST.INTERFACE.recordCount = sv_q
+		PRINT(CUST.INTERFACE.recordCount)
+	#}
+
+#-------------------------------------------------------------------------------
+# Handling error conditions
+#-------------------------------------------------------------------------------
+ERROREXIT:
+	IF(CUST.INTERFACE.successOrFailure == "F") THEN
+	#{
+		CALL("Common_Interface_ErrorExit.scr")
+	#}
+	ENDIF
+	ENDIF
+#TRACE OFF
+
+END-->

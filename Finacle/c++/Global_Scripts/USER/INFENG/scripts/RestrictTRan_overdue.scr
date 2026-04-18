@@ -1,0 +1,157 @@
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: RestrictTRan_overdue.scr
+# event: NA
+# description: HTM Menu option on Go button click
+#=================================================
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       RestrictTRan_overdue.scr
+# Author                :       Silvester M. Kisalu
+# Description           :       This script is to validate OD548 Customer with Accounts In arrears
+# Input                 :       Account Id/Foracid.
+# Output                :       Error message or Result meassage.
+# Called Script         :       
+# Calling Script        :      
+#
+# Modification History
+# Sl. #           Date             Author             	Modification           Version
+# -----        ----------         --------------    	----------------        ---------
+#  01           25-08-2022         Silvester M. Kisalu   	original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether HTM Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","HTM")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","HTM",5)
+	#}
+	ENDIF
+
+	sv_u = urhk_b2k_printrepos("BANCS")
+	PRINT(sv_u)
+	print(BANCS.INPUT.TranType)
+
+	IF(BANCS.INPUT.TranType == "C") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.acctId))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.acctId) != "")THEN
+		#{
+			CUST.HTM.acctId = TOUPPER(TRIM(BANCS.INPUT.acctId))
+			PRINT(CUST.HTM.acctId)
+			sv_s = "Acctpool_id| SELECT pool_id FROM TBAADM.GAM WHERE foracid=?SVAR AND BANK_ID=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.HTM.acctId +"|"+ BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+	
+			sv_e = urhk_dbSelectWithBind(sv_s)
+			print(sv_e)
+
+					IF(sv_e==0) THEN
+					 #{               
+						CUST.HTM.Acctpool_id = BANCS.OUTPARAM.Acctpool_id
+						PRINT(CUST.HTM.Acctpool_id)
+					#}
+	      		ENDIF
+
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		CUST.HTM.acctCrncy =BANCS.INPUT.acctCrncy
+	#}
+	ENDIF
+	#print(BANCS.INPUT.tranType)
+
+	#print(CUST.HTM.Acctpool_id)
+	IF(FIELDEXISTS(CUST.HTM.Acctpool_id))THEN
+	#{
+		 sv_s = "count|select count(*) from tbaadm.gam G,tbaadm.gac C  where G.schm_code='OD548' and G.pool_id=?SVAR and C.DPD_CNTR>0 and G.ALLOW_SWEEPS='Y' "
+		sv_s = sv_s + "and G.bank_id=?SVAR and G.acid=C.acid and C.bank_id=G.bank_id and G.ACCT_CLS_FLG!='Y' and G.del_flg!='Y' " 
+
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUST.HTM.Acctpool_id +"|"+ BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_e = urhk_dbSelectWithBind(sv_s)
+		print(sv_e)
+
+		IF(sv_e==0) THEN
+		#{               
+			CUST.HTM.count = BANCS.OUTPARAM.count
+			PRINT(CUST.HTM.count)
+		#}
+		ENDIF
+		
+		PRINT(CUST.HTM.count)
+		IF(CUST.HTM.count >0) THEN
+		#{
+			#============  Allow Customer to transact incase the the OD548 is not in DR ==================
+			sv_s = "ODaccount|select foracid from tbaadm.gam G,tbaadm.gac C  where G.schm_code='OD548' and G.pool_id=?SVAR and C.DPD_CNTR>0 and G.ALLOW_SWEEPS='Y' "
+			sv_s = sv_s + "and G.bank_id=?SVAR and G.acid=C.acid and C.bank_id=G.bank_id and G.ACCT_CLS_FLG!='Y' and G.del_flg!='Y' " 
+
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.HTM.Acctpool_id +"|"+ BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_e = urhk_dbSelectWithBind(sv_s)
+			print(sv_e)
+
+			IF(sv_e==0) THEN
+			#{               
+				CUST.HTM.ODaccount = BANCS.OUTPARAM.ODaccount
+				PRINT(CUST.HTM.ODaccount)
+				sv_u = urhk_getAcctDetailsInRepository(CUST.HTM.ODaccount)
+				if(sv_u ==0)then
+				#{
+				
+					CUST.HTM.ODclearBalance  = BANCS.OUTPARAM.clearBalance
+					print(CUST.HTM.ODclearBalance)
+					if(cdouble(CUST.HTM.ODclearBalance)<0)then
+					#{
+						#============  ENDS ==================
+						CUST.HTM.errorFlg = "Y"
+						sv_u=urhk_SetOrbOut("Customer has OD548 product and customer account is in arrears | Error")
+						print(sv_u)
+		
+					#}
+					endif
+				#}
+				endif
+			#}
+			ENDIF
+				
+			
+		
+		ENDIF
+	#}
+	ENDIF
+		
+ENDOFSCRIPT:
+TRACE OFF
+END-->
+	

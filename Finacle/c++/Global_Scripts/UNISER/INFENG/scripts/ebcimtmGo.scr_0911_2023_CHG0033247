@@ -1,0 +1,1133 @@
+<--start
+trace on
+if(repexists("CIMTM")==0)then
+#{
+	createrep("CIMTM")
+#}
+endif
+
+if(classexists("CIMTM","GLBDATA")==0)then
+#{
+    createclass("CIMTM","GLBDATA",5)
+#}
+endif
+sv_u = urhk_B2K_PrintRepos("BANCS")
+print(sv_u)
+
+IF(BANCS.STDIN.contextBankId !="54")THEN
+#{
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+CIMTM.GLBDATA.errMsg 		= ""
+CIMTM.GLBDATA.resMsg 		= ""
+CIMTM.GLBDATA.ModRecCnt 	= 0
+CIMTM.GLBDATA.RecCnt 		= 0
+CIMTM.GLBDATA.UnvRecCnt 	= 0
+CIMTM.GLBDATA.DupRecCnt 	= 0
+CIMTM.GLBDATA.ModUnvRecCnt 	= 0
+
+CIMTM.GLBDATA.Dracno 		= ""
+CIMTM.GLBDATA.Cracno 		= ""
+CIMTM.GLBDATA.refCrncy 		= ""
+CIMTM.GLBDATA.refAmt 		= ""
+CIMTM.GLBDATA.TranParticular= ""
+CIMTM.GLBDATA.TranRemarks 	= ""
+CIMTM.GLBDATA.FreeText1 	= ""
+CIMTM.GLBDATA.ChargeType 	= ""
+CIMTM.GLBDATA.benefName 	= ""
+CIMTM.GLBDATA.benefAcctNum 	= ""
+CIMTM.GLBDATA.bbankCode 	= ""
+CIMTM.GLBDATA.bbankCodeDesc = ""
+CIMTM.GLBDATA.bbrCode 		= ""
+CIMTM.GLBDATA.bbrCodeDesc 	= ""
+CIMTM.GLBDATA.benefIns1 	= ""
+CIMTM.GLBDATA.benefIns2 	= ""
+CIMTM.GLBDATA.gagYN 		= ""
+CIMTM.GLBDATA.RecVerifyType = ""
+CIMTM.GLBDATA.APIMode = ""
+
+CIMTM.GLBDATA.funcCode 		= BANCS.INPUT.funcCode
+CIMTM.GLBDATA.PymntRefNum	= BANCS.INPUT.PymntRefNum
+CIMTM.GLBDATA.pymntRefDate	= BANCS.INPUT.pymntRefDate
+
+if(fieldexists(BANCS.STDIN.userWorkClass)==1)then
+#{
+        sv_u= CINT(BANCS.STDIN.userWorkClass)
+	IF((CIMTM.GLBDATA.funcCode == "A") AND (sv_u<110))THEN
+	#{
+		#CIMTM.GLBDATA.errMsg = "User does not have the privilege to Add."
+		#lv_e = urhk_SetOrbErr(CIMTM.GLBDATA.errMsg)
+		#GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+        IF((CIMTM.GLBDATA.funcCode == "P") AND (sv_u<150))THEN
+        #{
+                CIMTM.GLBDATA.errMsg = "User does not have the privilege to Post."
+                lv_e = urhk_SetOrbErr(CIMTM.GLBDATA.errMsg)
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+		
+#}
+endif
+
+
+print(CIMTM.GLBDATA.pymntRefDate)
+print(CIMTM.GLBDATA.funcCode)
+print(CIMTM.GLBDATA.PymntRefNum)
+
+if((CIMTM.GLBDATA.funcCode == "AP") or (CIMTM.GLBDATA.funcCode == "A")) then
+#{
+	lv_b = urhk_SetOrbOut("SuccessOrFailure|Y")
+	exitscript
+#}
+endif
+
+#if((CIMTM.GLBDATA.funcCode == "P") OR (CIMTM.GLBDATA.funcCode == "I") OR(CIMTM.GLBDATA.funcCode == "X") )then
+if(CIMTM.GLBDATA.funcCode == "P")then
+#{
+	sv_d = "TRANSTAT,TRANRES,RCREUSER,cnt | select TRANSACTION_STATUS,TRANSACTION_RESPONSECODE,RCRE_USER_ID,count(*) "
+	sv_d = sv_d + " from custom.CUST_CIMTM_MASTER_TABLE "
+	sv_d = sv_d + " where bank_id=?SVAR  and del_flg='N'"
+	sv_d = sv_d + " and PYMNTREFNUM=?SVAR "
+	if(CIMTM.GLBDATA.pymntRefDate!="")then
+	#{
+		sv_d = sv_d + " and to_date(PYMNTREFDATE,'DD-MM-RR')=to_date(?SVAR,'DD-MM-RR') "
+	#}
+	endif
+	sv_d = sv_d + " group by TRANSACTION_STATUS,TRANSACTION_RESPONSECODE,RCRE_USER_ID "
+	
+	if(CIMTM.GLBDATA.pymntRefDate!="")then
+	#{
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CIMTM.GLBDATA.PymntRefNum + "|" + CIMTM.GLBDATA.pymntRefDate
+	else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CIMTM.GLBDATA.PymntRefNum
+	#}
+	endif
+	
+	print(sv_d)
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	
+	if(sv_u==0)then
+	#{
+		BANCS.INPUT.cnt 		= BANCS.OUTPARAM.cnt
+		BANCS.INPUT.RCREUSER 	= BANCS.OUTPARAM.RCREUSER
+	else
+		BANCS.INPUT.cnt 		= 0
+		BANCS.INPUT.RCREUSER 	= "" 
+	#}
+	endif
+	
+	if(cdouble(BANCS.INPUT.cnt)<=0)then
+	#{
+		CIMTM.GLBDATA.errMsg 	= "Invalid Payment Ref Number or reference Canceled"	
+		goto ERRRESP
+	#}
+	endif
+	
+	if(BANCS.INPUT.RCREUSER == BANCS.STDIN.userId)then
+	#{
+		CIMTM.GLBDATA.errMsg 	= "Maker and Checker cannot Same"
+		##CIMTM.GLBDATA.errMsg 	= "Same User cannot Add and post the Request"
+		goto ERRRESP
+	#}
+	endif
+#}
+endif
+
+##############Data Retrieval for Post , Inq, Cancel
+	
+	if(CIMTM.GLBDATA.pymntRefDate!="")then
+	#{
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CIMTM.GLBDATA.PymntRefNum + "|" + CIMTM.GLBDATA.pymntRefDate
+	else
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CIMTM.GLBDATA.PymntRefNum
+	#}
+	endif
+	
+	sv_s = " " 
+	sv_s = "PymntRefNum, channel_mode, channel, pymntRefDate, transaction_type, Dracno, refCrncy, source_amount, refAmt, rateCode, rate, bankAccountType, ChrgCrncy, ChrgAmt, ChrgrateCode, Chrgrate, bicWallet, countryCode, TranParticulars, currency, TranRemarks, receivingBankName, benefAcctNum, benefFName, benefMName, benefLName, email, benefMobileNum, bbankCode, bbrCode, BenefAddress1, BenefAddress2, BenefAddress3, benefcity, benefState, benefCntry, benefBnkTel, PostalCode, sortCode, Quote_status, Quote_responseCode, Quote_responseDesc, transactionId, amount, dest_currency, purOfRemit, providerGL, payerName, rcre_user_id, rcre_time, bank_id, entity_cre_flg, del_flg"
+	sv_s = sv_s + "|"
+	sv_s = sv_s  +"select "
+	sv_s = sv_s  +"PymntRefNum              ,"
+	sv_s = sv_s  +"channel_mode			 	,"
+	sv_s = sv_s  +"channel			        ,"
+	sv_s = sv_s  +"pymntRefDate             ,"
+	sv_s = sv_s  +"transaction_type         ,"
+	sv_s = sv_s  +"Dracno                   ,"
+	sv_s = sv_s  +"refCrncy                 ,"
+	sv_s = sv_s  +"source_amount	        ,"
+	sv_s = sv_s  +"refAmt                   ,"
+	sv_s = sv_s  +"rateCode                 ,"
+	sv_s = sv_s  +"rate                     ,"
+	sv_s = sv_s  +"bankAccountType	        ,"
+	sv_s = sv_s  +"ChrgCrncy                ,"
+	sv_s = sv_s  +"ChrgAmt                  ,"
+	sv_s = sv_s  +"ChrgrateCode             ,"
+	sv_s = sv_s  +"Chrgrate                 ,"
+	sv_s = sv_s  +"bicWallet	       		,"
+	sv_s = sv_s  +"nvl((select  FIN_CNTRY_CODE from custom.CUST_CIMTM_COUNTRY_TABLE where ISO_CNTRY_CODE=countryCode and rownum<=1),'KE'),"
+	sv_s = sv_s  +"TranParticulars          ,"
+	sv_s = sv_s  +"currency		       		,"
+	sv_s = sv_s  +"TranRemarks              ,"
+	sv_s = sv_s  +"receivingBankName        ,"
+	sv_s = sv_s  +"benefAcctNum             ,"
+	sv_s = sv_s  +"benefFName               ,"
+	sv_s = sv_s  +"benefMName               "
+	sv_s = sv_s  +"from custom.CUST_CIMTM_MASTER_TABLE	 "
+	sv_s = sv_s + " where bank_id=?SVAR and del_flg='N' "
+	sv_s = sv_s + " and PYMNTREFNUM=?SVAR "
+	if(CIMTM.GLBDATA.pymntRefDate!="")then
+	#{
+		sv_s = sv_s + " and to_date(PYMNTREFDATE,'DD-MM-RR')=to_date(?SVAR,'DD-MM-RR') "
+	#}
+	endif	
+	print(sv_s)
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	if(sv_d != 0)then
+	#{
+		CIMTM.GLBDATA.errMsg = "IMT Request Not Found"
+		print(CIMTM.GLBDATA.errMsg)
+		goto ERRRESP
+    else
+		print(BANCS.OUTPARAM.PymntRefNum)
+		print(BANCS.OUTPARAM.channel_mode)
+		print(BANCS.OUTPARAM.channel)
+		print(BANCS.OUTPARAM.pymntRefDate)
+		print(BANCS.OUTPARAM.transaction_type)
+		print(BANCS.OUTPARAM.Dracno)
+		print(BANCS.OUTPARAM.refCrncy)
+		print(BANCS.OUTPARAM.source_amount)
+		print(BANCS.OUTPARAM.refAmt)
+		print(BANCS.OUTPARAM.rateCode)
+		print(BANCS.OUTPARAM.rate)
+		print(BANCS.OUTPARAM.bankAccountType)
+		print(BANCS.OUTPARAM.ChrgCrncy)
+		print(BANCS.OUTPARAM.ChrgAmt)
+		print(BANCS.OUTPARAM.ChrgrateCode)
+		print(BANCS.OUTPARAM.Chrgrate)
+		print(BANCS.OUTPARAM.bicWallet)
+		print(BANCS.OUTPARAM.countryCode)
+		print(BANCS.OUTPARAM.TranParticulars)
+		print(BANCS.OUTPARAM.currency)
+		print(BANCS.OUTPARAM.TranRemarks)
+		print(BANCS.OUTPARAM.receivingBankName)
+		print(BANCS.OUTPARAM.benefAcctNum)
+		print(BANCS.OUTPARAM.benefFName)
+		print(BANCS.OUTPARAM.benefMName)
+		
+		CIMTM.GLBDATA.PymntRefNum         = BANCS.OUTPARAM.PymntRefNum
+		CIMTM.GLBDATA.channel_mode        = BANCS.OUTPARAM.channel_mode
+		CIMTM.GLBDATA.channel             = BANCS.OUTPARAM.channel
+		CIMTM.GLBDATA.pymntRefDate        = BANCS.OUTPARAM.pymntRefDate
+		CIMTM.GLBDATA.transaction_type    = BANCS.OUTPARAM.transaction_type
+		CIMTM.GLBDATA.Dracno              = BANCS.OUTPARAM.Dracno
+		CIMTM.GLBDATA.refCrncy            = BANCS.OUTPARAM.refCrncy
+		CIMTM.GLBDATA.source_amount       = BANCS.OUTPARAM.source_amount
+		CIMTM.GLBDATA.refAmt              = BANCS.OUTPARAM.refAmt
+		CIMTM.GLBDATA.rateCode            = BANCS.OUTPARAM.rateCode
+		CIMTM.GLBDATA.rate                = BANCS.OUTPARAM.rate
+		CIMTM.GLBDATA.bankAccountType     = BANCS.OUTPARAM.bankAccountType
+		CIMTM.GLBDATA.ChrgCrncy           = BANCS.OUTPARAM.ChrgCrncy
+		CIMTM.GLBDATA.ChrgAmt             = BANCS.OUTPARAM.ChrgAmt
+		CIMTM.GLBDATA.ChrgrateCode        = BANCS.OUTPARAM.ChrgrateCode
+		CIMTM.GLBDATA.Chrgrate            = BANCS.OUTPARAM.Chrgrate
+		CIMTM.GLBDATA.bicWallet           = BANCS.OUTPARAM.bicWallet
+		CIMTM.GLBDATA.countryCode         = BANCS.OUTPARAM.countryCode
+		CIMTM.GLBDATA.TranParticulars     = BANCS.OUTPARAM.TranParticulars
+		CIMTM.GLBDATA.currency            = BANCS.OUTPARAM.currency
+		CIMTM.GLBDATA.TranRemarks         = BANCS.OUTPARAM.TranRemarks
+		CIMTM.GLBDATA.receivingBankName   = BANCS.OUTPARAM.receivingBankName
+		CIMTM.GLBDATA.benefAcctNum        = BANCS.OUTPARAM.benefAcctNum
+		CIMTM.GLBDATA.benefFName          = BANCS.OUTPARAM.benefFName
+		CIMTM.GLBDATA.benefMName          = BANCS.OUTPARAM.benefMName
+		#####################################################################################
+		sv_s = " " 
+		sv_s = "benefLName, email, benefMobileNum, bbankCode, bbrCode, BenefAddress1, BenefAddress2, BenefAddress3, benefcity, benefState, benefCntry, benefBnkTel, PostalCode, Quote_status, Quote_responseCode, Quote_responseDesc, transactionId, amount, dest_currency, purOfRemit, providerGL, payerName,  entity_cre_flg, del_flg"
+		sv_s = sv_s + "|"
+		sv_s = sv_s  +"select "
+		sv_s = sv_s  +"benefLName               ,"
+		sv_s = sv_s  +"email                    ,"
+		sv_s = sv_s  +"benefMobileNum           ,"
+		sv_s = sv_s  +"bbankCode                ,"
+		sv_s = sv_s  +"bbrCode                  ,"
+		sv_s = sv_s  +"BenefAddress1            ,"
+		sv_s = sv_s  +"BenefAddress2            ,"
+		sv_s = sv_s  +"BenefAddress3            ,"
+		sv_s = sv_s  +"benefcity                ,"
+		sv_s = sv_s  +"benefState               ,"
+		sv_s = sv_s  +"nvl((select  FIN_CNTRY_CODE from custom.CUST_CIMTM_COUNTRY_TABLE where ISO_CNTRY_CODE=benefCntry and rownum<=1),'KE'),"
+		##sv_s = sv_s  +"benefCntry               ,"
+		sv_s = sv_s  +"benefBnkTel              ,"
+		sv_s = sv_s  +"PostalCode               ,"
+		sv_s = sv_s  +"Quote_status	 			,"
+		sv_s = sv_s  +"Quote_responseCode       ,"
+		sv_s = sv_s  +"Quote_responseDesc       ,"
+		sv_s = sv_s  +"transactionId	        ,"
+		sv_s = sv_s  +"amount		        	,"
+		sv_s = sv_s  +"dest_currency	        ,"
+		sv_s = sv_s  +"purOfRemit				,"
+		sv_s = sv_s  +"providerGL	        	,"
+		sv_s = sv_s  +"payerName	        	,"
+		sv_s = sv_s  +"entity_cre_flg           ,"
+		sv_s = sv_s  +"del_flg           		"
+		sv_s = sv_s  +"from custom.CUST_CIMTM_MASTER_TABLE	 "
+		sv_s = sv_s + " where bank_id=?SVAR and del_flg='N' "
+		sv_s = sv_s + " and PYMNTREFNUM=?SVAR "
+		if(CIMTM.GLBDATA.pymntRefDate!="")then
+		#{
+			sv_s = sv_s + " and to_date(PYMNTREFDATE,'DD-MM-RR')=to_date(?SVAR,'DD-MM-RR') "
+		#}
+		endif	
+		print(sv_s)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d != 0)then
+		#{
+			CIMTM.GLBDATA.errMsg = "IMT Request Not Found"
+			print(CIMTM.GLBDATA.errMsg)
+			goto ERRRESP
+		ELSE
+			print(BANCS.OUTPARAM.benefLName)
+			print(BANCS.OUTPARAM.email)
+			print(BANCS.OUTPARAM.benefMobileNum)
+			print(BANCS.OUTPARAM.bbankCode)
+			print(BANCS.OUTPARAM.bbrCode)
+			print(BANCS.OUTPARAM.BenefAddress1)
+			print(BANCS.OUTPARAM.BenefAddress2)
+			print(BANCS.OUTPARAM.BenefAddress3)
+			print(BANCS.OUTPARAM.benefcity)
+			print(BANCS.OUTPARAM.benefState)
+			print(BANCS.OUTPARAM.benefCntry)
+			print(BANCS.OUTPARAM.benefBnkTel)
+			print(BANCS.OUTPARAM.PostalCode)
+			print(BANCS.OUTPARAM.Quote_status)
+			print(BANCS.OUTPARAM.Quote_responseCode)
+			print(BANCS.OUTPARAM.Quote_responseDesc)
+			print(BANCS.OUTPARAM.transactionId)
+			print(BANCS.OUTPARAM.amount)
+			print(BANCS.OUTPARAM.dest_currency)
+			print(BANCS.OUTPARAM.purOfRemit)
+			print(BANCS.OUTPARAM.providerGL)
+			print(BANCS.OUTPARAM.payerName)
+			print(BANCS.OUTPARAM.entity_cre_flg)
+			print(BANCS.OUTPARAM.del_flg)	
+			CIMTM.GLBDATA.benefLName          = BANCS.OUTPARAM.benefLName
+			CIMTM.GLBDATA.email               = BANCS.OUTPARAM.email
+			CIMTM.GLBDATA.benefMobileNum      = BANCS.OUTPARAM.benefMobileNum
+			CIMTM.GLBDATA.bbankCode           = BANCS.OUTPARAM.bbankCode
+			CIMTM.GLBDATA.bbrCode             = BANCS.OUTPARAM.bbrCode
+			CIMTM.GLBDATA.BenefAddress1       = BANCS.OUTPARAM.BenefAddress1
+			CIMTM.GLBDATA.BenefAddress2       = BANCS.OUTPARAM.BenefAddress2
+			CIMTM.GLBDATA.BenefAddress3       = BANCS.OUTPARAM.BenefAddress3
+			CIMTM.GLBDATA.benefcity           = BANCS.OUTPARAM.benefcity
+			CIMTM.GLBDATA.benefState          = BANCS.OUTPARAM.benefState
+			CIMTM.GLBDATA.benefCntry          = BANCS.OUTPARAM.benefCntry
+			CIMTM.GLBDATA.benefBnkTel         = BANCS.OUTPARAM.benefBnkTel
+			CIMTM.GLBDATA.PostalCode          = BANCS.OUTPARAM.PostalCode
+			CIMTM.GLBDATA.Quote_status        = BANCS.OUTPARAM.Quote_status
+			CIMTM.GLBDATA.Quote_responseCode  = BANCS.OUTPARAM.Quote_responseCode
+			CIMTM.GLBDATA.Quote_responseDesc  = BANCS.OUTPARAM.Quote_responseDesc
+			CIMTM.GLBDATA.transactionId       = BANCS.OUTPARAM.transactionId
+			CIMTM.GLBDATA.amount              = BANCS.OUTPARAM.amount
+			CIMTM.GLBDATA.dest_currency       = BANCS.OUTPARAM.dest_currency
+			CIMTM.GLBDATA.purOfRemit          = BANCS.OUTPARAM.purOfRemit
+			CIMTM.GLBDATA.providerGL          = BANCS.OUTPARAM.providerGL
+			CIMTM.GLBDATA.payerName           = BANCS.OUTPARAM.payerName
+			CIMTM.GLBDATA.entity_cre_flg      = BANCS.OUTPARAM.entity_cre_flg
+			CIMTM.GLBDATA.del_flg		      = BANCS.OUTPARAM.del_flg		
+		#}
+		ENDIF
+		#####################################################################################
+		sv_s = " " 
+		sv_s = "custdob,orgpin,orgregnum,quoteamt,quotecrncy,BENID,trnrescode,trnresdesc,transferTo,"
+		sv_s = sv_s + " bsbtype,acctype,bentype,recbenme,recbenrn,recban,recbc,recdoi,senbn,sbrn,sendoi,APIMode "
+		sv_s = sv_s + "|"
+		sv_s = sv_s  +"select "
+		sv_s = sv_s  +"to_char(CUSTDOB,'DD-MM-YYYY'),"
+		sv_s = sv_s  +"orgpin                   	,"
+		sv_s = sv_s  +"orgregnum          			,"
+		sv_s = sv_s  +"AMOUNT                 		,"
+		sv_s = sv_s  +"DEST_CURRENCY               	,"
+		sv_s = sv_s  +"BENID               			,"
+		sv_s = sv_s  +"TRANSACTION_RESPONSECODE		,"
+		sv_s = sv_s  +"TRANSACTION_RESPONSEDESC		,"
+		sv_s = sv_s  +"TRANSFER_TO		,"
+		sv_s = sv_s + "BSBTYPE,ACCTYPE,BENTYPE,RECBENME,RECBENRN,RECBAN,RECBC,RECDOI,SENBN,SBRN,SENDOI,API_MODE "
+		sv_s = sv_s  +"from custom.CUST_CIMTM_MASTER_TABLE	 "
+		sv_s = sv_s + " where bank_id=?SVAR  and del_flg='N' "
+		sv_s = sv_s + " and PYMNTREFNUM=?SVAR "
+		if(CIMTM.GLBDATA.pymntRefDate!="")then
+		#{
+			sv_s = sv_s + " and to_date(PYMNTREFDATE,'DD-MM-RR')=to_date(?SVAR,'DD-MM-RR') "
+		#}
+		endif	
+		print(sv_s)
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d != 0)then
+		#{
+			CIMTM.GLBDATA.errMsg = "IMT Request Not Found"
+			print(CIMTM.GLBDATA.errMsg)
+			goto ERRRESP
+		ELSE
+			print(BANCS.OUTPARAM.custdob)
+			print(BANCS.OUTPARAM.orgpin)
+			print(BANCS.OUTPARAM.orgregnum)
+			print(BANCS.OUTPARAM.quoteamt)
+			print(BANCS.OUTPARAM.quotecrncy)
+			print(BANCS.OUTPARAM.BENID)
+			print(BANCS.OUTPARAM.trnrescode)
+			print(BANCS.OUTPARAM.trnresdesc)
+			print(BANCS.OUTPARAM.transferTo)
+			print(BANCS.OUTPARAM.bsbtype)
+			print(BANCS.OUTPARAM.acctype)
+			print(BANCS.OUTPARAM.bentype)
+			print(BANCS.OUTPARAM.recbenme)
+			print(BANCS.OUTPARAM.recbenrn)
+			print(BANCS.OUTPARAM.recban)
+			print(BANCS.OUTPARAM.recbc)
+			print(BANCS.OUTPARAM.recdoi)
+			print(BANCS.OUTPARAM.senbn)
+			print(BANCS.OUTPARAM.sbrn)
+			print(BANCS.OUTPARAM.sendoi)
+			print(BANCS.OUTPARAM.APIMode)
+
+			CIMTM.GLBDATA.custdob	    = BANCS.OUTPARAM.custdob
+			CIMTM.GLBDATA.orgpin     	= BANCS.OUTPARAM.orgpin
+			CIMTM.GLBDATA.orgregnum     = BANCS.OUTPARAM.orgregnum
+			CIMTM.GLBDATA.quoteamt     	= BANCS.OUTPARAM.quoteamt
+			CIMTM.GLBDATA.quotecrncy    = BANCS.OUTPARAM.quotecrncy	
+			CIMTM.GLBDATA.benid    		= BANCS.OUTPARAM.BENID	
+			CIMTM.GLBDATA.trnrescode    = BANCS.OUTPARAM.trnrescode	
+			CIMTM.GLBDATA.trnresdesc    = BANCS.OUTPARAM.trnresdesc	
+			CIMTM.GLBDATA.transferTo    = BANCS.OUTPARAM.transferTo	
+			CIMTM.GLBDATA.bsbtype       =BANCS.OUTPARAM.bsbtype
+			CIMTM.GLBDATA.acctype       =BANCS.OUTPARAM.acctype
+			CIMTM.GLBDATA.bentype       =BANCS.OUTPARAM.bentype
+			CIMTM.GLBDATA.recbenme       =BANCS.OUTPARAM.recbenme
+			CIMTM.GLBDATA.recbenrn       =BANCS.OUTPARAM.recbenrn
+			CIMTM.GLBDATA.recban       =BANCS.OUTPARAM.recban
+			CIMTM.GLBDATA.recbc       =BANCS.OUTPARAM.recbc
+			CIMTM.GLBDATA.recdoi       =BANCS.OUTPARAM.recdoi
+			CIMTM.GLBDATA.senbn       =BANCS.OUTPARAM.senbn
+			CIMTM.GLBDATA.sbrn       =BANCS.OUTPARAM.sbrn
+			CIMTM.GLBDATA.sendoi       =BANCS.OUTPARAM.sendoi
+			CIMTM.GLBDATA.APIMode       =BANCS.OUTPARAM.APIMode
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(CIMTM.GLBDATA.trnrescode !="") THEN
+	#{
+		IF(BANCS.INPUT.funcCode =="X") THEN
+		#{
+			IF(CIMTM.GLBDATA.trnrescode =="00") THEN
+			#{
+				CIMTM.GLBDATA.errMsg = "IMT Already Posted, Cannot Candle"
+				print(CIMTM.GLBDATA.errMsg)
+				goto ERRRESP	
+			#}
+			ELSE
+			#{
+				CIMTM.GLBDATA.errMsg = "IMT Request posting Failed, Cannot Candle"
+				print(CIMTM.GLBDATA.errMsg)
+				goto ERRRESP		
+			#}
+			ENDIF
+		#}
+		ENDIF
+		IF(BANCS.INPUT.funcCode =="P") THEN
+		#{
+			IF(CIMTM.GLBDATA.trnrescode =="00") THEN
+			#{
+				CIMTM.GLBDATA.errMsg = "IMT Already Posted"
+				print(CIMTM.GLBDATA.errMsg)
+				goto ERRRESP	
+			#}
+			ELSE
+			#{
+				CIMTM.GLBDATA.errMsg = "IMT Request posting Failed, Cannot post again."
+				print(CIMTM.GLBDATA.errMsg)
+				goto ERRRESP		
+			#}
+			ENDIF
+		#}
+		ENDIF		
+	#}
+	ENDIF
+
+##########################
+
+ERRRESP:
+if(CIMTM.GLBDATA.errMsg != "") then
+#{
+	lv_e = urhk_SetOrbErr(CIMTM.GLBDATA.errMsg)
+	GOTO ENDOFSCRIPT
+else
+	if((CIMTM.GLBDATA.funcCode == "P") or (CIMTM.GLBDATA.funcCode=="X") or (CIMTM.GLBDATA.funcCode=="I")) then
+	#{
+		if(CIMTM.GLBDATA.PymntRefNum == "") then
+		#{
+			lv_a = urhk_SetOrbOut("imtrefnum| ")
+		else
+			lv_a = urhk_SetOrbOut("imtrefnum|" +CIMTM.GLBDATA.PymntRefNum)
+		#}
+		endif
+		
+		if(CIMTM.GLBDATA.channel_mode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("custtranmode| ")
+		else
+			lv_a = urhk_SetOrbOut("custtranmode|" +CIMTM.GLBDATA.channel_mode)
+		#}
+		endif	
+
+		if(CIMTM.GLBDATA.channel == "") then
+		#{
+			lv_a = urhk_SetOrbOut("custtrantype| ")
+		else
+			lv_a = urhk_SetOrbOut("custtrantype|" +CIMTM.GLBDATA.channel)
+		#}
+		endif		
+
+		if(CIMTM.GLBDATA.pymntRefDate == "") then
+		#{
+			lv_a = urhk_SetOrbOut("pymntRefDate| ")
+		else
+			lv_a = urhk_SetOrbOut("pymntRefDate|" +CIMTM.GLBDATA.pymntRefDate)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.transaction_type == "") then
+		#{
+			lv_a = urhk_SetOrbOut("custtrantype| ")
+		else
+			lv_a = urhk_SetOrbOut("custtrantype|" +CIMTM.GLBDATA.transaction_type)
+		#}
+		endif
+		
+		if(CIMTM.GLBDATA.transaction_type !="") then
+		#{
+			if((CIMTM.GLBDATA.transaction_type == "C2B") OR (CIMTM.GLBDATA.transaction_type == "P2B") ) then
+			#{
+				lv_a = urhk_SetOrbOut("custtranmode|BANK" )
+			#}
+			endif
+			if((CIMTM.GLBDATA.transaction_type == "C2C") OR (CIMTM.GLBDATA.transaction_type == "P2P") ) then
+			#{
+				lv_a = urhk_SetOrbOut("custtranmode|WALLET" )
+			#}
+			endif			
+		else
+			lv_a = urhk_SetOrbOut("custtranmode| ")
+		#}
+		endif
+		
+		if(CIMTM.GLBDATA.Dracno == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Dracno| ")
+		else
+			lv_a = urhk_SetOrbOut("Dracno|" +CIMTM.GLBDATA.Dracno)
+
+				sv_s = "acctNumEntityId,acctNumSolId,acctNumCcy,acctName,entityCreFlg,acctClsFlg,schmType,cifId|"
+				sv_s = sv_s + " select bank_id,sol_id,acct_crncy_code,acct_name,entity_cre_flg,acct_cls_flg,schm_type,cif_id"
+				sv_s = sv_s + " from tbaadm.gam "
+				sv_s = sv_s + " where foracid = ?SVAR"
+				sv_s = sv_s + " and del_flg != 'Y'"
+				print(sv_s)
+
+				BANCS.INPARAM.BINDVARS = CIMTM.GLBDATA.Dracno
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				if(sv_d == 0)then
+				#{
+					CIMTM.GLBDATA.acctNumEntityId 	= BANCS.OUTPARAM.acctNumEntityId
+					CIMTM.GLBDATA.acctNumSolId 		= BANCS.OUTPARAM.acctNumSolId
+					CIMTM.GLBDATA.acctNumCcy 		= BANCS.OUTPARAM.acctNumCcy
+					CIMTM.GLBDATA.acctName 			= BANCS.OUTPARAM.acctName
+					CIMTM.GLBDATA.entityCreFlg 		= BANCS.OUTPARAM.entityCreFlg
+					CIMTM.GLBDATA.acctClsFlg 		= BANCS.OUTPARAM.acctClsFlg
+					CIMTM.GLBDATA.schmType 			= BANCS.OUTPARAM.schmType
+					CIMTM.GLBDATA.cifIdForSig 		= BANCS.OUTPARAM.cifId
+				#}
+				ENDIF
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.refCrncy == "") then
+		#{
+			lv_a = urhk_SetOrbOut("refCrncy| ")
+		else
+			lv_a = urhk_SetOrbOut("refCrncy|" +CIMTM.GLBDATA.refCrncy)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.source_amount == "") then
+		#{
+			lv_a = urhk_SetOrbOut("source_amount| ")
+		else
+			lv_a = urhk_SetOrbOut("source_amount|" +CIMTM.GLBDATA.source_amount)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.refAmt == "") then
+		#{
+			lv_a = urhk_SetOrbOut("refAmt| ")
+		else
+			lv_a = urhk_SetOrbOut("refAmt|" +CIMTM.GLBDATA.refAmt)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.rateCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("rateCode| ")
+		else
+			lv_a = urhk_SetOrbOut("rateCode|" +CIMTM.GLBDATA.rateCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.rate == "") then
+		#{
+			lv_a = urhk_SetOrbOut("rate| ")
+		else
+			lv_a = urhk_SetOrbOut("rate|" +CIMTM.GLBDATA.rate)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.rate == "") then
+		#{
+			lv_a = urhk_SetOrbOut("treaRate| ")
+		else
+			lv_a = urhk_SetOrbOut("treaRate|" +CIMTM.GLBDATA.rate)
+		#}
+		endif		
+
+		if(CIMTM.GLBDATA.bankAccountType == "") then
+		#{
+			lv_a = urhk_SetOrbOut("bankAccountType| ")
+		else
+			lv_a = urhk_SetOrbOut("bankAccountType|" +CIMTM.GLBDATA.bankAccountType)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.ChrgCrncy == "") then
+		#{
+			lv_a = urhk_SetOrbOut("ChrgCrncy| ")
+		else
+			lv_a = urhk_SetOrbOut("ChrgCrncy|" +CIMTM.GLBDATA.ChrgCrncy)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.ChrgAmt == "") then
+		#{
+			lv_a = urhk_SetOrbOut("ChrgAmt| ")
+		else
+			lv_a = urhk_SetOrbOut("ChrgAmt|" +CIMTM.GLBDATA.ChrgAmt)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.ChrgrateCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("ChrgrateCode| ")
+		else
+			lv_a = urhk_SetOrbOut("ChrgrateCode|" +CIMTM.GLBDATA.ChrgrateCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.Chrgrate == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Chrgrate| ")
+		else
+			lv_a = urhk_SetOrbOut("Chrgrate|" +CIMTM.GLBDATA.Chrgrate)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.bicWallet == "") then
+		#{
+			lv_a = urhk_SetOrbOut("bicWallet| ")
+		else
+			lv_a = urhk_SetOrbOut("bicWallet|" +CIMTM.GLBDATA.bicWallet)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.countryCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("countryCode| ")
+		else
+			lv_a = urhk_SetOrbOut("countryCode|" +CIMTM.GLBDATA.countryCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.TranParticulars == "") then
+		#{
+			lv_a = urhk_SetOrbOut("TranParticulars| ")
+		else
+			lv_a = urhk_SetOrbOut("TranParticulars|" +CIMTM.GLBDATA.TranParticulars)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.currency == "") then
+		#{
+			lv_a = urhk_SetOrbOut("currency| ")
+		else
+			lv_a = urhk_SetOrbOut("currency|" +CIMTM.GLBDATA.currency)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.TranRemarks == "") then
+		#{
+			lv_a = urhk_SetOrbOut("TranRemarks| ")
+		else
+			lv_a = urhk_SetOrbOut("TranRemarks|" +CIMTM.GLBDATA.TranRemarks)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.receivingBankName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("receivingBankName| ")
+		else
+			lv_a = urhk_SetOrbOut("receivingBankName|" +CIMTM.GLBDATA.receivingBankName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefAcctNum == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefAcctNum| ")
+		else
+			lv_a = urhk_SetOrbOut("benefAcctNum|" +CIMTM.GLBDATA.benefAcctNum)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefFName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefFName| ")
+		else
+			lv_a = urhk_SetOrbOut("benefFName|" +CIMTM.GLBDATA.benefFName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefMName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefMName| ")
+		else
+			lv_a = urhk_SetOrbOut("benefMName|" +CIMTM.GLBDATA.benefMName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefLName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefLName| ")
+		else
+			lv_a = urhk_SetOrbOut("benefLName|" +CIMTM.GLBDATA.benefLName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefLName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefLName| ")
+		else
+			lv_a = urhk_SetOrbOut("benefLName|" +CIMTM.GLBDATA.benefLName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.email == "") then
+		#{
+			lv_a = urhk_SetOrbOut("email| ")
+		else
+			lv_a = urhk_SetOrbOut("email|" +CIMTM.GLBDATA.email)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefMobileNum == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefMobileNum| ")
+		else
+			lv_a = urhk_SetOrbOut("benefMobileNum|" +CIMTM.GLBDATA.benefMobileNum)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.bbankCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("bbankCode| ")
+		else
+			lv_a = urhk_SetOrbOut("bbankCode|" +CIMTM.GLBDATA.bbankCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.bbrCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("bbrCode| ")
+		else
+			lv_a = urhk_SetOrbOut("bbrCode|" +CIMTM.GLBDATA.bbrCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.BenefAddress1 == "") then
+		#{
+			lv_a = urhk_SetOrbOut("BenefAddress1| ")
+		else
+			lv_a = urhk_SetOrbOut("BenefAddress1|" +CIMTM.GLBDATA.BenefAddress1)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.BenefAddress2 == "") then
+		#{
+			lv_a = urhk_SetOrbOut("BenefAddress2| ")
+		else
+			lv_a = urhk_SetOrbOut("BenefAddress2|" +CIMTM.GLBDATA.BenefAddress2)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.BenefAddress3 == "") then
+		#{
+			lv_a = urhk_SetOrbOut("BenefAddress3| ")
+		else
+			lv_a = urhk_SetOrbOut("BenefAddress3|" +CIMTM.GLBDATA.BenefAddress3)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefcity == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefcity| ")
+		else
+			lv_a = urhk_SetOrbOut("benefcity|" +CIMTM.GLBDATA.benefcity)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefState == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefState| ")
+		else
+			lv_a = urhk_SetOrbOut("benefState|" +CIMTM.GLBDATA.benefState)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefCntry == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefCntry| ")
+		else
+			lv_a = urhk_SetOrbOut("benefCntry|" +CIMTM.GLBDATA.benefCntry)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benefBnkTel == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benefBnkTel| ")
+		else
+			lv_a = urhk_SetOrbOut("benefBnkTel|" +CIMTM.GLBDATA.benefBnkTel)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.PostalCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("PostalCode| ")
+		else
+			lv_a = urhk_SetOrbOut("PostalCode|" +CIMTM.GLBDATA.PostalCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.Quote_status == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Quote_status| ")
+		else
+			lv_a = urhk_SetOrbOut("Quote_status|" +CIMTM.GLBDATA.Quote_status)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.Quote_responseCode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Quote_responseCode| ")
+		else
+			lv_a = urhk_SetOrbOut("Quote_responseCode|" +CIMTM.GLBDATA.Quote_responseCode)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.Quote_responseDesc == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Quote_responseDesc| ")
+		else
+			lv_a = urhk_SetOrbOut("Quote_responseDesc|" +CIMTM.GLBDATA.Quote_responseDesc)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.transactionId == "") then
+		#{
+			lv_a = urhk_SetOrbOut("transactionId| ")
+		else
+			lv_a = urhk_SetOrbOut("transactionId|" +CIMTM.GLBDATA.transactionId)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.amount == "") then
+		#{
+			lv_a = urhk_SetOrbOut("amount| ")
+		else
+			lv_a = urhk_SetOrbOut("amount|" +CIMTM.GLBDATA.amount)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.dest_currency == "") then
+		#{
+			lv_a = urhk_SetOrbOut("dest_currency| ")
+		else
+			lv_a = urhk_SetOrbOut("dest_currency|" +CIMTM.GLBDATA.dest_currency)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.purOfRemit == "") then
+		#{
+			lv_a = urhk_SetOrbOut("purOfRemit| ")
+		else
+			lv_a = urhk_SetOrbOut("purOfRemit|" +CIMTM.GLBDATA.purOfRemit)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.providerGL == "") then
+		#{
+			lv_a = urhk_SetOrbOut("providerGL| ")
+		else
+			lv_a = urhk_SetOrbOut("providerGL|" +CIMTM.GLBDATA.providerGL)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.payerName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("payerName| ")
+		else
+			lv_a = urhk_SetOrbOut("payerName|" +CIMTM.GLBDATA.payerName)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.entity_cre_flg == "") then
+		#{
+			lv_a = urhk_SetOrbOut("entity_cre_flg| ")
+		else
+			lv_a = urhk_SetOrbOut("entity_cre_flg|" +CIMTM.GLBDATA.entity_cre_flg)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.del_flg == "") then
+		#{
+			lv_a = urhk_SetOrbOut("del_flg| ")
+		else
+			lv_a = urhk_SetOrbOut("del_flg|" +CIMTM.GLBDATA.del_flg)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.custdob == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benDOB| ")
+		else
+			lv_a = urhk_SetOrbOut("benDOB|" +CIMTM.GLBDATA.custdob)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.benid == "") then
+		#{
+			lv_a = urhk_SetOrbOut("benID| ")
+		else
+			lv_a = urhk_SetOrbOut("benID|" +CIMTM.GLBDATA.benid)
+		#}
+		endif
+		
+		if(CIMTM.GLBDATA.quotecrncy == "") then
+		#{
+			lv_a = urhk_SetOrbOut("Quotecrncy| ")
+		else
+			lv_a = urhk_SetOrbOut("Quotecrncy|" +CIMTM.GLBDATA.quotecrncy)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.orgpin == "") then
+		#{
+			lv_a = urhk_SetOrbOut("orgpin| ")
+		else
+			lv_a = urhk_SetOrbOut("orgpin|" +CIMTM.GLBDATA.orgpin)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.orgregnum == "") then
+		#{
+			lv_a = urhk_SetOrbOut("orgregnum| ")
+		else
+			lv_a = urhk_SetOrbOut("orgregnum|" +CIMTM.GLBDATA.orgregnum)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.quoteamt == "") then
+		#{
+			lv_a = urhk_SetOrbOut("quoteamt| ")
+		else
+			lv_a = urhk_SetOrbOut("quoteamt|" +CIMTM.GLBDATA.quoteamt)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.quotecrncy == "") then
+		#{
+			lv_a = urhk_SetOrbOut("quotecrncy| ")
+		else
+			lv_a = urhk_SetOrbOut("quotecrncy|" +CIMTM.GLBDATA.quotecrncy)
+		#}
+		endif		
+
+		if(CIMTM.GLBDATA.acctNumEntityId == "") then
+		#{
+			lv_a = urhk_SetOrbOut("drAcctNumEntityId| ")
+		else
+			lv_a = urhk_SetOrbOut("drAcctNumEntityId|" +CIMTM.GLBDATA.acctNumEntityId)
+		#}
+		endif	
+
+		if(CIMTM.GLBDATA.acctNumSolId == "") then
+		#{
+			lv_a = urhk_SetOrbOut("drAcctNumSolId| ")
+		else
+			lv_a = urhk_SetOrbOut("drAcctNumSolId|" +CIMTM.GLBDATA.acctNumSolId)
+		#}
+		endif	
+
+		if(CIMTM.GLBDATA.acctNumCcy == "") then
+		#{
+			lv_a = urhk_SetOrbOut("drAcctNumCcy| ")
+		else
+			lv_a = urhk_SetOrbOut("drAcctNumCcy|" +CIMTM.GLBDATA.acctNumCcy)
+		#}
+		endif
+
+		if(CIMTM.GLBDATA.acctName == "") then
+		#{
+			lv_a = urhk_SetOrbOut("drAcctName| ")
+		else
+			lv_a = urhk_SetOrbOut("drAcctName|" +CIMTM.GLBDATA.acctName)
+		#}
+		endif	
+		
+		if(CIMTM.GLBDATA.trnrescode == "") then
+		#{
+			lv_a = urhk_SetOrbOut("tranststuscode| ")
+		else
+			lv_a = urhk_SetOrbOut("tranststuscode|" +CIMTM.GLBDATA.trnrescode)
+		#}
+		endif
+		
+		if(CIMTM.GLBDATA.trnresdesc == "") then
+		#{
+			lv_a = urhk_SetOrbOut("tranststusdesc| ")
+		else
+			lv_a = urhk_SetOrbOut("tranststusdesc|" +CIMTM.GLBDATA.trnresdesc)
+		#}
+		endif		
+		if(CIMTM.GLBDATA.transferTo == "")then
+		#{
+			lv_a = urhk_SetOrbOut("custtranmode| ")
+		else
+			lv_a = urhk_SetOrbOut("custtranmode|" +CIMTM.GLBDATA.transferTo)
+		#}
+		endif
+		##12/01/2021
+		if(CIMTM.GLBDATA.bsbtype == "")then
+		#{
+			lv_a = urhk_SetOrbOut("BrnIfscBsbn| ")
+		else
+			lv_a = urhk_SetOrbOut("BrnIfscBsbn|" + CIMTM.GLBDATA.bsbtype )
+		#}
+		endif
+		if(CIMTM.GLBDATA.acctype == "")then
+		#{
+			lv_a = urhk_SetOrbOut("benefAcctType| ")
+		else
+			lv_a = urhk_SetOrbOut("benefAcctType|" + CIMTM.GLBDATA.acctype ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.bentype == "")then
+		#{
+			lv_a = urhk_SetOrbOut("benefIdType| ")
+		else
+			lv_a = urhk_SetOrbOut("benefIdType|" + CIMTM.GLBDATA.bentype ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.recbenme == "")then
+		#{
+			lv_a = urhk_SetOrbOut("RecvBusName| ")
+		else
+			lv_a = urhk_SetOrbOut("RecvBusName|" + CIMTM.GLBDATA.recbenme ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.recbenrn == "")then
+		#{
+			lv_a = urhk_SetOrbOut("RecvBusRegNum| ")
+		else
+			lv_a = urhk_SetOrbOut("RecvBusRegNum|" + CIMTM.GLBDATA.recbenrn ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.recban == "")then
+		#{
+			lv_a = urhk_SetOrbOut("RecvBusAddr| ")
+		else
+			lv_a = urhk_SetOrbOut("RecvBusAddr|" + CIMTM.GLBDATA.recban ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.recbc == "")then
+		#{
+			lv_a = urhk_SetOrbOut("RecvBusCity| ")
+		else
+			lv_a = urhk_SetOrbOut("RecvBusCity|" + CIMTM.GLBDATA.recbc ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.recdoi == "")then
+		#{
+			lv_a = urhk_SetOrbOut("RecvBusDtInc| ")
+		else
+			lv_a = urhk_SetOrbOut("RecvBusDtInc|" + CIMTM.GLBDATA.recdoi ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.senbn == "")then
+		#{
+			lv_a = urhk_SetOrbOut("SendBusName| ")
+		else
+			lv_a = urhk_SetOrbOut("SendBusName|" + CIMTM.GLBDATA.senbn ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.sbrn == "")then
+		#{
+			lv_a = urhk_SetOrbOut("SendBusRegNum| ")
+		else
+			lv_a = urhk_SetOrbOut("SendBusRegNum|" + CIMTM.GLBDATA.sbrn ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.sendoi == "")then
+		#{
+			lv_a = urhk_SetOrbOut("SendBusDtInc| ")
+		else
+			lv_a = urhk_SetOrbOut("SendBusDtInc|" + CIMTM.GLBDATA.sendoi ) 
+		#}
+		endif
+		if(CIMTM.GLBDATA.APIMode == "")then
+		#{
+			lv_a = urhk_SetOrbOut("APIMode| ")
+		else
+			lv_a = urhk_SetOrbOut("APIMode|" + CIMTM.GLBDATA.APIMode ) 
+		#}
+		endif
+		
+		
+		lv_b = urhk_SetOrbOut("SuccessOrFailure|Y")
+		print(lv_b)
+	#}
+	endif
+#}
+endif
+
+ENDOFSCRIPT:
+	exitscript
+trace off
+end-->

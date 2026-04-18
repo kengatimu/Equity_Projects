@@ -1,0 +1,218 @@
+#-------------------------------------------------------------------------------------
+#	Name			: polarismn003.scr
+#	Description		: The script is used For fetching values
+#	Date			: 21-05-2013
+#	Author			: Farhan
+#	Input			: NA
+#	Output			: NA
+#	Called Script	:
+#	Calling Script	: getcparamvalue.scr
+#	Menu Option		: CATODAPP
+#	Srl. No		Date			Author			Description.
+#	-------		----			------			----------------
+#	1.0			21-05-2013		Farhan	 		Original Version
+#	2.0			28-05-2013		Saurabh Sinha	If Block is added
+#	3.0			15-08-2013		Priyansh	Modified for TOL:361668
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="f2b547d21dd551144cafe5885bdcd17ccfc9cbd65ddd6e7c904e0629b9ca3c81"
+	TRACE ON
+	#-------------------------------------------------------------------------------------------------------
+	# Create repository and class
+	#-------------------------------------------------------------------------------------------------------
+	IF(REPEXISTS("CUST")==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","CATOD")==0) THEN
+	#{
+		CREATECLASS("CUST","CATOD",5)
+	#}
+	ENDIF
+	
+	#sv_u=urhk_B2k_PrintRepos("BANCS")
+	#print(sv_u)
+	
+	#-----------------------------------------------------------------
+	# Initialiizing required variables
+	#-----------------------------------------------------------------
+	CUST.CATOD.errMsg = ""
+	CUST.CATOD.Cashlmt = " "
+	CUST.CATOD.Txfrlmt = " "
+	CUST.CATOD.Clglmt = " "
+	CUST.CATOD.CashIntSolmt = " "
+	CUST.CATOD.userWorkClass	=	BANCS.STDIN.userWorkClass
+	
+	#------------------------------------------------------------------------------------------
+	# Values coming FROM frontend
+	#------------------------------------------------------------------------------------------
+	CUST.CATOD.cForacid = BANCS.INPUT.foracid
+	
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CATOD.cForacid)
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.CATOD.errMsg = "Account number is Invalid"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	sv_s = "count|"
+	sv_s = sv_s + " SELECT count(1)"
+	sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+	sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+	sv_s = sv_s + " AND POLARIS_CHARGES.bank_id = ?SVAR AND ENTITY_CRE_FLG='N' AND rownum<2 "
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+	sv_d=urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d == 0)  THEN
+	#{
+		CUST.CATOD.count = BANCS.OUTPARAM.count
+		print(CUST.CATOD.count)
+	#}
+	ENDIF
+	IF (CINT(CUST.CATOD.count) == 0)  THEN
+	#{
+		CUST.CATOD.errMsg = "Record Does Not Exist. Use A as Function"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------
+	#Fetching valid Workclass:
+	#-----------------------------------------------------------
+	IF (BANCS.INPUT.funcCode== "I") THEN
+	#{
+		BANCS.INPUT.moduleName = "CATODSCORE"
+		BANCS.INPUT.parameterId = "INQCLS"
+		CALL("getcparamvalue.scr")
+		
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			print(BANCS.OUTPUT.parameterVal)
+			sv_l = STRLEN(BANCS.OUTPUT.parameterVal)
+			print(sv_l)
+			CUST.CATOD.wrkCls=BANCS.OUTPUT.parameterVal
+			print(CUST.CATOD.wrkCls)
+			WHILE(sv_l > 0)
+			#{
+				sv_g = GETPOSITION(CUST.CATOD.wrkCls,",")
+				print(sv_g)
+				IF (sv_g == 0) THEN
+				#{
+					CUST.CATOD.classValue = CUST.CATOD.wrkCls
+					print(CUST.CATOD.classValue)
+					CUST.CATOD.wrkCls = ""
+					#}
+				ELSE
+					#{
+					CUST.CATOD.classValue = TRIM(MID$(CUST.CATOD.wrkCls,0,sv_g - 1))
+					CUST.CATOD.wrkCls = MID$(CUST.CATOD.wrkCls,sv_g,sv_l)
+				#}
+				ENDIF
+				print(CUST.CATOD.classValue)
+				IF (CUST.CATOD.userWorkClass == CUST.CATOD.classValue) THEN
+				#{
+					GOTO VALIDATED
+				#}
+				ENDIF
+				print(CUST.CATOD.wrkCls)
+				sv_l = STRLEN(CUST.CATOD.wrkCls)
+				print(sv_l)
+				IF (sv_l == 0) THEN
+				#{
+					CUST.CATOD.errMsg = "Workclass is not sufficient for this operation. Use Inquiry Function."
+					sv_u = urhk_Setorbout("ERROR|"+CUST.CATOD.errMsg)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			DO
+			#}
+		ELSE
+			#{
+			CUST.CATOD.errMsg = "Work Class set up is not done in CPARAM"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	VALIDATED:
+		#------------------------------------------------------------------------------
+		# Fetch Cashlmt,Txfrlmt,Clglmt,CashIntSolmt
+		#------------------------------------------------------------------------------
+		sv_s = "Cashlmt,Txfrlmt,Clglmt,CashIntSolmt|"
+		sv_s = sv_s + " SELECT CHARGE_ACC,TOTAL_FEES,CUSTOMER_PERCENT,BIZ_PERCENT"
+		sv_s = sv_s + " FROM CUSTOM.POLARIS_CHARGES"
+		sv_s = sv_s + " WHERE POLARIS_CHARGES.ACCOUNT_NUMBER = ?SVAR"
+		sv_s = sv_s + " AND POLARIS_CHARGES.bank_id = ?SVAR AND ENTITY_CRE_FLG='N' AND rownum<2 "
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.CATOD.cForacid + "|" + BANCS.STDIN.contextBankId
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0)  THEN
+		#{
+			CUST.CATOD.Cashlmt = BANCS.OUTPARAM.Cashlmt
+			CUST.CATOD.Txfrlmt = BANCS.OUTPARAM.Txfrlmt
+			CUST.CATOD.Clglmt = BANCS.OUTPARAM.Clglmt
+			CUST.CATOD.CashIntSolmt = BANCS.OUTPARAM.CashIntSolmt
+			print(CUST.CATOD.Cashlmt)
+			print(CUST.CATOD.Txfrlmt)
+			print(CUST.CATOD.Clglmt)
+			print(CUST.CATOD.CashIntSolmt)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+		IF (CUST.CATOD.Cashlmt == "") THEN
+		#{
+			CUST.CATOD.Cashlmt =" "
+		#}
+		ENDIF
+		IF (CUST.CATOD.Txfrlmt == "") THEN
+		#{
+			CUST.CATOD.Txfrlmt =" "
+		#}
+		ENDIF
+		IF (CUST.CATOD.Clglmt == "") THEN
+		#{
+			CUST.CATOD.Clglmt =" "
+		#}
+		ENDIF
+		IF (CUST.CATOD.CashIntSolmt == "") THEN
+		#{
+			CUST.CATOD.CashIntSolmt =" "
+		#}
+		ENDIF
+		
+		
+		IF (CUST.CATOD.errMsg == "") THEN
+		#{
+			print(CUST.CATOD.Cashlmt)
+			print(CUST.CATOD.Txfrlmt)
+			print(CUST.CATOD.Clglmt)
+			print(CUST.CATOD.CashIntSolmt)
+			
+			sv_u = urhk_Setorbout("EMPLOYER|"+CUST.CATOD.Cashlmt)
+			sv_u = urhk_Setorbout("AMOUNT|"+CUST.CATOD.Txfrlmt)
+			sv_u = urhk_Setorbout("SCORE|"+CUST.CATOD.Clglmt)
+			sv_u = urhk_Setorbout("PERIOD|"+CUST.CATOD.CashIntSolmt)
+		#}
+		ENDIF
+		IF (CUST.CATOD.errMsg != "") THEN
+		#{
+			sv_u = urhk_Setorbout("ERROR|"+CUST.CATOD.errMsg)
+		#}
+		ENDIF
+		
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

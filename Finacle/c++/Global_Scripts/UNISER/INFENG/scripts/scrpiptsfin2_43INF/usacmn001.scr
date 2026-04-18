@@ -1,0 +1,281 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : usacmn001.scr
+#   Description     : SAC user
+#   Date            : 06-11-2013
+#   Author          : Bharath
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : getcparamvalue.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             06-11-2013      Bharath		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="b1c3209d4b49b4736a2217cbe24260fb07a49731c0b6204318d40524bc06751b"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_B2k_printRepos("BANCS")
+	PRINT(sv_a)
+	
+	CUST.DATA.errMsg 	= ""
+	CUST.DATA.resultMsg	= ""
+	CUST.DATA.errFld	= "userId"
+	CUST.DATA.userId = TRIM(BANCS.INPUT.userId)
+	CUST.DATA.userId = TOUPPER(CUST.DATA.userId)
+	PRINT(CUST.DATA.userId)
+	CUST.DATA.funcCode = TRIM(BANCS.INPUT.funcCode)
+	CUST.DATA.funcCode = TOUPPER(CUST.DATA.funcCode)
+	PRINT(CUST.DATA.funcCode)
+	
+	#---------------------------------------------------------------------------------
+	# CPARAM
+	#---------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "USAC"
+	BANCS.INPUT.parameterId = "WORKCLASS"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.DATA.workClass = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.DATA.workClass)
+		#}
+	ELSE
+		#{
+		CUST.DATA.workClass = ""
+		CUST.DATA.errMsg = "CPARAM Setup is not done for WORKCLASS"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	IF ( CUST.DATA.funcCode == "U" ) THEN
+	#{
+		CUST.DATA.errMsg = "Use Reset option to Reset Attempts AND Enable Disabled User"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF( BANCS.INPUT.userId == "" ) THEN
+	#{
+		CUST.DATA.errMsg = "Enter user ID"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		BANCS.INPARAM.BINDVARS = ""
+		IF( CUST.DATA.funcCode == "R" ) THEN
+		#{
+			sv_a = "COUNT| SELECT COUNT(1) FROM TBAADM.UPR"
+			sv_a = sv_a + " WHERE USER_ID=?SVAR AND home_bank_id= ?SVAR"
+			PRINT(sv_a)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.contextBankId
+		#}
+		ELSE
+		#{
+			IF( CUST.DATA.funcCode == "D" ) THEN
+			#{
+				sv_a = "COUNT| SELECT COUNT(1) FROM TBAADM.UPR"
+				sv_a = sv_a + " WHERE USER_ID=?SVAR "
+				PRINT(sv_a)
+				BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+			#}
+			ENDIF
+		#}
+		ENDIF
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF(sv_b == 0)THEN
+		#{
+			IF(BANCS.OUTPARAM.COUNT == 0 )THEN
+			#{
+				CUST.DATA.errMsg = "Invalid user ID"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				IF( CINT(CUST.DATA.workClass) > CINT(BANCS.STDIN.userWorkClass))THEN
+				#{
+					sv_a = "COUNTS|SELECT COUNT(1) FROM TBAADM.UPR"
+					sv_a = sv_a + " WHERE USER_ID=?SVAR AND SOL_ID = ?SVAR AND home_bank_id= ?SVAR"
+					BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_b =  urhk_dbSelectWithBind(sv_a)
+					PRINT(sv_b)
+					IF(sv_b == 0)THEN
+					#{
+						IF(BANCS.OUTPARAM.COUNTS == 0 )THEN
+						#{
+							CUST.DATA.errMsg = "User Belongs to different Sol. You dont have sufficient privileges to SAC the user."
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				IF( CUST.DATA.funcCode == "R" ) THEN
+				#{
+					sv_a = "usrRoleId|SELECT upr.role_id FROM TBAADM.UPR"
+					sv_a = sv_a + " WHERE USER_ID=?SVAR AND home_bank_id= ?SVAR"
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_b =  urhk_dbSelectWithBind(sv_a)
+					PRINT(sv_b)
+					IF(sv_b == 0)THEN
+					#{
+						CUST.DATA.usrRoleId = BANCS.OUTPARAM.usrRoleId
+						CUST.DATA.roleList = "|BRM|BRM2|BRM3|AMO|AMO2|AMO3|BM|BKS|BKS1|AMO3|SAD|ME1|BKS2|BKS3|BKS4|BKS5|CRM|CAD|SFO|HBOS|HOFO|"
+						PRINT(CUST.DATA.usrRoleId)
+						sv_w = GETPOSITION(CUST.DATA.roleList,"|" + CUST.DATA.usrRoleId + "|")
+						IF ( sv_w <= 0 ) THEN
+						#{
+							IF (BANCS.STDIN.userWorkClass!="260") THEN
+							#{
+								CUST.DATA.errMsg = "You have insufficient privileges for selected option"
+								GOTO ENDOFSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	##############################################
+	#USER RESET/ENABLE
+	##############################################
+	IF( CUST.DATA.funcCode == "R" ) THEN
+	#{
+		sv_a = "uctCount|SELECT count(1) FROM ssoadm.USER_CREDS_TBL"
+		sv_a = sv_a + " where user_id= ?SVAR "
+		PRINT(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF((BANCS.OUTPARAM.uctCount) != 0)THEN
+		#{
+			sv_a = "roleId|SELECT ROLE_ID FROM ssoadm.USER_CREDS_TBL"
+			sv_a = sv_a + " where user_id= '" + CUST.DATA.userId + "' FOR UPDATE NOWAIT "
+			PRINT(sv_a)
+			sv_b =  urhk_dbSelectForUpdateNoWait(sv_a)
+			IF(sv_b != 0)THEN
+			#{
+				CUST.DATA.resultMsg = "Resource Busy.User unlock Failed."
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			#sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			#print(sv_d)
+			CUST.DATA.resultMsg = "User Reset Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "UPDATE ssoadm.USER_CREDS_TBL"
+		sv_a = sv_a + " set NUM_PWD_ATTEMPTS=0,DISABLED_FROM_DATE= sysdate - 50, "
+		sv_a = sv_a + " DISABLED_UPTO_DATE= sysdate - 49 "
+		sv_a = sv_a + " where user_id= ?SVAR "
+		PRINT(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		PRINT(sv_b)
+		IF(sv_b == 0)THEN
+		#{
+			#sv_d = urhk_dbSqlWithBind("COMMIT")
+			#print(sv_d)
+			CUST.DATA.resultMsg = "User Reset is Successful"
+			#GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			#sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			#print(sv_d)
+			CUST.DATA.resultMsg = "User Reset Failed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	
+	
+	#Modified by Anuya to delete RI Session
+	IF ( CUST.DATA.funcCode == "D" ) THEN
+	#{
+		sv_a = "DELETE FROM FINRIADM.USER_SESSIONS_TABLE"
+		sv_a = sv_a + " where user_id= ?SVAR AND BANK_ID = ?SVAR"
+		PRINT(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.userId + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b =  urhk_dbSqlWithBind(sv_a)
+		PRINT(sv_b)
+		IF(sv_b == 0)THEN
+		#{
+			#sv_d = urhk_dbSqlWithBind("COMMIT")
+			#print(sv_d)
+			CUST.DATA.resultMsg = "RI Session Reset is Successful"
+			#GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			#sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			#print(sv_d)
+			CUST.DATA.resultMsg = "RI Session Reset Failed"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#End of Modification
+	
+	ENDOFSCRIPT:
+		IF (CUST.DATA.errMsg != "") THEN
+		#{
+			sv_s = "Error_01|ERROR:^"+ CUST.DATA.errMsg +"^"+CUST.DATA.errFld
+			sv_u = urhk_SetOrbOut(sv_s)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#}
+		ELSE
+			#{
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|" + CUST.DATA.resultMsg
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

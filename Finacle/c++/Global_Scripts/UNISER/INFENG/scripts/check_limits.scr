@@ -1,0 +1,229 @@
+<--START
+CHECKSUM="25d4ee5b3cc60d3777606a26b47e5cd7f74d7e7bf26d86ee44b2e196ce744ca0"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	############################################################################
+	#section      :creating new class if required
+	#Desscription :checks for the existence of the class GLBDATA in the
+	#repository
+	#               create a new one if it does not exist
+	##############################################################################
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("operaccnt"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply operative accnt"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		print(BANCS.INPUT.operaccnt)
+		CUST.DATA.operaccnt=BANCS.INPUT.operaccnt
+		print(CUST.DATA.operaccnt)
+	#}
+	ENDIF
+	
+	#========================================================
+	# Validating acct Id
+	#========================================================
+	IF ((FIELDEXISTS(CUST.DATA.operaccnt)) == 1) THEN
+	#{
+		BANCS.INPARAM.BINDVARS=CUST.DATA.operaccnt + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "valforacid|"
+		sv_s = sv_s + " SELECT count(1)"
+		sv_s = sv_s + " FROM TBAADM.gam"
+		sv_s = sv_s + " WHERE foracid =?SVAR AND BANK_ID = ?SVAR"
+		print(sv_s)
+		sv_d =  urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0 ) THEN
+		#{
+			CUST.DATA.valforacid = BANCS.OUTPARAM.valforacid
+			print(CUST.DATA.valforacid)
+			IF (CUST.DATA.valforacid =="0") THEN
+			#{
+				print("Enter a valid foracid")
+				CUST.DATA.errMsg="Enter a valid Account"
+				sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				GOTO End
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.DATA.errMsg="Kindly Supply operative accnt"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+	#}
+	ENDIF
+	
+	sv_k = "brgtCountsum| select sum(DRWNG_POWER) from tbaadm.gam g, tbaadm.cmg c where g.schm_code='LA527'  "
+	sv_k = sv_k + " AND g.cif_id=c.cif_id AND g.bank_id=c.bank_id  AND g.bank_id='54' AND g.acct_cls_flg='N' AND g.clr_bal_amt!='0' "
+	sv_k = sv_k + " AND g.cif_id=(select cif_id from tbaadm.gam where  foracid=?SVAR AND BANK_ID = ?SVAR )  "
+	BANCS.INPARAM.BINDVARS = CUST.DATA.operaccnt  + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_k)
+	sv_h = urhk_dbselectWithBind(sv_k)
+	PRINT(sv_h)
+	IF (sv_h  == 0) THEN
+	#{
+		IF (BANCS.OUTPARAM.brgtCountsum !="") THEN
+		#{
+			CUST.DATA.brgtCountsum = BANCS.OUTPARAM.brgtCountsum
+			PRINT(CUST.DATA.brgtCountsum)
+			#}
+		ELSE
+			#{
+			CUST.DATA.brgtCountsum = "0"
+			PRINT(CUST.DATA.brgtCountsum)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.DATA.brgtCountsum = "0"
+	#}
+	ENDIF
+	
+	CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	print(CUST.DATA.BODDate)
+	
+	sv_a = "count|select count(1) FROM custom.CATOD_MASTER_TABLE  WHERE bank_id=?SVAR AND acct_num=?SVAR AND contract_amt!=0 "
+	print(sv_a)
+	BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" +  CUST.DATA.operaccnt
+	
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s= urhk_dbSelectWithBind(sv_a)
+	print(sv_s)
+	
+	IF (BANCS.OUTPARAM.count=="0") THEN
+	#{
+		print("Not Scored")
+		sv_u=urhk_SetOrbOut("Results|Not Scored")
+		exitscript
+		#}
+	ELSE
+		#{
+		sv_a = "MaxAmtcontract|select contract_amt FROM custom.CATOD_MASTER_TABLE  WHERE bank_id=?SVAR AND acct_num =?SVAR AND contract_amt!=0  AND  rownum <2  "
+		print(sv_a)
+		BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" +  CUST.DATA.operaccnt
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s= urhk_dbSelectWithBind(sv_a)
+		print(sv_s)
+		IF (sv_s ==0) THEN
+		#{
+			CUST.DATA.MaxAmtcontract = BANCS.OUTPARAM.MaxAmtcontract
+			print (CUST.DATA.MaxAmtcontract)
+			#}
+		ELSE
+			#{
+			CUST.DATA.MaxAmtcontract="0"
+		#}
+		ENDIF
+		sv_s = "limit,contractId,maxAvailAmt,contractPeriodMM,todAmt|SELECT SANCT_AMT,REQUEST_ID,REQ_AMT,REQ_PERIOD,TOD_AMT from custom.CATOD_SANCTION_TABLE "
+		sv_s = sv_s + " WHERE BANK_ID = ?SVAR AND ACCT_NUM = ?SVAR "
+		sv_s = sv_s + " AND DEL_FLG = 'N' "
+		sv_s = sv_s + " AND EXPIRY_DATE >= TO_DATE(?SVAR,'DD-MM-YYYY')"
+		#sv_s = sv_s + " AND CLS_FLG = 'N'"
+		sv_s = sv_s + " AND STATUS_FLG in ( 'A','P') AND rownum<2"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.operaccnt + "|" + CUST.DATA.BODDate
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.limit = BANCS.OUTPARAM.limit
+			print (CUST.DATA.limit)
+			CUST.DATA.contractId = BANCS.OUTPARAM.contractId
+			print (CUST.DATA.contractId)
+			CUST.DATA.maxAvailAmt = BANCS.OUTPARAM.maxAvailAmt
+			print (CUST.DATA.maxAvailAmt)
+			CUST.DATA.contractPeriodMM = BANCS.OUTPARAM.contractPeriodMM
+			print (CUST.DATA.contractPeriodMM)
+			CUST.DATA.todAmt = BANCS.OUTPARAM.todAmt
+			print (CUST.DATA.todAmt)
+			#}
+		ELSE
+			#{
+			CUST.DATA.limit="0"
+		#}
+		ENDIF
+		
+		print(CUST.DATA.MaxAmtcontract)
+		print(CUST.DATA.limit)
+		
+		sv_q = "countsumm|select  (('"+ CUST.DATA.MaxAmtcontract +"' - '"+CUST.DATA.limit+"') - '"+CUST.DATA.brgtCountsum+"')  from dual  "
+		print(sv_q)
+		sv_w=urhk_dbSelectWithBind(sv_q)
+		print(sv_w)
+		IF (sv_w == 0) THEN
+		#{
+			print("countsumm")
+			CUST.DATA.countsumm = BANCS.OUTPARAM.countsumm
+			print(CUST.DATA.countsumm)
+			sv_g = CUST.DATA.countsumm
+			print(sv_g)
+			sv_j =  "0.01"
+			print(sv_j)
+			sv_k =  "0.1"
+			print(sv_k)
+			sv_q = "sumamountj|select ( ( ('" + sv_g + "' * '"+ sv_j +"')  +  ( ('" + sv_g + "' * '"+ sv_j +"')))  + '" + sv_g + "')  from dual "
+			print(sv_q)
+			sv_w=urhk_dbSelectWithBind(sv_q)
+			IF (sv_w == 0) THEN
+			#{
+				print("sumamountj")
+				CUST.DATA.amountsvggmt = cdouble(BANCS.OUTPARAM.sumamountj)
+				print(CUST.DATA.amountsvggmt)
+			#}
+			ENDIF
+			CUST.DATA.loanamount = cdouble(sv_g)
+			print(CUST.DATA.loanamount)
+			CUST.DATA.loanamount = CUST.DATA.loanamount
+			print(CUST.DATA.loanamount)
+			
+			sv_q = "countsummlimit|select  ('"+CUST.DATA.loanamount+"' - ('"+ CUST.DATA.amountsvggmt +"' - '"+ CUST.DATA.loanamount +"'))  from dual  "
+			print(sv_q)
+			sv_w=urhk_dbSelectWithBind(sv_q)
+			print(sv_w)
+			IF (sv_w == 0) THEN
+			#{
+				CUST.DATA.countsummlimit = FORMAT$(cdouble(BANCS.OUTPARAM.countsummlimit),"%.2f")
+				print(CUST.DATA.countsummlimit)
+				sv_z = urhk_SetOrbOut("lIMIT|"+CUST.DATA.countsummlimit)
+				print(sv_z)
+				#}
+			ELSE
+				#{
+				CUST.DATA.limit="0"
+				print (CUST.DATA.limit)
+				sv_u=urhk_SetOrbOut("Error|limit is Zero")
+				GOTO End
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	End:
+		EXITSCRIPT
+		TRACE OFF
+END-->

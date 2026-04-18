@@ -1,0 +1,294 @@
+<--START
+CHECKSUM="a577f24f158feaba00c6796d69331fe408cbc23dcae40dcb6213592e1140f206"
+	TRACE ON
+	#sv_a = REPEXISTS("STDWFS")
+	#IF (sv_a == 0) THEN
+	#	CREATEREP("STDWFS")
+	#ENDIF
+	#
+	#sv_a = CLASSEXISTS("STDWFS", "GLBDATA")
+	#IF (sv_a == 0) THEN
+	#	CREATECLASS("STDWFS", "GLBDATA", 5)
+	#ENDIF
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	
+	#################################################################
+	# Getting the account num from Placeholder
+	#################################################################
+	sv_b = "TODCHGS"
+	sv_i = sv_b + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+	print(sv_i)
+	sv_u = urhk_B2k_BacidToAcctId(sv_i)
+	IF (sv_u != 0 ) THEN
+	#{
+		STDWFS.GLBDATA.errMsg ="Unable to fetch account from Placeholder "
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		STDWFS.GLBDATA.crAccount = BANCS.OUTPARAM.AcctId
+		print(STDWFS.GLBDATA.crAccount)
+	#}
+	ENDIF
+	
+	sv_z = STDWFS.GLBDATA.crAccount
+	print(sv_z)
+	STDWFS.GLBDATA.DrAcctNum = STDWFS.GLBDATA.todforacid
+	print(STDWFS.GLBDATA.DrAcctNum)
+	STDWFS.GLBDATA.TranAmt = STDWFS.GLBDATA.AmtToBeGrntdall
+	print(STDWFS.GLBDATA.TranAmt)
+	STDWFS.GLBDATA.TranCCY = STDWFS.GLBDATA.AmtToBeGrntdcyc
+	print(STDWFS.GLBDATA.TranCCY)
+	sv_c = STDWFS.GLBDATA.TranCCY
+	print(sv_c)
+	
+	#######################
+	
+	sv_u = "Schmcode|select schm_code from tbaadm.gam where bank_id=?SVAR AND foracid=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + STDWFS.GLBDATA.DrAcctNum
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_r =  urhk_dbSelectWithBind(sv_u)
+	print(sv_r)
+	
+	IF (sv_r ==0) THEN
+	#{
+		STDWFS.GLBDATA.Schmcode = TRIM(BANCS.OUTPARAM.Schmcode)
+		print (STDWFS.GLBDATA.Schmcode)
+		#}
+	ELSE
+		#{
+		STDWFS.GLBDATA.Schmcode=""
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (STDWFS.GLBDATA.Schmcode!="SB190") THEN
+	#{
+		
+		
+		#---------------------------------------------------------
+		# getting amount to share
+		#---------------------------------------------------------
+		STDWFS.GLBDATA.tableCode="TODSD"
+		BANCS.INPARAM.InputAmount = STDWFS.GLBDATA.TranAmt
+		BANCS.INPARAM.CurrencyCode = STDWFS.GLBDATA.AmtToBeGrntdcyc
+		BANCS.INPARAM.AmountTableCode = STDWFS.GLBDATA.tableCode
+		
+		sv_u = urhk_B2k_GetASTMAmount ("")
+		print(sv_u)
+		IF (sv_u ==1)  THEN
+		#{
+			STDWFS.GLBDATA.errMsg ="Invalid Charge Code"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			STDWFS.GLBDATA.TranAmt= BANCS.OUTPARAM.OutputAmount
+			print(STDWFS.GLBDATA.TranAmt)
+			sv_m = STDWFS.GLBDATA.TranAmt
+			print(sv_m)
+		#}
+		ENDIF
+		
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT.
+		#===================================
+		
+		BANCS.INPARAM.PostTranFlg 		= "X"
+		BANCS.INPARAM.CommitFlg 		= "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg 	= "N"
+		BANCS.INPARAM.ValidationFlag 		= "N"
+		BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+		BANCS.INPARAM.CheckExceptions 		= "Y"
+		
+		sv_u = urhk_MTTS_Initialize("")
+		print (sv_u)
+		
+		IF (sv_u != 0) THEN
+		#{
+			sv_c = "Initialisation of MTT Failed"
+			MTT.Error.Description = sv_c
+			sv_u = urhk_MTTS_ReportErrorCondition("")
+			GOTO END_OF_SCRIPT
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_PopulateInputDetails("")
+		print(sv_r)
+		IF(sv_r != 0) THEN
+		#{
+			MTT.Error.Description="Error in Populating Input details for MTT"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			exitscript
+		#}
+		ENDIF
+		
+		
+		#-----------------------------------------------------------------------------------------------#
+		#####   Defining the Transaction
+		#-----------------------------------------------------------------------------------------------#
+		
+		#--------------------------
+		# To get the tran Id
+		#--------------------------
+		MTT.TranDetails.TranDate	        = "0"
+		MTT.TranDetails.PostFlag 		= "X"
+		MTT.TranDetails.TranType 		= "T"
+		MTT.TranDetails.TranSubType 		= "BI"
+		MTT.TranDetails.Remarks 		= "TOD CHARGES"
+		MTT.TranDetails.IgnoreExcp		="Y"
+		MTT.TranDetails.Consolidate         	= "N"
+		MTT.TranDetails.ReversalFlg         	= "N"
+		MTT.TranDetails.PostTranFlg             = "Y"
+		MTT.TranDetails.ValidationFlag          = "N"
+		#MTT.TranDetails.RestrictModifyInd   	= "FIRST_GROUP"
+		
+		sv_v = urhk_MTTS_DefineTransaction("DFCU")
+		print(sv_v)
+		
+		IF(sv_v != 0) THEN
+		#{
+			MTT.Error.Description="Transaction definition could not be created"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			print(MTT.Error.Description)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#---------------------------------------------------------------------------
+		#For Testing Vasanth account is debited (10 INR)
+		#--------------------------------------------------------------------------
+		MTT.PartTranDetails.Account= STDWFS.GLBDATA.DrAcctNum
+		MTT.PartTranDetails.RefAmount= -1 * CDOUBLE(STDWFS.GLBDATA.TranAmt)
+		MTT.PartTranDetails.RefCurrency= STDWFS.GLBDATA.TranCCY
+		MTT.PartTranDetails.RateCode= "MEAN"
+		MTT.PartTranDetails.Rate= "0"
+		MTT.PartTranDetails.ValueDate = "0"
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier = "DFCU"
+		MTT.PartTranDetails.Particulars = "TOD CHARGES"
+		
+		MTT.PartTranDetails.TODRefType      = "IN"
+		MTT.PartTranDetails.TodEntityType   = "TODIN"
+		MTT.PartTranDetails.TodEntityId     = STDWFS.GLBDATA.DrAcctNum
+		MTT.PartTranDetails.TodLevIntFlg    = "N"
+		MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+		MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+		MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+		MTT.PartTranDetails.TodRemarks      = "Charges TOD"
+		
+		sv_q = urhk_MTTS_DefinePartTran("DFCU1")
+		print(sv_q)
+		
+		IF (sv_q == 1) THEN
+		#{
+			#print(MTT.Error.Description)
+			print("Error WHILE defining Part Tran")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------------
+		#For Testing Prasanna Account is Credited (1 INR)
+		#---------------------------------------------------------------------------
+		print(sv_z)
+		MTT.PartTranDetails.Account= sv_z
+		print(sv_m)
+		MTT.PartTranDetails.RefAmount= CDOUBLE(sv_m)
+		print(sv_c)
+		MTT.PartTranDetails.RefCurrency= sv_c
+		MTT.PartTranDetails.RateCode= "MEAN"
+		MTT.PartTranDetails.Rate= "0"
+		MTT.PartTranDetails.ValueDate = "0"
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier = "DFCU"
+		MTT.PartTranDetails.Particulars = "TOD CHARGES"
+		sv_v = urhk_MTTS_DefinePartTran("DFCU2")
+		print(sv_v)
+		
+		IF (sv_v == 1) THEN
+		#{
+			print(MTT.Error.Description)
+			print("Error WHILE defining Part Tran")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-----------------------------------------------------------------------------
+		#End of MTT Definition
+		#-----------------------------------------------------------------------------
+		sv_v = urhk_MTTS_EndDefinition("")
+		print(sv_v)
+		IF (sv_v == 1) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			print (MTT.Error.Description)
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			sv_a = urhk_B2k_PrintRepos("BANCS")
+			IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+			#{
+				BANCS.OUTPARAM.MTTTranId = BANCS.OUTPARAM.MTTTranId
+				print(BANCS.OUTPARAM.MTTTranId)
+				#GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_HandleExceptions("POST")
+		print(sv_r)
+		
+		sv_u = urhk_MTTS_Close("")
+		print(sv_u)
+		
+		IF(sv_u != 0) THEN
+		#{
+			IF(FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+			#}
+			ENDIF
+			
+			BANCS.OUTPUT.successOrFailure = "F"
+			STDWFS.GLBDATA.Response = "urhk_MTTS_Close returns FAILURE"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			print(BANCS.OUTPARAM.MTTTranId)
+			sv_t = BANCS.OUTPARAM.MTTTranId
+			print(sv_t)
+			
+		#}
+		ENDIF
+		
+		IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+		#{
+			sv_h = BANCS.OUTPARAM.MTTPostingError
+			print(sv_h)
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "S"
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		exitscript
+		TRACE OFF
+END-->

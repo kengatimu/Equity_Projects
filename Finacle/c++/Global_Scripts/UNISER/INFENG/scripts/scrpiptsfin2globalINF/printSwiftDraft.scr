@@ -1,0 +1,548 @@
+#-------------------------------------------------------------------------------------
+#SCRIPT FOR PRINTSWIFTDRAFT
+#-------------------------------------------------------------------------------------
+<--START
+
+TRACE ON
+
+BANCS.OUTPUT.TAG45A = ""
+BANCS.OUTPUT.TAG46A = ""
+BANCS.OUTPUT.TAG47A = ""
+BANCS.OUTPUT.TAG49G = ""
+BANCS.OUTPUT.TAG49H = ""
+BANCS.OUTPUT.successOrFailure = "S"
+BANCS.OUTPUT.errorMessage = ""
+
+#-----------------------------------------
+# Hardcode the inputs for local testing
+#-----------------------------------------
+#BANCS.INPUT.PaysysId = "SWIFT"
+#BANCS.INPUT.PaysysMsg = ":10:|TEN|:20:|ODCM-1234|:30A:|THIRTY A|:45A:|FORTY FIVE A|"
+#BANCS.INPUT.PaysysMsg=":35:22|:90:921204|:20:ODCM-1234|:21:22|:30:921204"
+#BANCS.INPUT.MessageId = "707"
+#BANCS.INPUT.EntityType = "TYPE"
+#BANCS.INPUT.EntityId = "ID"
+#CREATEREP("ONS")
+#CREATECLASS("ONS", "CUSTOM", 5)
+#ONS.CUSTOM.custDataIn = "~odcm_dc_details2|45a45a45a45a|45a45a45a45a|46a46a46a46a|46a46a46a46a|47a47a47a47a|47a47a47a47a|49g49g49g49g|49g49g49g49g|49h49h49h49h|49h49h49h49h|~transfer_amend_details|^^^^^ODCM-1211^^^^^46a46a46a11^^^^^47a47a47a11^^^^^ODCM-2345^^^^^46a46a46a22^^^^^47a47a47a22^^^^^ODCM-1234^^^^^46a46a46a33^^^^^47a47a47a33^^^^^ODCM-5678^^^^^46a46a46a44^^^^^47a47a47a44|"
+
+PRINT(ONS.CUSTOM.custDataIn)
+
+#-----------------------
+# Create Rep and Class
+#-----------------------
+
+IF(REPEXISTS("CUST") == 0) THEN
+#{
+     CREATEREP("CUST")
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","ODCM") == 0) THEN
+#{
+     CREATECLASS("CUST","ODCM",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+     CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+
+#----------------------------------
+# Initialize the output variables
+#----------------------------------
+BANCS.OUTPUT.TAG45A = ""
+BANCS.OUTPUT.TAG46A = ""
+BANCS.OUTPUT.TAG47A = ""
+BANCS.OUTPUT.TAG49G = ""
+BANCS.OUTPUT.TAG49H = ""
+BANCS.OUTPUT.successOrFailure = "S"
+BANCS.OUTPUT.errorMessage = ""
+
+#-------------------------
+# print the input values
+#-------------------------
+PRINT(BANCS.INPUT.PaysysId)
+PRINT(BANCS.INPUT.PaysysMsg)
+PRINT(BANCS.INPUT.MessageId)
+PRINT(BANCS.INPUT.EntityType)
+PRINT(BANCS.INPUT.EntityId)
+
+IF(BANCS.INPUT.PaysysId != "SWIFT")THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "S"
+	exitscript
+#}
+ENDIF
+
+BANCS.INPUT.validMessageIdList = ",700,705,707,710,720,"
+IF(GETPOSITION(BANCS.INPUT.validMessageIdList, "," + BANCS.INPUT.MessageId + ",") == 0) THEN
+#{
+	# Message Id sent does not have any custom values. So returning success
+        BANCS.OUTPUT.successOrFailure = "S"
+	exitscript
+#}
+ENDIF
+PRINT("SUCCESS")
+
+PRINT(ONS.CUSTOM.custDataIn)
+
+#--------------------------------------------------------------------------------------------------------
+# Add a leading | and trailing | to simplify the logic of extracting the fields  from the message string
+#--------------------------------------------------------------------------------------------------------
+BANCS.INPUT.PaysysMsg = "|" + BANCS.INPUT.PaysysMsg + "|"
+PRINT(BANCS.INPUT.PaysysMsg)
+
+CUST.ODCM.inp_string_ =  BANCS.INPUT.PaysysMsg
+CUST.ODCM.field_separator = "|:"
+CUST.ODCM.fieldValueSeparator = ":"
+CUST.ODCM.endOfString = "N"
+BANCS.INPUT.dcRefNum = ""
+WHILE((CUST.ODCM.endOfString == "N") AND (BANCS.INPUT.dcRefNum == "") )
+#{
+	CALL("mtnnn_getNextField.scr")
+	PRINT("CUST.ODCM.nextField = " + CUST.ODCM.nextField)
+	CUST.ODCM.fieldNameValue = CUST.ODCM.nextField
+
+	CALL("mtnnn_getPartTagValue.scr")
+	print(CUST.ODCM.partTagName)
+	print(CUST.ODCM.partTagValue)
+	if (CUST.ODCM.partTagName == "20") THEN
+		BANCS.INPUT.dcRefNum = CUST.ODCM.partTagValue
+	ENDIF
+#}
+DO
+
+IF (TRIM(BANCS.INPUT.dcRefNum) == "") THEN
+        BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.errorMessage = "DC Ref Number/Tag 20  is not found"
+	exitscript
+ENDIF
+
+PRINT(BANCS.INPUT.dcRefNum)
+
+#----------------------
+# End of Get dcrefnum
+#----------------------
+
+
+sv_u = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+PRINT(sv_u)
+
+IF (sv_u != 0) THEN
+#{
+	BANCS.OUTPUT.errorMessage = "Parsing Of ONS.CUSTOM.custDataIn failed:" + MID$(ONS.CUSTOM.custDataIn, 0,50)
+	BANCS.OUTPUT.successOrFailure = "F"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#sv_v = urhk_b2k_PrintRepos("BANCS")
+#PRINT(sv_v)
+#sv_v = urhk_b2k_PrintRepos("ONS")
+#PRINT(sv_v)
+
+IF(BANCS.INPUT.MessageId == "705")THEN
+#{
+	sv_p = GETPOSITION(ONS.CUSTOM.custDataIn,"~odcm_dc_details2")
+	print(sv_p)
+
+	if (sv_p == 0) then
+		BANCS.OUTPUT.errorMessage = "~odcm_dc_details2 not found in ONS.CUSTOM.custDataIn for 705 :" + MID$(ONS.CUSTOM.custDataIn, 0, 50)
+		BANCS.OUTPUT.successOrFailure = "F"
+        	GOTO ENDOFSCRIPT
+	endif
+					
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_2))THEN
+	#{
+		BANCS.OUTPUT.TAG45A  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_2)
+		PRINT(BANCS.OUTPUT.TAG45A)
+	#}
+	ENDIF
+#}
+ENDIF
+
+		
+IF((BANCS.INPUT.MessageId == "700") OR (BANCS.INPUT.MessageId == "710"))THEN
+#{
+	sv_p = GETPOSITION(ONS.CUSTOM.custDataIn,"~odcm_dc_details2")
+	print(sv_p)
+
+	if (sv_p == 0) then
+		BANCS.OUTPUT.errorMessage = "~odcm_dc_details2 not found in ONS.CUSTOM.custDataIn for 700/710:" + MID$(ONS.CUSTOM.custDataIn, 0, 50)
+		BANCS.OUTPUT.successOrFailure = "F"
+        	GOTO ENDOFSCRIPT
+	endif
+					
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_2))THEN
+	#{
+		BANCS.OUTPUT.TAG45A  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_2)
+		PRINT(BANCS.OUTPUT.TAG45A)
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_4))THEN
+	#{
+		BANCS.OUTPUT.TAG46A = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_4)
+		PRINT(BANCS.OUTPUT.TAG46A)
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_6))THEN
+	#{
+		BANCS.OUTPUT.TAG47A  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_6)
+		PRINT(BANCS.OUTPUT.TAG47A)
+	#}
+	ENDIF
+					
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_8))THEN
+	#{
+		BANCS.OUTPUT.TAG49G  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_8)
+		PRINT(BANCS.OUTPUT.TAG49G)
+	#}
+	ENDIF
+				
+	IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_10))THEN
+	#{
+		BANCS.OUTPUT.TAG49H  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_10)
+		PRINT(BANCS.OUTPUT.TAG49H)
+	#}
+	ENDIF
+#}
+ENDIF
+
+		   
+IF(BANCS.INPUT.MessageId == "707")THEN
+#{
+	sv_p = GETPOSITION(ONS.CUSTOM.custDataIn,"~dc_amendment_details")
+	print(sv_p)
+	IF (sv_p != 0) THEN
+	#{
+		# This is normal Amendment
+		#--------------------------
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_2)) THEN
+		#{
+			BANCS.OUTPUT.TAG45A  = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_2)
+			PRINT(BANCS.OUTPUT.TAG45A)
+		#}
+		ENDIF 
+		 
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_4)) THEN
+		#{
+			BANCS.OUTPUT.TAG46A = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_4)
+			PRINT(BANCS.OUTPUT.TAG46A)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_6)) THEN
+		#{
+			BANCS.OUTPUT.TAG47A= TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_6)
+			PRINT(BANCS.OUTPUT.TAG47A)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_8)) THEN
+		#{
+			BANCS.OUTPUT.TAG49G = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_8)
+			PRINT(BANCS.OUTPUT.TAG49G)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_10)) THEN
+		#{
+			BANCS.OUTPUT.TAG49H = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_10)
+			PRINT(BANCS.OUTPUT.TAG49H)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	sv_p = GETPOSITION(ONS.CUSTOM.custDataIn,"~transfer_amend_details")
+	print(sv_p)
+	IF (sv_p != 0) THEN
+	#{
+		# This is Amendment After Transfer for IDCM
+		#-------------------------------------------
+		IF(FIELDEXISTS(ONS.CUSTOM.custDataIn)) THEN
+		#{
+			BANCS.OUTPUT.CONSOL_STR  = TOUPPER(ONS.CUSTOM.custDataIn)
+			PRINT(BANCS.OUTPUT.CONSOL_STR)
+
+			CUST.ODCM.inp_string_ = BANCS.OUTPUT.CONSOL_STR
+			CUST.ODCM.field_separator = "^^^^^"
+			CUST.ODCM.endOfString = "N"
+			BANCS.INPUT.readField = "N"
+
+			WHILE(CUST.ODCM.endOfString == "N")
+			#{
+				CALL("mtnnn_getNextField.scr")
+				PRINT(CUST.ODCM.nextField)
+
+				IF (BANCS.INPUT.readField == "Y") THEN
+					IF (CINT(BANCS.INPUT.fieldCounter) == CINT("0")) THEN
+						BANCS.OUTPUT.TAG46A = CUST.ODCM.nextField
+					ENDIF
+					IF (CINT(BANCS.INPUT.fieldCounter) == CINT("1")) THEN
+						BANCS.OUTPUT.TAG47A = CUST.ODCM.nextField
+					ENDIF
+					BANCS.INPUT.fieldCounter = CINT(BANCS.INPUT.fieldCounter) + CINT("1")
+				ENDIF
+
+				IF (BANCS.INPUT.dcRefNum == CUST.ODCM.nextField) THEN
+				#{
+					BANCS.INPUT.fieldCounter = "0"
+					BANCS.INPUT.readField = "Y"
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF 
+		PRINT("BANCS.OUTPUT.TAG46A = " + BANCS.OUTPUT.TAG46A)
+		PRINT("BANCS.OUTPUT.TAG47A = " + BANCS.OUTPUT.TAG47A)
+
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_2)) THEN
+		#{
+			BANCS.OUTPUT.TAG45A  = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_2)
+			PRINT(BANCS.OUTPUT.TAG45A)
+		#}
+		ENDIF 
+		 
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_8)) THEN
+		#{
+			BANCS.OUTPUT.TAG49G = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_8)
+			PRINT(BANCS.OUTPUT.TAG49G)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.dc_amendment_details_FIELD_10)) THEN
+		#{
+			BANCS.OUTPUT.TAG49H = TOUPPER(BANCS.INPUT.dc_amendment_details_FIELD_10)
+			PRINT(BANCS.OUTPUT.TAG49H)
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+
+IF(BANCS.INPUT.MessageId == "720")THEN
+#{
+	sv_p = GETPOSITION(ONS.CUSTOM.custDataIn,"~transfer_details_popup")
+	print(sv_p)
+	IF (sv_p != 0) THEN
+	#{
+		# This is Transfer for IDCM
+		#----------------------------
+		IF(FIELDEXISTS(ONS.CUSTOM.custDataIn)) THEN
+		#{
+			BANCS.OUTPUT.CONSOL_STR  = TOUPPER(ONS.CUSTOM.custDataIn)
+			PRINT(BANCS.OUTPUT.CONSOL_STR)
+
+			CUST.ODCM.inp_string_ = BANCS.OUTPUT.CONSOL_STR
+			CUST.ODCM.field_separator = "^^^^^"
+			CUST.ODCM.endOfString = "N"
+			BANCS.INPUT.readField = "N"
+
+			WHILE(CUST.ODCM.endOfString == "N")
+			#{
+				CALL("mtnnn_getNextField.scr")
+				PRINT(CUST.ODCM.nextField)
+
+				IF (BANCS.INPUT.readField == "Y") THEN
+					IF (CINT(BANCS.INPUT.fieldCounter) == CINT("0")) THEN
+						BANCS.OUTPUT.TAG46A = CUST.ODCM.nextField
+					ENDIF
+					IF (CINT(BANCS.INPUT.fieldCounter) == CINT("1")) THEN
+						BANCS.OUTPUT.TAG47A = CUST.ODCM.nextField
+					ENDIF
+					BANCS.INPUT.fieldCounter = CINT(BANCS.INPUT.fieldCounter) + CINT("1")
+				ENDIF
+
+				IF (BANCS.INPUT.dcRefNum == CUST.ODCM.nextField) THEN
+				#{
+					BANCS.INPUT.fieldCounter = "0"
+					BANCS.INPUT.readField = "Y"
+				#}
+				ENDIF
+			#}
+			DO
+		#}
+		ENDIF 
+
+		PRINT("BANCS.OUTPUT.TAG46A = " + BANCS.OUTPUT.TAG46A)
+		PRINT("BANCS.OUTPUT.TAG47A = " + BANCS.OUTPUT.TAG47A)
+
+		IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_2))THEN
+		#{
+			BANCS.OUTPUT.TAG45A  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_2)
+			PRINT(BANCS.OUTPUT.TAG45A)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_8))THEN
+		#{
+			BANCS.OUTPUT.TAG49G  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_8)
+			PRINT(BANCS.OUTPUT.TAG49G)
+		#}
+		ENDIF
+					
+		IF(FIELDEXISTS(BANCS.INPUT.odcm_dc_details2_FIELD_10))THEN
+		#{
+			BANCS.OUTPUT.TAG49H  = TOUPPER(BANCS.INPUT.odcm_dc_details2_FIELD_10)
+			PRINT(BANCS.OUTPUT.TAG49H)
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+	#~transfer_amend_details
+	#~transfer_details_popup
+					
+#}
+ENDIF
+
+sv_k = GETPOSITION(BANCS.OUTPUT.TAG45A,"|")
+print(sv_k)
+IF(sv_k != 0)THEN
+#{
+	BANCS.OUTPUT.TAG45A = RTRIM(BANCS.OUTPUT.TAG45A,'|')
+	PRINT(BANCS.OUTPUT.TAG45A)
+#}
+ENDIF
+sv_k = GETPOSITION(BANCS.OUTPUT.TAG46A,"|")
+print(sv_k)
+IF(sv_k != 0)THEN
+#{
+	BANCS.OUTPUT.TAG46A = RTRIM(BANCS.OUTPUT.TAG46A,'|')
+	PRINT(BANCS.OUTPUT.TAG46A)
+#}
+ENDIF
+sv_k = GETPOSITION(BANCS.OUTPUT.TAG47A,"|")
+print(sv_k)
+IF(sv_k != 0)THEN
+#
+#{
+       PRINT(BANCS.OUTPUT.TAG47A) 
+	BANCS.OUTPUT.TAG47A = RTRIM(BANCS.OUTPUT.TAG47A,'|')
+	PRINT(BANCS.OUTPUT.TAG47A)
+#}
+ENDIF
+sv_k = GETPOSITION(BANCS.OUTPUT.TAG49G,"|")
+print(sv_k)
+IF(sv_k != 0)THEN
+#{
+	BANCS.OUTPUT.TAG49G = RTRIM(BANCS.OUTPUT.TAG49G,'|')
+	PRINT(BANCS.OUTPUT.TAG49G)
+#}
+ENDIF
+sv_k = GETPOSITION(BANCS.OUTPUT.TAG49H,"|")
+print(sv_k)
+IF(sv_k != 0)THEN
+#{
+	BANCS.OUTPUT.TAG49H = RTRIM(BANCS.OUTPUT.TAG49H,'|')
+	PRINT(BANCS.OUTPUT.TAG49H)
+#}
+ENDIF
+
+
+#-------------------------------------------------------------------------
+# Now replace the "`" with the "|" before sending back output to product
+#-------------------------------------------------------------------------
+CUST.DATA.character1 = "`"
+CUST.DATA.character2 = "|"
+
+CUST.DATA.inputString = BANCS.OUTPUT.TAG45A
+call("cc_replaceChar.scr")
+BANCS.OUTPUT.TAG45A = CUST.DATA.outputString
+PRINT(BANCS.OUTPUT.TAG45A)
+
+CUST.DATA.inputString = BANCS.OUTPUT.TAG46A
+call("cc_replaceChar.scr")
+BANCS.OUTPUT.TAG46A = CUST.DATA.outputString
+PRINT(BANCS.OUTPUT.TAG46A)
+
+CUST.DATA.inputString = BANCS.OUTPUT.TAG47A
+call("cc_replaceChar.scr")
+BANCS.OUTPUT.TAG47A = CUST.DATA.outputString
+PRINT(BANCS.OUTPUT.TAG47A)
+
+CUST.DATA.inputString = BANCS.OUTPUT.TAG49G
+call("cc_replaceChar.scr")
+BANCS.OUTPUT.TAG49G = CUST.DATA.outputString
+PRINT(BANCS.OUTPUT.TAG49G)
+
+CUST.DATA.inputString = BANCS.OUTPUT.TAG49H
+call("cc_replaceChar.scr")
+BANCS.OUTPUT.TAG49H = CUST.DATA.outputString
+PRINT(BANCS.OUTPUT.TAG49H)
+
+PRINT(BANCS.OUTPUT.TAG45A)
+PRINT(BANCS.OUTPUT.TAG46A)
+PRINT(BANCS.OUTPUT.TAG47A)
+PRINT(BANCS.OUTPUT.TAG49G)
+PRINT(BANCS.OUTPUT.TAG49H)
+
+
+IF (BANCS.INPUT.MessageId == "707" ) THEN
+	IF (TRIM(BANCS.OUTPUT.TAG45A) != "") THEN
+		BANCS.OUTPUT.TAG45A = ":45B:" + TRIM(BANCS.OUTPUT.TAG45A)
+	ELSE
+		BANCS.OUTPUT.TAG45A = ":45B:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG46A) != "") THEN
+		BANCS.OUTPUT.TAG46A = ":46B:" + TRIM(BANCS.OUTPUT.TAG46A)
+	ELSE
+		BANCS.OUTPUT.TAG46A = ":46B:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG47A) != "") THEN
+		BANCS.OUTPUT.TAG47A = ":47B:" + TRIM(BANCS.OUTPUT.TAG47A)
+	ELSE
+		BANCS.OUTPUT.TAG47A = ":47B:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG49G) != "") THEN
+		BANCS.OUTPUT.TAG49G = ":49M:" + TRIM(BANCS.OUTPUT.TAG49G)
+	ELSE
+		BANCS.OUTPUT.TAG49G = ":49M:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG49H) != "") THEN
+		BANCS.OUTPUT.TAG49H = ":49N:" + TRIM(BANCS.OUTPUT.TAG49H)
+	ELSE
+		BANCS.OUTPUT.TAG49H = ":49N:" + ""
+	ENDIF
+ELSE
+	IF (TRIM(BANCS.OUTPUT.TAG45A) != "") THEN
+		BANCS.OUTPUT.TAG45A = ":45A:" + TRIM(BANCS.OUTPUT.TAG45A)
+	ELSE
+		BANCS.OUTPUT.TAG45A = ":45A:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG46A) != "") THEN
+		BANCS.OUTPUT.TAG46A = ":46A:" + TRIM(BANCS.OUTPUT.TAG46A)
+	ELSE
+		BANCS.OUTPUT.TAG46A = ":46A:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG47A) != "") THEN
+		BANCS.OUTPUT.TAG47A = ":47A:" + TRIM(BANCS.OUTPUT.TAG47A)
+	ELSE
+		BANCS.OUTPUT.TAG47G = ":47A:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG49G) != "") THEN
+		BANCS.OUTPUT.TAG49G = ":49G:" + TRIM(BANCS.OUTPUT.TAG49G)
+	ELSE
+		BANCS.OUTPUT.TAG49G = ":49G:" + ""
+	ENDIF
+	IF (TRIM(BANCS.OUTPUT.TAG49H) != "") THEN
+		BANCS.OUTPUT.TAG49H = ":49H:" + TRIM(BANCS.OUTPUT.TAG49H)
+	ELSE
+		BANCS.OUTPUT.TAG49H = ":49H:" + ""
+	ENDIF
+ENDIF
+
+ENDOFSCRIPT:
+EXITSCRIPT
+TRACE OFF
+END-->

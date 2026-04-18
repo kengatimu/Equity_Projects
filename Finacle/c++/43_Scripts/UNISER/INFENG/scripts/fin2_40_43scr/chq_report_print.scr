@@ -1,0 +1,170 @@
+<--START
+        TRACE ON
+        LIBNAME CUSTOMSO
+        #-----------------------------------------------------------------------------------------------------
+        # Create the class , repository & some fields
+        #-----------------------------------------------------------------------------------------------------
+        IF(REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+        IF(CLASSEXISTS("CUST","CHQ") == 0) THEN
+        #{
+                CREATECLASS("CUST","CHQ",5)
+        #}
+        ENDIF
+
+	CUST.CHQ.tranId = " "
+
+        CUST.CHQ.forAcid    = BANCS.INPUT.acctNum
+        PRINT (CUST.CHQ.forAcid)
+
+        CUST.CHQ.funcCode  =  BANCS.INPUT.funcCode
+        PRINT (CUST.CHQ.funcCode)
+
+	IF(CUST.CHQ.funcCode != "U")THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+        CUST.CHQ.processId = ""
+        sv_u = urhk_B2k_PID("")
+        IF(sv_u==0) THEN
+        #{
+               CUST.CHQ.processId = BANCS.OUTPARAM.PID
+        #}
+        ENDIF
+
+        ## Report creation logic
+        CUST.CHQ.productName = "Cheque_issue_rpt"
+        CUST.CHQ.reportName  = "Chequee Issue Report"
+        CUST.CHQ.listName    = CUST.CHQ.productName + "_list_" + CUST.CHQ.processId+ ".LST"
+        CUST.CHQ.fileName    = CUST.CHQ.productName + "_" + CUST.CHQ.processId
+        CUST.CHQ.fileWIndex  = urtn_fileOpen(CUST.CHQ.listName + "|w")
+        PRINT(CUST.CHQ.fileWIndex)
+        IF(CINT(CUST.CHQ.fileWIndex) != 0) THEN
+        #{
+                PRINT("Write file failed.")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+        sv_w = CUST.CHQ.fileWIndex
+
+	sv_s = "BodDate|SELECT TO_CHAR(SYSDATE,'DD/MM/YYYY HH:MI') FROM DUAL"
+	BANCS.INPARAM.BINDVARS = ""
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0)THEN
+        #{
+		CUST.CHQ.BodDate = BANCS.OUTPARAM.BodDate
+		PRINT(CUST.CHQ.BodDate)
+	#}
+	ENDIF
+
+	sv_a = STRLEN(CUST.CHQ.BodDate)
+	CUST.CHQ.date = MID$(CUST.CHQ.BodDate,0,10)
+	CUST.CHQ.time = MID$(CUST.CHQ.BodDate,11,(sv_a - 11))
+	PRINT(CUST.CHQ.date)
+	PRINT(CUST.CHQ.time)
+
+	sv_s = "acctName,schm_code,acid|SELECT ACCT_NAME,SCHM_CODE,ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.CHQ.forAcid
+
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0)THEN
+        #{
+		CUST.CHQ.acctName = BANCS.OUTPARAM.acctName
+		CUST.CHQ.schm_code = BANCS.OUTPARAM.schm_code
+		CUST.CHQ.acid = BANCS.OUTPARAM.acid
+
+		PRINT(CUST.CHQ.acctName)
+		PRINT(CUST.CHQ.schm_code)
+		PRINT(CUST.CHQ.acid)
+	#}
+	ENDIF
+
+	sv_s = "schm_desc|SELECT SCHM_DESC FROM TBAADM.GSP WHERE BANK_ID=?SVAR AND SCHM_CODE=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.CHQ.schm_code
+
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0)THEN
+        #{
+		CUST.CHQ.schmDesc = BANCS.OUTPARAM.schm_desc
+		PRINT(CUST.CHQ.schmDesc)
+	#}
+	ENDIF
+
+	sv_s = "chqreqId,numofchq,createDate|SELECT REQ_ID,NUM_OF_CHQ_LVS,TO_DATE(REQ_DATE,'DD-MM-YYYY') FROM CUSTOM.CUSTOM_CBR WHERE REQ_ID=(SELECT MAX(REQ_ID) FROM CUSTOM.CUSTOM_CBR WHERE BANK_ID=?SVAR AND"
+	sv_s = sv_s + " FORACID=?SVAR) AND BANK_ID=?SVAR AND FORACID=?SVAR"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.CHQ.forAcid +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.CHQ.forAcid
+
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0)THEN
+        #{
+		CUST.CHQ.chqreqId = BANCS.OUTPARAM.chqreqId
+		PRINT(CUST.CHQ.chqreqId)
+		CUST.CHQ.numofchq = BANCS.OUTPARAM.numofchq
+		PRINT(CUST.CHQ.numofchq)
+		CUST.CHQ.createDate = BANCS.OUTPARAM.createDate
+		PRINT(CUST.CHQ.createDate)
+	#}
+	ENDIF
+
+	sv_s = "tranId|SELECT tran_id FROM CUSTOM.C_CHQ_TRAN WHERE BANK_ID=?SVAR AND FORACID=?SVAR AND REQ_ID=?SVAR"
+
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.CHQ.forAcid +"|"+ CUST.CHQ.chqreqId
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_q = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_q)
+        IF(sv_q == 0)THEN
+        #{
+        	CUST.CHQ.tranId = BANCS.OUTPARAM.tranId
+                PRINT(CUST.CHQ.tranId)
+        #}
+        ENDIF
+
+        #sv_w = sv_w + "|" + CUST.CHQ.forAcid
+	#sv_w = sv_w +"|"+ CUST.CHQ.date +"|"+ CUST.CHQ.time +"|"+ CUST.CHQ.tranId +"|"+ CUST.CHQ.date +"|"+ CUST.CHQ.acctName
+	sv_w = sv_w +"|"+ CUST.CHQ.date +"|"+ CUST.CHQ.time +"|"+ CUST.CHQ.tranId +"|"+ CUST.CHQ.createDate +"|"+ CUST.CHQ.acctName
+	sv_w = sv_w +"|"+ CUST.CHQ.forAcid +"|"+ CUST.CHQ.chqreqId +"|"+ CUST.CHQ.numofchq +"|"+ CUST.CHQ.schmDesc
+
+        PRINT(sv_w)
+        sv_u = urtn_fileWrite(sv_w)
+        PRINT(sv_u)
+
+        sv_t = urtn_fileClose(CUST.CHQ.fileWIndex)
+        PRINT(sv_t)
+
+        #--------------------------------------------------------------------------------
+        # Generate Jasper reports in PDF format using the List file
+        #--------------------------------------------------------------------------------
+        CUST.CHQ.productName="Cheque_issue_rpt"
+        sv_z = "exebatch mrbx4004 $B2K_SESSION_ID " + CUST.CHQ.productName + ".jasper " + CUST.CHQ.listName + " " + CUST.CHQ.fileName
+        sv_m = SYSTEM(sv_z)
+        PRINT(sv_m)
+
+        #--------------------------------------------------------------------------------
+        # Sending the Success/Failure Reports in the print Queue of HPR menu
+        #--------------------------------------------------------------------------------
+        sv_z = "exebatch babx4040 $B2K_SESSION_ID " + CUST.CHQ.fileName + ".PDF '" + CUST.CHQ.reportName + "' MANAGER 1 N"
+        sv_m = SYSTEM(sv_z)
+        PRINT(sv_m)
+
+        sv_m = urhk_SetOrbOut("SuccessOrFailure|Y")
+        PRINT(sv_m)
+
+        sv_b = urhk_SetOrbOut("MSG|Report Generated Successfully.Check in HPR")
+        PRINT(sv_b)
+
+
+ENDOFSCRIPT:
+TRACE OFF
+END-->

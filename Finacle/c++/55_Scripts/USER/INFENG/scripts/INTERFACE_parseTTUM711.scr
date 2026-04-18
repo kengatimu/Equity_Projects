@@ -1,0 +1,837 @@
+<--start
+#trace on
+# ==============================================================================
+# This script contains the parsing logic for TTUM upload (1.6.38)
+# ==============================================================================    
+# Field name      		Start At  Length    
+#
+# foracid,         			    1, 16
+# tran_crncy_code,     		   17,  3,
+# sol_id,                      20,  8,
+# part_tran_type,              28,  1,
+# tran_amt,                    29, 17,
+# tran_particular,             46, 30,
+# rpt_code,                    76,  5,
+# ref_num,                     81, 20,
+# instrmnt_type,              101,  5,
+# instrmnt_date,              106, 10,
+# instrmnt_alpha,             116,  6,
+# instrmnt_num,               122, 16, 
+# navigation_flg,             138,  1,
+# ref_amt,                    139, 17,
+# ref_crncy_code,             156,  3, 
+# rate_code,                  159,  5, 
+# rate,                       164, 15, 
+# value_date,                 179, 10,
+# gl_date,					  189, 10,	
+#
+# HO ADDITIONAL DETAILS
+#
+# category_code,              199,  5, 
+# to_from_bank_code,          204,  6,
+# to_from_br_code,            210,  6,
+# advc_to_from_extn_cntr_code,216,  2, 
+# bar_advc_gen_ind,           218,  1, 
+# bar_or_advc_num,            219, 12, 
+# bar_or_advc_date,           231, 10, 
+# bill_num,                   241, 20, 
+# hdr_text_code,              251,  5, 
+# hdr_free_text,              266, 30, 
+# particulars_1,              296, 40, 
+# particulars_2,              336, 40, 
+# particulars_3,              376, 40, 
+# particulars_4,              416, 40, 
+# particulars_5,              456, 40, 
+# amt_line_1,                 496, 17, 
+# amt_line_2,                 513, 17, 
+# amt_line_3,                 530, 17, 
+# amt_line_4,                 547, 17, 
+# amt_line_5,                 564, 17, 
+# remarks,                    581, 30,
+# payee_acct,                 611, 16, 
+# rcvd_bar_or_advc_num,       627, 12, 
+# rcvd_bar_or_advc_date,      639, 10, 
+#
+# HO REVERSAL DETAILS
+#
+# original_tran_date,         649, 10, 
+# original_tran_id,           659,  9, 
+# original_part_tran_srl_num, 668,  4, 
+# freeText,                   672,256, 
+#
+# PARTITION DETAILS
+# entity_id                   929, 16,
+# entity_type                 945,  5, (Valid values are ACCNT, LOANS,FWC,FBILL,IBILL
+#                                   DOCCR, BNKGR)
+# LOAN DETAILS
+# flow_id                     950,  5 (Mandatory to be entered if the schm_type is LAA )
+# ==============================================================================    
+
+#Parse the inputRecordString to the Bancs2000 upload format
+
+
+	BANCS.OUTPUT.successOrFailure="S" 
+
+# Check if the length of the record is within the minimum and maximum record size
+	IF ((strlen(MTT.InputDetails.inputRecordString) < 198) or (strlen(MTT.InputDetails.inputRecordString) > 1013)) THEN
+		MTT.Error.Description="Invalid record(s)"
+		sv_r = urhk_MTTS_ReportErrorCondition("")   
+		BANCS.OUTPUT.successOrFailure="F"  
+		goto ENDOFSCRIPT
+	ENDIF
+	
+	MTT.PartTranDetails.Account = RTRIM(MID$(MTT.InputDetails.inputRecordString, 0, 16))
+
+	print(MTT.PartTranDetails.Account)
+       #   Account Validations
+
+	sv_m = urhk_valAcctNumber(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Account does not exist " + "[" + MTT.PartTranDetails.Account + "]"  
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+		goto ENDOFSCRIPT
+	ENDIF
+
+	#### HERE urhk_getAcctDetailsInRepository is called twice since call to this hook will 
+	#### delete BANCS.OUTPARAM repo, but BANCS.OUTPARAM is required by default product script
+	sv_m = urhk_getAcctDetailsInRepository(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Could not get account details for "+MTT.PartTranDetails.Account
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"
+	ENDIF
+
+	IF ((BANCS.OUTPARAM.acctOwnerShip != "O") AND (BANCS.OUTPARAM.schmType!="LAA")) THEN
+	#{
+		sv_z = urhk_B2k_ForacidToAcid(MTT.PartTranDetails.Account)
+		IF (sv_z == 1) THEN
+		#{
+			MTT.Error.Description="Unverified/Deleted Account " + "[" + MTT.PartTranDetails.Account + "]"  
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+			goto ENDOFSCRIPT
+		#}
+		ENDIF
+		BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+
+		sv_z = urhk_getAcctStatus("")
+		IF (sv_z == 1) THEN
+		#{
+			MTT.Error.Description="Could not get account status info for ["+MTT.PartTranDetails.Account + "]"  
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"
+			goto ENDOFSCRIPT
+		#}
+		ENDIF
+		print(BANCS.OUTPARAM.acctStatus)
+
+		IF (BANCS.OUTPARAM.acctStatus != "A") THEN
+		#{
+			MTT.Error.Description="Account is not active [" +MTT.PartTranDetails.Account + "]"  
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"
+			goto ENDOFSCRIPT
+		#}
+		ENDIF
+
+	#}
+	ENDIF
+
+	sv_m = urhk_getAcctDetailsInRepository(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Could not get account details for "+MTT.PartTranDetails.Account
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"
+	ENDIF
+
+#	sv_w is used later to populate the currency. DO NOT OVERWRITE sv_w variable in this script.sv_p is also used for checking IF condition. Do not overwrite this variable also.
+	sv_w = BANCS.OUTPARAM.acctCrncyCode
+	sv_x = BANCS.OUTPARAM.schmType
+    sv_p = BANCS.OUTPARAM.partitionedFlg
+	sv_d = BANCS.OUTPARAM.schmCode
+
+	IF ((BANCS.OUTPARAM.schmType == "TDA") OR (BANCS.OUTPARAM.schmType == "TUA"))  THEN
+	#{
+		IF (BANCS.OUTPARAM.schmType == "TDA") THEN
+			sv_m = "term deposit"
+		ELSE	
+			sv_m = "top-up deposit"
+		ENDIF
+		
+		MTT.Error.Description="Cannot upload a part tran to " + sv_m + " type of account: " + "[" + MTT.PartTranDetails.Account + "]" 
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+		goto ENDOFSCRIPT
+	#}	
+	ENDIF
+
+IF (BANCS.OUTPARAM.schmType == "LAA") THEN
+
+        IF ((strlen(MTT.InputDetails.inputRecordString) < 950) or (strlen(MTT.InputDetails.inputRecordString) > 954)) THEN
+                MTT.Error.Description=" LOAN Flow code has to be entered in the upload file [from 950 to 954]"
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                BANCS.OUTPUT.successOrFailure="F"
+                goto ENDOFSCRIPT
+        ENDIF
+
+        MTT.PartTranDetails.flow_id = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,949, 5)))
+
+        IF(MTT.PartTranDetails.flow_id == "") THEN
+                MTT.Error.Description=" FLOW CODE CANNOT BE NULL IN THE UPLOAD FORMAT"
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                BANCS.OUTPUT.successOrFailure="F"
+                goto ENDOFSCRIPT
+        ENDIF
+
+MTT.LAAddnlDetails.LoanAcctId = MTT.PartTranDetails.Account
+        sv_c = urhk_getAcctDetailsInRepository(MTT.LAAddnlDetails.LoanAcctId)
+            IF (sv_c != 0) THEN
+                MTT.Error.Description="Was not able to  get account details for "+ "[" +MTT.LAAddnlDetails.LoanAcctId + "]"
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                BANCS.OUTPUT.successOrFailure="F"
+            ENDIF
+
+        print(MTT.PartTranDetails.flow_id)
+        MTT.LAAddnlDetails.DemandFlowId = MTT.PartTranDetails.flow_id
+        MTT.LAAddnlDetails.OriginOfTran = "LAPAY"
+        MTT.LAAddnlDetails.TypeOfDemand = "A"
+        MTT.LAAddnlDetails.PrincipalAmt = "0"
+        MTT.LAAddnlDetails.InterestAmt  = "0"
+        MTT.LAAddnlDetails.BankChrgAmt  = "0"
+        MTT.LAAddnlDetails.OtherChrgAmt = "0"
+        MTT.LAAddnlDetails.DemandSatisfyFlg = "Y"
+        MTT.LAAddnlDetails.AdvancePaymentFlg = "N"
+ ENDIF
+
+	sv_m = urhk_B2k_valCashAccount(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Cannot have a part tran to system cash account " + "[" + MTT.PartTranDetails.Account + "]" 
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+	ENDIF
+
+	sv_m = urhk_B2k_valSystemAccount(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Upload of part trans to System Only Accounts not allowed " + "[" + MTT.PartTranDetails.Account + "]" 
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+	ENDIF
+
+	sv_m = urhk_B2k_valFCNRAccount(MTT.PartTranDetails.Account)
+	IF (sv_m != 0) THEN
+		MTT.Error.Description="Cannot be a Foreign currency account " + "[" + MTT.PartTranDetails.Account + "]" 
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+	ENDIF
+
+#	MTT.PartTranDetails.tran_crncy_code = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,16, 3)))
+#	MTT.PartTranDetails.sol_id = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,19, 8)))
+
+	MTT.InputDetails.partTranType = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,27, 1)))
+ 
+#   Validate Part Tran Type
+	IF ((MTT.InputDetails.partTranType != "C") AND (MTT.InputDetails.partTranType != "D")) THEN
+	   MTT.Error.Description="Invalid part tran type " + "[" + MTT.InputDetails.partTranType + "]" 
+       sv_r = urhk_MTTS_ReportErrorCondition("")
+		BANCS.OUTPUT.successOrFailure="F"  
+    ENDIF
+
+#	MTT.PartTranDetails.tran_amt = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,28, 17)))
+
+	MTT.PartTranDetails.Particulars = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,45, 30)))
+	
+	MTT.PartTranDetails.ReportCode = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,75, 5)))
+
+#   Validate Report Code
+	IF (MTT.PartTranDetails.ReportCode != "") THEN    
+		sv_y = "10" + "|" + MTT.PartTranDetails.ReportCode
+		sv_r = urhk_B2k_valRefCode(sv_y)  
+		IF (sv_r != 0) THEN
+            MTT.Error.Description="Invalid Report Code " + "[" + MTT.PartTranDetails.ReportCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+		ENDIF
+	ENDIF
+
+	MTT.PartTranDetails.Refnum = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,80, 20)))
+
+	MTT.PartTranDetails.InstrmntType = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,100, 5)))
+
+	MTT.InputDetails.InstrmntDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,105, 10)))
+
+#   Validate Instrument Date
+	
+	IF (MTT.InputDetails.InstrmntDate != "") THEN
+		sv_g = urhk_B2k_valDate(MTT.InputDetails.InstrmntDate)
+		IF (sv_g != 0) THEN
+			MTT.Error.Description="Invalid Instrument Date " + "[" + MTT.InputDetails.InstrmntDate + "]"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F" 
+		ELSE
+			sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.InstrmntDate)
+			sv_j = BANCS.OUTPARAM.DateDiff
+			IF (sv_j > 0) THEN
+				MTT.Error.Description="Instrument Date can not be greater then BOD date " + "[" + MTT.InputDetails.InstrmntDate + "]"
+               sv_r = urhk_MTTS_ReportErrorCondition("")
+               BANCS.OUTPUT.successOrFailure="F"
+            ENDIF
+			sv_m = urhk_getAcctDetailsInRepository(MTT.PartTranDetails.Account)
+           	BANCS.INPARAM.date1 = MTT.InputDetails.InstrmntDate
+           	BANCS.INPARAM.date2 = BANCS.OUTPARAM.acctOpenDate
+           	sv_r = urhk_B2k_dateDiff("")
+           	sv_j = BANCS.OUTPARAM.dateDiff
+           	IF (sv_j < 0) THEN
+            	MTT.Error.Description="Instrument Date can not be less then A/c open date " + "[" +MTT.InputDetails.InstrmntDate + "]"
+               	sv_r = urhk_MTTS_ReportErrorCondition("")
+                BANCS.OUTPUT.successOrFailure="F"
+			ENDIF
+		ENDIF
+	ELSE
+		IF (MTT.PartTranDetails.InstrmntType != "") THEN
+            MTT.Error.Description="Instrument date can not be NULL, as instrument type is entered"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+        ENDIF
+	ENDIF
+
+	MTT.PartTranDetails.InstrmntAlpha = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,115, 6)))
+
+	MTT.PartTranDetails.InstrmntNum = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,121, 16)))
+
+#	Validate Instrument Number
+	IF (MTT.PartTranDetails.InstrmntNum != "") THEN
+		sv_g = urhk_B2k_isStringNumeric(MTT.PartTranDetails.InstrmntNum)
+		IF (sv_g != 0) THEN
+			MTT.Error.Description="Invalid Instrument Number " + "[" + MTT.PartTranDetails.InstrmntNum  + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"
+		ENDIF
+		MTT.PartTranDetails.InstrmntNum = LPAD(MTT.PartTranDetails.InstrmntNum, 16, ' ')
+	ENDIF
+
+	MTT.HOAddnlDetails.HOTranType = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,137, 1)))
+
+#   Get & validate tran_paticular_code
+   MTT.PartTranDetails.ParticularsCode = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,954, 5)))
+
+   IF (MTT.PartTranDetails.ParticularsCode != "") THEN
+       sv_y = "DD" + "|" + MTT.PartTranDetails.ParticularsCode
+       sv_r = urhk_B2k_valRefCode(sv_y)
+       IF (sv_r != 0) THEN
+            MTT.Error.Description="Invalid Particular Code " + "[" + MTT.PartTranDetails.ParticularsCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+           BANCS.OUTPUT.successOrFailure="F"
+       ENDIF
+   ENDIF
+
+
+#   parse tran_particulars2
+   MTT.PartTranDetails.Particulars2 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,959, 50)))
+
+#	Validate HO Tran Type
+	IF (MTT.HOAddnlDetails.HOTranType != "") THEN
+		IF ((MTT.HOAddnlDetails.HOTranType != "O") AND (MTT.HOAddnlDetails.HOTranType != "R") AND (MTT.HOAddnlDetails.HOTranType != "X") AND (MTT.HOAddnlDetails.HOTranType != "A") AND (MTT.HOAddnlDetails.HOTranType != "P") ) THEN
+			MTT.Error.Description="Invalid Visit Screen Value Entered " + "[" + MTT.HOAddnlDetails.HOTranType + "]"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+		ENDIF
+	ENDIF
+
+	MTT.PartTranDetails.RefCurrency = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,155, 3)))
+
+#	Validate Ref Currency code
+	IF (MTT.PartTranDetails.RefCurrency != "") THEN    
+		sv_m = urhk_B2k_valCrncy(MTT.PartTranDetails.RefCurrency)
+		IF (sv_m != 0) THEN
+			MTT.Error.Description="Invalid Ref Currency Code " + "[" + MTT.PartTranDetails.RefCurrency + "]"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+		ENDIF
+	ELSE
+		MTT.PartTranDetails.RefCurrency = sv_w
+	ENDIF
+
+#	Validate Ref Amount
+
+	sv_b = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,138, 17)))
+	IF (sv_b == "") THEN
+		sv_b = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,28,17)))
+	ENDIF
+	sv_a = CDOUBLE(sv_b)
+	sv_y = sv_b + "|" + MTT.PartTranDetails.RefCurrency
+	sv_k = urhk_B2k_validateAmtWithCrncy(sv_y)
+	IF (sv_k != 0) THEN
+			MTT.Error.Description="Invalid Reference/Transaction Amount"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+    ENDIF
+
+	IF (MTT.InputDetails.partTranType == "C") THEN
+		MTT.PartTranDetails.RefAmount = sv_a
+	ELSE
+		MTT.PartTranDetails.RefAmount = -sv_a
+	ENDIF
+
+
+	MTT.PartTranDetails.RateCode = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,158, 5)))
+
+#   Validate Rate Code
+	IF (MTT.PartTranDetails.RateCode != "") THEN    
+		sv_y = "67" + "|" + MTT.PartTranDetails.RateCode
+		sv_r = urhk_B2k_valRefCode(sv_y)  
+		IF (sv_r != 0) THEN
+            MTT.Error.Description="Invalid Rate Code " + "[" + MTT.PartTranDetails.RateCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+		ENDIF
+	ENDIF
+
+#	Now get the rate
+    sv_b = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,163, 15)))
+    IF (sv_b == "") THEN
+        sv_b = "1"
+    ENDIF
+    MTT.PartTranDetails.Rate = CDOUBLE(sv_b)
+	MTT.InputDetails.ValueDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,178, 10)))
+
+#   Validate ValueDate
+	
+	IF (MTT.InputDetails.ValueDate != "") THEN
+		sv_g = urhk_B2k_valDate(MTT.InputDetails.ValueDate)
+		IF (sv_g != 0) THEN
+
+			MTT.Error.Description="Invalid Value Date " + "[" + MTT.InputDetails.ValueDate + "]"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+		ELSE
+			sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.ValueDate)
+			IF (sv_m != 0) THEN
+				MTT.Error.Description="Invalid Value Date " + "[" + MTT.InputDetails.ValueDate + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"  
+			ELSE
+				MTT.PartTranDetails.ValueDate = BANCS.OUTPARAM.DateDiff
+			ENDIF
+		ENDIF
+	ELSE
+		MTT.PartTranDetails.ValueDate = ""
+	ENDIF
+
+#	Validate the Account Currency and the Reference Currency for a CURRENCY HOLIDAY for the passed VALUE DATE
+
+# sv_n contains the currency cal implemented flag of GCT which is selected in
+# Ttumupload.scr  script
+print(sv_n)
+IF ( sv_n == "Y") THEN
+#{
+	print(sv_w)
+	print(BANCS.STDIN.homeCrncyCode)
+	IF ( BANCS.STDIN.homeCrncyCode != sv_w ) THEN
+	#{
+		BANCS.INPARAM.crncy_code    = sv_w
+		BANCS.INPARAM.schm_code     = sv_d
+		BANCS.INPARAM.diff			= MTT.PartTranDetails.ValueDate
+		print(BANCS.INPARAM.crncy_code)
+		print(BANCS.INPARAM.schm_code)
+		print(BANCS.INPARAM.diff)
+		sv_m = urhk_chkCrncyHoliday("")
+		print(sv_m)
+		IF ( sv_m != 0) THEN
+		#{
+			print(BANCS.OUTPARAM.flag)
+			IF ( BANCS.OUTPARAM.flag == "Y" ) THEN
+			#{
+				MTT.Error.Description="The user workclass is not sufficient and The Currency "
+				MTT.Error.Description= MTT.Error.Description + "[" + sv_w + "]" + " is on a Holiday"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ELSE
+			#{
+				MTT.Error.Description="The Currency " + "[" + sv_w + "]" + " is on a Holiday"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF (sv_w != MTT.PartTranDetails.RefCurrency) THEN
+	#{
+		print(MTT.PartTranDetails.RefCurrency)
+		IF ( BANCS.STDIN.homeCrncyCode != MTT.PartTranDetails.RefCurrency ) THEN
+		#{
+			BANCS.INPARAM.crncy_code    = MTT.PartTranDetails.RefCurrency
+			BANCS.INPARAM.schm_code     = sv_d
+			BANCS.INPARAM.diff			= MTT.PartTranDetails.ValueDate
+			sv_m = urhk_chkCrncyHoliday("")
+			print(sv_m)
+			IF ( sv_m != 0) THEN
+        	#{
+				print(BANCS.OUTPARAM.flag)
+        	    IF ( BANCS.OUTPARAM.flag == "Y" ) THEN
+        	    #{
+        	        MTT.Error.Description="The user workclass is not sufficient and The Reference Currency "
+        	        MTT.Error.Description= MTT.Error.Description + "[" + MTT.PartTranDetails.RefCurrency + "]" + " is on a Holiday"
+					print(MTT.Error.Description)
+        	        sv_r = urhk_MTTS_ReportErrorCondition("")
+        	        BANCS.OUTPUT.successOrFailure="F"
+        	    #}
+        	    ELSE
+        	    #{
+        	        MTT.Error.Description="The Reference Currency " + "[" + MTT.PartTranDetails.RefCurrency + "]" + " is on a Holiday"
+					print(MTT.Error.Description)
+        	        sv_r = urhk_MTTS_ReportErrorCondition("")
+        	        BANCS.OUTPUT.successOrFailure="F"
+        	    #}
+        	    ENDIF
+        	#}
+        	ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+MTT.PartTranDetails.CrncyHolChkFlg = "Y"
+#}
+ENDIF
+
+	MTT.InputDetails.GlDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,188, 10)))
+
+#   Validate GlDate
+
+	IF (MTT.InputDetails.GlDate != "") THEN
+	#{
+		sv_g = urhk_B2k_valDate(MTT.InputDetails.GlDate)
+		IF (sv_g != 0) THEN
+		#{
+			MTT.Error.Description="Invalid Gl Date " + "[" + MTT.InputDetails.GlDate + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+		#}	
+        ELSE
+		#{
+			sv_t = urhk_scrIsDcHoliday(MTT.InputDetails.GlDate)
+			sv_h = BANCS.OUTPARAM.IsDcHoliday
+			IF (sv_h == "Y") THEN
+			#{
+				MTT.Error.Description="DC Holiday marked for the GL Date" + "[" + MTT.InputDetails.GlDate + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"
+			#}
+			ELSE
+			#{
+				sv_k = urhk_scrlastsuccDcClsDate("")
+				IF (sv_k == 0) THEN
+				#{
+					BANCS.INPARAM.date1 = MTT.InputDetails.GlDate
+					BANCS.INPARAM.date2 = BANCS.OUTPARAM.LastSuccDcClsDate
+					sv_n = urhk_B2k_dateDiff("")
+					sv_j = BANCS.OUTPARAM.dateDiff
+					IF (sv_j <= 0) THEN
+					#{
+						MTT.Error.Description="GL Date can not be less than or equal to the last successful DC Closure Date " + "[" + MTT.InputDetails.GlDate + "]"
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						BANCS.OUTPUT.successOrFailure="F"
+					#}
+					ELSE
+					#{
+						sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.GlDate)
+						sv_h = BANCS.OUTPARAM.DateDiff
+						IF (sv_h > 0) THEN
+						#{
+							MTT.Error.Description="GL Date can not be greater than the BOD Date " + "[" + MTT.InputDetails.GlDate + "]"
+							sv_r = urhk_MTTS_ReportErrorCondition("")
+							BANCS.OUTPUT.successOrFailure="F"
+						#}
+						ELSE
+						#{
+							MTT.PartTranDetails.GlDate = BANCS.OUTPARAM.DateDiff
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		MTT.PartTranDetails.GlDate = ""
+	#}
+	ENDIF
+	
+	
+# Parse the HO Additional Details
+
+	IF ((MTT.HOAddnlDetails.HOTranType == "O") OR (MTT.HOAddnlDetails.HOTranType == "R") OR (MTT.HOAddnlDetails.HOTranType == "X") OR (MTT.HOAddnlDetails.HOTranType == "A") OR (MTT.HOAddnlDetails.HOTranType == "P") ) THEN
+
+		sv_m = urhk_B2k_valHOAccount(MTT.PartTranDetails.Account)
+		IF (sv_m != 0) THEN
+			MTT.Error.Description="Account should be a HO Account for this Visit Screen Flag Value "+ "[" + MTT.PartTranDetails.Account + "]"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+			goto ENDOFSCRIPT
+		ENDIF
+
+		IF (strlen(MTT.InputDetails.inputRecordString) < 639) THEN
+			MTT.Error.Description="HO Additional Details Not Entered"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+			goto ENDOFSCRIPT
+		ENDIF
+
+# Validate Category code
+		MTT.HOAddnlDetails.CategoryCode = MID$(MTT.InputDetails.inputRecordString,198, 5)
+		sv_v = sv_d + "|" + MTT.HOAddnlDetails.CategoryCode
+        sv_a = urhk_B2k_valHoTranCode(sv_v)
+        IF(sv_a != 0) THEN
+            MTT.Error.Description="Invalid Category Code" + "[" + MTT.HOAddnlDetails.CategoryCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+            goto ENDOFSCRIPT
+        ENDIF
+	
+#bank code can contain leading space , so doing only RTRIM
+		MTT.HOAddnlDetails.ToFromBankCode = RTRIM(MID$(MTT.InputDetails.inputRecordString,203, 6))
+
+
+#   Validate Bank Code
+        sv_a = urhk_B2k_valBankCode(MTT.HOAddnlDetails.ToFromBankCode)
+        IF(sv_a != 0 ) THEN
+            MTT.Error.Description="Invalid To-from Bank code " + "[" + MTT.HOAddnlDetails.ToFromBankCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+            goto ENDOFSCRIPT
+        ENDIF
+
+
+#branch code can contain leading space , so doing only RTRIM
+		MTT.HOAddnlDetails.ToFromBranchCode = RTRIM(MID$(MTT.InputDetails.inputRecordString,209, 6))
+
+#   Validate Branch Code
+        sv_a = MTT.HOAddnlDetails.ToFromBankCode + "|" + MTT.HOAddnlDetails.ToFromBranchCode
+        sv_b = urhk_B2k_valBankBranchCode(sv_a)
+        IF(sv_b != 0 ) THEN
+            MTT.Error.Description ="Invalid To-from Bank Code " + "[" + MTT.HOAddnlDetails.ToFromBankCode + "] " + "To-from Branch code "+ "[" + MTT.HOAddnlDetails.ToFromBranchCode + "]"
+            sv_r = urhk_MTTS_ReportErrorCondition("")
+            BANCS.OUTPUT.successOrFailure="F"
+            goto ENDOFSCRIPT
+        ENDIF
+
+		MTT.HOAddnlDetails.AdvcExtnCntrCode = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,215, 2)))
+		MTT.HOAddnlDetails.AdviceInd = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,217, 1)))
+
+
+
+	
+
+#  Validate HO Advice Ind
+IF (MTT.HOAddnlDetails.AdviceInd != "") THEN
+    IF ((MTT.HOAddnlDetails.AdviceInd != "M") AND (MTT.HOAddnlDetails.AdviceInd != "S") AND (MTT.HOAddnlDetails.AdviceInd != "W") AND (MTT.HOAddnlDetails.AdviceInd != "C") ) THEN
+        MTT.Error.Description="Invalid Advice Indicator Value Entered " + "[" + MTT.HOAddnlDetails.AdviceInd + "]"
+        sv_r = urhk_MTTS_ReportErrorCondition("")
+        BANCS.OUTPUT.successOrFailure="F"
+    #   goto ENDOFSCRIPT
+    ENDIF
+     ENDIF
+	
+		IF ((MTT.HOAddnlDetails.AdviceInd == "S") AND (MTT.HOAddnlDetails.HOTranType == "O")) THEN
+			MTT.HOAddnlDetails.AdviceNumber = ""
+		ELSE
+			MTT.HOAddnlDetails.AdviceNumber = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,218, 12)))
+		ENDIF
+
+		MTT.InputDetails.BarAdviceDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,230, 10)))
+
+#   	Validate BarAdviceDate
+		IF (MTT.InputDetails.BarAdviceDate != "") THEN
+			sv_g = urhk_B2k_valDate(MTT.InputDetails.BarAdviceDate)
+			IF (sv_g != 0) THEN
+				MTT.Error.Description="Invalid Bar Advice Date " + "[" + MTT.InputDetails.BarAdviceDate + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"  
+			ELSE
+				sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.BarAdviceDate) 
+				IF (sv_m != 0) THEN
+					MTT.Error.Description="Invalid Bar Advice Date " + "[" + MTT.InputDetails.BarAdviceDate + "]"
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					BANCS.OUTPUT.successOrFailure="F"  
+				ELSE
+					MTT.HOAddnlDetails.BarAdviceDate = BANCS.OUTPARAM.DateDiff
+				ENDIF
+			ENDIF
+		ELSE
+			MTT.HOAddnlDetails.BarAdviceDate = ""
+		ENDIF
+	
+		MTT.HOAddnlDetails.BillNumber = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,240, 20)))
+		MTT.HOAddnlDetails.HeaderTextCode = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,260, 5)))
+
+		#   Validate Header Text Code
+		IF (MTT.HOAddnlDetails.HeaderTextCode != "") THEN
+			sv_y = "26" + "|" + MTT.HOAddnlDetails.HeaderTextCode
+			sv_r = urhk_B2k_valRefCode(sv_y)
+			IF (sv_r != 0) THEN
+				MTT.Error.Description="Invalid Header Text Code " + "[" + MTT.HOAddnlDetails.HeaderTextCode + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"
+			ENDIF
+		ENDIF
+
+		MTT.HOAddnlDetails.HeaderFreeText = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,265,30)))
+		MTT.HOAddnlDetails.Particular1 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,295,40)))
+		MTT.HOAddnlDetails.Particular2 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,335,40)))
+		MTT.HOAddnlDetails.Particular3 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,375,40)))
+		MTT.HOAddnlDetails.Particular4 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,415,40)))
+		MTT.HOAddnlDetails.Particular5 = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,455,40)))
+		MTT.HOAddnlDetails.amtLine1 = CDOUBLE(LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,495,17))))
+		MTT.HOAddnlDetails.amtLine2 = CDOUBLE(LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,512,17))))
+		MTT.HOAddnlDetails.amtLine3 = CDOUBLE(LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,529,17))))
+		MTT.HOAddnlDetails.amtLine4 = CDOUBLE(LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,546,17))))
+		MTT.HOAddnlDetails.amtLine5 = CDOUBLE(LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,563,17))))
+		MTT.HOAddnlDetails.BatRemarks = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,580,30)))
+		MTT.HOAddnlDetails.PayeAcct = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,610,16)))
+		MTT.HOAddnlDetails.RecvAdvcNum = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,626,12)))
+		
+		MTT.InputDetails.RecvAdvcDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,638,10)))
+
+#   	Validate RecvAdvcDate
+		IF (MTT.InputDetails.RecvAdvcDate != "") THEN
+			sv_g = urhk_B2k_valDate(MTT.InputDetails.RecvAdvcDate)
+			IF (sv_g != 0) THEN
+				MTT.Error.Description="Invalid Received Bar/Advc Date " + "[" + MTT.InputDetails.RecvAdvcDate + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"  
+			ELSE
+				sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.RecvAdvcDate) 
+				IF (sv_m != 0) THEN
+					MTT.Error.Description="Invalid Received Bar/Advc Date " + "[" + MTT.InputDetails.RecvAdvcDate + "]"
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					BANCS.OUTPUT.successOrFailure="F"  
+				ELSE
+					MTT.HOAddnlDetails.RecvAdvcDate = BANCS.OUTPARAM.DateDiff
+				ENDIF
+			ENDIF
+		ELSE
+			MTT.HOAddnlDetails.RecvAdvcDate = ""
+		ENDIF
+	
+	ENDIF
+
+# Parse the HO Reversal Details
+
+	IF (MTT.HOAddnlDetails.HOTranType == "X") THEN
+
+		IF (strlen(MTT.InputDetails.inputRecordString) < 674) THEN
+			MTT.Error.Description="HO Reversal Details Not Entered"
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			BANCS.OUTPUT.successOrFailure="F"  
+			goto ENDOFSCRIPT
+		ENDIF
+
+		MTT.InputDetails.OrgTranDate = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,648,10)))
+
+#   	Validate OrgTranDate
+		IF (MTT.InputDetails.OrgTranDate != "") THEN
+			sv_g = urhk_B2k_valDate(MTT.InputDetails.OrgTranDate)
+			IF (sv_g != 0) THEN
+				MTT.Error.Description="Invalid Original Tran Date " + "[" + MTT.InputDetails.OrgTranDate + "]"
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				BANCS.OUTPUT.successOrFailure="F"  
+			ELSE
+				sv_m = urhk_B2k_getDateDiffFromBODDate(MTT.InputDetails.OrgTranDate) 
+				IF (sv_m != 0) THEN
+					MTT.Error.Description="Invalid Original Tran Date " + "[" + MTT.InputDetails.OrgTranDate + "]"
+					sv_r = urhk_MTTS_ReportErrorCondition("")
+					BANCS.OUTPUT.successOrFailure="F"  
+				ELSE
+					MTT.HOAddnlDetails.OrgTranDate = BANCS.OUTPARAM.DateDiff
+				ENDIF
+			ENDIF
+		ELSE
+			MTT.HOAddnlDetails.OrgTranDate = ""
+		ENDIF
+	
+		MTT.HOAddnlDetails.OrgTranId = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,658,9)))
+		MTT.HOAddnlDetails.OrgPTranSrlNum = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,667,4)))
+
+#		MTT.HOAddnlDetails.free_text = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,671,256)))
+
+	ENDIF
+#
+
+# This piece fo code deals with making the entry in ACPART table.
+# Valid only for entity types "ACCNT", "LOANS","DOCCR", "BNKGR","FWC", "FBILL", "IBILL"
+# First checks  whether the account schm_type is "OAB" and then it is partitioned or not th
+# en proceed further.
+
+    IF (sv_x == "OAB") THEN
+        IF ( (sv_p == "Y") AND (strlen(MTT.InputDetails.inputRecordString) > 928)) THEN
+            sv_s = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString,19, 8)))
+            #print(sv_s)
+
+            sv_t = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString, 928, 16)))
+            #print(sv_t)
+
+            sv_f = LTRIM(RTRIM(MID$(MTT.InputDetails.inputRecordString, 944, 5)))
+            #print(sv_f)
+
+            IF (sv_f == "LOANS") THEN
+                MTT.LAAddnlDetails.LoanAcctId = sv_t
+                #print(MTT.LAAddnlDetails.LoanAcctId)
+                sv_j = urhk_getAcctDetailsInRepository(MTT.LAAddnlDetails.LoanAcctId)
+                IF (sv_j != 0) THEN
+                    MTT.Error.Description="Could not get account details for "+ "[" +MTT.LAAddnlDetails.LoanAcctId + "]"
+                    sv_r = urhk_MTTS_ReportErrorCondition("")
+                    BANCS.OUTPUT.successOrFailure="F"
+                ENDIF
+
+                BANCS.INPARAM.schmCode = BANCS.OUTPARAM.schmCode
+                #print(BANCS.INPARAM.schmCode)
+                BANCS.INPARAM.ToCurrency = BANCS.OUTPARAM.acctCrncyCode
+				BANCS.INPARAM.LoanAcctId = MTT.LAAddnlDetails.LoanAcctId
+				
+                sv_l = urhk_getLoanSchmDetailsInRepository("")
+                IF (sv_l != 0) THEN
+                    MTT.Error.Description="Could not get Loan Account scheme details for "+ "[" + MTT.LAAddnlDetails.LoanAcctId + "]"
+                    sv_r = urhk_MTTS_ReportErrorCondition("")
+                    BANCS.OUTPUT.successOrFailure="F"
+                ENDIF
+
+                MTT.LAAddnlDetails.DemandFlowId=BANCS.OUTPARAM.DefltCollFlowId
+                MTT.LAAddnlDetails.OriginOfTran = "TTUM"
+                MTT.LAAddnlDetails.TypeOfDemand = "A"
+                #print(BANCS.OUTPARAM.DefltCollFlowId)
+                #print(MTT.LAAddnlDetails.DemandFlowId)
+            ENDIF
+
+            sv_h = sv_s + "|" + sv_t + "|" + sv_f
+
+            IF ((sv_f == "IBILL") OR (sv_f == "FBILL") OR (sv_f=="DOCCR") OR (sv_f=="FWC") OR (sv_f=="BNKGR")) THEN
+            sv_q = urhk_getB2kIdForEventId(sv_h)
+                IF (sv_q != 0) THEN
+                    MTT.Error.Description="Invalid Event Type/Id"
+                    sv_r = urhk_MTTS_ReportErrorCondition("")
+                    BANCS.OUTPUT.successOrFailure="F"
+                    goto ENDOFSCRIPT
+                ENDIF
+            sv_t = BANCS.OUTPARAM.eventB2kId
+            ENDIF
+
+                MTT.PartTranDetails.ACPARTB2kId = sv_t
+                #print(MTT.PartTranDetails.ACPARTB2kId)
+
+                MTT.PartTranDetails.ACPARTB2kType = sv_f
+                #print(MTT.PartTranDetails.ACPARTB2kType)
+        ENDIF
+    ENDIF
+#Parsing complete
+ENDOFSCRIPT:
+exitscript
+#trace off
+end-->

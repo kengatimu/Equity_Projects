@@ -1,0 +1,173 @@
+#==========================================================================
+# Name                                  :   SMS_INCOME_SPLIT.scr 
+# Date                                  :   01-aug-2023
+# Description                           :   EXCISE and PAYBLE   
+# Input                                 :    <none>
+# Output                                :    <none>
+# Called Scripts                        :    <none>
+# Calling Script                        :    <none>
+# Reference                             :
+# ModIFication History           :
+#  <Serial No.>     <Date>         <AuthorName>          <Description>
+#      1.0       01-aug-2023        Anand Pansare              Base version
+#--------------------------------------------------------------------------
+
+<--start
+trace on
+
+        sv_r = REPEXISTS("CUST")
+        IF (sv_r == 0) THEN
+        #{
+	 CREATEREP("CUST")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST", "DATA")
+        IF (sv_r == 0) THEN
+        #{
+	 CREATECLASS("CUST", "DATA", 5)
+        #}
+        ENDIF
+	
+	CUST.DATA.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	CUST.DATA.SOL_ID = BANCS.STDIN.mySolId
+
+	PRINT(CUST.DATA.BODDate) 
+	
+	#=================================================#
+	#   Getting Last Working Day  
+	#=================================================#
+		
+	sv_s = "dc_cls_date|select dc_cls_date from tbaadm.gct where bank_id = '"+BANCS.STDIN.contextBankId+"' "
+	print(sv_s)
+
+	sv_a = urhk_dbSelectWithBind(sv_s)
+	if (sv_a == 0) then
+		CUST.DATA.dc_cls_date   = BANCS.OUTPARAM.dc_cls_date
+	else
+		CUST.DATA.dc_cls_date  	= MID$(BANCS.STDIN.BODDate,0,10) 
+	endif
+
+	CUST.DATA.dc_cls_date = "23-05-2023"
+        PRINT(CUST.DATA.dc_cls_date)
+
+        #=================================================#
+        #   Getting Last Working Day
+        #=================================================#
+
+        sv_s = "count|"
+	sv_s = sv_s + " select count(*) "
+	sv_s = sv_s + " from custom.sms_income_split_tbl"
+	sv_s = sv_s + " where tran_date = to_date('"+CUST.DATA.dc_cls_date+"','DD-MM-YYYY')"
+	#sv_s = sv_s + " and batch_tran_id is null "
+	#sv_s = sv_s + " and batch_tran_date is null"
+	sv_s = sv_s + " and bank_id  = '"+BANCS.STDIN.contextBankId+"'"
+	
+        print(sv_s)
+
+        sv_a = urhk_dbSelectWithBind(sv_s)
+        if (sv_a == 0) then
+                CUST.DATA.count   = BANCS.OUTPARAM.count
+        else
+                CUST.DATA.count   = CINT("0")
+        endif
+
+        PRINT(CUST.DATA.count)
+
+		
+	IF(CUST.DATA.count>0) THEN 
+	#{
+		print("DATA POPULATED ALREDY")
+	ELSE
+		sv_s = "opt|select custom.fn_sms_income_ins('"+CUST.DATA.dc_cls_date+"','"+BANCS.STDIN.contextBankId+"') from dual"
+		print(sv_s)
+
+		sv_a = urhk_dbSelectWithBind(sv_s)
+		if (sv_a == 0) then
+			CUST.DATA.opt   = BANCS.OUTPARAM.opt
+		else
+			CUST.DATA.opt   = CINT("1")
+		endif
+		
+	#}
+	ENDIF
+
+	#===================================================#
+	# Selction of of records to create transaction 
+	#===================================================#
+		sv_s = "sol_id,tot_payble,tot_excise,dr_acct_income,cr_acct_payble,cr_acct_excise|"
+		sv_s = sv_s + " select sol_id,tot_payble,tot_excise,"
+		sv_s = sv_s + " (select foracid  from tbaadm.gam  where bank_id = s.bank_id and gam.sol_id =s.sol_id  and acct_crncy_code ='KES' and bacid = 'SMSNOTBRANCH') as dr_acct,"
+		sv_s = sv_s + " (select foracid  from tbaadm.gam  where bank_id = s.bank_id and gam.sol_id =s.sol_id and acct_crncy_code ='KES' and bacid = 'STKPAYB') as cr_payble,"
+		sv_s = sv_s + " (select foracid  from tbaadm.gam  where bank_id =s.bank_id and gam.sol_id =s.sol_id  and acct_crncy_code ='KES' and bacid = 'EXCISEDUTY') as cr_excise"
+		sv_s = sv_s + " from custom.sms_income_split_tbl s "
+		sv_s = sv_s + " where tran_date = to_date('"+CUST.DATA.dc_cls_date+"','DD-MM-YYYY') "
+		sv_s = sv_s + " and batch_tran_id is null "
+		sv_s = sv_s + " and batch_tran_date is null "
+		sv_s = sv_s + " and bank_id  = '"+BANCS.STDIN.contextBankId+"' "	
+
+		print(sv_s)
+		sv_u = urhk_dbCursorOpenWithBind(sv_s)
+	
+		IF (sv_u == 0) THEN
+                #{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			print(sv_m)
+			sv_r = urhk_dbCursorFetch(sv_m)
+			print(sv_r)
+
+			WHILE (sv_r == 0)
+			#{
+				CUST.DATA.sol_id 		= BANCS.OUTPARAM.sol_id
+				CUST.DATA.tot_payble 	   	= BANCS.OUTPARAM.tot_payble
+				CUST.DATA.tot_excise 		= BANCS.OUTPARAM.tot_excise
+				CUST.DATA.dr_acct_income 	= BANCS.OUTPARAM.dr_acct_income
+				CUST.DATA.cr_acct_payble 	= BANCS.OUTPARAM.cr_acct_payble
+				CUST.DATA.cr_acct_excise 	= BANCS.OUTPARAM.cr_acct_excise
+				CUST.DATA.tran_crncy_code	= "KES"
+				CUST.DATA.partcls		= "SMS INCOME "+ CUST.DATA.sol_id
+				CUST.DATA.remarks		= CUST.DATA.dc_cls_date
+			
+				CUST.DATA.TRAN_ID = ""
+				CUST.DATA.Error_Description = ""
+				
+				call("SMS_INCOME_SPLIT_MTT.scr")
+				IF(CUST.DATA.TRAN_ID != "")THEN
+				#{
+					print(CUST.DATA.TRAN_ID)
+
+					lv_a = ""
+					lv_a = lv_a + " update  custom.sms_income_split_tbl "
+					lv_a = lv_a + " set batch_tran_id = '"+CUST.DATA.TRAN_ID+"', "
+					lv_a = lv_a + " batch_tran_date = to_date('"+MID$(BANCS.STDIN.BODDate,0,10)+"','DD-MM-YYYY') "
+					lv_a = lv_a + " where tran_date = to_date('"+CUST.DATA.dc_cls_date+"','DD-MM-YYYY') "
+					lv_a = lv_a + " and sol_id ='"+CUST.DATA.sol_id+"' "
+					lv_a = lv_a + " and batch_tran_id is null  "
+					lv_a = lv_a + " and batch_tran_date is null "	
+
+					PRINT(lv_a)
+					sv_a = urhk_dbSQLWithBind(lv_a)
+
+					PRINT(sv_a)
+					IF (sv_a == "0") THEN
+					#{
+						sv_a = urhk_dbSQLWithBind("COMMIT")
+					ELSE
+						sv_a = urhk_dbSQLWithBind("ROLLBACK")
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+				sv_r = urhk_dbCursorFetch(sv_m)
+				print(sv_r)
+			#}
+			DO
+			sv_r = urhk_dbCursorClose(sv_m)
+			print(sv_r)
+		#}
+		ENDIF
+
+exitscript
+TRACE OFF
+END-->	

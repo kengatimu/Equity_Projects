@@ -1,0 +1,399 @@
+########################################################################################
+#   Source Name    			: rtgsupldmn002.scr
+#	Author         			: Saurabh Sinha
+#	Date					: 09-MAY-13
+#	Title					:
+#   Description    			:
+#   Input          			:
+#   Output         			:
+#   Calling script 			:
+#   Called  Script 			: NA
+#	RS Approach Document	:
+#	Design Document		:
+#   Modification History	:
+#   <Serial No.>     <Date>         <Author Name>           <Description>
+#		0.00a		09-May-13		Saurabh Sinha			Original version
+#		0.00b		27-Jul-13		Bharath					Modified for csv input file
+#		0.00c		13-Aug-13		Priyansh			Modified for TOL:361668
+#
+#########################################################################################
+<--START
+CHECKSUM="ca6fb471b5944fc889e658b097e4bb52386ebe6951048f9906607f64e770248d"
+	TRACE ON
+	LIBNAME CUSTOMSO
+	#=======================================================================================*
+	# Create repository and class
+	#=======================================================================================*
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CATOD") == 0) THEN
+	#{
+		CREATECLASS("CUST","CATOD",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	#------------------------------------------------------------
+	# Initialiizing required variables
+	#------------------------------------------------------------
+	CUST.CATOD.errMsg = ""
+	
+	#-----------------------------------------------------------------
+	# Getting Values From FrontEnd
+	#-----------------------------------------------------------------
+	CUST.CATOD.fileName 	= 	BANCS.INPUT.fileName
+	CUST.CATOD.Function 	=	BANCS.INPUT.funcCode
+	CUST.CATOD.userWorkClass	=	BANCS.STDIN.userWorkClass
+	print(CUST.CATOD.fileName)
+	print(CUST.CATOD.Function)
+	
+	#-----------------------------------------------------------
+	#Fetching valid Workclass:
+	#-----------------------------------------------------------
+	IF (CUST.CATOD.Function=="XX") THEN
+	#{
+		BANCS.INPUT.moduleName = "CATODSCORE"
+		BANCS.INPUT.parameterId = "WRKCLS"
+		CALL("getcparamvalue.scr")
+		
+		IF (BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			print(BANCS.OUTPUT.parameterVal)
+			sv_l = STRLEN(BANCS.OUTPUT.parameterVal)
+			print(sv_l)
+			CUST.CATOD.wrkCls=BANCS.OUTPUT.parameterVal
+			print(CUST.CATOD.wrkCls)
+			WHILE(sv_l > 0)
+			#{
+				sv_g = GETPOSITION(CUST.CATOD.wrkCls,",")
+				print(sv_g)
+				IF (sv_g == 0) THEN
+				#{
+					CUST.CATOD.classValue = CUST.CATOD.wrkCls
+					print(CUST.CATOD.classValue)
+					CUST.CATOD.wrkCls = ""
+					#}
+				ELSE
+					#{
+					CUST.CATOD.classValue = TRIM(MID$(CUST.CATOD.wrkCls,0,sv_g - 1))
+					CUST.CATOD.wrkCls = MID$(CUST.CATOD.wrkCls,sv_g,sv_l)
+				#}
+				ENDIF
+				print(CUST.CATOD.classValue)
+				IF (CUST.CATOD.userWorkClass == CUST.CATOD.classValue) THEN
+				#{
+					GOTO VALIDATED
+				#}
+				ENDIF
+				print(CUST.CATOD.wrkCls)
+				sv_l = STRLEN(CUST.CATOD.wrkCls)
+				print(sv_l)
+				IF (sv_l == 0) THEN
+				#{
+					sv_e = "Workclass is not sufficient for this operation. Use Inquiry Function."
+					sv_m = "fileName"
+					CUST.CATOD.errMsg  = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+					print(CUST.CATOD.errMsg)
+					GOTO FAILURE
+				#}
+				ENDIF
+			#}
+			DO
+			#}
+		ELSE
+			#{
+			CUST.CATOD.errMsg = "Work Class set up is not done in CPARAM"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	VALIDATED:
+		IF (CUST.CATOD.Function=="U") THEN
+		#{
+			
+			call("rtgsuplddp001.scr")
+			IF (CUST.CATOD.errMsg != "") THEN
+			#{
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "funcCode"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			CUST.CATOD.headOfficeSolId = CUST.CPARAM.homeSolId
+			
+			print(CUST.CATOD.headOfficeSolId)
+			print(BANCS.STDIN.mySolId)
+			
+			IF (BANCS.STDIN.mySolId != CUST.CATOD.headOfficeSolId)  THEN
+			#{
+				CUST.CATOD.errMsg = "Upload can be done only from head office"
+				sv_e = CUST.CATOD.errMsg
+				sv_m = "funcCode"
+				sv_e = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+				sv_u = urhk_SetOrbOut(sv_e)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#=============================================================
+		# Quert to get only file name ( with out path )
+		#=============================================================
+		sv_s = "fileName1 |"
+		sv_s = sv_s + " SELECT SUBSTR('"+ CUST.CATOD.fileName +"',instr('"+ CUST.CATOD.fileName +"' ,'\',-1)+1) "
+		sv_s = sv_s + " FROM DUAL "
+		print(sv_s)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.CATOD.fileName1 = BANCS.OUTPARAM.fileName1
+			print(CUST.CATOD.fileName1)
+			#}
+		ELSE
+			#{
+			sv_e = "File is Missing"
+			sv_m = "fileName"
+			CUST.CATOD.errMsg = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+			print(CUST.CATOD.errMsg)
+			GOTO FAILURE
+		#}
+		ENDIF
+		
+		#=============================================================
+		# Query to check valid extensions(.csv and .txt)
+		#=============================================================
+		print(CUST.CATOD.fileName1)
+		sv_b = "."
+		sv_c = getposition(CUST.CATOD.fileName1, sv_b)
+		print(sv_c)
+		IF (sv_c!=CINT("0")) THEN
+		#{
+			sv_z = STRLEN(CUST.CATOD.fileName1)
+			print(sv_z)
+			sv_e = MID$(CUST.CATOD.fileName1,sv_c,sv_z)
+			print(sv_e)
+			CUST.CATOD.extn = sv_e
+			print(CUST.CATOD.extn)
+		#}
+		ENDIF
+		
+		IF((CUST.CATOD.extn == "csv") OR (CUST.CATOD.extn == "txt") OR (CUST.CATOD.extn == "CSV") OR (CUST.CATOD.extn == "TXT")) THEN
+		#{
+			print("extensions of filename is correct")
+			#}
+		ELSE
+			#{
+			sv_e = "Sorry.., Please enter only csv/txt extension file for uploading"
+			sv_m = "fileName"
+			CUST.CATOD.errMsg  = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+			print(CUST.CATOD.errMsg)
+			GOTO FAILURE
+		#}
+		ENDIF
+
+
+
+CUST.CATOD.fileNameX = "TMP_" + CUST.CATOD.fileName1
+
+IF (CUST.CATOD.Function=="VU") THEN 
+	sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.PORDM_MER where BANK_ID ='"+BANCS.STDIN.contextBankId+"' and FILE_NAME='"+CUST.CATOD.fileNameX+"'")
+	CUST.CATOD.count               =       BANCS.OUTPARAM.count
+	IF(CUST.CATOD.count<1)THEN
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|File name Doesn't Exists"
+		sv_z = urhk_SetOrbOut(sv_g)
+		PRINT(sv_z)
+		GOTO ENDOFSCRIPT
+	ENDIF
+	sv_s = "  update custom.PORDM_MER set PSTD_USER_ID = ?SVAR , PSTD_DATE = sysdate , ENTITY_CRE_FLG ='N' where FILE_NAME = ?SVAR  and BANK_ID =?SVAR  and ENTITY_CRE_FLG= 'M' "
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.userId  +"|"+  CUST.CATOD.fileNameX + "|" + BANCS.STDIN.contextBankId 
+	print(BANCS.INPARAM.BINDVARS)
+	print(sv_s)
+	sv_d=urhk_dbSqlWithBind(sv_s)
+	IF (sv_d == 0)  THEN
+		sv_d = urhk_dbSQLWithBind("COMMIT")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|Success Verifications of Pending records"
+		sv_z = urhk_SetOrbOut(sv_g)
+		PRINT(sv_z)
+		GOTO ENDOFSCRIPT
+	ELSE
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|Verification of Pending records Failed or No pending records for verification."
+		sv_z = urhk_SetOrbOut(sv_g)
+		PRINT(sv_z)
+		GOTO ENDOFSCRIPT
+	ENDIF
+GOTO ENDOFSCRIPT
+ENDIF
+
+IF(CUST.CATOD.Function == "IU")THEN
+	sv_z = urhk_dbSelectWithBind("count|select count(*) from custom.PORDM_MER where BANK_ID ='"+BANCS.STDIN.contextBankId+"' and FILE_NAME='"+CUST.CATOD.fileNameX+"'")
+	CUST.CATOD.count               =       BANCS.OUTPARAM.count
+	IF(CUST.CATOD.count<1)THEN
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|File name Doesn't Exists"
+		sv_z = urhk_SetOrbOut(sv_g)
+		PRINT(sv_z)
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	lv_d = urhk_B2k_PID("")
+	IF (lv_d == 0) THEN
+		CUST.CATOD.pid = BANCS.OUTPARAM.PID
+		PRINT(CUST.CATOD.pid)
+	ENDIF
+
+	#-----------------------------------------------------------------------------------------
+	#Calling the sql to create the report
+	#-----------------------------------------------------------------------------------------
+	CUST.CATOD.lstFile = "Rtgs_Upload_Report_"+CUST.CATOD.pid+"_"+MID$(BANCS.STDIN.BODDate,0,10)+".lst"
+
+	CUST.CATOD.inputStr = CUST.CATOD.fileNameX
+	print(CUST.CATOD.inputStr)
+
+	CUST.CATOD.ReportHeader = "FORACID|CURR_SCHM|TARGET_SCHM|DETAILS|"
+
+	lv_a = "echo " + '"' + CUST.CATOD.ReportHeader + '"' + " > " + CUST.CATOD.lstFile
+	PRINT(lv_a)
+	lv_s = SYSTEM(lv_a)
+	PRINT(lv_s)
+
+	sv_a = "exebatch spbx4001" + " " + "CUSTOM.RTGS_UPLOAD.RTGS_UPLOAD_PROC" + " '" + CUST.CATOD.inputStr +"'>>" + CUST.CATOD.lstFile
+	PRINT(sv_a)
+	lv_u = SYSTEM(sv_a)
+	PRINT(lv_u)
+	IF (lv_u != 0) THEN
+	#{
+		CUST.CATOD.errMsg = "Report generation Failed"
+		sv_c = urhk_setorbout("SuccessOrFailure|N")
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CATOD.errMsg)
+		GOTO ENDOFSCRIPT
+	ELSE
+		#=====================================================================
+		# Move the file to HPR menu
+		#=====================================================================
+		CUST.CATOD.userId = BANCS.STDIN.userId
+		CUST.CATOD.title = "Rtgs Upload REPORT For "+CUST.CATOD.fileName1
+		PRINT(CUST.CATOD.title)
+		lv_a = "exebatch babx4040 $B2K_SESSION_ID '" + CUST.CATOD.lstFile + "' '" +CUST.CATOD.title + "' '" + CUST.CATOD.userId + "' '1' N"
+		PRINT(lv_a)
+		lv_x = SYSTEM(lv_a)
+		PRINT(lv_x)
+		if(lv_x == 0) then
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Report generation Process Initiated Successfully For the file "+CUST.CATOD.fileName1+". Check status in HPR"
+			sv_z = urhk_SetOrbOut(sv_g)
+			PRINT(sv_z)
+		ELSE
+			CUST.CATOD.msg = "Error_2|Error.2^Report Generation Failed "
+			sv_c = urhk_setorbout("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CATOD.msg)
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		ENDIF
+	ENDIF
+GOTO ENDOFSCRIPT
+ENDIF
+
+
+
+
+
+
+		
+		#=============================================================
+		# Calling script for transfering the file from Client PC to UNIX server
+		#=============================================================
+		call("rtgsuplddp004.scr")
+		
+		sv_j = " sleep 20 "
+		PRINT(sv_j)
+		sv_g = SYSTEM(sv_j)
+		PRINT(sv_g)
+		
+		#=============================================================
+		# CSV temp file creation
+		#=============================================================
+		IF((CUST.CATOD.extn == "csv") OR (CUST.CATOD.extn == "CSV")) THEN
+		#{
+			CUST.CATOD.fileName2 = "TMP_" + CUST.CATOD.fileName1
+			sv_s = "sed 's/,/|/g' " + CUST.CATOD.fileName1 + " > " + CUST.CATOD.fileName2
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			CUST.CATOD.fileName1 = CUST.CATOD.fileName2
+		#}
+		ENDIF
+		
+		#=================================================================================*
+		#	Start Reading the CSV file
+		#=================================================================================*
+		print(CUST.CATOD.fileName1)
+		sv_o = urtn_fileOpen(CUST.CATOD.fileName1 + "|r")
+		print(sv_o)
+		
+		
+		IF (sv_o == 0) THEN
+		#{
+			sv_o = urtn_fileClose(sv_o)
+			print(sv_o)
+			sv_s = "babx4061 $B2K_SESSION_ID rtgsuplddp002.scr"
+			sv_s = sv_s + " '" + CUST.CATOD.fileName1 + "'"
+			sv_s = sv_s + " '" + CUST.CATOD.Function + "'"
+			sv_s = sv_s + " @s &"
+			print(sv_s)
+			sv_x = system(sv_s)
+			print(sv_x)
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			print(sv_z)
+			sv_z = "RESULT_MSG|Upload Process Initiated Success fully - Check status in HPR after some time "
+			print(sv_z)
+			sv_u = urhk_SetOrbOut(sv_z)
+			print(sv_u)
+			GOTO ENDOFSCRIPT
+			#}
+		ELSE
+			#{
+			sv_e = "Sorry.., Please enter only csv/txt extension file for uploading"
+			sv_m = "fileName"
+			CUST.CATOD.errMsg = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+			print(CUST.CATOD.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	FAILURE:
+		sv_z = "SuccessOrFailure|N"
+		print(sv_z)
+		sv_u = urhk_SetOrbOut(sv_z)
+		print(sv_u)
+		sv_z = CUST.CATOD.errMsg
+		print(sv_z)
+		sv_u = urhk_SetOrbOut(sv_z)
+		print(sv_u)
+		
+	ENDOFSCRIPT:
+		
+		#TRACE OFF
+		EXITSCRIPT
+		END -->
+		
+		

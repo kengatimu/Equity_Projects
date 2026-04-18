@@ -1,0 +1,101 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Name                   : b_hracoworkflow.scr
+#   Date                   : 20-sep-2019
+#   Description            :
+#   JobId                  : ERACO
+#   Input                  :
+#   Output                 :
+#   Author                 : Timothy Karemeri
+#   Called Script          : b_hracoVerify.scr
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Modification History   :
+#
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+	sv_a = "rm -f eraco.list" 
+	sv_a = system(sv_a)
+	sv_a = "touch eraco.list" 
+	sv_a = system(sv_a)
+
+	sv_d = "acctNum,opAcctNum |"
+	sv_d = sv_d +  "select b.foracid,a.foracid from "
+	sv_d = sv_d +  "(select foracid,cif_id,clr_bal_amt,lien_amt,acid from tbaadm.gam where bank_id =?SVAR "
+	sv_d = sv_d +  "and  schm_type in('SBA', 'CAA') and clr_bal_amt >0 and acct_cls_flg != 'Y' "
+     	sv_d = sv_d +  "and acid in (select op_acid from tbaadm.lam where bank_id = ?SVAR))a, "
+	sv_d = sv_d +  "(select gam.foracid,cif_id,clr_bal_amt,sol_id from tbaadm.gam where  acct_cls_flg != 'Y' "
+	sv_d = sv_d +  "and gam.acid in (select acid from tbaadm.cot where bank_id=?SVAR "
+	sv_d = sv_d +  "and entity_cre_flg='Y' and del_flg='N' and chrge_off_date is not null "
+	sv_d = sv_d +  "and (chrge_off_principal <> principal_recovery or interest_recovery=0)) "
+	sv_d = sv_d +  "and gam.bank_id=?SVAR "
+	sv_d = sv_d +  "and gam.sol_id =?SVAR) "
+	sv_d = sv_d +  "b where a.cif_id = b.cif_id "
+	sv_d = sv_d +  "and (a.lien_amt < a.clr_bal_amt) "
+	PRINT(sv_d)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_u = urhk_dbCursorOpenWithBind(sv_d)
+	if(sv_u==0)then
+		EQSRV.GLBDATA.racodCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+	endif
+        EQSRV.GLBDATA.racodrec = 0
+	sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.racodCurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+	##{
+		sv_a = BANCS.OUTPARAM.acctNum + "|" + BANCS.OUTPARAM.opAcctNum
+		print(sv_a)
+
+		sv_q = "echo '" + sv_a + "' >> eraco.list"
+                print(sv_q)
+                sv_s = system(sv_q)
+                print(sv_s)
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.racodCurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.racodCurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "Cota Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto VAYURUN
+                endif
+                EQSRV.GLBDATA.racodrec = cint(EQSRV.GLBDATA.racodrec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.racodrec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.racodCurNum)
+        print(sv_u)
+	VAYURUN:
+        sv_s = "echo $B2K_SESSION_ID"
+	sv_n = "8"
+        sv_a = "nohup exebatch -n "+sv_n+" -i eraco.list babx4061 $B2K_SESSION_ID b_hracoVerify.scr @s"
+        sv_r = system(sv_a)
+        print(sv_r)	
+VAYU:	
+	exitscript
+trace off
+end-->

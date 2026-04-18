@@ -1,0 +1,483 @@
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#       Creating repository and class
+#       Initializing the variables
+#------------------------------------------------------------------------------
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST", "ODAA") == 0) THEN
+#{
+	CREATECLASS("CUST", "ODAA", 5)
+#}
+ENDIF
+
+BANCS.INPUT.b2kId = "XXXXX"
+print(BANCS.INPUT.b2kId)
+#BANCS.INPUT.foracid = "0120100276191"
+print(BANCS.INPUT.foracid)
+CUST.ODAA.acctAcid = BANCS.INPUT.b2kId 
+print(CUST.ODAA.acctAcid)
+
+
+
+############################
+
+sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.foracid)
+IF (sv_u != 0) THEN
+	CUST.ODAA.wrongacct = "wrong acct"
+	PRINT(CUST.ODAA.wrongacct)
+	GOTO noclass
+ELSE
+	sv_o = BANCS.OUTPARAM.acctSolId
+	print(sv_o)
+	sv_c = BANCS.OUTPARAM.schmCode
+	print(sv_c)
+	sv_t = BANCS.OUTPARAM.schmType
+	print(sv_t)
+	sv_e = BANCS.OUTPARAM.EffAvailableAmt
+	print(sv_e)
+	sv_f = BANCS.OUTPARAM.clearBalance
+	print(sv_f)
+	IF  ((CINT(sv_f)==0) OR (CINT(sv_f)>0)) THEN
+	#{
+		CUST.ODAA.mainClassificationSystem = "PA"
+		CUST.ODAA.subClassificationSystem = "NORM"
+		PRINT(CUST.ODAA.mainClassificationSystem)
+		PRINT(CUST.ODAA.subClassificationSystem)
+		goto class
+	#}
+	ENDIF
+ENDIF
+
+sv_s = "sol_id,product,acct_num,last_credit_date,last_cr_bal_date,lim_exp_date, acct_opn_date|   " 
+sv_s = sv_s + " SELECT   A.SOL_ID, A.PRODUCT,A.ACCT_NUM, decode(J.LAST_CREDIT_DATE,null,'2',J.LAST_CREDIT_DATE) as LAST_CREDIT_DATE, " 
+sv_s = sv_s + " decode(K.LAST_CR_BAL_DATE,null,'2',K.LAST_CR_BAL_DATE)as LAST_CR_BAL_DATE, decode(M.LIM_EXP_DATE,null,'2',M.LIM_EXP_DATE) as LIM_EXP_DATE, " 
+sv_s = sv_s + " decode(A.acct_opn_date,null,'2',A.acct_opn_date) as ACCT_OPN_DATE FROM  ( (SELECT   A.ACID,A.SOL_ID,A.SCHM_CODE PRODUCT, " 
+sv_s = sv_s + " A.FORACID ACCT_NUM,A.ACCT_OPN_DATE FROM   TBAADM.GAM A  WHERE " 
+sv_s = sv_s + "  A.SCHM_TYPE IN ('CAA', 'SBA') AND A.ACID = (select acid from tbaadm.gam where foracid=?SVAR and bank_id='54') " 
+sv_s = sv_s + " AND A.BANK_ID = '54' AND A.ACCT_CLS_FLG != 'Y'  " 
+sv_s = sv_s + "  ) A LEFT JOIN (  SELECT   G.SOL_ID, G.ACID, G.FORACID, MAX (TRAN_DATE) LAST_CREDIT_DATE FROM   TBAADM.HTD, TBAADM.GAM G WHERE  " 
+sv_s = sv_s + " G.BANK_ID = '54'AND G.ACID = HTD.ACID AND G.SCHM_TYPE IN ('CAA', 'SBA') AND G. foracid=?SVAR and G.bank_id='54' AND HTD.PART_TRAN_TYPE = 'C' AND HTD.PSTD_FLG = 'Y' " 
+sv_s = sv_s + " AND (TRAN_PARTICULAR NOT LIKE '%Ac xfr%' or TRAN_PARTICULAR is null) AND (TRAN_PARTICULAR NOT LIKE '%BALANCE TRANSFER%' or TRAN_PARTICULAR is null)  AND HTD.VALUE_DATE <= (select to_char(db_stat_date,'DD-MON-RRRR') " 
+sv_s = sv_s + " from tbaadm.gct where bank_id='54')  " 
+sv_s = sv_s + "  GROUP BY   G.ACID, G.SOL_ID, G.FORACID) J ON J.ACID=A.ACID FULL JOIN (  SELECT   E.ACID, MAX (END_EOD_DATE) LAST_CR_BAL_DATE " 
+sv_s = sv_s + "   FROM   TBAADM.EAB E  WHERE       VALUE_DATE_BAL >= 0          AND E.BANK_ID = '54' " 
+sv_s = sv_s + " AND END_EOD_DATE <=(select to_char(db_stat_date,'DD-MON-RRRR') from tbaadm.gct where bank_id='54') AND E.ACID = (select acid from tbaadm.gam where foracid=?SVAR  " 
+sv_s = sv_s + " and bank_id='54') GROUP BY   E.ACID) K  ON A.ACID = K.ACID FULL JOIN       (SELECT   LHT.ACID, LHT.LIM_EXP_DATE  FROM   TBAADM.LHT WHERE  LHT.BANK_ID = '54'  " 
+sv_s = sv_s + "  AND LHT.DEL_FLG = 'N' AND LHT.ENTITY_CRE_FLG = 'Y' AND LHT.STATUS IN ('A')  AND LHT.ACID = (select acid from tbaadm.gam  " 
+sv_s = sv_s + "  where foracid=?SVAR and bank_id='54')  AND LHT.APPLICABLE_DATE <= (select to_char(db_stat_date,'DD-MON-RRRR') from tbaadm.gct where bank_id='54') " 
+sv_s = sv_s + "  AND ROWNUM <2 ORDER BY LIM_EXP_DATE DESC ) M       ON A.ACID = M.ACID ) where  rownum<2 " 
+print(sv_s)
+BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + BANCS.INPUT.foracid + "|" + BANCS.INPUT.foracid + "|" + BANCS.INPUT.foracid 
+print(BANCS.INPARAM.BINDVARS)
+print(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_d)
+
+IF (sv_d != 0) THEN
+#{
+	sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.foracid)
+	IF (sv_u != 0) THEN
+		CUST.ODAA.wrongacct = "wrong acct"
+		PRINT(CUST.ODAA.wrongacct)
+		GOTO noclass
+	ELSE
+		sv_o = BANCS.OUTPARAM.acctSolId
+		print(sv_o)
+		sv_c = BANCS.OUTPARAM.schmCode
+		print(sv_c)
+		sv_t = BANCS.OUTPARAM.schmType
+		print(sv_t)
+		sv_e = BANCS.OUTPARAM.EffAvailableAmt
+		print(sv_e)
+		sv_f = BANCS.OUTPARAM.clearBalance
+		print(sv_f)
+		IF  ((CINT(sv_f)==0) OR (CINT(sv_f)>0)) THEN
+		#{
+			CUST.ODAA.mainClassificationSystem = "PA"
+			CUST.ODAA.subClassificationSystem = "NORM"
+			PRINT(CUST.ODAA.mainClassificationSystem)
+			PRINT(CUST.ODAA.subClassificationSystem)
+			goto class
+		#}
+		ENDIF
+	ENDIF
+#}
+ELSE
+#{
+	CUST.ODAA.sol_id = BANCS.OUTPARAM.sol_id
+	PRINT(CUST.ODAA.sol_id)
+	CUST.ODAA.product = BANCS.OUTPARAM.product
+	PRINT(CUST.ODAA.product)
+	CUST.ODAA.acct_num = BANCS.OUTPARAM.acct_num
+	PRINT(CUST.ODAA.acct_num)	
+	CUST.ODAA.acct_opn_date = BANCS.OUTPARAM.acct_opn_date
+	PRINT(CUST.ODAA.acct_opn_date)
+
+	
+
+	CUST.ODAA.last_credit_date = BANCS.OUTPARAM.last_credit_date
+	PRINT(CUST.ODAA.last_credit_date)
+	CUST.ODAA.last_cr_bal_date = BANCS.OUTPARAM.last_cr_bal_date
+	PRINT(CUST.ODAA.last_cr_bal_date)
+	CUST.ODAA.lim_exp_date = BANCS.OUTPARAM.lim_exp_date
+	PRINT(CUST.ODAA.lim_exp_date)
+
+	IF (CUST.ODAA.last_credit_date=="2") THEN
+		CUST.ODAA.last_credit_date = "01-01-1900"
+		PRINT(CUST.ODAA.last_credit_date)
+	ENDIF
+	sv_s = "last_credit_date|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MON-RRRR') from dual"
+	BANCS.INPARAM.BINDVARS =  CUST.ODAA.last_credit_date
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d =="0") THEN
+		CUST.ODAA.last_credit_date = BANCS.OUTPARAM.last_credit_date
+		print(CUST.ODAA.last_credit_date)
+		CUST.ODAA.max_label = "LAST_CREDIT_DATE"
+		print(CUST.ODAA.max_label)
+		sv_s = "Insert into   "
+		sv_s = sv_s + " CUSTOM.ODDCLASS_TABLE	 "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + " FORACID,"
+		sv_s = sv_s + " MAX_DATE,"
+		sv_s = sv_s + " MAX_LABEL, "
+		sv_s = sv_s + " BANK_ID "
+		sv_s = sv_s + " ) "
+		sv_s = sv_s + " VALUES "
+		sv_s = sv_s + "	( "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + " ?SVAR, "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + "	'54' "
+		sv_s = sv_s + "	 )"
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + CUST.ODAA.last_credit_date + "|" + CUST.ODAA.max_label
+		PRINT(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0) THEN
+			 sv_d = urhk_dbSqlWithBind("COMMIT")
+		else
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+		endif
+
+	ENDIF
+
+	###########
+
+	IF (CUST.ODAA.last_cr_bal_date=="2") THEN
+		CUST.ODAA.last_cr_bal_date = "01-01-1900"
+		PRINT(CUST.ODAA.last_cr_bal_date)
+	ENDIF
+	sv_s = "last_cr_bal_date|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MON-RRRR') from dual"
+	BANCS.INPARAM.BINDVARS =  CUST.ODAA.last_cr_bal_date
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d =="0") THEN
+		CUST.ODAA.last_cr_bal_date = BANCS.OUTPARAM.last_cr_bal_date
+		print(CUST.ODAA.last_cr_bal_date)
+		CUST.ODAA.max_label = "LAST_CR_BAL_DATE"
+		print(CUST.ODAA.max_label)
+		sv_s = "Insert into   "
+		sv_s = sv_s + " CUSTOM.ODDCLASS_TABLE	 "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + " FORACID,"
+		sv_s = sv_s + " MAX_DATE,"
+		sv_s = sv_s + " MAX_LABEL, "
+		sv_s = sv_s + " BANK_ID "
+		sv_s = sv_s + " ) "
+		sv_s = sv_s + " VALUES "
+		sv_s = sv_s + "	( "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + " ?SVAR, "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + "	'54' "
+		sv_s = sv_s + "	 )"
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + CUST.ODAA.last_cr_bal_date + "|" + CUST.ODAA.max_label
+		PRINT(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0) THEN
+			 sv_d = urhk_dbSqlWithBind("COMMIT")
+		else
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+		endif
+	ENDIF
+
+
+	##########
+
+	IF (CUST.ODAA.lim_exp_date=="2") THEN
+		CUST.ODAA.lim_exp_date = "01-01-1900"
+		PRINT(CUST.ODAA.lim_exp_date)
+	ENDIF
+	sv_s = "lim_exp_date|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MON-RRRR') from dual"
+	BANCS.INPARAM.BINDVARS =  CUST.ODAA.lim_exp_date
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d =="0") THEN
+		CUST.ODAA.lim_exp_date = BANCS.OUTPARAM.lim_exp_date
+		print(CUST.ODAA.lim_exp_date)
+		CUST.ODAA.max_label = "LIM_EXP_DATE"
+		print(CUST.ODAA.max_label)
+		sv_s = "Insert into   "
+		sv_s = sv_s + " CUSTOM.ODDCLASS_TABLE	 "
+		sv_s = sv_s + " ( "
+		sv_s = sv_s + " FORACID,"
+		sv_s = sv_s + " MAX_DATE,"
+		sv_s = sv_s + " MAX_LABEL, "
+		sv_s = sv_s + " BANK_ID "
+		sv_s = sv_s + " ) "
+		sv_s = sv_s + " VALUES "
+		sv_s = sv_s + "	( "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + " ?SVAR, "
+		sv_s = sv_s + "	?SVAR, "
+		sv_s = sv_s + "	'54' "
+		sv_s = sv_s + "	 )"
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + CUST.ODAA.lim_exp_date + "|" + CUST.ODAA.max_label
+		PRINT(BANCS.INPARAM.BINDVARS)
+		print(sv_s)
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		IF (sv_d == 0) THEN
+			 sv_d = urhk_dbSqlWithBind("COMMIT")
+		else
+			sv_d = urhk_dbSqlWithBind("ROLLBACK")
+			print(sv_d)
+		endif
+	ENDIF
+
+	##############
+	
+	sv_s = "max_date| select to_char(max(MAX_DATE),'DD-MM-RRRR') from CUSTOM.ODDCLASS_TABLE  where foracid= ?SVAR "
+	BANCS.INPARAM.BINDVARS =  BANCS.INPUT.foracid
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF (sv_d =="0") THEN
+		CUST.ODAA.max_date = BANCS.OUTPARAM.max_date
+		print(CUST.ODAA.max_date)
+
+		IF ((CUST.ODAA.last_credit_date=="01-JAN-1900") AND (CUST.ODAA.last_cr_bal_date=="01-JAN-1900") AND (CUST.ODAA.lim_exp_date=="01-JAN-1900")) THEN
+			############  null start 
+			sv_s = " delete from  CUSTOM.ODDCLASS_TABLE "
+			sv_s = sv_s + " WHERE FORACID= ?SVAR"
+			sv_s = sv_s + " AND bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + BANCS.STDIN.contextBankId  
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			print(sv_d)
+
+			IF (sv_d == 0) THEN
+			#{  
+				print("data deleted")
+				sv_d = urhk_dbSQLWithBind("COMMIT")
+				print(sv_d)
+			ENDIF
+			sv_s = "acct_opn_date|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MON-RRRR') from dual"
+			BANCS.INPARAM.BINDVARS =  CUST.ODAA.acct_opn_date
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d =="0") THEN
+				CUST.ODAA.acct_opn_date = BANCS.OUTPARAM.acct_opn_date
+				print(CUST.ODAA.acct_opn_date)
+				CUST.ODAA.max_label = "ACCT_OPN_DATE"
+				print(CUST.ODAA.max_label)
+				sv_s = "Insert into   "
+				sv_s = sv_s + " CUSTOM.ODDCLASS_TABLE	 "
+				sv_s = sv_s + " ( "
+				sv_s = sv_s + " FORACID,"
+				sv_s = sv_s + " MAX_DATE,"
+				sv_s = sv_s + " MAX_LABEL, "
+				sv_s = sv_s + " BANK_ID "
+				sv_s = sv_s + " ) "
+				sv_s = sv_s + " VALUES "
+				sv_s = sv_s + "	( "
+				sv_s = sv_s + "	?SVAR, "
+				sv_s = sv_s + " ?SVAR, "
+				sv_s = sv_s + "	?SVAR, "
+				sv_s = sv_s + "	'54' "
+				sv_s = sv_s + "	 )"
+				BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + CUST.ODAA.acct_opn_date + "|" + CUST.ODAA.max_label
+				PRINT(BANCS.INPARAM.BINDVARS)
+				print(sv_s)
+				sv_d = urhk_dbSqlWithBind(sv_s)
+				IF (sv_d == 0) THEN
+					 sv_d = urhk_dbSqlWithBind("COMMIT")
+				else
+					sv_d = urhk_dbSqlWithBind("ROLLBACK")
+					print(sv_d)
+				endif
+			ENDIF
+			CUST.ODAA.overdate = "15-11-2013"
+			print(CUST.ODAA.overdate)
+			sv_s = "overdate|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MON-RRRR') from dual"
+			BANCS.INPARAM.BINDVARS =  CUST.ODAA.overdate
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d =="0") THEN
+				CUST.ODAA.overdate = BANCS.OUTPARAM.overdate
+				print(CUST.ODAA.overdate)
+				CUST.ODAA.max_label = "OVERDATE"
+				print(CUST.ODAA.max_label)
+				sv_s = "Insert into   "
+				sv_s = sv_s + " CUSTOM.ODDCLASS_TABLE	 "
+				sv_s = sv_s + " ( "
+				sv_s = sv_s + " FORACID,"
+				sv_s = sv_s + " MAX_DATE,"
+				sv_s = sv_s + " MAX_LABEL, "
+				sv_s = sv_s + " BANK_ID "
+				sv_s = sv_s + " ) "
+				sv_s = sv_s + " VALUES "
+				sv_s = sv_s + "	( "
+				sv_s = sv_s + "	?SVAR, "
+				sv_s = sv_s + " ?SVAR, "
+				sv_s = sv_s + "	?SVAR, "
+				sv_s = sv_s + "	'54' "
+				sv_s = sv_s + "	 )"
+				BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + CUST.ODAA.overdate + "|" + CUST.ODAA.max_label
+				PRINT(BANCS.INPARAM.BINDVARS)
+				print(sv_s)
+				sv_d = urhk_dbSqlWithBind(sv_s)
+				IF (sv_d == 0) THEN
+					 sv_d = urhk_dbSqlWithBind("COMMIT")
+				else
+					sv_d = urhk_dbSqlWithBind("ROLLBACK")
+					print(sv_d)
+				endif
+			ENDIF
+			sv_s = "max_date| select to_char(max(MAX_DATE),'DD-MM-RRRR') from CUSTOM.ODDCLASS_TABLE  where foracid= ?SVAR "
+			BANCS.INPARAM.BINDVARS =  BANCS.INPUT.foracid
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d =="0") THEN
+				CUST.ODAA.max_date = BANCS.OUTPARAM.max_date
+				print(CUST.ODAA.max_date)
+			ENDIF
+			############
+		ENDIF
+		print(CUST.ODAA.max_date)
+		print(BANCS.STDIN.BODDate)
+		sv_u = urhk_B2k_getDateDiffFromBODDate(CUST.ODAA.max_date)
+		print(sv_u)
+		CUST.ODAA.dateDiff = BANCS.OUTPARAM.DateDiff
+		PRINT(CUST.ODAA.dateDiff)
+
+		CUST.ODAA.netget ="-1"
+		print(CUST.ODAA.netget)
+
+		sv_s = "dateDifff| select ?SVAR * ?SVAR from dual "
+		BANCS.INPARAM.BINDVARS =  CUST.ODAA.dateDiff + "|" + CUST.ODAA.netget
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+
+			CUST.ODAA.dateDiff = BANCS.OUTPARAM.dateDifff
+			print(CUST.ODAA.dateDiff)
+
+# 0-35 PA NORM
+# 36-90 PA WATC
+# 91-180 NPA SUBS
+# 181 - 365 NPA DBTL
+# 365 - 9999 NPA LOSS
+			IF (CINT(CUST.ODAA.dateDiff)<36) THEN
+			#{
+				CUST.ODAA.mainClassificationSystem = "PA"
+				CUST.ODAA.subClassificationSystem = "NORM"
+				PRINT(CUST.ODAA.mainClassificationSystem)
+				PRINT(CUST.ODAA.subClassificationSystem)
+				goto class
+			#}
+			ENDIF
+			IF (  (CINT(CUST.ODAA.dateDiff)>35)  AND (CINT(CUST.ODAA.dateDiff)<91) )  THEN
+			#{
+				CUST.ODAA.mainClassificationSystem = "PA"
+				CUST.ODAA.subClassificationSystem = "WATC"
+				PRINT(CUST.ODAA.mainClassificationSystem)
+				PRINT(CUST.ODAA.subClassificationSystem)
+				goto class
+			#}
+			ENDIF
+
+			IF ( (CINT(CUST.ODAA.dateDiff)>90)  AND (CINT(CUST.ODAA.dateDiff)<181))  THEN
+			#{
+				CUST.ODAA.mainClassificationSystem = "NPA"
+				CUST.ODAA.subClassificationSystem = "SUBS"
+				PRINT(CUST.ODAA.mainClassificationSystem)
+				PRINT(CUST.ODAA.subClassificationSystem)
+				goto class
+			#}
+			ENDIF
+			IF ( (CINT(CUST.ODAA.dateDiff)>180)  AND (CINT(CUST.ODAA.dateDiff)<366))  THEN
+			#{
+				CUST.ODAA.mainClassificationSystem = "NPA"
+				CUST.ODAA.subClassificationSystem = "DBTL"
+				PRINT(CUST.ODAA.mainClassificationSystem)
+				PRINT(CUST.ODAA.subClassificationSystem)
+				goto class
+			#}
+			ENDIF
+			IF ( (CINT(CUST.ODAA.dateDiff)>365)  AND (CINT(CUST.ODAA.dateDiff)<99999999999)   )  THEN
+			#{
+				CUST.ODAA.mainClassificationSystem = "NPA"
+				CUST.ODAA.subClassificationSystem = "LOSS"
+				PRINT(CUST.ODAA.mainClassificationSystem)
+				PRINT(CUST.ODAA.subClassificationSystem)
+				goto class
+			#}
+			ENDIF
+		ENDIF
+	ENDIF
+#}
+ENDIF
+
+class:
+	############## del
+
+	sv_s = " delete from  CUSTOM.ODDCLASS_TABLE "
+	sv_s = sv_s + " WHERE FORACID= ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.foracid + "|" + BANCS.STDIN.contextBankId  
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+
+	IF (sv_d == 0) THEN
+	#{  
+		print("data deleted")
+		sv_d = urhk_dbSQLWithBind("COMMIT")
+		print(sv_d)
+	ENDIF
+	
+	PRINT(CUST.ODAA.mainClassificationSystem)
+	PRINT(CUST.ODAA.subClassificationSystem)
+	
+	BANCS.OUTPUT.mainClassificationSystem = CUST.ODAA.mainClassificationSystem
+	PRINT(BANCS.OUTPUT.mainClassificationSystem)
+	BANCS.OUTPUT.subClassificationSystem = CUST.ODAA.subClassificationSystem
+	PRINT(BANCS.OUTPUT.subClassificationSystem)
+	BANCS.OUTPUT.sysCustSubClass = BANCS.OUTPUT.subClassificationSystem
+	PRINT(BANCS.OUTPUT.sysCustSubClass)
+	BANCS.OUTPUT.sysCustMainClass = BANCS.OUTPUT.mainClassificationSystem
+	PRINT(BANCS.OUTPUT.sysCustMainClass)
+
+noclass:
+	BANCS.OUTPUT.assetClsReasonCode = "VEERU"
+	PRINT(BANCS.OUTPUT.assetClsReasonCode)
+	BANCS.OUTPUT.trgEntityId = ""
+	BANCS.OUTPUT.trgEntityType = ""
+
+Finish:
+EXITSCRIPT
+TRACE OFF
+END-->

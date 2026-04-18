@@ -1,0 +1,261 @@
+#=================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: hoccmdp016.scr
+# event: NA
+# description: Script to get account name from account Id.
+#=================================================
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       hoccmdp016.scr
+# Author                :       Nitin Prabhakar
+# Description           :       This script to get account name from account Id for making lodge outbound call.
+# Input                 :       CrAcctNum.
+# Output                :       userId, bankId, CrAccountName.
+# Called Script         :       None
+# Calling Script        :       None
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           08-08-2013         Nitin Prabhakar   original Version          1.0
+#  2           10-09-2013         Nitin Prabhakar   added validation          2.0
+#                                                   for account Id
+#  2           10-09-2013         Priyanka T        upadted to show cr        3.0
+#                                                   account detail
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2b3292b18825b2425894e8279a88c952e25ded50ec1265254cba322904740e04"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	# Creation of  repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "HOCCM") == 0) THEN
+	#{
+		CREATECLASS("CUST", "HOCCM", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+	#{
+		CREATECLASS("CUST", "INTERFACE", 5)
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Getting Input at Backend
+	#--------------------------------------------------------------------------
+	CUST.HOCCM.critCrAcctNum =  TOUPPER(TRIM(BANCS.INPUT.critCrAcctNum))
+	print(CUST.HOCCM.critCrAcctNum)
+	CUST.HOCCM.bankId = TRIM(BANCS.STDIN.contextBankId)
+	print(CUST.HOCCM.bankId)
+	CUST.HOCCM.userId = TRIM(BANCS.STDIN.userId)
+	print(CUST.HOCCM.userId)
+	#------------------------------------------------------------------------------
+	#  Validating credit Account Id.
+	#------------------------------------------------------------------------------
+	sv_u = urhk_valAcctNumber(CUST.HOCCM.critCrAcctNum)
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.errorCode = "HOCCM_ERR_001"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_z = "Error|" + CUST.HOCCM.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.HOCCM.crACID = BANCS.OUTPARAM.Acid
+		print(CUST.HOCCM.crACID)
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Getting account details for further charge calculation.
+	#--------------------------------------------------------------------------
+	#SELECT FREZ_CODE,SCHM_TYPE FROM TBAADM.GAM WHERE FORACID = '1020160656991';
+	BANCS.INPARAM.BINDVARS = CUST.HOCCM.critCrAcctNum + "|" +TRIM(BANCS.STDIN.contextBankId)
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "frezCode,crSchmType,crCrncyCode|"
+	sv_s = sv_s + " SELECT FREZ_CODE,SCHM_TYPE,ACCT_CRNCY_CODE "
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE FORACID = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		# error
+		CUST.INTERFACE.errorCode = "HOCCM_ERR_001"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_z = "Error|" + CUST.HOCCM.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.HOCCM.frezCode = TRIM(BANCS.OUTPARAM.frezCode)
+		print(CUST.HOCCM.frezCode)
+		CUST.HOCCM.crSchmType = TRIM(BANCS.OUTPARAM.crSchmType)
+		print(CUST.HOCCM.crSchmType)
+		CUST.HOCCM.crCrncyCode = TRIM(BANCS.OUTPARAM.crCrncyCode)
+		print(CUST.HOCCM.crCrncyCode)
+	#}
+	ENDIF
+	#IF(CUST.HOCCM.zoneIdentifier == "O") THEN
+	##{
+	#	IF(CUST.HOCCM.zoneCCY != CUST.HOCCM.crCrncyCode) THEN
+	#	#{
+	#		CUST.INTERFACE.errorCode = "HOCCM_ERR_011"
+	#		CALL("Common_Interface_GetErrorDesc.scr")
+	#		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+	#		sv_w = "SUCCESSORFAILURE|N"
+	#		sv_u = urhk_SetOrbOut(sv_w)
+	#		sv_z = "Error|" + CUST.HOCCM.errorMsg
+	#		sv_u = urhk_SetOrbOut(sv_z)
+	#		GOTO ENDOFSCRIPT
+	#	#}
+	#	ENDIF
+	##}
+	#ENDIF
+	
+	# Only operative accounts and office account will be allowed.
+	# TDA/TUA/LAA/DDA/CLA type account are not be allowed
+	IF ( (CUST.HOCCM.crSchmType == "TDA") OR (CUST.HOCCM.crSchmType == "TUA") OR (CUST.HOCCM.crSchmType == "LAA") OR (CUST.HOCCM.crSchmType == "DDA") OR (CUST.HOCCM.crSchmType == "CLA") ) THEN
+	#{
+		CUST.INTERFACE.errorCode = "HOCCM_ERR_004"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_z = "Error|" + CUST.HOCCM.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#------------------------------------------------------------------------------
+	#  Checking status of credit Account Id.
+	#------------------------------------------------------------------------------
+	BANCS.INPARAM.acid = CUST.HOCCM.crACID
+	sv_u = urhk_getAcctStatus("")
+	print(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		CUST.INTERFACE.errorCode = "HOCCM_ERR_001"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_z = "Error|" + CUST.HOCCM.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.HOCCM.crAcctStatus = BANCS.OUTPARAM.acctStatus
+		print(CUST.HOCCM.crAcctStatus)
+	#}
+	ENDIF
+	# check for Dormat account Id.
+	#IF (CUST.HOCCM.crAcctStatus == "D") THEN
+	#{
+	#	CUST.INTERFACE.errorCode = "HOCCM_ERR_002"
+	#	CALL("Common_Interface_GetErrorDesc.scr")
+	#	CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+	#	sv_w = "SUCCESSORFAILURE|N"
+	#	sv_u = urhk_SetOrbOut(sv_w)
+	#	sv_z = "Error|" + CUST.HOCCM.errorMsg
+	#	sv_u = urhk_SetOrbOut(sv_z)
+	#	GOTO ENDOFSCRIPT
+	#}
+	#ENDIF
+	# check for Fozen account Id.
+	IF ((CUST.HOCCM.frezCode != "") AND (CUST.HOCCM.frezCode != "D")) THEN
+	#{
+		CUST.INTERFACE.errorCode = "HOCCM_ERR_003"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		CUST.HOCCM.errorMsg = CUST.INTERFACE.errorDesc
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_z = "Error|" + CUST.HOCCM.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------
+	# selecting account name
+	#--------------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.HOCCM.critCrAcctNum + "|" + CUST.HOCCM.bankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "CrAccountName,CrSolId|"
+	sv_s = sv_s + " SELECT ACCT_NAME,SOL_ID"
+	sv_s = sv_s + " FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE FORACID = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR "
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	IF(sv_d != 0)THEN
+	#{
+		# error
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		sv_m = "Invalid Account Id."
+		sv_z = "Error|" + sv_m
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.HOCCM.CrAccountName = BANCS.OUTPARAM.CrAccountName
+		print(CUST.HOCCM.CrAccountName)
+		CUST.HOCCM.CrSolId = BANCS.OUTPARAM.CrSolId
+		print(CUST.HOCCM.CrSolId)
+	#}
+	ENDIF
+	
+	
+	#--------------------------------------------------------------------------
+	# sending values to FE.
+	#--------------------------------------------------------------------------
+	sv_w = "SuccessOrFailure|Y"
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "userId|" + CUST.HOCCM.userId
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "bankId|" + CUST.HOCCM.bankId
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "CrAccountName|" + CUST.HOCCM.CrAccountName
+	sv_u = urhk_SetOrbOut(sv_w)
+	sv_w = "CrSolId|" + CUST.HOCCM.CrSolId
+	sv_u = urhk_SetOrbOut(sv_w)
+	
+	ENDOFSCRIPT:
+		#----------------------------------------
+		# deleting repositories and calsses.
+		#----------------------------------------
+		IF (CLASSEXISTS("CUST","HOCCM") != 0) THEN
+		#{
+			DELETECLASS ("CUST","HOCCM")
+		#}
+		ENDIF
+		IF (CLASSEXISTS("CUST","INTERFACE") != 0) THEN
+		#{
+			DELETECLASS ("CUST","INTERFACE")
+		#}
+		ENDIF
+		IF (REPEXISTS ("CUST") != 0) THEN
+		#{
+			DELETEREP ("CUST")
+		#}
+		ENDIF
+		EXITSCRIPT
+		TRACE OFF
+END-->

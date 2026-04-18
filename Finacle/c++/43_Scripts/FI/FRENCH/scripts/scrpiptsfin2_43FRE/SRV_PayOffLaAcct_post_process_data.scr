@@ -1,0 +1,179 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: SRV_PayOffLaAcct_post_process_data.scr
+# Type: NA|default
+# Description: This script calls the custom script for updating the custom table during verification
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="2799fd6478b03e81db3f1663788a3cf4ec35b4f436545d762cd3cc344730e415"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	CUST.LADISB.errorFlg = ""
+	CUST.LADISB.errorMsg = ""
+	
+	IF(BANCS.STDIN.menuId=="HLADISB") THEN
+	#{
+		CALL("updateCustTab.scr")
+	#}
+	ENDIF
+	
+	IF(BANCS.STDIN.menuId=="HPAYOFF") THEN
+	#{
+		#------------------------------------------------------------------------------
+		# Get function code
+		#------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("payOffCrit.funcCode")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.LADISB.funcCode= BANCS.OUTPARAM.srvValue
+			PRINT(CUST.LADISB.funcCode)
+			#}
+		ELSE
+			#{
+			CUST.LADISB.errorFlg = "E"
+			CUST.LADISB.errorMsg = "Error: urhk_SRV_GetVal failed for foracid"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(CUST.LADISB.funcCode == "V") THEN
+		#{
+		
+			#------------------------------------------------------------------------------
+			# Getting acctId code from front end
+			#------------------------------------------------------------------------------
+			sv_u = urhk_SRV_GetVal("payOffCrit.laAcct.foracid")
+			PRINT(sv_u)
+			IF (sv_u == 0) THEN
+			#{
+				CUST.LADISB.loanForacid = BANCS.OUTPARAM.srvValue
+				PRINT(CUST.LADISB.loanForacid)
+				#}
+			ELSE
+				#{
+				CUST.LADISB.errorFlg = "E"
+				CUST.LADISB.errorMsg = "Error: urhk_SRV_GetVal failed for foracid"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			#------------------------------------------------------------------------------
+			# Get Tran ID
+			#------------------------------------------------------------------------------
+			sv_u = urhk_SRV_GetVal("tranObj.tranDetail.tranIdentifier.tranId")
+			PRINT(sv_u)
+			IF(sv_u == 0) THEN
+			#{
+				CUST.LADISB.tranId = BANCS.OUTPARAM.srvValue
+				PRINT(CUST.LADISB.tranId)
+				#}
+			ELSE
+				#{
+				CUST.LADISB.errorFlg = "E"
+				CUST.LADISB.errorMsg = "Error occured in getting TranId"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+
+			#------------------------------------------------------------------------------------
+			# Get the count from custom table for the old Loan acct
+			#------------------------------------------------------------------------------------
+			sv_s = ""
+			sv_s = "acctCount|"
+			sv_s = sv_s + " SELECT COUNT(1)"
+			sv_s = sv_s + " FROM CUSTOM.C_LADISB_PAYOFF_OLDLOAN A"
+			sv_s = sv_s + " WHERE A.old_foracid = ?SVAR"
+			sv_s = sv_s + " AND A.del_flg = 'N'"
+			sv_s = sv_s + " AND A.entity_cre_flg = 'N'"
+			sv_s = sv_s + " AND A.payoff_flg = 'N'"
+			sv_s = sv_s + " AND A.bank_id = ?SVAR"
+			
+			BANCS.INPARAM.BINDVARS = ""
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanForacid  + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_d = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF ( sv_d != 0 ) THEN
+			#{
+				CUST.LADISB.errorFlg = "E"
+				CUST.LADISB.errorMsg = "Error occured in getting operative account from custom table"
+				PRINT(CUST.LADISB.errorMsg)
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CUST.LADISB.acctCount = BANCS.OUTPARAM.acctCount
+				IF(CUST.LADISB.acctCount > 0) THEN
+				#{
+					IF(CUST.LADISB.tranId != "") THEN
+					#{
+						PRINT(CUST.LADISB.tranId)
+						#-----------------------------------------------------
+						#Update the status to the LADISB_PAYOFF_OLDLOAN table
+						#-----------------------------------------------------
+						sv_s ="UPDATE CUSTOM.C_LADISB_PAYOFF_OLDLOAN A"
+						sv_s = sv_s + " SET A.entity_cre_flg = 'Y',"
+						sv_s = sv_s + " A.PAYOFF_FLG = 'Y',"
+						sv_s = sv_s + " A.tran_id=?SVAR,"
+						sv_s = sv_s + " A.lchg_user_id=?SVAR,"
+						sv_s = sv_s + " A.lchg_time = sysdate"
+						sv_s = sv_s + " WHERE A.old_foracid =?SVAR"
+						sv_s = sv_s + " AND A.bank_id=?SVAR"
+						PRINT(sv_s)
+						BANCS.INPARAM.BINDVARS = CUST.LADISB.tranId + "|"
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId + "|"
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanForacid + "|"
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+						PRINT(BANCS.INPARAM.BINDVARS)
+						sv_d = urhk_dbSQLWithBind(sv_s)
+						PRINT(sv_d)
+						
+						IF(sv_d != 0) THEN
+						#{
+							CUST.LADISB.errorFlg = "E"
+							CUST.LADISB.errorMsg = "Error occured in updating the Custom table"
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+						#}
+					ELSE
+						#{
+						CUST.LADISB.errorFlg = "E"
+						CUST.LADISB.errorMsg = "Error occured in getting tranId"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		TRACE OFF
+END-->

@@ -1,0 +1,572 @@
+#=================================================================================================================*
+# Name                          :   eqlaaupldmn001.scr
+# Date                          :   22-02-2013
+# Description                   :   This script is used to upload the file and do the transaction USing TTUM exe.
+# Author                        :   Samrat Saha
+# Called Scripts                :   <None>
+# Calling Script                :   <None>
+# Reference                     :
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>            <Description>
+#--------------------------------------------------------------------------
+#   1           22-02-2013      Samrat Saha              Original version
+#   2		05-06-2013	Samrat Saha		urex is modified by passing bank id.
+#   3		29-08-2013      Priyanka T 		 Calling common script to append userId - TOL - 367144
+#   4		04-09-2013      Pankaj Gaur		 Adding timestamp in filename - TOL - 369962
+#	5		27-10-2013		Bharath			Upload initiated in background
+#=================================================================================================================*
+<--START
+CHECKSUM="48f6f320208edfe0cd588a24518d49f3b038de81b022828e50dd3390e9588520"
+	TRACE ON
+	
+	#----------------------------------------------------------------------------------
+	# Creating the custom repository and Class
+	#----------------------------------------------------------------------------------
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","EQUPLD") == 0) THEN
+	#{
+		CREATECLASS("CUST","EQUPLD",5)
+	#}
+	ENDIF
+	
+	CUST.EQUPLD.errMsg = ""
+	CUST.EQUPLD.moduleName=""
+	
+	sv_u = urhk_getEnv("CTL_PATH")
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Control file path is not set in common ENV^testMode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		print(BANCS.OUTPARAM.envValue)
+		CUST.EQUPLD.ctlFilePath = BANCS.OUTPARAM.envValue
+		PRINT(CUST.EQUPLD.ctlFilePath)
+	#}
+	ENDIF
+	
+	sv_u = urhk_getEnv("DATA_PATH")
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Data file path is not set in common ENV^testMode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		print(BANCS.OUTPARAM.envValue)
+		CUST.EQUPLD.CMFilePath = BANCS.OUTPARAM.envValue
+		PRINT(CUST.EQUPLD.CMFilePath)
+		
+		#----------TOL - 367144-------------#
+		BANCS.INPUT.upldPath = CUST.EQUPLD.CMFilePath
+		#---------------------------------------------------------------
+		# Calling common script to append userId to upload file path
+		#---------------------------------------------------------------
+		CALL("appendUserId.scr")
+		CUST.EQUPLD.CMFilePath = BANCS.INPUT.upldPath
+		PRINT(CUST.EQUPLD.CMFilePath)
+		
+	#}
+	ENDIF
+	
+	
+	BANCS.INPUT.moduleName  = "EQUPLD"
+	CUST.EQUPLD.moduleName = BANCS.INPUT.moduleName
+	CUST.EQUPLD.crncyCode =	BANCS.STDIN.homeCrncyCode
+	sv_u = urhk_getEnv("USER_PASS")
+	PRINT(sv_u)
+	IF (sv_u != 0) THEN
+	#{
+		PRINT("User Id Password is not set, taking default value")
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^User Id Password is not set in common ENV^testMode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.EQUPLD.userPass = BANCS.OUTPARAM.envValue
+		PRINT(CUST.EQUPLD.userPass)
+	#}
+	ENDIF
+	
+	sv_u = urhk_getEnv("FIN_REPORTS_DIR")
+	PRINT(sv_u)
+	
+	IF (sv_u == 0) THEN
+	#{
+		CUST.EQUPLD.rptPath = BANCS.OUTPARAM.envValue
+		PRINT(CUST.EQUPLD.rptPath)
+	#}
+	ENDIF
+	
+	CUST.EQUPLD.fileName = BANCS.INPUT.upldFileName
+	PRINT(CUST.EQUPLD.fileName)
+	
+	CUST.EQUPLD.testMode = BANCS.INPUT.testMode
+	PRINT(CUST.EQUPLD.testMode)
+	
+	CUST.EQUPLD.tranRmks = BANCS.INPUT.tranRmks
+	PRINT(CUST.EQUPLD.tranRmks)
+	
+	#------------------------------------------------------------
+	# Check whether the Mandatory fields entered
+	#------------------------------------------------------------
+	
+	IF ( CUST.EQUPLD.fileName == "" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Enter the File Name^upldFileName")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF ( CUST.EQUPLD.testMode == "" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Please Select the Test Field^testMode")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF ( CUST.EQUPLD.tranRmks == "" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Enter the Tran Remarks field^tranRmks")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------
+	# Insert the record into the Upload Status table
+	#-------------------------------------------------------------------
+	
+	IF(CUST.EQUPLD.testMode == "Y" )THEN
+	#{
+		#
+		CUST.EQUPLD.posting = "T"
+		CUST.EQUPLD.Rename = "N"
+		#}
+	ELSE
+		#{
+		CUST.EQUPLD.posting = "P"
+		CUST.EQUPLD.Rename = "Y"
+	#}
+	ENDIF
+	
+	sv_s = " filSrlNum "
+	sv_s = sv_s + " | "
+	sv_s = sv_s + " SELECT NVL(MAX(upld_srl_num),0) + 1 "
+	sv_s = sv_s + " FROM CUSTOM.C_UPLD_EQT_TBL "
+	sv_s = sv_s + " WHERE upld_file_name = ?SVAR "
+	sv_s = sv_s + " AND process_id = ?SVAR "
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.EQUPLD.fileName + "|" + CUST.EQUPLD.moduleName
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d == 0 ) THEN
+	#{
+		CUST.EQUPLD.fileSrlNum = BANCS.OUTPARAM.filSrlNum
+		PRINT(CUST.EQUPLD.fileSrlNum)
+		#}
+	ELSE
+		#{
+		CUST.EQUPLD.fileSrlNum = "1"
+		PRINT(CUST.EQUPLD.fileSrlNum)
+	#}
+	ENDIF
+	
+	sv_s = " INSERT INTO CUSTOM.C_UPLD_EQT_TBL "
+	sv_s = sv_s + " ( "
+	sv_s = sv_s + " upld_file_name, "
+	sv_s = sv_s + " upld_srl_num, "
+	sv_s = sv_s + " status, "
+	sv_s = sv_s + " status_desc,"
+	sv_s = sv_s + " tran_id, "
+	sv_s = sv_S + " bank_id, "
+	sv_s = sv_s + " rcre_time, "
+	sv_s = sv_s + " rcre_user_id, "
+	sv_s = sv_s + " del_flg, "
+	sv_s = sv_s + " process_id "
+	sv_s = sv_s + " ) "
+	sv_s = sv_s + " VALUES "
+	sv_s = sv_s + " ( "
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "'P',"
+	sv_s = sv_s + "'Initial insertionion',"
+	sv_s = sv_s + " '', "
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "sysdate,"
+	sv_s = sv_s + "?SVAR,"
+	sv_s = sv_s + "'N', "
+	sv_s = sv_s + "?SVAR"
+	sv_s = sv_s + " ) "
+	
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.EQUPLD.fileName + "|" + CUST.EQUPLD.fileSrlNum + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.EQUPLD.moduleName
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d == 0) THEN
+	#{
+		sv_d = urhk_dbSQLWithBind("COMMIT")
+		PRINT(sv_d)
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Executing the COM file to check whether the file is valid or not
+	#------------------------------------------------------------------------
+	
+	sv_c = urhk_getFileLocation("COM|eqlaauplddp001.com")
+	PRINT(sv_c)
+	IF (sv_c == 0) THEN
+	#{
+		CUST.EQUPLD.comFileLocation = BANCS.OUTPARAM.fileLocation
+		PRINT(CUST.EQUPLD.comFileLocation)
+		#}
+	ELSE
+		#{
+		CUST.EQUPLD.errMsg = "Technical Error - Com file Not exists"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = CUST.EQUPLD.comFileLocation + "eqlaauplddp001.com"
+	PRINT(sv_s)
+	
+	CUST.EQUPLD.fileNamePath = CUST.EQUPLD.CMFilePath + CUST.EQUPLD.fileName
+	PRINT(CUST.EQUPLD.fileNamePath)
+	CUST.EQUPLD.bankIdCom=BANCS.STDIN.contextBankId
+	print(CUST.EQUPLD.bankIdCom)
+	
+	sv_d = urex(sv_s,"file.dat",CUST.EQUPLD.fileNamePath+"|"+CUST.EQUPLD.bankIdCom+ "|" + CUST.EQUPLD.fileName)
+	PRINT(sv_d)
+	
+	IF (sv_d != 0 ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Technical Error in user execution for checking file exist OR not^upldFileName")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	PRINT(CUST.EQUPLD.fileExist)
+	
+	IF (CUST.EQUPLD.fileExist != "Y" ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^File Does not Exists in the Specific path^upldFileName")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------
+	# Delete the record from the EQU_UPLOAD_TABLE table
+	#-----------------------------------------------------------------------
+	sv_s=""
+	sv_s = sv_s + " DELETE CUSTOM.EQU_UPLOAD_TABLE "
+	sv_s = sv_s + " WHERE EQU_UPLOAD_TABLE.bank_id = ?SVAR"
+	
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_d = urhk_dbSQLWithBind("COMMIT")
+		PRINT(sv_d)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------
+	# Using SQL Loader upload the file into EQU_UPLOAD_TABLE table
+	#-----------------------------------------------------------
+	
+	
+	CUST.EQUPLD.ctlFilePath = CUST.EQUPLD.ctlFilePath + "eqlaaupld.ctl"
+	PRINT(CUST.EQUPLD.ctlFilePath)
+	
+	
+	sv_b = "$ORACLE_HOME/bin/" + "sqlldr " + CUST.EQUPLD.userPass + "  control=" + CUST.EQUPLD.ctlFilePath + " data=" + CUST.EQUPLD.fileName
+	PRINT(sv_b)
+	
+	sv_a = SYSTEM(sv_b)
+	PRINT(sv_a)
+	
+	IF (sv_a != 0 ) THEN
+	#{
+		sv_z = urhk_SetOrbOut("Error_01|ERROR^Technical Error - SQL loader is unable to a file^upldFileName")
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------
+	# Delete the record from the EQU_UPLOAD_TABLE table
+	#-----------------------------------------------------------------------
+	sv_s="cnt|select count(1) from ("
+	sv_s = sv_s + " SELECT UPLDREFNUM,COUNT(1) FROM  CUSTOM.EQU_UPLOAD_TABLE "
+	sv_s = sv_s + " WHERE EQU_UPLOAD_TABLE.bank_id = ?SVAR"
+	sv_s = sv_s + " GROUP BY UPLDREFNUM HAVING COUNT(1) > 1) "
+	
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF (sv_d == 0 ) THEN
+	#{
+		print(BANCS.OUTPARAM.cnt)
+		IF(BANCS.OUTPARAM.cnt > 0)THEN
+		#{
+			
+			sv_z = urhk_SetOrbOut("Error_01|ERROR^Duplicate accounts in the same file^upldFileName")
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	sv_s = "fileDate |"
+	sv_s = sv_s + " Select to_char(sysdate,'DDMMYY') FROM DUAL "
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	CUST.EQUPLD.fileDate = BANCS.OUTPARAM.fileDate
+	print(CUST.EQUPLD.fileDate)
+	
+	sv_s = "Date |"
+	sv_s = sv_s + " Select to_char(sysdate,'DDMMYYHH24MISS') FROM DUAL "
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	CUST.EQUPLD.sysdate = BANCS.OUTPARAM.Date
+	print(CUST.EQUPLD.sysdate)
+	
+	#--------------------------------------------------------------------
+	# Executing the com file to generate the file and executing TTUM exe
+	#------------------------------------------------------------------
+	
+	#sv_u = urhk_getFileLocation("COM|eqlaaupldmn001.com")
+	#PRINT(sv_u)
+	#IF ( sv_u == 0 ) THEN
+	##{
+	#	CUST.EQUPLD.comFilePath = BANCS.OUTPARAM.fileLocation
+	#	PRINT(CUST.EQUPLD.comFilePath)
+	##}
+	#ENDIF
+	
+	#CUST.EQUPLD.comFilePath = CUST.EQUPLD.comFilePath + "eqlaaupldmn001.com"
+	#PRINT(CUST.EQUPLD.comFilePath)
+	
+	PRINT(CUST.EQUPLD.fileName)
+	PRINT(CUST.EQUPLD.rptPath)
+	PRINT(CUST.EQUPLD.crncyCode)
+	
+	IF (CUST.EQUPLD.rptPath == "") THEN
+	#{
+		CUST.EQUPLD.rptPath ="1"
+	#}
+	ENDIF
+	print(CUST.EQUPLD.rptPath)
+	
+	#---------------------------------------------------------------------------
+	# Adding sysdate to the file name
+	# Changes done by Pankaj
+	#---------------------------------------------------------------------------
+	
+	#sv_a = CUST.EQUPLD.comFilePath + " " + CUST.EQUPLD.rptPath + " " + BANCS.STDIN.contextBankId + " " + CUST.EQUPLD.crncyCode + " " +  CUST.EQUPLD.fileName
+	#sv_a = sv_a + " " + BANCS.STDIN.userId + " '" + CUST.EQUPLD.tranRmks  + "' " + CUST.EQUPLD.posting + " " + CUST.EQUPLD.Rename
+	#sv_a = sv_a + " " + CUST.EQUPLD.testMode + " " + CUST.EQUPLD.fileNamePath + " " + CUST.EQUPLD.sysdate
+	#PRINT(sv_a)
+	
+	
+	#sv_b = SYSTEM(sv_a + " &")
+	#PRINT(sv_b)
+	
+	sv_u = urhk_getFileLocation("COM|eqlaaupldmn001.com")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		#----------------------------------------------------------------------------------
+		#---    Setting Env variables
+		#----------------------------------------------------------------------------------
+		sv_a = "rptPath|" + CUST.EQUPLD.rptPath
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable fileName"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "bankId|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "crncyCode|" + CUST.EQUPLD.crncyCode
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "fileName|" + CUST.EQUPLD.fileName
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "onsUser|" + BANCS.STDIN.userId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "rmks|" + CUST.EQUPLD.tranRmks
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pstdFlg|" + CUST.EQUPLD.posting
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "renameFlg|" + CUST.EQUPLD.Rename
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "testFlg|" + CUST.EQUPLD.testMode
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "inputFilePath|" + CUST.EQUPLD.fileNamePath
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "sysdate|" + CUST.EQUPLD.sysdate
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#----------------------------------------------------------------------------------
+		#---    Executing com file in background
+		#----------------------------------------------------------------------------------
+		BANCS.INPARAM.scriptName = "eqlaaupldmn001.com"
+		BANCS.INPARAM.arguments = ""
+		sv_u = urhk_CallShellScript("b")
+		print(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.EQUPLD.errMsg = "Upload process failed please retry"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.EQUPLD.errMsg = "Unable to load com file"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.EQUPLD.errMsg != "" ) THEN
+		#{
+			sv_z = urhk_SetOrbOut("Error_01|ERROR^"+CUST.EQUPLD.errMsg+"^testMode")
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+			#}
+		ELSE
+			#{
+			sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+			sv_g = "RESULT_MSG|Upload Initiated successfully "
+			sv_z = urhk_SetOrbOut(sv_g)
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

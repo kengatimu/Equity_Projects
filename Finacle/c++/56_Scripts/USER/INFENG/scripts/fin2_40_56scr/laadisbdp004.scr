@@ -1,0 +1,176 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: laadisbdp004.scr
+#   Description		: Common script for finding common values
+#   Date			: 31-03-2013
+#   Author			: Samrat
+#   Input			: NA
+#   Output			: NA
+#   Called Script	: Called from many scripts
+#   Calling Script	: laadisbdp008.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             31-03-2013      Samrat				Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="a68b3e584a278c6af5a3c4e266d47d25c6fbc534ab52cec9c625363416b1bbbe"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	
+	#-----------------------------------------------------------------------------------------------
+	#Initializing Output Variables
+	#-----------------------------------------------------------------------------------------------
+	CUST.LADISB.errMsg 		= ""
+	CUST.LADISB.loanType 	= ""
+	
+	#################################################################################
+	# Getting and details of loan account
+	#################################################################################
+	sv_s = ""
+	sv_s = sv_s + " laCifId,laSchmCode,laAcctOpnDate,"
+	sv_s = sv_s + " laClrBalAmt,laBacid,laAcctSolId,"
+	sv_s = sv_s + " sancLimit,lastPurgeDate,rcreUserId|"
+	sv_s = sv_s + " SELECT GAM.cif_id,GAM.schm_code,to_char(GAM.acct_opn_date,'dd-mm-yyyy'),"
+	sv_s = sv_s + " GAM.clr_bal_amt,GAM.bacid,GAM.sol_id,"
+	sv_s = sv_s + " GAM.sanct_lim,GAM.last_purge_date,GAM.rcre_user_id"
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.foracid = ?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	
+	IF (sv_d != 0) THEN
+	#{
+		CUST.LADISB.errMsg = "Error in getting rows from Gam table"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.LADISB.laCifId			= BANCS.OUTPARAM.laCifId
+		CUST.LADISB.laSchmCode 		= BANCS.OUTPARAM.laSchmCode
+		CUST.LADISB.laAcctOpnDate 	= BANCS.OUTPARAM.laAcctOpnDate
+		CUST.LADISB.laClrBalAmt 	= BANCS.OUTPARAM.laClrBalAmt
+		CUST.LADISB.laBacid			= BANCS.OUTPARAM.laBacid
+		CUST.LADISB.laAcctSolId		= BANCS.OUTPARAM.laAcctSolId
+		CUST.LADISB.loanAmt			= BANCS.OUTPARAM.sancLimit
+		CUST.LADISB.rcreUserId		= BANCS.OUTPARAM.rcreUserId
+		CUST.LADISB.lastPurgeDate 	= BANCS.OUTPARAM.lastPurgeDate
+		CUST.LADISB.amtAvailForDisb = CDOUBLE(CUST.LADISB.loanAmt) + CDOUBLE(CUST.LADISB.laClrBalAmt)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------
+	#--Calling common script for cparam set up
+	#-----------------------------------------------------------------------------
+	CUST.LADISB.stepVal="4"
+	CALL("laadisbdp008.scr")
+	IF (CUST.LADISB.errMsg != "") THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#---Getting the operative account to credit
+	#---------------------------------------------------------------------
+	sv_s=""
+	sv_s = sv_s + " operAcctId,operAcid,operCifId|"
+	sv_s = sv_s + " SELECT GAM.foracid,GAM.acid,gam.cif_id"
+	sv_s = sv_s + " FROM TBAADM.GAM"
+	sv_s = sv_s + " WHERE GAM.acid = ("
+	sv_s = sv_s + 			" SELECT LAM.op_acid"
+	sv_s = sv_s + 			" FROM TBAADM.GAM, TBAADM.LAM"
+	sv_s = sv_s + 			" WHERE LAM.acid = GAM.acid"
+	sv_s = sv_s + 			" AND LAM.bank_id = GAM.bank_id"
+	sv_s = sv_s + 			" AND GAM.foracid = ?SVAR"
+	sv_s = sv_s + 			" AND LAM.bank_id = ?SVAR)"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = ""
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.LADISB.loanAcctId 	+ "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbselectWithBind(sv_s)
+	print(sv_d)
+	IF ( sv_d != 0 ) THEN
+	#{
+		CUST.LADISB.operAcctFlg="N"
+		#}
+	ELSE
+		#{
+		CUST.LADISB.operAcctId	 = BANCS.OUTPARAM.operAcctId
+		CUST.LADISB.operAcid	 = BANCS.OUTPARAM.operAcid
+		CUST.LADISB.operCifId	 = BANCS.OUTPARAM.operCifId
+		print(CUST.LADISB.operAcctId)
+		print(CUST.LADISB.operAcid)
+		print(CUST.LADISB.operCifId)
+		CUST.LADISB.operAcctFlg="Y"
+		
+		sv_u = urhk_getAcctDetailsInRepository(CUST.LADISB.operAcctId)
+		IF (sv_u != 0 ) THEN
+		#{
+			CUST.LADISB.errMsg = "Error in finding effitive available  balance of operative account"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.LADISB.operAcctEffBal = BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.LADISB.operAcctEffBal)
+	#}
+	ENDIF
+	
+	#################################################################################
+	# Inclusion for Safaricom IPO
+	#################################################################################
+	IF (CUST.LADISB.laSchmCode == CUST.CPARAM.spSchmCode) THEN
+	#{
+		CUST.LADISB.loanType = "C"
+		PRINT(CUST.LADISB.loanType)
+		
+		sv_b = CUST.CPARAM.scipCrBacid
+		sv_i = sv_b + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+		sv_u = urhk_B2k_BacidToAcctId(sv_i)
+		IF (sv_u == 1 ) THEN
+		#{
+			CUST.LADISB.errMsg = "Safaricom IPO Collection A/C not set up"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		CUST.LADISB.scipCrAcctId = BANCS.OUTPARAM.AcctId
+		print(CUST.LADISB.scipCrAcctId)
+		
+		CUST.LADISB.crAcctId = CUST.LADISB.scipCrAcctId
+		print(CUST.LADISB.crAcctId)
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

@@ -1,0 +1,372 @@
+#------------------------------------------------------------------------------------------------    
+#   Name            : bcqfixdp001.scr
+#   Description     : Updates ICI table using services
+#   Date            : 09-03-2013
+#   Author          : Sateesh
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : getcparamvalue.scr
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             09-03-2013      Sateesh		Original Version
+#   2.0             23-09-2013      Bharath		Modifed zonecode validation
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="063022e9ecbcab9fd84967c611e4c70479db58a799b73052e177618d67530ae3"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","BCQFIX") == 0) THEN
+	#{
+		CREATECLASS("CUST","BCQFIX",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	print(BANCS.INPUT.zoneDate)
+	print(BANCS.INPUT.zoneCode)
+	CUST.BCQFIX.errFld		= "zoneDate"
+	IF((BANCS.INPUT.zoneDate == "") OR (BANCS.INPUT.zoneCode == "")) THEN
+	#{
+		CUST.BCQFIX.errMsg = "Error in Getting zonedate/zonecode in script"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.BCQFIX.errMsg 		= ""
+	#CUST.BCQFIX.errFld		= "ERROR"
+	#CUST.BCQFIX.errFld		= "zoneCode"
+	CUST.BCQFIX.inpZoneDate = TRIM(BANCS.INPUT.zoneDate)
+	CUST.BCQFIX.zoneDate 	= TRIM(BANCS.INPUT.zoneDate)+ " 00:00:00"
+	
+	sv_u = urhk_UpCase(BANCS.INPUT.zoneCode)
+	CUST.BCQFIX.zoneCode	= TRIM(BANCS.OUTPARAM.UpString)
+	
+	#-----------------------------------------------------------------------------------------------
+	# Validate zone code
+	#-----------------------------------------------------------------------------------------------
+	sv_s = ""
+	sv_s = sv_s + " cnt|SELECT COUNT(1)"
+	sv_s = sv_s + " FROM TBAADM.IZH"
+	sv_s = sv_s + " WHERE IZH.bank_id = ?SVAR"
+	sv_s = sv_s + " AND IZH.zone_code = ?SVAR"
+	sv_s = sv_s + " AND IZH.sol_id = ?SVAR"
+	sv_s = sv_s + " AND IZH.zone_date = to_date(?SVAR, 'dd-mm-yyyy')"
+	sv_s = sv_s + " AND IZH.zone_stat = 'O'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS 	= BANCS.STDIN.contextBankId + "|" + CUST.BCQFIX.zoneCode
+	BANCS.INPARAM.BINDVARS 	= BANCS.INPARAM.BINDVARS 	+ "|" + BANCS.STDIN.mySolId
+	BANCS.INPARAM.BINDVARS 	= BANCS.INPARAM.BINDVARS 	+ "|" + CUST.BCQFIX.inpZoneDate
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	print(BANCS.OUTPARAM.cnt)
+	IF(CINT(BANCS.OUTPARAM.cnt) == 0) THEN
+	#{
+		CUST.BCQFIX.errMsg = "Invalid Zone Code"
+		CUST.BCQFIX.errFld = "zoneCode"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting INSTTYPE value from CPARAM--"BCQ"
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "DDMODULE"
+	BANCS.INPUT.parameterId = "INSTTYPE"
+	
+	CALL ("getcparamvalue.scr")
+	print(BANCS.OUTPUT.parameterVal)
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.instType = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.BCQFIX.errMsg = "INSTTYPE setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting NUM1 value from CPARAM--"60"
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "DDMODULE"
+	BANCS.INPUT.parameterId = "BNKCODE"
+	
+	CALL ("getcparamvalue.scr")
+	print(BANCS.OUTPUT.parameterVal)
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.bankCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.BCQFIX.errMsg = "BankCode setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting NUM2 value from CPARAM--"00"
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "DDMODULE"
+	BANCS.INPUT.parameterId = "EXTNCODE"
+	
+	CALL ("getcparamvalue.scr")
+	print(BANCS.OUTPUT.parameterVal)
+	
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.extnCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.BCQFIX.errMsg = "Extn code setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	print(CUST.BCQFIX.zoneDate)
+	print(CUST.BCQFIX.zoneCode)
+	sv_p = urhk_B2k_PID("")
+	CUST.BCQFIX.pid = TRIM(BANCS.OUTPARAM.PID)
+	print(CUST.BCQFIX.pid)
+	CUST.BCQFIX.fileName = "BCQFIX"+ CUST.BCQFIX.pid +".log"
+	print(CUST.BCQFIX.fileName)
+	sv_s = "echo '                                     SUCCESS OR FAILURE REPORT\n' >"+CUST.BCQFIX.fileName
+	print(sv_s)
+	sv_a = system(sv_s)
+	
+	#------------------------------------------------------------------
+	# Select record's from ICI custom table
+	#------------------------------------------------------------------
+	sv_s =" zoneCode,zoneDate,solId,"
+	sv_s = sv_s + " instAmt,instNum,ddDate,"
+	sv_s = sv_s + " payeeName,zoneSrlNo,bankCode,extnCode|"
+	sv_s = sv_s + " SELECT"
+	sv_s = sv_s + " ICI.zone_code,to_char(ICI.zone_date,'dd-mm-yyyy hh24:mi:ss'),ICI.sol_id,ICI.inst_amt,"
+	sv_s = sv_s + " ICI.inst_num,to_char(DDC.dd_date,'dd-mm-yyyy hh24:mi:ss'),SUBSTR(DDC.payee_name,1,50),"
+	sv_s = sv_s + " ICI.zone_srl_num, '"+CUST.CPARAM.bankCode+"','"+CUST.CPARAM.extnCode+"'"
+	sv_s = sv_s + " FROM"
+	sv_s = sv_s + " TBAADM.ICI,TBAADM.DDC,TBAADM.DST"
+	sv_s = sv_s + " WHERE"
+	sv_s = sv_s + " ICI.inst_num=DDC.dd_num"
+	sv_s = sv_s + " AND ICI.sol_id=DDC.sol_id"
+	sv_s = sv_s + " AND ICI.bank_id=DDC.bank_id"
+	sv_s = sv_s + " AND DST.issu_br_code = DDC.sol_id"
+	sv_s = sv_s + " AND DST.dd_num=DDC.dd_num"
+	sv_s = sv_s + " AND DST.dd_amt = DDC.dd_amt"
+	sv_s = sv_s + " AND DST.bank_id = DDC.bank_id"
+	sv_s = sv_s + " AND DST.dd_status ='U'"
+	sv_s = sv_s + " AND ICI.zone_code =?SVAR"
+	sv_s = sv_s + " AND ICI.zone_date = to_date(?SVAR,'dd-mm-yyyy')"
+	sv_s = sv_s + " AND ICI.status_ind!='P'"
+	sv_s = sv_s + " AND ICI.inst_type =?SVAR"
+	sv_s = sv_s + " AND ICI.bank_id =?SVAR"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS	= ""
+	BANCS.INPARAM.BINDVARS	= BANCS.INPARAM.BINDVARS + CUST.BCQFIX.zoneCode  	+ "|"
+	BANCS.INPARAM.BINDVARS 	= BANCS.INPARAM.BINDVARS + CUST.BCQFIX.inpZoneDate 	+ "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.instType		+ "|"
+	BANCS.INPARAM.BINDVARS 	= BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	#-----------------------------------------------------------------------------------
+	#---opening cursor
+	#-----------------------------------------------------------------------------------
+	sv_c = urhk_dbcursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	
+	IF (sv_c != 0) THEN
+	#{
+		CUST.BCQFIX.errMsg = "Cursor opening failed"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+	CUST.BCQFIX.mainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(CUST.BCQFIX.mainCursor)
+	
+	#-------------------------------------------------------------------------------------
+	#---CURSOR FETCH
+	#-------------------------------------------------------------------------------------
+	WHILE (sv_c == 0)
+	#{
+		sv_c = urhk_dbCursorFetch(CUST.BCQFIX.mainCursor)
+		PRINT(sv_c)
+		IF (sv_c != 0) THEN
+		#{
+			sv_c = urhk_dbCursorClose(CUST.BCQFIX.mainCursor)
+			PRINT(sv_c)
+			sv_c = 1
+			#}
+		ELSE
+			#{
+			CUST.BCQFIX.zoneCode		= BANCS.OUTPARAM.zoneCode
+			CUST.BCQFIX.zoneDate		= BANCS.OUTPARAM.zoneDate
+			CUST.BCQFIX.solId			= BANCS.OUTPARAM.solId
+			CUST.BCQFIX.instAmt			= BANCS.OUTPARAM.instAmt
+			CUST.BCQFIX.instNum			= BANCS.OUTPARAM.instNum
+			CUST.BCQFIX.ddDate			= BANCS.OUTPARAM.ddDate
+			CUST.BCQFIX.payeeName		= BANCS.OUTPARAM.payeeName
+			CUST.BCQFIX.zoneSrlNo		= BANCS.OUTPARAM.zoneSrlNo
+			CUST.BCQFIX.bankCode		= BANCS.OUTPARAM.bankCode
+			CUST.BCQFIX.extnCode		= BANCS.OUTPARAM.extnCode
+			
+			PRINT(CUST.BCQFIX.zoneCode)
+			PRINT(CUST.BCQFIX.zoneDate)
+			PRINT(CUST.BCQFIX.solId)
+			PRINT(CUST.BCQFIX.instAmt)
+			PRINT(CUST.BCQFIX.instNum)
+			PRINT(CUST.BCQFIX.ddDate)
+			PRINT(CUST.BCQFIX.payeeName)
+			PRINT(CUST.BCQFIX.zoneSrlNo)
+			PRINT(CUST.BCQFIX.bankCode)
+			PRINT(CUST.BCQFIX.extnCode)
+			
+			#----------------------------------------------------------------------------------------------------
+			# Initialize mandatory input values
+			#----------------------------------------------------------------------------------------------------
+			sv_u = urhk_SetUrhkInp("instrmntDtl.instrmntNum|" + CUST.BCQFIX.instNum)
+			sv_u = urhk_SetUrhkInp("zoneDtl.sol.solId|"+CUST.BCQFIX.solId)
+			sv_u = urhk_SetUrhkInp("zoneDtl.zoneDate|"+CUST.BCQFIX.zoneDate)
+			sv_u = urhk_SetUrhkInp("zoneDtl.zone.zoneCode|"+CUST.BCQFIX.zoneCode)
+			sv_u = urhk_SetUrhkInp("instrmntDtl.zoneSrlNum|" +CUST.BCQFIX.zoneSrlNo)
+			sv_u = urhk_ExecSrv("SRV_FetchIcTranDtlForModify|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u == 0) THEN
+			#{
+				sv_u = urhk_copyOutToIn("")
+				print(sv_u)
+				
+				sv_u = urhk_ExecSrv("SRV_FetchIcZoneDtlWithLock|retain_all_output = Y")
+				print(sv_u)
+				
+				IF(sv_u == 0) THEN
+				#{
+					sv_u = urhk_CopyOutToIn("")
+					print(sv_u)
+					
+					sv_u = urhk_SetUrhkInp("instrmntDtl.instrmntDate|"+ CUST.BCQFIX.ddDate)
+					sv_u = urhk_SetUrhkInp("instrmntDtl.tranPartcls|"+ CUST.BCQFIX.payeeName)
+					sv_u = urhk_SetUrhkInp("instrmntDtl.issBr.bankCode|"+ CUST.BCQFIX.bankCode)
+					sv_u = urhk_SetUrhkInp("instrmntDtl.issBr.brCode|"+ CUST.BCQFIX.solId)
+					sv_u = urhk_SetUrhkInp("instrmntRejDtl.extnCode|"+ CUST.BCQFIX.extnCode)
+					sv_u = urhk_ExecSrv("SRV_ModifyIcTranDtlAndVerify|retain_all_output = Y|same_user_verify = Y")
+					print(sv_u)
+					
+					IF (sv_u != 0) THEN
+					#{
+						sv_u = urhk_CopyOutToIn("")
+						print(sv_u)
+						
+						sv_u = urhk_SetUrhkInp("instrmntDtl.instrmntDate|"+ CUST.BCQFIX.ddDate)
+						sv_u = urhk_SetUrhkInp("instrmntDtl.tranPartcls|"+ CUST.BCQFIX.payeeName)
+						sv_u = urhk_SetUrhkInp("instrmntDtl.issBr.bankCode|"+ CUST.BCQFIX.bankCode)
+						sv_u = urhk_SetUrhkInp("instrmntDtl.issBr.brCode|"+ CUST.BCQFIX.solId)
+						sv_u = urhk_SetUrhkInp("instrmntRejDtl.extnCode|"+ CUST.BCQFIX.extnCode)
+						sv_u = urhk_ExecSrv("SRV_ModifyIcTranDtlAndVerify|retain_all_output = Y|same_user_verify = Y")
+						print(sv_u)
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			#--------------------------------------------------------------------------------------------------------------
+			# Printing Errors
+			#--------------------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				IF (sv_v > 0) THEN
+				#{
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_z = sv_e
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>bcqfix.log")
+						print(sv_u)
+					#}
+					DO
+					sv_s = "echo 'Zone Date: "+CUST.BCQFIX.inpZoneDate+ " |ZoneCode: "+CUST.BCQFIX.zoneCode+" |InstrumentNo: "+CUST.BCQFIX.instNum+" |ErrorMsg: "+sv_z+"' >>"+CUST.BCQFIX.fileName
+					print(sv_s)
+					sv_a = system(sv_s)
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				sv_s = "echo 'Zone Date: "+CUST.BCQFIX.inpZoneDate+ " |ZoneCode: "+CUST.BCQFIX.zoneCode+" |InstrumentNo: "+CUST.BCQFIX.instNum+" |Success ' >>"+CUST.BCQFIX.fileName
+				print(sv_s)
+				sv_a = system(sv_s)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	DO
+	
+	#--------------------------------------------------------------------------------------------------------------
+	# For HPR Entry
+	#--------------------------------------------------------------------------------------------------------------
+	sv_s = "babx4040 ${B2K_SESSION_ID} "+CUST.BCQFIX.fileName+' '+'"'+"Success OR Failure Report for CBCQFIX"+'"'+" MANAGER 1 N"
+	print(sv_s)
+	sv_a = system(sv_s)
+	
+	ENDOFSCRIPT:
+		IF (CUST.BCQFIX.errMsg != "") THEN
+		#{
+			sv_s = "Error_01|ERROR:^"+ CUST.BCQFIX.errMsg +"^"+CUST.BCQFIX.errFld
+			sv_u = urhk_SetOrbOut(sv_s)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		#}
+		ENDIF
+		
+		sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+		sv_g = "RESULT_MSG|Batch Executed Successfully"
+		sv_z = urhk_SetOrbOut(sv_g)
+		print(sv_z)
+		EXITSCRIPT
+END-->

@@ -1,0 +1,309 @@
+#===============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# category: Script Name Based
+# script: LaChargeTransaction.scr
+# event: NA
+# description: LaChargeTransaction
+#===============================================================
+#----------------------------------------------------------------------------
+#       SCRIPT FOR Loan Charge Transaction.
+#
+# Srl No  Modified Date  Author    Modification                        
+# ------  -------------  -------   --------------                       
+#   1     11/09/2008     Ashwini   Added MTT.TranDetails.TranIdOnline
+#                                  to generate Manual TranId
+#----------------------------------------------------------------------------
+# Fields Dumped
+#----------------------------------------------------------------------------
+#MTT.InputDetails.CreditAccount
+#MTT.InputDetails.DebitAccount
+#MTT.InputDetails.CollectionAmount
+#MTT.InputDetails.CollectionCrncy
+#MTT.InputDetails.RateCode
+#MTT.InputDetails.Rate
+#MTT.InputDetails.EventId
+#MTT.InputDetails.EventType
+#MTT.InputDetails.TotalAssessAmount
+#MTT.InputDetails.TotalCollAmount
+#MTT.InputDetails.DemandSatisfnMethod
+#MTT.InputDetails.TodRefType
+#MTT.InputDetails.CollMethod
+#MTT.InputDetails.LoanAccount
+#MTT.InputDetails.SystemCalcAmount
+#MTT.InputDetails.UserEnteredAmount
+#MTT.InputDetails.CifId
+#MTT.InputDetails.Consolidate
+#MTT.InputDetails.AssessDmdFlg
+#MTT.InputDetails.FlowId
+#MTT.InputDetails.TypeOfDemand
+#MTT.InputDetails.ChrgRouteFlg
+#MTT.InputDetails.TranValueDate		: This will be the date diff w.r.t bod_date
+#		
+#----------------------------------------------------------------------------
+<--start
+
+trace on
+
+BANCS.OUTPUT.scriptError = ""    
+sv_r = urhk_MTTS_PopulateInputDetails("")
+print(sv_r)
+if(sv_r != 0) then
+	BANCS.OUTPUT.successOrFailure = "F"
+    BANCS.OUTPUT.scriptError = "urhk_MTTS_PopulateInputDetails returns FAILURE"
+	exitscript	
+endif
+
+print(MTT.InputDetails.TranValueDate)
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType="T"         						
+MTT.TranDetails.TranSubType="BI"							
+#MSG0308470="Loan Charge Transaction"
+sv_f = urhk_getMSGCodeErrDesc("MSG0308470")
+if(sv_f == 0) then
+MTT.TranDetails.Remarks = BANCS.OUTPARAM.errDesc
+endif
+MTT.TranDetails.IgnoreExcp="I"								
+MTT.TranDetails.Consolidate="Y"
+MTT.TranDetails.ReversalFlg="N"								
+MTT.TranDetails.ReversalDate=""
+MTT.TranDetails.ProxyPstgInd="Y"
+MTT.TranDetails.sysTranCode = "LOANAA034"
+
+print(MTT.TranDetails.TranDate)
+
+#To Generate Manual TranId for non BJSTM Call
+if(BANCS.INPUT.callingProgramId !="BJSTM")THEN
+    MTT.TranDetails.TranIdOnline="Y"
+ENDIF
+
+
+sv_r = urhk_MTTS_DefineTransaction("LoanCharge")
+if(sv_r != 0) then
+	MTT.Error.Description="Transaction definition could not be created"
+	sv_r = urhk_MTTS_ReportErrorCondition("")
+	exitscript	
+endif
+
+#print(sv_r)
+while(sv_r < 1)
+#{
+	sv_a = CDOUBLE(MTT.InputDetails.CollectionAmount)
+	sv_b = CDOUBLE(MTT.InputDetails.TotalAssessAmount)
+	sv_c = CDOUBLE(MTT.InputDetails.TotalCollAmount)
+	sv_k = CDOUBLE(MTT.InputDetails.SystemCalcAmount)
+	sv_l = CDOUBLE(MTT.InputDetails.UserEnteredAmount)
+	sv_e = CDOUBLE(MTT.InputDetails.Rate)
+
+	##################################
+	#Credit part tran for charges
+	if(sv_a > 0) then
+		MTT.PartTranDetails.Account = MTT.InputDetails.CreditAccount
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.CollectionCrncy
+	        #MSG0319952 = "LOAN CHARGE/"
+        	sv_f = urhk_getMSGCodeErrDesc("MSG0319952")
+		IF (sv_f == 0) THEN
+		#{
+			Print (MTT.InputDetails.EventId)
+			Print (MTT.InputDetails.EventType)
+			if(MTT.InputDetails.EventType == "MIS10") then
+			#{
+				MTT.PartTranDetails.Particulars = "Rollover Fee /" + MTT.InputDetails.LoanAccount 
+			#}
+			else
+			#{
+				MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc + "/" + MTT.InputDetails.LoanAccount + "/" + MTT.InputDetails.EventType + "/" + MTT.InputDetails.EventId
+			#}
+			endif
+		#}
+		ENDIF
+			
+		# Call to common script to modify tran particulars if script is present
+                MTT.PartTranDetails.ScriptEventType = "LACHR"
+                sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+                if (sv_m == 0) then
+                    call("getMTTTranPart.scr")
+                endif
+	        #MSG0319591 = "CREDIT FOR LOANS CHARGE"
+        	sv_f = urhk_getMSGCodeErrDesc("MSG0319591")
+        	if(sv_f == 0) then
+        		MTT.PartTranDetails.Remarks = BANCS.OUTPARAM.errDesc
+        	endif	
+		MTT.PartTranDetails.RefAmount = sv_a
+		MTT.PartTranDetails.Consolidate = MTT.InputDetails.Consolidate
+		MTT.PartTranDetails.ValueDate = MTT.InputDetails.TranValueDate 
+		MTT.PartTranDetails.TranIdentifier = "LoanCharge"
+		MTT.PartTranDetails.PartTranIdentifier = "SOURCE_CREDIT"
+		MTT.PartTranDetails.PTranBusinessType = "CHARGES"
+		MTT.PartTranDetails.sysPartTranCode = "PTRN00727"
+
+print(MTT.PartTranDetails.ValueDate)
+		sv_g = urhk_MTTS_DefineLoanPartTran("LOANFEECR")
+
+		if (sv_g != 0) then
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.scriptError = "urhk_MTTS_DefineLoanPartTran returns FAILURE"
+			goto ENDOFSCRIPT
+		endif
+
+		##################################
+		#Debit part tran for Charges
+
+		if (MTT.InputDetails.AssessDmdFlg == "A") then
+		# For Assessment Type Charges
+			MTT.PartTranDetails.Account = MTT.InputDetails.DebitAccount
+			MTT.PartTranDetails.RefCurrency = MTT.InputDetails.CollectionCrncy
+		        #MSG0319952 = "LOAN CHARGE/"
+            	sv_f = urhk_getMSGCodeErrDesc("MSG0319952")
+            	IF (sv_f == 0) THEN
+		#{
+			Print (MTT.InputDetails.EventId)
+			Print (MTT.InputDetails.EventType)
+			if(MTT.InputDetails.EventType == "MIS10") then
+			#{
+				MTT.PartTranDetails.Particulars = "Rollover Fee /" + MTT.InputDetails.LoanAccount 
+			#}
+			else
+			#{
+				MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc + "/" + MTT.InputDetails.LoanAccount + "/" + MTT.InputDetails.EventType + "/" + MTT.InputDetails.EventId
+			#}
+			endif
+		#}
+		ENDIF
+			
+			# Call to common script to modify tran particulars if script is present
+                      MTT.PartTranDetails.ScriptEventType = "LACHR"
+                      sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+                      if (sv_m == 0) then
+                              call("getMTTTranPart.scr")
+                      endif
+		      #MSG0308471 = "LOANS CHARGE COLLECTION"
+            		sv_f = urhk_getMSGCodeErrDesc("MSG0308471")
+            		if(sv_f == 0) then
+            			MTT.PartTranDetails.Remarks = BANCS.OUTPARAM.errDesc
+            		endif	
+			MTT.PartTranDetails.RefAmount = -sv_a
+			MTT.PartTranDetails.TranIdentifier = "LoanCharge"
+			MTT.PartTranDetails.PartTranIdentifier = "SOURCE_DEBIT"
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.TranValueDate
+			MTT.PartTranDetails.PTranBusinessType = "CHARGES"								
+			MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+			MTT.PartTranDetails.Rate = sv_e
+			MTT.PartTranDetails.TODRefType = MTT.InputDetails.TodRefType
+			MTT.PartTranDetails.CarveAmtFlg = "Y"
+			MTT.PartTranDetails.Consolidate=MTT.InputDetails.Consolidate
+                        MTT.PartTranDetails.sysPartTranCode = "PTRN00728" 
+			   #if (MTT.PartTranDetails.TODRefType == "DS") then 
+                           #       MTT.PartTranDetails.Consolidate = "N" 
+                           #else 
+                           #       if(MTT.InputDetails.CollMethod=="O") then 
+               #           MTT.PartTranDetails.Consolidate = "N" 
+               #   else 
+               #           MTT.PartTranDetails.Consolidate = "Y" 
+               #   endif 
+                           #endif 
+
+			if (MTT.InputDetails.CollMethod == "L") then 
+				MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.LoanAccount
+				MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+			endif
+
+			MTT.ChargeDetails.EventType = MTT.InputDetails.EventType
+			MTT.ChargeDetails.EventId 	= MTT.InputDetails.EventId
+			MTT.ChargeDetails.CompB2kId = MTT.InputDetails.CompB2kId
+			MTT.ChargeDetails.CollectionCrncy 	= MTT.InputDetails.CollectionCrncy
+		    MTT.ChargeDetails.PtranBusType = MTT.InputDetails.PtranBusType	
+			MTT.ChargeDetails.TargetAcctId 	= MTT.InputDetails.LoanAccount
+			MTT.ChargeDetails.ChargeCifId 	= MTT.InputDetails.CifId
+			MTT.ChargeDetails.ServiceSolId 	= BANCS.STDIN.mySolId
+
+			if (MTT.ChargeDetails.EventType == "LNKED") then
+				sv_j = MTT.InputDetails.LoanAccount+" "+LTRIM(RTRIM(MID$(MTT.InputDetails.tranParticulars,0,32)))
+				MTT.PartTranDetails.Particulars=sv_j
+			endif
+
+			if (MTT.InputDetails.CollMethod=="O") then 
+				MTT.ChargeDetails.CalculatedAmount 	= sv_k
+				MTT.ChargeDetails.ActualAmount 		= sv_a
+			endif
+print(MTT.PartTranDetails.ValueDate)
+			sv_z = urhk_MTTS_DefineChargePartTran("LOANFEEDR")
+		
+			if (sv_z != 0) then
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.scriptError = "urhk_MTTS_DefineChargePartTran returns FAILURE"
+				GOTO ENDOFSCRIPT
+			endif
+	
+		else
+		# For Demand Type Charges
+            MTT.PartTranDetails.Account = MTT.InputDetails.DebitAccount
+            MTT.PartTranDetails.RefCurrency = MTT.InputDetails.CollectionCrncy
+            #MSG0319952 = "LOAN CHARGE/"
+            sv_f = urhk_getMSGCodeErrDesc("MSG0319952")
+            IF (sv_f == 0) THEN
+		#{
+			Print (MTT.InputDetails.EventId)
+			Print (MTT.InputDetails.EventType)
+			if(MTT.InputDetails.EventType == "MIS10") then
+			#{
+				MTT.PartTranDetails.Particulars = "Rollover Fee /" + MTT.InputDetails.LoanAccount 
+			#}
+			else
+			#{
+				MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc + "/" + MTT.InputDetails.LoanAccount + "/" + MTT.InputDetails.EventType + "/" + MTT.InputDetails.EventId
+			#}
+			endif
+		#}
+		ENDIF
+			
+            # Call to common script to modify tran particulars if script is present
+                      MTT.PartTranDetails.ScriptEventType = "LACHR"
+                      sv_m = urhk_getFileLocation("SCRIPT|getMTTTranPart.scr")
+                      if (sv_m == 0) then
+                              call("getMTTTranPart.scr")
+                      endif
+            #MSG0308472 = "LOANS CHARGE DEMAND"
+            sv_f = urhk_getMSGCodeErrDesc("MSG0308472")
+            if(sv_f == 0) then
+            MTT.PartTranDetails.Remarks = BANCS.OUTPARAM.errDesc
+            endif
+            MTT.PartTranDetails.RefAmount = -sv_a
+            MTT.PartTranDetails.TranIdentifier = "LoanCharge"
+            MTT.PartTranDetails.PartTranIdentifier = "LOAN_DEBIT"
+            MTT.PartTranDetails.ValueDate = MTT.InputDetails.TranValueDate
+            MTT.PartTranDetails.PTranBusinessType = "CHARGES"
+            MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+            MTT.PartTranDetails.Rate = sv_e
+            MTT.PartTranDetails.CarveAmtFlg = "Y"			
+	    MTT.PartTranDetails.Consolidate ="Y" 
+			
+		# populate addt. details for debit part tran. if demand type is 'D'
+		# and call urhk_MTTS_DefineLoanPartTran() only
+
+
+			if(MTT.InputDetails.ChrgRouteFlg == "O") then
+				MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.LoanAccount
+				MTT.PartTranDetails.ACPARTB2kType = "ACCNT"
+			endif
+			MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.LoanAccount	
+			MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.FlowId
+			MTT.LAAddnlDetails.OriginOfTran = "LAFCB"
+			MTT.LAAddnlDetails.TypeOfDemand = MTT.InputDetails.TypeOfDemand
+			MTT.PartTranDetails.ValueDate = MTT.InputDetails.TranValueDate
+			MTT.PartTranDetails.sysPartTranCode = "PTRN00729"	
+print(MTT.PartTranDetails.ValueDate)
+			sv_z = urhk_MTTS_DefineLoanPartTran("LOANFEEDR")	
+		endif
+
+		sv_z = urhk_MTTS_EndDefinition("")
+	endif
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+do
+#}
+
+ENDOFSCRIPT:
+trace off
+exitscript
+end-->
+

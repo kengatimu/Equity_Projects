@@ -1,0 +1,426 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebz_depSummary.scr
+#  Description     : fetchs Term Deposit accounts attached to a CIF
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2023     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "EZB")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "EZB", 5)
+	#}
+	ENDIF
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNumber"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="Please Enter Account Number"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+   	ELSE 
+   		CUST.EZB.accountNum = BANCS.INPUT.AccountNumber
+   		print(CUST.EZB.accountNum)
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("FromDate"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="Please Enter From Date. Format DD-MON-YYYY"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+   	ELSE 
+   		CUST.EZB.fromDate = BANCS.INPUT.FromDate
+   		print(CUST.EZB.fromDate)
+	#}
+	ENDIF
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("EndDate"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="Please Enter End Date. Format DD-MON-YYYY"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+   	ELSE 
+   		CUST.EZB.endDate = BANCS.INPUT.EndDate
+   		print(CUST.EZB.endDate)
+	#}
+	ENDIF
+
+
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+	#CUST.EZB.schm_type = "TDA"
+	#CUST.EZB.accountNum = "1450282651994"
+	CUST.EZB.null = " "
+	CUST.EZB.iciCount = ""
+
+	sv_a = urhk_getAcctDetailsInRepository(CUST.EZB.accountNum)
+	print(sv_a)
+
+	IF(sv_a == 0)THEN
+	#{
+		CUST.EZB.acctName = trim(BANCS.OUTPARAM.acctName)
+		print(CUST.EZB.acctName)
+	#}
+	ENDIF
+
+	sv_u = urhk_B2k_ForacidToAcid(CUST.EZB.accountNum)
+    print(sv_u)
+    if (sv_u ==0) then
+    #{
+        CUST.EZB.acid=BANCS.OUTPARAM.Acid
+        print(CUST.EZB.acid)
+    else
+        CUST.EZB.error = "Invaid Account Number."
+		sv_t = "DepositSummary_RES.<rec_1>.error| " + CUST.EZB.error
+		sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+    #}
+    endif
+
+	#----------------------------------------------------------------------------------------------
+	# GET INWARD RECORDS
+	#----------------------------------------------------------------------------------------------
+
+	sv_q = "count|"
+	sv_q = sv_q + "select count(*) "
+	sv_q = sv_q + " from tbaadm.ici "
+	sv_q = sv_q + " WHERE ACID =?SVAR and BANK_ID=?SVAR and entry_date between '"+CUST.EZB.fromDate+"' and '"+CUST.EZB.endDate+"' "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS =  CUST.EZB.acid +"|" +BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbSelectWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF(sv_c == 0)THEN
+	#{
+		CUST.EZB.inwCount = BANCS.OUTPARAM.count
+		print(CUST.EZB.inwCount)
+	ELSE
+		CUST.EZB.iciCount = ""
+	#}
+	ENDIF
+
+	sv_q = "inw_crncy_code,inw_inst_num,inw_inst_amt,inw_entry_date,inw_value_date,inw_status |"
+	sv_q = sv_q + "select CRNCY_CODE,INST_NUM,INST_AMT,ENTRY_DATE,VALUE_DATE,status_ind "
+	sv_q = sv_q + " from tbaadm.ici "
+	sv_q = sv_q + " WHERE ACID =?SVAR and BANK_ID=?SVAR and entry_date between '"+CUST.EZB.fromDate+"' and '"+CUST.EZB.endDate+"' "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS =  CUST.EZB.acid +"|" +BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbcursorOpenWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF (sv_c == 0)THEN
+	#{
+		CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(CUST.EZB.cursor_number)
+
+		sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+		print(sv_d)
+
+		IF(sv_d == 0)THEN
+		#{
+ 			sv_q = 0
+			print(sv_q)
+
+			WHILE (sv_d == 0)
+			#{
+				sv_q = sv_q + 1
+				print(sv_q)
+
+				sv_v = "InwAcctNum_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.accountNum
+
+				sv_v = "InwAcctName_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.acctName
+
+				sv_v = "InwCrncyCode_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_crncy_code
+
+				sv_v = "InwInstNum_" + FORMAT$(sv_q, "%d") 
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_inst_num
+
+				sv_v = "InwInstAmt_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_inst_amt
+
+				sv_v = "InwEntryDate_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_entry_date
+
+				sv_v = "InwValueDate_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_value_date
+
+				sv_v = "InwStatus_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.inw_status
+
+				sv_v = "InwPayeeName_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.null
+
+				sv_v = "InwChqType_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = "INWARD"
+
+				print(sv_v)
+
+				sv_v = "InwAcctNum_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.AccountNumber| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwAcctName_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.AccountName| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwCrncyCode_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeCurrency| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwInstNum_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeNumber| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwInstAmt_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeAmount| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwEntryDate_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeReceivedDate| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwValueDate_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequePaidDate| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwStatus_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeStatus| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwPayeeName_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequePayeeName| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "InwChqType_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Inward.ChequeType| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+				print(sv_d)
+
+			#} 
+			DO 
+
+			sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+			print(sv_x)
+			print(CUST.EZB.cursor_number)
+		ELSE 
+			IF(CUST.EZB.iciCount > 0)THEN
+			#{
+				CUST.EZB.error = "Error Occured. Try Again."
+				sv_t = "DepositSummary_RES.<rec_1>.error| " + CUST.EZB.error
+				sv_u = urhk_SetOrbOut(sv_t)
+			ELSE 
+				CUST.EZB.error = "No records fetched for inward cheques."
+				sv_t = "DepositSummary_RES.<rec_1>.message| " + CUST.EZB.error
+				sv_u = urhk_SetOrbOut(sv_t)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	ELSE 
+		IF(CUST.EZB.iciCount > 0)THEN
+		#{
+			CUST.EZB.error = "Error Occured. Try Again."
+			sv_t = "DepositSummary_RES.<rec_1>.error| " + CUST.EZB.error
+			sv_u = urhk_SetOrbOut(sv_t)
+		ELSE 
+			CUST.EZB.error = "No records fetched for inward cheques."
+			sv_t = "DepositSummary_RES.<rec_1>.message| " + CUST.EZB.error
+			sv_u = urhk_SetOrbOut(sv_t)
+		#}
+		ENDIF 
+	#}
+	ENDIF
+
+
+	#----------------------------------------------------------------------------------------------
+	# GET OUTWARD RECORDS
+	#----------------------------------------------------------------------------------------------
+
+
+	sv_q = "out_crncy_code,out_inst_num,out_inst_amt,out_entry_date,out_value_date,out_status |"
+	sv_q = sv_q + "SELECT A.CRNCY_CODE, A.INSTRMNT_ID, A.INSTRMNT_AMT,A.ENTRY_DATE,A.TRAN_VALUE_DATE,A.STATUS_FLG "
+	sv_q = sv_q + " FROM TBAADM.OCI A "
+	sv_q = sv_q + " WHERE (A.SOL_ID,A.SET_NUM,A.CLG_ZONE_CODE,A.CLG_ZONE_DATE) IN  "
+	sv_q = sv_q + " (SELECT B.SOL_ID,B.SET_NUM, B.CLG_ZONE_CODE,B.CLG_ZONE_DATE FROM TBAADM.OCP B, TBAADM.GAM C "
+	sv_q = sv_q + " WHERE B.bank_id =C.bank_id AND A.DEL_FLG= B.DEL_FLG AND C.ACID = B.ACID AND A.SOL_ID = B.SOL_ID "
+	sv_q = sv_q + " AND A.CLG_ZONE_DATE = B.CLG_ZONE_DATE AND A.CLG_ZONE_CODE = B.CLG_ZONE_CODE AND A.SET_NUM = B.SET_NUM AND C.FORACID=?SVAR AND A.ENTRY_DATE between '"+CUST.EZB.fromDate+"' and '"+CUST.EZB.endDate+"'  ) "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.EZB.accountNum
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbcursorOpenWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF (sv_c == 0)THEN
+	#{
+		CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(CUST.EZB.cursor_number)
+
+		sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+		print(sv_d)
+
+		IF(sv_d == 0)THEN
+		#{
+ 			sv_q = 0
+			print(sv_q)
+
+			WHILE (sv_d == 0)
+			#{
+				sv_q = sv_q + 1
+				print(sv_q)
+
+				sv_v = "OutAcctNum_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.accountNum
+
+				sv_v = "OutAcctName_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.acctName
+
+				sv_v = "OutCrncyCode_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_crncy_code
+
+				sv_v = "OutInstNum_" + FORMAT$(sv_q, "%d") 
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_inst_num
+
+				sv_v = "OutInstAmt_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_inst_amt
+
+				sv_v = "OutEntryDate_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_entry_date
+
+				sv_v = "OutValueDate_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_value_date
+
+				sv_v = "OutStatus_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.out_status
+
+				IF(("CUST").("EZB").(sv_v) == "R")THEN
+					("CUST").("EZB").(sv_v) = "Released to Shadow balance"
+				ENDIF
+				IF(("CUST").("EZB").(sv_v) == "G")THEN
+					("CUST").("EZB").(sv_v) = "Regularised"
+				ENDIF
+				IF(("CUST").("EZB").(sv_v) == "P")THEN
+					("CUST").("EZB").(sv_v) = "Pending"
+				ENDIF
+				IF(("CUST").("EZB").(sv_v) == "W")THEN
+					("CUST").("EZB").(sv_v) = "Pending and Rejected"
+				ENDIF
+				IF(("CUST").("EZB").(sv_v) == "O")THEN
+					("CUST").("EZB").(sv_v) = "Released and rejected"
+				ENDIF
+				IF(("CUST").("EZB").(sv_v) == "J")THEN
+					("CUST").("EZB").(sv_v) = "Regularised and rejected"
+				ENDIF
+
+				sv_v = "OutPayeeName_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = CUST.EZB.acctName
+
+				sv_v = "OutChqType_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = "OUTWARD"
+
+				print(sv_v)
+
+				sv_v = "OutAcctNum_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.AccountNumber| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutAcctName_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.AccountName| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutCrncyCode_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeCurrency| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutInstNum_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeNumber| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutInstAmt_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeAmount| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutEntryDate_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeReceivedDate| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutValueDate_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequePaidDate| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutStatus_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeStatus| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutPayeeName_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequePayeeName| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_v = "OutChqType_" + FORMAT$(sv_q, "%d")
+				sv_t = "ChequeStatus_RES.<rec_" + FORMAT$(sv_q,"%d") + ">.Outward.ChequeType| " + ("CUST").("EZB").(sv_v)
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+				print(sv_d)
+
+			#} 
+			DO 
+
+			sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+			print(sv_x)
+			print(CUST.EZB.cursor_number)
+		ELSE 
+			CUST.EZB.error = "Error Occured. Try Again."
+			sv_t = "DepositSummary_RES.<rec_1>.error| " + CUST.EZB.error
+			sv_u = urhk_SetOrbOut(sv_t)
+		#}
+		ENDIF
+
+	ELSE 
+		CUST.EZB.error = "Error Occured. Try Again."
+		sv_t = "DepositSummary_RES.<rec_1>.error| " + CUST.EZB.error
+		sv_u = urhk_SetOrbOut(sv_t)
+	#}
+	ENDIF
+
+ENDSCRIPT:
+trace off
+END-->
+

@@ -1,0 +1,218 @@
+############################################################################################################									
+# Source Name						: uddsdirectdebitmn002.scr
+# Date								: 10-03-2013
+# Description						: This script will get call when CUDDS(U) is invoked
+# Input								: None
+# Output							: None
+# Called Script						: None
+# Calling Script					: uddsdirectdebitmn003.scr
+# Author     						: Shilpa
+# Modification History				:
+# < Version No.> 	<Date>		<Author Name> 	<Description>
+#	0.1				10-03-2013 	Shilpa 			Original Version
+# Using tablespace 4
+############################################################################################################
+
+<--START
+CHECKSUM="f5619afeaa858cc6a39719a4d58452040922f03d6a1faf11146bf3516766a934"
+	TRACE ON
+	#==========================================================
+	# CREATING NEW REPOSITORY AND CLASS
+	#==========================================================
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "CUDDS") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CUDDS", 5)
+	#}
+	ENDIF
+	
+	CUST.CUDDS.errMsg = ""
+	BANCS.INPUT.moduleName="CLEARING"
+	BANCS.INPUT.parameterId="TRANSUBTYPE"
+	call("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CUDDS.tranSubType = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CUDDS.errMsg = BANCS.INPUT.parameterId+" setup is not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	print(BANCS.STDIN.mySolId)
+	
+	sv_s = "sysdate|select to_char(sysdate,'DD-MM-YYYY') from dual"
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	CUST.CUDDS.sysdate = BANCS.OUTPARAM.sysdate
+	print(CUST.CUDDS.sysdate)
+	
+	IF ( CUST.CUDDS.Test == "N" ) THEN
+	#{
+		CUST.CUDDS.postind = "P"
+		CUST.CUDDS.Rename = "Y"
+		#}
+	ELSE
+		#{
+		CUST.CUDDS.postind = "T"
+		CUST.CUDDS.Rename = "N"
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# SUC file to upload
+	#----------------------------------------------------------
+	
+	CUST.CUDDS.suc_file = CUST.CUDDS.Originator + "_APPLIED_" + CUST.CUDDS.Originator + "_" + CUST.CUDDS.sysdate + ".SUC"
+	print (CUST.CUDDS.suc_file)
+	sv_a = "test -f " + CUST.CUDDS.suc_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CUDDS.suc_file)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# SUC file to upload in TTUM --- Unapplied
+	#----------------------------------------------------------
+	
+	CUST.CUDDS.ttumsal_file = CUST.CUDDS.Originator + "_UNAPPLIED_" + CUST.CUDDS.Originator + "_" + CUST.CUDDS.sysdate + ".SUC"
+	print(CUST.CUDDS.ttumsal_file)
+	sv_a = "test -f " + CUST.CUDDS.ttumsal_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CUDDS.ttumsal_file)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# Checking if  there are pending records
+	#----------------------------------------------------------
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + "from CUSTOM.C_DDS WHERE "
+	sv_s = sv_s + "ORIGINATOR_code = ?SVAR "
+	sv_s = sv_s + "AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND UPL_STATUS ='P' "
+	sv_s = sv_s + "AND DEL_FLG='N' "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CUDDS.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	#--------------------------------------------------------------------------
+	# Creating files for upload
+	#--------------------------------------------------------------------------
+	
+	#{
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + "from CUSTOM.C_KBADDS WHERE "
+	sv_s = sv_s + "Originator_code = ?SVAR "
+	sv_s = sv_s + "AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + "AND UPL_STATUS ='P' "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND STATUS in ('RA')"
+	sv_s = sv_s + "AND DEL_FLG='N' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CUDDS.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	
+	IF (sv_q == "0") THEN
+	#{
+		CUST.CUDDS.applied = "N"
+		#}
+	ELSE
+		#{
+		CUST.CUDDS.applied = "Y"
+	#}
+	ENDIF
+	print(CUST.CUDDS.applied)
+	
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + "FROM CUSTOM.C_KBADDS where "
+	sv_s = sv_s + "Originator_code =?SVAR "
+	sv_s = sv_s + "AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND UPL_STATUS ='P' "
+	sv_s = sv_s + "AND STATUS ='63' "
+	sv_s = sv_s + "AND DEL_FLG='N' "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CUDDS.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	IF (sv_q == "0") THEN
+	#{
+		CUST.CUDDS.unapplied = "N"
+		CUST.CUDDS.charge = "N"
+		#}
+	ELSE
+		#{
+		CUST.CUDDS.unapplied = "Y"
+		CUST.CUDDS.charge = "Y"
+	#}
+	ENDIF
+	print(CUST.CUDDS.unapplied)
+	print(CUST.CUDDS.charge)
+	
+	############################################################################################
+	# Clling com
+	############################################################################################
+	
+	CUST.CUDDS.com="uddsdirectdebitdp002.com"
+	PRINT(CUST.CUDDS.com)
+	
+	sv_x = urhk_getFileLocation("COM|" + CUST.CUDDS.com)
+	print(sv_x)
+	
+	sv_l = BANCS.OUTPARAM.fileLocation
+	print(sv_l)
+	
+	
+	sv_t  =  sv_l + CUST.CUDDS.com  + " " + BANCS.STDIN.mySolId + "," + CUST.CUDDS.Dracno + "," + CUST.CUDDS.Originator + "," + BANCS.STDIN.userId  + "," + CUST.CUDDS.ChrgAmt + "," + BANCS.STDIN.contextBankId + "," + BANCS.STDIN.homeCrncyCode + "," + CUST.CUDDS.bacid + " "  + CUST.CUDDS.Originator + " " + CUST.CUDDS.sysdate + " " + CUST.CUDDS.postind + " " + CUST.CUDDS.Rename + " " + BANCS.STDIN.userId + " " + BANCS.STDIN.contextBankId + " " + CUST.CUDDS.tranSubType + " " + CUST.CUDDS.FilePath
+	PRINT(sv_t)
+	
+	sv_u = SYSTEM(sv_t)
+	
+	ENDOFSCRIPT :
+		
+		IF (CUST.CUDDS.errMsg != "") THEN
+		#{
+			print("test")
+			sv_i = "echo " +CUST.CUDDS.errMsg + ">> uddsdirect.log"
+			print(sv_i)
+		#}
+		ENDIF
+		TRACE OFF
+END-->

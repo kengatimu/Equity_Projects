@@ -1,0 +1,105 @@
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Name            : vpSMEODDmdGenBulk.scr
+#  Description     : generate schedules failed due to interest change
+#  Date            : 04-04-2025
+#  Author          : DKC
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+
+        sv_p = urhk_B2k_PrintRepos("BANCS")
+        print(sv_p)
+
+	lv_a = "disbSrlNum,odAcctId,OperativeAcctId,DisbAmt,disbTranId,disbTranDate,freeText1,expiryDate|select DISB_SRL_NUM,od_acct_id,OP_ACCT_ID,(clr_bal_amt*-1),OD_DISB_TRAN_ID,to_char(OD_DISB_TRAN_DATE,'DD-MM-YYYY'),free_text1,TO_CHAR(ADD_MONTHS(OD_DISB_TRAN_DATE, 1), 'DD-MM-YYYY') expiry_date "
+	lv_a = lv_a + " from custom.dlla_disb_tbl a,tbaadm.gam where a.bank_id= ?SVAR and a.del_flg='N' and IS_RESH_YN ='N' and OD_SOL_ID =?SVAR "
+	lv_a = lv_a + "  and gam.acid=a.od_acid and gam.bank_id=a.bank_id and CLR_BAL_AMT<0 and gam.schm_code='OD552' and a.DISB_SRL_NUM in(select max(DISB_SRL_NUM) from custom.dlla_disb_tbl b where b.od_acid=a.od_acid) "
+	lv_a = lv_a + " and DISB_SRL_NUM not in(select DISB_SRL_NUM from custom.dlla_dmd_tbl b where b.od_acid=a.od_acid and a.DISB_SRL_NUM=b.DISB_SRL_NUM and a.bank_id=b.bank_id) "
+	lv_a = lv_a + " order by od_acid,DISB_SRL_NUM "
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+        print(BANCS.INPARAM.BINDVARS)
+
+        print(lv_a)
+        sv_c = urhk_dbCursorOpenWithBind(lv_a)
+        print(sv_c)
+        if(sv_c != 0)then
+        #{
+                print("fetching failed")
+                EBSRV.GLBDATA.onsmsg = "Data Fetch Failed"
+                goto DMDEND
+        #}
+        endif
+        EBSRV.GLBDATA.curNum1 = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        print(EBSRV.GLBDATA.curNum1)
+        sv_r = urhk_dbCursorFetch(EBSRV.GLBDATA.curNum1)
+        print(sv_r)
+        if(sv_r != 0)then
+        #{
+                 	print("fetch failed")
+                	EBSRV.GLBDATA.onsmsg = "Data Fetch Failed"
+                        sv_u = urhk_dbCursorClose(EBSRV.GLBDATA.curNum1)
+                        print(sv_u)
+                        goto DMDEND
+        #}
+        endif
+        EBSRV.GLBDATA.record_count = 0
+        while(sv_r == 0)
+        #{
+                EBSRV.GLBDATA.disbSrlNum =  BANCS.OUTPARAM.disbSrlNum
+                EBSRV.GLBDATA.odAcctId =  BANCS.OUTPARAM.odAcctId
+                EBSRV.GLBDATA.OperativeAcctId =   BANCS.OUTPARAM.OperativeAcctId
+                EBSRV.GLBDATA.DisbAmt =       BANCS.OUTPARAM.DisbAmt
+		EBSRV.GLBDATA.sanLim =       BANCS.OUTPARAM.DisbAmt
+                EBSRV.GLBDATA.disbTranId =      BANCS.OUTPARAM.disbTranId
+                EBSRV.GLBDATA.disbTranDate =       BANCS.OUTPARAM.disbTranDate
+                EBSRV.GLBDATA.freeText1 =       BANCS.OUTPARAM.freeText1
+                EBSRV.GLBDATA.intTblCode  =       "SMEOD"
+                EBSRV.GLBDATA.repayFreq =    "M"
+		EBSRV.GLBDATA.sanctDate = EBSRV.GLBDATA.disbTranDate
+                EBSRV.GLBDATA.expiryDate = BANCS.OUTPARAM.expiryDate
+		print(EBSRV.GLBDATA.disbSrlNum)
+		print(EBSRV.GLBDATA.odAcctId)
+		print(EBSRV.GLBDATA.OperativeAcctId)
+		print(EBSRV.GLBDATA.DisbAmt)
+		print(EBSRV.GLBDATA.disbTranDate)
+		print(EBSRV.GLBDATA.freeText1)
+		print(EBSRV.GLBDATA.sanctDate)
+		print(EBSRV.GLBDATA.expiryDate)
+	
+		lv_e = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.odAcctId)
+		if(lv_e == 0) then
+			EBSRV.GLBDATA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(EBSRV.GLBDATA.acctCrncyCode)
+		else
+			goto DMDNXT
+		endif
+
+		call("vpDlSmeLoanLarsh_wbmyhq_Bulk.scr")
+
+                DMDNXT:
+                sv_r = urhk_dbCursorFetch(EBSRV.GLBDATA.curNum1)
+                if(sv_r!=0)then
+                #{
+                        print("fetch failed")
+                        EBSRV.GLBDATA.onsmsg = "Data Fetch Failed"
+                        sv_u = urhk_dbCursorClose(EBSRV.GLBDATA.curNum1)
+                        print(sv_u)
+                        goto DMDEND
+                #}
+                endif
+        #}
+        do
+        sv_r = urhk_dbCursorClose(EBSRV.GLBDATA.curNum1)
+
+	DMDEND:
+        print(EBSRV.GLBDATA.onsmsg)
+
+trace off
+end-->

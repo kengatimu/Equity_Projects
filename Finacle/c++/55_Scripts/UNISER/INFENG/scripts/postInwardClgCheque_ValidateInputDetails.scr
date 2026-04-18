@@ -1,0 +1,209 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       postInwardClgCheque_ValidateInputDetails.scr
+# Description           :       This script validates the value passed in Request XML
+# Input                 :
+# Output                :       Success or Failure
+# Called Script         :       postInwardClgCheque_main.scr
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           25-06-2013      	   Anik Soni         Original Version         1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="9ff5f0a341928f04b60a91c36b36ec2a67f01bf2191cba438631668a9ce98dff"
+	TRACE ON
+	
+	#---------------------------------------------------------------------------------
+	# Validation for Bank ID
+	#---------------------------------------------------------------------------------
+	IF(CUST.INTERFACE.bankID != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.INTERFACE.bankID
+		sv_s = "count|SELECT COUNT(1) FROM TBAADM.GCT WHERE BANK_ID = ?SVAR"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(BANCS.OUTPARAM.count)
+		IF(BANCS.OUTPARAM.count == 1) THEN
+		#{
+			print(CUST.INTERFACE.bankID)
+			#}
+		ELSE
+			#{
+			CUST.INTERFACE.errorCode = "ERR059"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------
+	# Validation for Account ID
+	#---------------------------------------------------------------------------------
+	
+	sv_b = urhk_getAcctDetailsInRepository(CUST.INTERFACE.DrAcct)
+	
+	IF(sv_b == 1) THEN
+	#{
+		CUST.INTERFACE.errorCode = "ERR060"
+		CUST.INTERFACE.successOrFailure = "F"
+		
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		
+		CUST.INTERFACE.DrCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		
+
+		sv_a = ""
+		sv_a = sv_a + "expired_doccode_desc|"
+		sv_a = sv_a + " select ( "
+		sv_a = sv_a + " select localetext from crmuser.categories c,crmuser.category_lang l where categorytype = 'BX'"
+		sv_a = sv_a + " and c.categoryid = l.categoryid "
+		sv_a = sv_a + " and c.bank_id = l.bank_id "
+		sv_a = sv_a + " and c.bank_id =a.bank_id "
+		sv_a = sv_a + " and value= doccode  ) doccode_desc "
+		sv_a = sv_a + " from crmuser.entitydocument a,crmuser.demographic b, tbaadm.gam,crmuser.accounts s "
+		sv_a = sv_a + " where cif_id=a.orgkey "
+		sv_a = sv_a + " and a.orgkey=b.orgkey "
+		sv_a = sv_a + " and  cif_id=b.orgkey "
+		sv_a = sv_a + " and a.orgkey = s.orgkey "
+		sv_a = sv_a + " and a.bank_id=gam.bank_id "
+		sv_a = sv_a + " and doccode in ('PERMT','PSSPR') "
+		sv_a = sv_a + " and s.corp_id is null "
+		sv_a = sv_a + " and nvl(docexpirydate,to_date('31-dec-2099','DD-MM-YYYY')) < (sysdate-60) "
+		sv_a = sv_a + " and foracid='"+CUST.INTERFACE.DrAcct+"' "
+		sv_a = sv_a + " and gam.bank_id='"+BANCS.STDIN.contextBankId+"'"
+		sv_a = sv_a + " and rownum <= 1 "
+
+		PRINT(sv_a)
+		sv_d = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_d)
+
+		IF (sv_d == 0) THEN
+		#{
+			print(BANCS.OUTPARAM.expired_doccode_desc)
+			CUST.INTERFACE.DrAcct = CUST.INTERFACE.CrAcct
+			CUST.INTERFACE.errorCode = "ERR061"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF	
+
+#---------------------------------------------------------------------------------
+# Getting the Account Closed Flag for Customer Account (Dr. Account)
+#---------------------------------------------------------------------------------
+lv_i = BANCS.OUTPARAM.acctCloseflg
+	
+	#---------------------------------------------------------------------------------
+	# Getting the Freeze Code for Customer Account (Dr. Account)
+	#---------------------------------------------------------------------------------
+	lv_m = BANCS.OUTPARAM.freezeCode
+	
+		#---------------------------------------------------------------------------------
+		# Getting the Effective balance amount of the Customer Account (Dr. Account)
+		#---------------------------------------------------------------------------------
+		CUST.INTERFACE.DrAcctBal = BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.INTERFACE.DrAcctBal)
+		
+		#---------------------------------------------------------------------------------
+		# Getting the Scheme Code and Scheme type of Customer Account (Dr. Account)
+		#---------------------------------------------------------------------------------
+		CUST.INTERFACE.DrSchmCode = BANCS.OUTPARAM.schmCode
+		CUST.INTERFACE.DrSchmType = BANCS.OUTPARAM.schmType
+		print(CUST.INTERFACE.DrSchmType)
+		
+		CUST.INTERFACE.solId = BANCS.OUTPARAM.acctSolId
+		print(CUST.INTERFACE.solId)
+		lv_s = "bankCode|"
+		lv_s = lv_s + "SELECT BANK_CODE FROM TBAADM.SOL "
+		lv_s = lv_s + " WHERE SOL_ID ='"+CUST.INTERFACE.solId+"'"
+		lv_s = lv_s + " AND BANK_ID = '" + BANCS.STDIN.contextBankId + "'"
+		print(lv_s)
+		lv_d = urhk_dbSelectWithBind(lv_s)
+		print(lv_d)
+		IF(lv_d == 0)THEN
+		#{
+			CUST.INTERFACE.bankCode = BANCS.OUTPARAM.bankCode
+			print(CUST.INTERFACE.bankCode)
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------------------
+		#Getting the acid for Dr Account
+		#---------------------------------------------------------------------------------
+		lv_a = urhk_B2k_ForacidToAcid(CUST.INTERFACE.DrAcct)
+		print(lv_a)
+		IF(lv_a == 0) THEN
+		#{
+			CUST.INTERFACE.DrAcid = BANCS.OUTPARAM.Acid
+			print(CUST.INTERFACE.DrAcid)
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------------------
+		# Checking if the Customer Account is closed or there is a Debit or Total
+		# Freeze on the account
+		#---------------------------------------------------------------------------------
+		IF((lv_i == "Y")) THEN
+		#{
+			CUST.INTERFACE.DrAcct = CUST.INTERFACE.CrAcct
+			CUST.INTERFACE.errorCode = "ERR051"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		IF((lv_m == "D") OR (lv_m == "T") OR (lv_m == "C"))THEN
+		#{
+			CUST.INTERFACE.DrAcct = CUST.INTERFACE.CrAcct
+			CUST.INTERFACE.errorCode = "ERR061"
+			CUST.INTERFACE.successOrFailure = "F"
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#---------------------------------------------------------------------------------
+		# Checking if the Customer Account is Dormant or Inactive
+		#---------------------------------------------------------------------------------
+		BANCS.INPARAM.acid=CUST.INTERFACE.DrAcid
+		
+		lv_y = urhk_getAcctStatus("")
+		
+		IF(lv_y==0) THEN
+		#{
+			lv_i = BANCS.OUTPARAM.acctStatus
+			IF (BANCS.STDIN.contextBankId=="54") THEN
+			#{
+				IF (lv_i == "D") THEN
+				#{
+					CUST.INTERFACE.DrAcct = CUST.INTERFACE.CrAcct
+					CUST.INTERFACE.errorCode = "ERR062"
+					CUST.INTERFACE.successOrFailure = "F"
+					
+					GOTO FINISH
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+
+				IF( (lv_i == "D") OR (lv_i == "I") ) THEN
+				#{
+				CUST.INTERFACE.DrAcct = CUST.INTERFACE.CrAcct
+				CUST.INTERFACE.errorCode = "ERR062"
+				CUST.INTERFACE.successOrFailure = "F"
+				
+				GOTO FINISH
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+END-->

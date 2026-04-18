@@ -1,0 +1,316 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: Event Based
+# Script: SMSChrgmn001.scr
+# Type: GCHRG|default
+# Description: SMS Charge Calculation per Transaction
+# Author: Sridevi_Vutukuru
+# Date: 10/30/18 3:27 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="0cdc66cded603a591c2bf05f714b6db39398aac542b353866823088aa2ac655f"
+	TRACE ON
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","GCHRG")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","GCHRG",5)
+	#}
+	ENDIF
+	
+	CUST.GCHRG.BODDate=MID$(BANCS.STDIN.BODDate,0,10)
+	CUST.GCHRG.errMsg = ""
+	CUST.GCHRG.collectedAmt = ""
+	CUST.GCHRG.FULLY_ADJUSTED_FLG ="N"
+	CUST.GCHRG.foracid 		= ""
+	CUST.GCHRG.smsChrgType 	= ""
+	CUST.GCHRG.vatFlg 		= ""
+	CUST.GCHRG.chrgAmt 		= ""
+	CUST.GCHRG.vatAmt 		= ""
+	CUST.GCHRG.acid			= ""
+	CUST.GCHRG.tranAmt		= ""
+	CUST.GCHRG.acctFreezed 	= "N"
+	CUST.GCHRG.recCount 		= ""
+	CUST.GCHRG.errorFlg 		= "N"
+	CUST.GCHRG.errorMsg 		= ""
+	CUST.GCHRG.chargeAmt 	= ""
+	CUST.GCHRG.chargePer 	= ""
+	CUST.GCHRG.tranAmt 		= ""
+	CUST.GCHRG.vatPcnt 		= ""
+	CUST.GCHRG.vatAmt 		= ""
+	CUST.GCHRG.totChargeAmt 	= ""
+	CUST.GCHRG.acctStat 		= ""
+	CUST.GCHRG.pstdFlg 		= "Y"
+	CUST.GCHRG.tranid 		= ""
+	CUST.GCHRG.lienflg 		= "Y"
+	CUST.GCHRG.remark		= ""
+	CUST.GCHRG.remark1		= ""
+	CUST.GCHRG.RateCode		= ""
+	CUST.GCHRG.Rate			= ""
+	CUST.GCHRG.adjstStatus 	= ""
+	CUST.GCHRG.collChargeAmt = "0"
+	CUST.GCHRG.collVatAmt = "0"
+	CUST.GCHRG.chrgEvent = " "	
+	CUST.GCHRG.schmCode = " "
+	CUST.GCHRG.totalchrgAmt = "0"
+	
+	IF(FIELDEXISTS(CUST.ALERTS.account))THEN
+	#{
+		IF (CUST.ALERTS.account != "")THEN
+		#{
+			CUST.GCHRG.foracid = CUST.ALERTS.account
+			PRINT(CUST.GCHRG.foracid)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CUST.ALERTS.transactionAmount))THEN
+	#{
+		IF (CUST.ALERTS.transactionAmount != "")THEN
+		#{
+			CUST.GCHRG.tranAmt = CUST.ALERTS.transactionAmount
+			PRINT(CUST.GCHRG.tranAmt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	####################################################
+	#Fetch ACID
+	####################################################
+	
+	sv_s= "acid|SELECT ACID FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+	BANCS.INPARAM.BINDVARS = CUST.GCHRG.foracid + "|"+ BANCS.STDIN.contextBankId
+	sv_q = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_q)
+	IF(sv_q == 0)THEN
+	#{
+		CUST.GCHRG.acid = BANCS.OUTPARAM.acid
+		PRINT(CUST.GCHRG.acid)
+		#}
+	ELSE
+		#{
+		CUST.GCHRG.errMsg = CUST.GCHRG.foracid +" Couldn't Fetch the record for this account"
+		PRINT(CUST.GCHRG.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+		
+	CUST.GCHRG.acct = CUST.GCHRG.foracid
+	
+	sv_r = urhk_getAcctDetailsInRepository(CUST.GCHRG.foracid)
+	IF(sv_r != 0)THEN
+	#{
+		CUST.GCHRG.remark ="Account is not found"
+		CUST.GCHRG.errMsg = CUST.GCHRG.foracid + CUST.GCHRG.remark
+		PRINT(CUST.GCHRG.errMsg)
+		#GOTO FAILURE
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		CUST.GCHRG.opsolid = BANCS.OUTPARAM.acctSolId
+		CUST.GCHRG.actcrncy = BANCS.OUTPARAM.acctCrncyCode
+		CUST.GCHRG.frezCode = BANCS.OUTPARAM.freezeCode
+		CUST.GCHRG.schmCode = BANCS.OUTPARAM.schmCode
+		CUST.GCHRG.schm_type = BANCS.OUTPARAM.schmType
+
+		
+		sv_e = BANCS.OUTPARAM.EffAvailableAmt
+		PRINT(sv_e)
+		
+		
+		CUST.GCHRG.effavlamt = sv_e
+		
+	#}
+	ENDIF
+	
+	####################################################
+	#Fetch vatflg and smschrgtype
+	####################################################
+	
+	sv_s = "recCount|SELECT COUNT(1) FROM TBAADM.FCFTT WHERE "
+	sv_s = sv_s + " ACID = ?SVAR AND "
+	sv_s = sv_s + " BANK_ID = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+	BANCS.INPARAM.BINDVARS = CUST.GCHRG.acid + "|"+ BANCS.STDIN.contextBankId
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.GCHRG.recCount = BANCS.OUTPARAM.recCount
+		PRINT(CUST.GCHRG.recCount)
+	#}
+	ENDIF
+	
+	IF(CUST.GCHRG.recCount == "0") THEN
+	#{
+		CUST.GCHRG.errMsg = "SMS Charge is not maintained for this account"
+		#sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		#sv_u = urhk_SetOrbOut("Error|" + CUST.GCHRG.errMsg)
+		PRINT(CUST.GCHRG.errMsg)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		sv_s = "vatFlg,smsChrgType| SELECT FREE_CODE_2,FREE_CODE_3 FROM TBAADM.FCFTT WHERE ACID=?SVAR AND BANK_ID= ?SVAR"
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		BANCS.INPARAM.BINDVARS = CUST.GCHRG.acid + "|" + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_q = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_q)
+		IF(sv_q == 0) THEN
+		#{
+			
+			CUST.GCHRG.vatFlg = BANCS.OUTPARAM.vatFlg
+			CUST.GCHRG.smsChrgType = BANCS.OUTPARAM.smsChrgType
+			
+			PRINT(CUST.GCHRG.vatFlg)
+			PRINT(CUST.GCHRG.smsChrgType)
+			
+			#}
+		ELSE
+			#{
+			CUST.GCHRG.errMsg = CUST.GCHRG.foracid +" Couldn't Fetch the record for this account"
+			PRINT(CUST.GCHRG.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	####################################################
+	#CPARAM SMS CHARGE
+	####################################################
+	
+	CUST.GCHRG.parameterId = "SMS_CHRG_PER_TRAN"
+	
+	sv_h = 100
+	sv_s = "chrg|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = 'OT'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	PRINT(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.GCHRG.parameterId
+	
+	
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_b=urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_b)
+	IF (sv_b == 0) THEN
+	#{
+		 CUST.GCHRG.chrgEvent = BANCS.OUTPARAM.chrg
+		
+		#}
+	ELSE
+		#{
+			CUST.GCHRG.errMsg = "SMS Charge Event is not maintained in CPARAM"
+			PRINT(CUST.GCHRG.errMsg)
+			sv_u = urhk_SetOrbErr(CUST.GCHRG.errMsg)
+			GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+
+	
+	###############################################################3
+	#SMS Charge collection  - ACCt details and validation
+	################################################################
+
+	IF ((CUST.GCHRG.frezCode == "D") OR (CUST.GCHRG.frezCode == "T") )THEN
+	#{
+		CUST.GCHRG.acctFreezed = "Y"
+		CUST.GCHRG.remark ="Account is Freezed"
+		CUST.GCHRG.errMsg = CUST.GCHRG.foracid + CUST.GCHRG.remark
+		PRINT(CUST.GCHRG.errMsg)
+		sv_u = urhk_SetOrbErr(CUST.GCHRG.errMsg)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	# aCCOUNT sTATUS
+		
+	IF(CUST.GCHRG.schm_type == "ODA")THEN
+	#{
+		sv_q= "acctStat|select ACCT_STATUS from tbaadm.cam where acid = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		#}
+	ELSE
+		#{
+		sv_q= "acctStat|select ACCT_STATUS from tbaadm.SMT where acid = ?SVAR"
+	#}
+	ENDIF
+	
+	sv_q= sv_q + " AND bank_id=?SVAR"
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.GCHRG.acid + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_r = urhk_dbselectWithBind(sv_q)
+	PRINT(sv_r)
+	IF (sv_r == 0) THEN
+	#{
+		CUST.GCHRG.acctStat = BANCS.OUTPARAM.acctStat
+		IF(CUST.GCHRG.acctStat!="A")THEN
+		#{
+			CUST.GCHRG.remark ="Account is not active"
+			CUST.GCHRG.errMsg = CUST.GCHRG.foracid + CUST.GCHRG.remark
+			PRINT(CUST.GCHRG.errMsg)
+			sv_u = urhk_SetOrbErr(CUST.GCHRG.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	CUST.GCHRG.drAcctId                     = CUST.GCHRG.foracid
+        CUST.GCHRG.acctCrncyCode                = CUST.GCHRG.actcrncy
+        CUST.GCHRG.eventId                      = CUST.GCHRG.chrgEvent
+        CUST.GCHRG.chrgAmt                      = CUST.GCHRG.tranAmt + "|" + CUST.GCHRG.actcrncy
+        CUST.GCHRG.tranType                     = "T"
+        CUST.GCHRG.tranSubType                  = "CI"
+
+        CALL("gchrgcommon.scr")
+        IF(CUST.GCHRG.successOrFailure == "S") THEN
+        #{
+                PRINT(CUST.GCHRG.tranId)
+                #}
+        ELSE
+                #{
+                sv_e = CUST.GCHRG.gchrgErrMsg
+                sv_m = "count"
+                sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+                sv_u = urhk_SetOrbErr(sv_e)
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+		
+	ENDOFSCRIPT:
+	TRACE OFF
+		
+END-->
+

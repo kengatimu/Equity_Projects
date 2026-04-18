@@ -1,0 +1,279 @@
+<--START
+TRACE ON
+
+sv_r = REPEXISTS("MTT")
+	IF (sv_r == 0) THEN
+		CREATEREP("MTT")
+	ENDIF
+
+
+IF(CLASSEXISTS("MTT","TranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","TranDetails",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("MTT","PartTranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","PartTranDetails",5)
+#}
+ENDIF
+
+		sv_s = ""
+		sv_s = sv_s + "time |"
+		sv_s = sv_s + " select to_char(sysdate,'hh24.mi.ss') from dual  "
+		sv_d=urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d != 0) THEN
+		#{
+			CUST.DATA.errMsg 	= "error in fetching time"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.DATA.time= BANCS.OUTPARAM.time
+			print(CUST.DATA.time)
+		#}
+		ENDIF
+		
+###########################################################################################
+# Create Transaction 
+###########################################################################################
+
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="BI"
+BANCS.INPARAM.PostTranFlg               = "Y"
+BANCS.INPARAM.CommitFlg                 = "Y"
+BANCS.INPARAM.ValidationFlag            = "N"
+BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+BANCS.INPARAM.IgnoreExcp                = "I"
+sv_t = urhk_MTTS_initialize("REVTRAN")
+print(sv_t)
+
+IF (sv_t != 0) THEN
+#{
+	sv_m = urhk_TBAF_DispMesg("MTT initialise has failed.")
+	BANCS.OUTPUT.successOrFailure = "F"
+	sv_a = urhk_SetOrbOut(sv_m)
+	exitscript
+#}
+ENDIF
+BANCS.STDIN.tran_id =""
+MTT.TranDetails.TranDate        =   "0"
+MTT.TranDetails.IgnoreExcp      =   "I"
+MTT.TranDetails.Consolidate     =   "N"
+MTT.TranDetails.Remarks         =   "REVERSE TRAN"
+MTT.TranDetails.ReversalFlag    =   "N"
+MTT.TranDetails.PostFlag        =   "Y"
+MTT.TranDetails.CommitFlg       =   "Y"
+MTT.TranDetails.ValidationFlag  =   "N"
+MTT.TranDetails.PostTranFlg    =   "Y"
+print(MTT.TranDetails.PostTranFlg)
+MTT.TranDetails.flgPostTransaction= "Y"
+
+sv_r = urhk_MTTS_DefineTransaction("REVTRAN")
+print(sv_r)
+if (sv_r != 0) then
+#{
+	CUST.DATA.Error_Desc      = "Error In Creation of Transaction"
+	exitscript
+#}
+endif
+################################## credit ################################
+
+
+IF (CUST.DATA.boddate == CUST.DATA.Date ) THEN
+#{
+	sv_s = ""
+	sv_s = sv_s + " CreditAcct,Amount| select foracid,tran_amt "
+	sv_s = sv_s + " from tbaadm.dtd,tbaadm.gam where gam.acid = dtd.acid "
+	sv_s = sv_s + " and tran_date = TO_DATE ('" + CUST.DATA.Date + "','DD-MM-YYYY') and tran_id = '" + CUST.DATA.TranId + "' "
+	sv_s = sv_s + " and dtd.bank_id = '" + BANCS.STDIN.contextBankId + "' and part_tran_type = 'D' "
+	print(sv_s)
+#}
+ELSE
+#{
+	sv_s = ""
+	sv_s = sv_s + " CreditAcct,Amount| select foracid,tran_amt "
+	sv_s = sv_s + " from tbaadm.htd,tbaadm.gam where gam.acid = htd.acid "
+	sv_s = sv_s + " and tran_date = TO_DATE ('" + CUST.DATA.Date + "','DD-MM-YYYY') and tran_id = '" + CUST.DATA.TranId + "' "
+	sv_s = sv_s + " and htd.bank_id = '" + BANCS.STDIN.contextBankId + "' and part_tran_type = 'D' "
+	print(sv_s)
+#}
+ENDIF
+
+print(sv_s)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+			CUST.DATA.CreditAcct = BANCS.OUTPARAM.CreditAcct
+			print(CUST.DATA.CreditAcct)
+			CUST.DATA.Amount = BANCS.OUTPARAM.Amount
+			print(CUST.DATA.Amount)			
+			CUST.DATA.Amount = CDOUBLE(CUST.DATA.Amount)
+			print(CUST.DATA.Amount)
+			MTT.PartTranDetails.RefAmount=CUST.DATA.Amount
+			print(MTT.PartTranDetails.RefAmount)
+			MTT.PartTranDetails.Account=CUST.DATA.CreditAcct
+			MTT.PartTranDetails.RefCurrency="KES"
+			MTT.TranDetails.Remarks="Reverse TRAN"
+			MTT.PartTranDetails.Consolidate="N"
+			MTT.PartTranDetails.Particulars= "REV/" + CUST.DATA.Service + "/" + CUST.DATA.PhoneNum + "/" + CUST.DATA.RefNum + "/" + CUST.DATA.time
+			MTT.PartTranDetails.Particulars = mid$(MTT.PartTranDetails.Particulars,0,50)
+			print(MTT.PartTranDetails.Particulars)
+			MTT.PartTranDetails.ValueDate="0"
+			MTT.PartTranDetails.ValueDateDiff="0"
+			MTT.PartTranDetails.TranIdentifier="REVTRAN"
+			sv_r = urhk_MTTS_DefinePartTran("CR")
+			print(sv_r)
+			IF (sv_r != 0) THEN
+			#{
+				sv_u = urhk_MTTS_ReportErrorCondition("")
+				sv_u = BANCS.OUTPARAM.MTTErrorDesc
+				print(sv_u)
+				exitscript
+			#}
+			ENDIF		
+	#}	 
+	ELSE
+	#{
+		print("Account is not found")
+		EXITSCRIPT
+	#}
+	ENDIF
+################## Debit Transaction:####################################
+
+IF (CUST.DATA.boddate == CUST.DATA.Date ) THEN
+#{
+	print(CUST.DATA.TranId)
+	print(CUST.DATA.Date)
+	sv_s = ""
+	sv_s = sv_s + " DebitAcct,Amount| select foracid,tran_amt "
+	sv_s = sv_s + " from tbaadm.dtd,tbaadm.gam where gam.acid = dtd.acid "
+	sv_s = sv_s + " and tran_date = TO_DATE ('" + CUST.DATA.Date + "','DD-MM-YYYY') and tran_id = '" + CUST.DATA.TranId + "' "
+	sv_s = sv_s + " and dtd.bank_id = '" + BANCS.STDIN.contextBankId + "' and part_tran_type = 'C' "
+	print(sv_s)
+#}
+ELSE
+#{
+	sv_s = ""
+	sv_s = sv_s + " DebitAcct,Amount| select foracid,tran_amt "
+	sv_s = sv_s + " from tbaadm.htd,tbaadm.gam where gam.acid = htd.acid "
+	sv_s = sv_s + " and tran_date = TO_DATE ('" + CUST.DATA.Date + "','DD-MM-YYYY') and tran_id = '" + CUST.DATA.TranId + "' "
+	sv_s = sv_s + " and htd.bank_id = '" + BANCS.STDIN.contextBankId + "' and part_tran_type = 'C' "
+	print(sv_s)
+#}
+ENDIF
+
+print(sv_s)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+			CUST.DATA.DebitAcct = BANCS.OUTPARAM.DebitAcct
+			print(CUST.DATA.DebitAcct)
+			CUST.DATA.Amount = BANCS.OUTPARAM.Amount
+			print(CUST.DATA.Amount)			
+			CUST.DATA.Amount = CDOUBLE(CUST.DATA.Amount)
+			print(CUST.DATA.Amount)
+			MTT.PartTranDetails.RefAmount="-"+CUST.DATA.Amount
+			MTT.PartTranDetails.Account=CUST.DATA.DebitAcct
+			MTT.PartTranDetails.RefCurrency="KES"
+			MTT.TranDetails.Remarks="Reverse TRAN"
+			MTT.PartTranDetails.Consolidate="N"
+			#MTT.PartTranDetails.Particulars=CUST.DATA.Service + "/REVERSE/" +CUST.DATA.RefNum
+			MTT.PartTranDetails.Particulars= "REV/" + CUST.DATA.Service + "/" + CUST.DATA.PhoneNum + "/" + CUST.DATA.RefNum + "/" + CUST.DATA.time
+			MTT.PartTranDetails.Particulars = mid$(MTT.PartTranDetails.Particulars,0,50)
+			print(MTT.PartTranDetails.Particulars)
+			MTT.PartTranDetails.ValueDate="0"
+			MTT.PartTranDetails.ValueDateDiff="0"
+			MTT.PartTranDetails.TranIdentifier="REVTRAN"
+			sv_r = urhk_MTTS_DefinePartTran("DR")
+			print(sv_r)
+			IF (sv_r != 0) THEN
+			#{
+				sv_u = urhk_MTTS_ReportErrorCondition("")
+				sv_u = BANCS.OUTPARAM.MTTErrorDesc
+				print(sv_u)
+				exitscript
+			#}
+			ENDIF			
+	#}	 
+	ELSE
+	#{
+		print("Account is not found")
+		EXITSCRIPT
+	#}
+	ENDIF
+	
+sv_r = urhk_MTTS_EndDefinition("")
+print(sv_r)
+
+IF(sv_r == 0) THEN
+#{
+    IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+    #{
+        IF(BANCS.OUTPARAM.MTTTranId != "") THEN
+        #{
+            print(BANCS.OUTPARAM.MTTTranId)
+            CUST.DATA.TranID = BANCS.OUTPARAM.MTTTranId
+            print(CUST.DATA.TranID)
+        #}
+        ENDIF
+    #}
+    ENDIF
+#}
+else
+#{
+    sv_u = urhk_MTTS_ReportErrorCondition("")
+    print (MTT.Error.Description)
+    BANCS.OUTPUT.successOrFailure = "F"
+	CUST.DATA.errorMsgFlg = "Y"
+    GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+sv_u = urhk_MTTS_HandleExceptions("POST")
+print(sv_u)
+sv_s = urhk_MTTS_Close("")
+print(sv_s)
+IF(sv_u != 0) THEN
+#{
+    IF(FIELDEXISTS(MTT.Error.Description)) THEN
+    #{
+        print(MTT.Error.Description)
+    #}
+    ENDIF
+
+    BANCS.OUTPUT.successOrFailure = "F"
+	CUST.DATA.errorMsgFlg = "Y"
+    CUST.DATA.Response = "urhk_MTTS_Close returns FAILURE"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+#{
+    sv_h = BANCS.OUTPARAM.MTTPostingError
+    print(sv_h)
+    CUST.DATA.errorMsg = sv_h
+	CUST.DATA.errorMsgFlg = "Y"
+    print(CUST.DATA.errorMsg)
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errorMsg)
+	GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+    BANCS.OUTPUT.successOrFailure = "S"
+#}
+ENDIF
+
+ENDOFSCRIPT:
+exitscript
+TRACE OFF
+end-->

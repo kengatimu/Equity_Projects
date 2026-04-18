@@ -1,0 +1,1717 @@
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#File : vpCDPreProc_54_Header.scr 
+#Caution : Script depends on all main/child scripts , do not delete or modify any chunks of code . until your sure about the change.
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+
+#sv_u=urhk_B2k_PrintRepos("BANCS")
+#print(sv_u)
+
+IF(BANCS.INPUT.Command == "ECHR") THEN
+#{
+        exitscript
+#}
+ENDIF
+
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+#{
+        CREATECLASS("CUST","ATM",5)
+#}
+ENDIF
+
+BANCS.INPUT.InitSolId=""
+BANCS.OUTPUT.InitSolId=""
+BANCS.INPUT.CxlEventId=""
+BANCS.INPUT.CxlEventType=""
+BANCS.OUTPUT.CxlEventId=""
+BANCS.OUTPUT.CxlEventType=""
+
+
+
+IF (BANCS.INPUT.DccId == "WPD") THEN
+        IF ((BANCS.OUTPUT.CrForacid =="0090291251426") or (BANCS.OUTPUT.CrForacid =="1520265128490") or (BANCS.OUTPUT.CrForacid =="1120297065141"))  THEN
+                print(" Transaction Not allowed now ")
+                BANCS.OUTPUT.ReservedField3="Transaction Not allowed now on POS"
+                BANCS.OUTPUT.RespCode = "99"
+                BANCS.OUTPUT.successOrFailure = "F"
+                exitscript
+        ENDIF
+ENDIF
+#--------------------------------------------------------Edwin for NIBS BLOCK
+if((BANCS.INPUT.DccId == "WPD") or (BANCS.INPUT.DccId == "EAZ"))then
+        if((BANCS.OUTPUT.CrForacid =="0010201200681") or (BANCS.OUTPUT.CrForacid =="0870260668087"))then
+                BANCS.OUTPUT.ReservedField3="Transaction Not allowed use 0870262385517"
+                BANCS.OUTPUT.RespCode = "99"
+                BANCS.OUTPUT.successOrFailure = "F"
+                exitscript
+        endif
+endif
+#--------------------------------------------------------End
+#-------muthokinjo/Biller direct transfer block Edwin Zico
+sv_s ="CountBill|select count(*) from tbaadm.brgt where free_text1 =?SVAR and del_flg ='N' and bank_id =?SVAR and entity_cre_flg ='Y' and FREE_TEXT4 in ('R','L','LR','N')"
+BANCS.INPARAM.BINDVARS = BANCS.OUTPUT.CrForacid + "|" + BANCS.STDIN.contextBankId
+print(sv_s)
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+if(sv_d == 0)then
+        CUST.ATM.CountBill = BANCS.OUTPARAM.CountBill
+else
+        CUST.ATM.CountBill = 0
+endif
+if(cdouble(CUST.ATM.CountBill) >=1)then
+        if(BANCS.INPUT.DccId == "EAZ")then
+                if ((BANCS.INPUT.ReservedField2 =="P2PIntra") or (BANCS.INPUT.ReservedField2=="CashIn")) then
+                        BANCS.OUTPUT.ReservedField3="Transaction Not allowed...Use Bill Option"
+                        BANCS.OUTPUT.RespCode = "99"
+                        BANCS.OUTPUT.successOrFailure = "F"
+                        exitscript
+                endif
+        endif
+        if(BANCS.INPUT.DccId == "WPD")then
+                sv_k = MID$(BANCS.INPUT.ReservedField2,0,5)
+                print(sv_k)
+                if(sv_k !="BILL:")then
+                        BANCS.OUTPUT.ReservedField3="Transaction Not allowed...Use Bill Option"
+                        BANCS.OUTPUT.RespCode = "99"
+                        BANCS.OUTPUT.successOrFailure = "F"
+                        exitscript
+                endif
+        endif
+endif
+#------Muthokinjo block end
+
+#-------VA300 BAL check Edwin
+if(fieldexists(BANCS.INPUT.CrForacid)==1)then
+        if(BANCS.INPUT.CrForacid!="")then
+                #-------------Safaricom Trust Account Block
+
+                if(BANCS.INPUT.CrForacid =="0810295233054")then
+                        BANCS.OUTPUT.ReservedField3="Transaction Not allowed On mobile Channel"
+                        BANCS.OUTPUT.RespCode = "99"
+                        BANCS.OUTPUT.successOrFailure = "F"
+                        exitscript
+                endif
+                #-----------------
+                sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                if(sv_u==0)then
+                        CUST.ATM.schmcodesh = BANCS.OUTPARAM.schmCode
+                        CUST.ATM.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+                endif
+                IF (FIELDEXISTS(CUST.ATM.schmcodesh) == 1) THEN
+                        IF (CUST.ATM.schmcodesh =="VA300")  THEN
+                                IF (FIELDEXISTS(BANCS.INPUT.TranAmt) == 1) THEN
+                                        print(BANCS.INPUT.TranAmt)
+                                        CUST.ATM.dedittr = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+                                        print(CUST.ATM.dedittr)
+                                        sv_q = "sumamountVA|select ('" + CUST.ATM.EffAvailableAmttr + "' + '" + CUST.ATM.dedittr + "') from dual "
+                                        print(sv_q)
+                                        sv_w=urhk_dbSelectWithBind(sv_q)
+                                        if (sv_w == 0) then
+                                                CUST.ATM.sumamountVA = cdouble(BANCS.OUTPARAM.sumamountVA)
+                                                print(CUST.ATM.sumamountVA)
+                                                if (cint(CUST.ATM.sumamountVA) > 100000) then
+                                                        print(" am in sumamountVA")
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                        exitscript
+                                                endif
+                                        endif
+                                ENDIF
+                        ENDIF
+                ENDIF
+        endif
+endif
+#----------VA300 BAL check End
+
+#IF (BANCS.INPUT.DccId == "EAZ") THEN
+#       IF ((BANCS.INPUT.ReservedField2 =="Evalue") OR (BANCS.INPUT.ReservedField2 =="P2PIntra"))  THEN
+#               print(" Transaction Not allowed now ")
+#               BANCS.OUTPUT.ReservedField3="Transaction Not allowed now..."
+#               BANCS.OUTPUT.RespCode = "99"
+#               BANCS.OUTPUT.successOrFailure = "F"
+#               exitscript
+#       ENDIF
+#ENDIF
+### start stop  pesalink all
+#IF (BANCS.INPUT.DccId=="TPG") THEN
+#       IF (BANCS.INPUT.ReservedField2 =="REMITTANCE") THEN
+#               IF (BANCS.INPUT.DeviceId=="PESALNK") THEN
+#                       CUST.ATM.errMsg =" Pesalink all not allowed"
+#                       BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+#                       BANCS.OUTPUT.successOrFailure = "F"
+#                       BANCS.OUTPUT.RespCode = "99"
+#                       exitscript
+#               ENDIF
+#       ENDIF
+#ENDIF
+### start stop  pesalink all
+### start stop  chargeoff
+IF (fieldexists(BANCS.INPUT.Foracid)==1) THEN
+        IF (BANCS.INPUT.Foracid != "") THEN
+                sv_s = "chrgeoffflg| "
+                sv_s = sv_s + " SELECT CHRGE_OFF_FLG,foracid  FROM TBAADM.GAM,TBAADM.gac WHERE GAM.acid = gac.acid AND GAM.bank_id = gac.bank_id "
+                sv_s = sv_s + " and acct_ownership!='O' AND GAM.foracid = ?SVAR  AND GAM.bank_id = ?SVAR  "
+                BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+                print(sv_s)
+                sv_d = urhk_dbSelectWithBind(sv_s)
+                print(sv_d)
+                IF(sv_d == 0) THEN
+                        print(BANCS.OUTPARAM.chrgeoffflg)
+                        CUST.ATM.chrgeoffflg = BANCS.OUTPARAM.chrgeoffflg
+                        print(CUST.ATM.chrgeoffflg)
+                        IF (CUST.ATM.chrgeoffflg=="Y") THEN
+                                IF (FIELDEXISTS(BANCS.INPUT.ReservedField2) == 1) THEN
+                                        IF ((BANCS.INPUT.ReservedField2=="BLOCK") OR (BANCS.INPUT.ReservedField2=="UNBLOCK")) THEN
+                                                CUST.ATM.errMsg =" ChargeOff Account not allowed"
+                                                BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                exitscript
+                                        ENDIF
+                                ENDIF
+                        ENDIF
+                ENDIF
+        ENDIF
+ENDIF
+### end stop  chargeoff
+#++++++++++++++++++++++Corporate Search (Vino Palani 03/06/2020) Starts
+        if(fieldexists(BANCS.INPUT.Foracid)==1)then
+                if(BANCS.INPUT.Foracid!="")then
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                        if(sv_u==0)then
+                                CUST.ATM.SolId = BANCS.OUTPARAM.acctSolId
+                                CUST.ATM.drschmCode = BANCS.OUTPARAM.schmCode
+                                CUST.ATM.drCifId = BANCS.OUTPARAM.cifId
+                        else
+                                BANCS.OUTPUT.RespCode = "03"
+                                BANCS.OUTPUT.successOrFailure="F"
+                                exitscript
+                        endif
+                        if(CUST.ATM.drschmCode=="OD541")then
+                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - OD541 Debit"
+                                  BANCS.OUTPUT.successOrFailure = "F"
+                                  BANCS.OUTPUT.RespCode = "99"
+                                  print(BANCS.OUTPUT.RespCode)
+                                  exitscript
+                        endif
+                        sv_d = "TranYN | select CUSTOM.fn_corp_check(?SVAR,?SVAR) from dual"
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+                        print(BANCS.INPARAM.BINDVARS)
+                        sv_u = urhk_dbSelectWithBind(sv_d)
+                        if(sv_u==0)then
+                                CUST.ATM.TranYN = BANCS.OUTPARAM.TranYN
+                        else
+                                CUST.ATM.TranYN = "Y"
+                        endif
+                        if(CUST.ATM.TranYN!="Y")then
+                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - Corporate Search"
+                                  BANCS.OUTPUT.successOrFailure = "F"
+                                  BANCS.OUTPUT.RespCode = "99"
+                                  print(BANCS.OUTPUT.RespCode)
+                                  exitscript
+                        endif
+                endif
+        endif
+        if(fieldexists(BANCS.INPUT.CrForacid)==1)then
+                if(BANCS.INPUT.CrForacid!="")then
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                        if(sv_u==0)then
+                                CUST.ATM.effBal = BANCS.OUTPARAM.EffAvailableAmt
+                        else
+                                if(BANCS.INPUT.DccId=="VER")then
+                                        BANCS.OUTPUT.RespCode = "03"
+                                        BANCS.OUTPUT.successOrFailure="F"
+                                        exitscript
+                                else
+                                        CUST.ATM.effBal = ""
+                                endif
+                        endif
+                        if((BANCS.INPUT.Command=="TRRR") and (BANCS.INPUT.DccId=="VER"))then
+                                CUST.ATM.orgAmt = LEFT$(BANCS.INPUT.TranAmt,14)
+                                CUST.ATM.orgAmt = cdouble(CUST.ATM.orgAmt) + 120
+                                print(CUST.ATM.orgAmt)
+                                print(CUST.ATM.effBal)
+                                if(cdouble(CUST.ATM.orgAmt)>cdouble(CUST.ATM.effBal))then
+                                        BANCS.OUTPUT.ReservedField3 = "Reversal Transaction Failed - Insufficient Fund "
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        print(BANCS.OUTPUT.RespCode)
+                                        exitscript
+                                endif
+                        endif
+
+                        sv_d = "TranYN | select CUSTOM.fn_corp_check(?SVAR,?SVAR) from dual"
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.CrForacid
+                        print(BANCS.INPARAM.BINDVARS)
+                        sv_u = urhk_dbSelectWithBind(sv_d)
+                        if(sv_u==0)then
+                                CUST.ATM.TranYN = BANCS.OUTPARAM.TranYN
+                        else
+                                CUST.ATM.TranYN = "Y"
+                        endif
+#-----------------------------Amnt excemption added
+                        if(CUST.ATM.TranYN!="Y")then
+                                CUST.ATM.TranAmt = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+                                print(CUST.ATM.TranAmt)
+                                CUST.ATM.parmId = "SEARCH" + BANCS.INPUT.TranCrncy
+                                print(CUST.ATM.parmId)
+                                BANCS.INPUT.moduleName = "TRANVAL"
+                                BANCS.INPUT.parameterId = CUST.ATM.parmId
+                                CALL("getcparamvalue.scr")
+                                PRINT(BANCS.OUTPUT.parameterVal)
+                                IF(BANCS.OUTPUT.parameterVal != "")THEN
+                                #{
+                                        CUST.ATM.AmtLimit = BANCS.OUTPUT.parameterVal
+                                        print(CUST.ATM.AmtLimit)
+                                #}
+                                ELSE
+                                #{
+                                        BANCS.OUTPUT.ReservedField3 = "Amount Limit setup not done in CPARAM"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        print(BANCS.OUTPUT.RespCode)
+                                        exitscript
+                                #}
+                                ENDIF
+                                CUST.ATM.TotAmt = cdouble(CUST.ATM.effBal) + cdouble(CUST.ATM.TranAmt)
+                                print(CUST.ATM.TotAmt)
+
+                                #if((cdouble(CUST.ATM.TranAmt)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.effBal)>cdouble(CUST.ATM.AmtLimit)))then
+                                if((cdouble(CUST.ATM.TranAmt)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.effBal)>cdouble(CUST.ATM.AmtLimit)) or (cdouble(CUST.ATM.TotAmt)>cdouble(CUST.ATM.AmtLimit)))then
+                                        BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed - Corporate Search"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        print(BANCS.OUTPUT.RespCode)
+                                        exitscript
+                                endif
+                        endif
+                endif
+        endif
+#++++++++++++++++++++++Corporate Search (Vino Palani 03/06/2020) Starts
+#++++++++++++++++++++++ODA Agent (Vino Palani 08/05/2020) Starts
+if((BANCS.INPUT.DccId=="EAZ") or (BANCS.INPUT.DccId=="WPD"))then
+#{
+if((BANCS.INPUT.Command=="TRTR") or (BANCS.INPUT.Command=="DBTR")or(BANCS.INPUT.Command=="CWDR") or (BANCS.INPUT.Command=="PRCR"))then
+#{
+        if(fieldexists(BANCS.INPUT.Foracid)==1)then
+        #{
+                if(BANCS.INPUT.Foracid!="")then
+                #{
+                        sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                        if(sv_u==0)then
+                        #{
+                                CUST.ATM.SolId = BANCS.OUTPARAM.acctSolId
+                                CUST.ATM.drschmCode = BANCS.OUTPARAM.schmCode
+                                CUST.ATM.drCifId = BANCS.OUTPARAM.cifId
+                        #}
+                        else
+                        #{
+                                BANCS.OUTPUT.RespCode = "03"
+                                BANCS.OUTPUT.successOrFailure="F"
+                                exitscript
+                        #}
+                        endif
+                        #Merchant Financing Starts 08/05/2021
+                        lv_d = "mfCnt | select count(*) from tbaadm.gam where bank_id= ?SVAR and schm_code='OD547' and acct_cls_flg<>'Y' and del_flg='N' and cif_id=?SVAR "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ATM.drCifId
+                        print(lv_d)
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_s = urhk_dbSelectWithBind(lv_d)
+                        if(lv_s==0)then
+                        #{
+                                CUST.ATM.mfCnt = BANCS.OUTPARAM.mfCnt
+                        #}
+                        else
+                        #{
+                                CUST.ATM.mfCnt = 0
+                        #}
+                        endif
+                        if(cdouble(CUST.ATM.mfCnt)>=1)then
+                        #{
+                                BANCS.INPUT.AgentDmd = "Y"
+                                callscriptifexist("ebMfPoolLimtVal.scr")
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="N")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Limit Exceeds "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="O")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Overdue Exist "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                        #}
+                        endif
+                        #Merchant Financing Ends 08/05/2021
+                        if((CUST.ATM.drschmCode=="CA207") or (CUST.ATM.drschmCode=="SB126"))then
+                        #{
+                                CUST.ATM.allowAgentFloatCnt = "0"
+                                lv_p = " activePoolCnt | select count(*) from tbaadm.gam,tbaadm.pft where gam.bank_id=?SVAR and pft.bank_id=?SVAR and gam.cif_id=?SVAR and gam.schm_code in ('OD541','SB126','CA207') and gam.acct_cls_flg<>'Y' and gam.del_flg<>'Y' and gam.entity_cre_flg='Y' and gam.allow_sweeps='Y' and pft.pool_id=gam.pool_id and pft.suspend_flg<>'Y' "
+                                print(lv_p)
+                                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + CUST.ATM.drCifId
+                                print(BANCS.INPARAM.BINDVARS)
+                                lv_i = urhk_dbSelectWithBind(lv_p)
+                                if(lv_i==0)then
+                                #{
+                                        CUST.ATM.activePoolCnt = BANCS.OUTPARAM.activePoolCnt
+                                else
+                                        CUST.ATM.activePoolCnt = "0"
+                                #}
+                                endif
+                                BANCS.INPUT.AgentDmd = "Y"
+                                if(cdouble(CUST.ATM.activePoolCnt)>=1)then
+                                #{
+                                        callscriptifexist("ebAgentPoolLimtVal.scr")
+                                #}
+                                else
+                                #{
+                                        lv_b = "allowAgentFloatCnt | select count(*) from tbaadm.fcftt,tbaadm.gam where  gam.bank_id=?SVAR and fcftt.bank_id=?SVAR and gam.acid=fcftt.acid and gam.foracid=?SVAR and fcftt.FREE_CODE_18='AGENT-FLOAT' and gam.entity_cre_flg='Y' and gam.del_flg='N' and fcftt.entity_cre_flg='Y' and fcftt.del_flg='N' "
+                                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.Foracid
+                                        print(lv_b)
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        lv_b = urhk_dbSelectWithBind(lv_b)
+                                        if(lv_b==0)then
+                                        #{
+                                                CUST.ATM.allowAgentFloatCnt = BANCS.OUTPARAM.allowAgentFloatCnt
+                                        #}
+                                        else
+                                        #{
+                                                CUST.ATM.allowAgentFloatCnt = "0"
+                                        #}
+                                        endif
+                                        if(cdouble(CUST.ATM.allowAgentFloatCnt)>=1)then
+                                        #{
+                                                CALL("copyBancsToCustC24.scr")
+                                                CALL("vpAgentLimitCr.scr")
+                                                CALL("copyCust24ToBancs.scr")
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        #Agent Related OD has insufficient Fund
+                                        if(BANCS.OUTPUT.agntValYN=="NOCR")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Od Limit Exceeds "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                        #Agent Account itself has sufficient Fund,No Od Tran
+                                        if(BANCS.OUTPUT.agntValYN=="NODR")then
+                                        #{
+                                                print("Allow Agent Transaction to Post")
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="F")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Od Transaction Failed "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="S")then
+                                        #{
+                                                print("Allow Agent Transaction to Post After Od Transaction")
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="N")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Limit Exceeds "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                                if(fieldexists(BANCS.OUTPUT.agntValYN)==1)then
+                                #{
+                                        if(BANCS.OUTPUT.agntValYN=="O")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Agent Overdue Exist "
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                        if(BANCS.OUTPUT.agntValYN=="C")then
+                                        #{
+                                                  BANCS.OUTPUT.ReservedField3 = "Transaction Not Allowed -Limit Exceeds for tran&charge amount"
+                                                  print(BANCS.OUTPUT.ReservedField3)
+                                                  BANCS.OUTPUT.successOrFailure = "F"
+                                                  BANCS.OUTPUT.RespCode = "04"
+                                                  exitscript
+                                        #}
+                                        endif
+                                #}
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+       #}
+       endif
+#}
+endif
+#}
+endif
+#++++++++++++++++++++Ends
+## start restrict overdrawing
+IF (BANCS.INPUT.Foracid!="") THEN
+        print(BANCS.INPUT.Foracid)
+        IF ((BANCS.INPUT.Foracid=="0001100305020") OR (BANCS.INPUT.Foracid=="0001100405021") OR (BANCS.INPUT.Foracid=="0541100405249") OR (BANCS.INPUT.Foracid=="0541100404593") OR (BANCS.INPUT.Foracid=="0541100405260")) THEN
+                sv_h = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                print(sv_h)
+                IF (sv_h==0) THEN
+                        sv_r = REPEXISTS("STDWFS")
+                        IF (sv_r == 0) THEN
+                                CREATEREP("STDWFS")
+                        ENDIF
+                        sv_r = CLASSEXISTS("STDWFS", "GLBDATA")
+                        IF (sv_r == 0) THEN
+                                CREATECLASS("STDWFS", "GLBDATA", 5)
+                        ENDIF
+                        STDWFS.GLBDATA.solidsh = BANCS.OUTPARAM.acctSolId
+                        print(STDWFS.GLBDATA.solidsh)
+                        STDWFS.GLBDATA.schmcodesh = BANCS.OUTPARAM.schmCode
+                        print(STDWFS.GLBDATA.schmcodesh)
+                        STDWFS.GLBDATA.schmType = BANCS.OUTPARAM.schmType
+                        print(STDWFS.GLBDATA.schmType)
+                        STDWFS.GLBDATA.EffAvailableAmttr = BANCS.OUTPARAM.EffAvailableAmt
+                        print(STDWFS.GLBDATA.EffAvailableAmttr)
+                        IF (FIELDEXISTS(BANCS.INPUT.TranAmt) == 1) THEN
+                                print(BANCS.OUTPUT.TranAmt)
+                                STDWFS.GLBDATA.dedittr = cdouble(BANCS.INPUT.TranAmt)/cdouble("100")
+                                print(STDWFS.GLBDATA.dedittr)
+                                if (CINT(STDWFS.GLBDATA.EffAvailableAmttr) < CINT(STDWFS.GLBDATA.dedittr)) then
+                                        print(" less amount exit ")
+                                        CUST.ATM.errMsg =" Overdrawing not allowed "
+                                        BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg
+                                        BANCS.OUTPUT.RespCode = "04"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        exitscript
+                                endif
+                        ENDIF
+                ENDIF
+        ENDIF
+ENDIF
+## end restrict overdrawing
+
+##---For Checking holiday status in Full Statement ---#
+IF (BANCS.INPUT.DccId == "POL") THEN
+        PRINT(BANCS.INPUT.SolId)
+        PRINT(BANCS.INPUT.ReservedField1)
+
+        IF(BANCS.INPUT.Command == "FSIR")THEN
+        #{
+                CUST.ATM.SOLID = BANCS.INPUT.SolId
+                PRINT(CUST.ATM.SOLID)
+
+                CUST.ATM.endDate = MID$(BANCS.INPUT.ReservedField1,8,8)
+                PRINT(CUST.ATM.endDate)
+
+                CUST.ATM.endDate = BANCS.INPUT.ReservedField1
+                PRINT(CUST.ATM.endDate)
+
+                CUST.ATM.YYYY = MID$(CUST.ATM.endDate,0,4)
+                PRINT(CUST.ATM.YYYY)
+
+                CUST.ATM.MM = MID$(CUST.ATM.endDate,4,2)
+                PRINT(CUST.ATM.MM)
+
+                CUST.ATM.DD = MID$(CUST.ATM.endDate,6,2)
+                PRINT(CUST.ATM.DD)
+
+                CUST.ATM.endDateInDDMMYY = CUST.ATM.DD + "-" + CUST.ATM.MM + "-" + CUST.ATM.YYYY
+                PRINT(CUST.ATM.endDateInDDMMYY)
+
+                CUST.ATM.holidayStatusArgument = CUST.ATM.SOLID + "|" + CUST.ATM.endDateInDDMMYY
+                PRINT(CUST.ATM.holidayStatusArgument)
+                sv_a = urhk_scrIsDcHoliday(CUST.ATM.endDateInDDMMYY)
+                PRINT(sv_a)
+                IF(sv_a == 1)THEN
+                #{
+                        BANCS.OUTPUT.successOrFailure = "F"
+                #}
+                ENDIF
+
+                PRINT(BANCS.OUTPARAM.IsDcHoliday)
+
+                IF(BANCS.OUTPARAM.IsDcHoliday == "Y")THEN
+                #{
+                        sv_a = urhk_GetNextWorkingDate(CUST.ATM.holidayStatusArgument)
+                        PRINT(sv_a)
+                        PRINT(BANCS.OUTPARAM.NextDataCentreWorkingDate)
+
+                        CUST.ATM.nextDataCentreWorkingDate = BANCS.OUTPARAM.NextDataCentreWorkingDate
+                        PRINT(CUST.ATM.nextDataCentreWorkingDate)
+
+                        CUST.ATM.nextDataCentreWorkingDD = MID$(CUST.ATM.nextDataCentreWorkingDate,0,2)
+                        CUST.ATM.nextDataCentreWorkingMM = MID$(CUST.ATM.nextDataCentreWorkingDate,3,2)
+                        CUST.ATM.nextDataCentreWorkingYYYY = MID$(CUST.ATM.nextDataCentreWorkingDate,6,4)
+
+                        CUST.ATM.nextDataCentreWorkingYYYYMMDD = CUST.ATM.nextDataCentreWorkingYYYY + CUST.ATM.nextDataCentreWorkingMM + CUST.ATM.nextDataCentreWorkingDD
+
+                        CUST.ATM.RFPart1 = MID$(BANCS.INPUT.ReservedField1,0,8)
+                        CUST.ATM.RFPart2 = CUST.ATM.nextDataCentreWorkingYYYYMMDD
+                        CUST.ATM.RFPart3 = MID$(BANCS.INPUT.ReservedField1,16,STRLEN(BANCS.INPUT.ReservedField1))
+
+                        PRINT(CUST.ATM.RFPart1)
+                        PRINT(CUST.ATM.RFPart2)
+                        PRINT(CUST.ATM.RFPart3)
+
+                        BANCS.OUTPUT.ReservedField1 = CUST.ATM.RFPart1 + CUST.ATM.RFPart2 + CUST.ATM.RFPart3
+
+                        PRINT(BANCS.OUTPUT.ReservedField1)
+                        BANCS.OUTPUT.successOrFailure = "S"
+                #}
+                ELSE
+                #{
+                        PRINT("The End Date is not a holiday")
+                #}
+                ENDIF
+        #}
+        ENDIF
+ENDIF
+##--- End of Checking Holiday Status for Full Statement ---#
+
+#Adding default ratecode
+CUST.ATM.RateCode ="CDCI_RATE_CODE|CRC"
+CUST.ATM.Put = urhk_putEnv(CUST.ATM.RateCode)
+print(CUST.ATM.Put)
+
+CUST.ATM.Get = urhk_getEnv("CDCI_RATE_CODE")
+IF(CUST.ATM.Get == 0 ) THEN
+        print(BANCS.OUTPARAM.envValue)
+ENDIF
+#VER Eft Rate
+IF (BANCS.INPUT.DccId == "VER") THEN
+#{
+        if(fieldexists(BANCS.INPUT.Foracid)==1)then
+                sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                if(sv_u==0)then
+                        CUST.ATM.vdrCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+                else
+                        CUST.ATM.vdrCrncyCode = ""
+                endif
+        else
+                CUST.ATM.vdrCrncyCode = ""
+        endif
+        if(fieldexists(BANCS.INPUT.CrForacid)==1)then
+                sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                if(sv_u==0)then
+                        CUST.ATM.vcrCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+                else
+                        CUST.ATM.vcrCrncyCode = ""
+                endif
+        else
+                CUST.ATM.vcrCrncyCode = ""
+        endif
+        if((CUST.ATM.vdrCrncyCode!="")and(CUST.ATM.vcrCrncyCode!=""))then
+        #{
+                if(CUST.ATM.vdrCrncyCode!=CUST.ATM.vcrCrncyCode)then
+                #{
+                        lv_d = "rtdtls|select custom.fn_rtpop_chk(?SVAR,?SVAR,?SVAR,'T','HLADISB')from dual "
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ATM.vdrCrncyCode + "|" + CUST.ATM.vcrCrncyCode
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_f = urhk_dbSelectWithBind(lv_d)
+                        if(lv_f==0)then
+                        #{
+                                CUST.ATM.rtdtls = BANCS.OUTPARAM.rtdtls
+                        #}
+                        else
+                        #{
+                                CUST.ATM.rtdtls = "N|No"
+                        #}
+                        endif
+                        if(CUST.ATM.rtdtls!="")then
+                        #{
+                                CUST.ATM.rtYN = left$(CUST.ATM.rtdtls,1)
+                                if(CUST.ATM.rtYN=="Y")then
+                                #{
+                                        CUST.ATM.rtCode = mid$(CUST.ATM.rtdtls,2,3)
+                                #}
+                                else
+                                #{
+                                        CUST.ATM.rtCode = "TTS"
+                                #}
+                                endif
+                                CUST.ATM.RateCode ="CDCI_RATE_CODE|" + CUST.ATM.rtCode
+                                CUST.ATM.Put = urhk_putEnv(CUST.ATM.RateCode)
+                                print(CUST.ATM.Put)
+
+                                CUST.ATM.Get = urhk_getEnv("CDCI_RATE_CODE")
+                                IF(CUST.ATM.Get == 0 ) THEN
+                                #{
+                                        print(BANCS.OUTPARAM.envValue)
+                                #}
+                                ENDIF
+                        #}
+                        endif
+                #}
+                endif
+        #}
+        endif
+#}
+ENDIF
+
+CUST.ATM.errMsg = ""
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "SCHMCODE_2"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "SCHMCODE_3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_4"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode4 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_5"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode5 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_6"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode6 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_7"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode7 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMCODE_8"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmCode8 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SCHMTYPE_1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.schmType1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+BANCS.INPUT.parameterId = "SOLID_1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.solId1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SOLID_2"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.solId2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SOLID_3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.solId3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "AMOUNT_1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.Amount1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "AMOUNT_2"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.Amount2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "AMOUNT_3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.Amount3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "AMOUNT_4"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.Amount4 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Schm Code setup not done CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+BANCS.INPUT.parameterId = "CUSTCARDID1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.ATM.custCard1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+        CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID2"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID4"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard4 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID5"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard5 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CUSTCARDID6"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.custCard6 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "ACCOUNT1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.account1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Customer Card setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CRFORACID_4"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.crForAcid4 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Credit Foracid setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CRFORACID_5"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.crForAcid5 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Credit Foracid setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CRFORACID_2"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.crForAcid2 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Credit Foracid setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CRFORACID_3"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.crForAcid3 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Credit Foracid setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+BANCS.INPUT.moduleName  = "ATM"
+BANCS.INPUT.parameterId = "CRFORACID_1"
+
+CALL ("atmgetcparamvalue.scr")
+
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+    CUST.ATM.crForAcid1 = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+    CUST.ATM.errMsg = "Credit Foracid setup not done in CPARAM"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#--------------------------------------------------------------------
+# Validation to check whether the account is verified
+#--------------------------------------------------------------------
+IF((FIELDEXISTS(BANCS.INPUT.Foracid) == 1) AND (BANCS.INPUT.Command != "RTXR")) THEN
+#{
+IF(BANCS.INPUT.Foracid != "")THEN
+#{
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+        sv_s = "acid|SELECT ACID FROM TBAADM.GAM WHERE (ENTITY_CRE_fLG='Y' OR (ENTITY_CRE_fLG='N' and schm_code='VA302')) AND DEL_FLG='N' AND FORACID = ?SVAR AND BANK_ID = ?SVAR"
+        sv_u = urhk_dbselectWithBind(sv_s)
+        IF(sv_u != 0) THEN
+        #{
+                IF (BANCS.INPUT.DccId=="SMS") THEN
+                        IF (BANCS.INPUT.Command=="ACIR") THEN
+                                sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                                print(sv_t)
+                                IF (sv_t == 0) THEN
+                                        sv_t = BANCS.OUTPARAM.schmType
+                                        print(sv_t)
+                                        sv_c = BANCS.OUTPARAM.schmCode
+                                        print(sv_c)
+                                        IF (sv_c=="SB777") THEN
+                                                print("okay")
+                                                IF ((BANCS.INPUT.DccId == "SMS" ) AND (BANCS.INPUT.DeviceId=="CAMPAIGN") AND (BANCS.OUTPUT.Command=="ACIR")) THEN
+                                                        print(BANCS.INPUT.Foracid)
+                                                        sv_s = "schmcodex,name,custId,number,id "
+                                                        sv_s = sv_s + " | "
+                                                        sv_s = sv_s + " SELECT gam.schm_code,RPAD(GAM.acct_name,80,' '),GAM.cif_id,PHONENO,CMG.nat_id_card_num "
+                                                        sv_s = sv_s + " FROM tbaadm.cphone cphone,TBAADM.GAM , TBAADM.CMG "
+                                                        sv_s = sv_s + " WHERE cphone.PHONE_B2KID=GAM.cif_id and cphone.PHONE_B2KID=CMG.cif_id  and GAM.schm_code='SB777' and CMG.cif_id=GAM.cif_id "
+                                                        sv_S = sv_s + " AND cphone.PREFERREDFLAG='Y' "
+                                                        sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+                                                        sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+                                                        sv_s = sv_s + " AND GAM.bank_id = cphone.bank_id AND CMG.bank_id = cphone.bank_id   AND GAM.bank_id = CMG.bank_id and rownum<2 "
+                                                        BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+                                                        print(sv_s)
+                                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                                        print(sv_d)
+                                                        if (sv_d == 0) then
+                                                                print(BANCS.OUTPARAM.name)
+                                                                print(BANCS.OUTPARAM.id)
+                                                                print(BANCS.OUTPARAM.custId)
+                                                                print(BANCS.OUTPARAM.number)
+                                                                BANCS.OUTPUT.ReservedField1=BANCS.OUTPARAM.name+"/"+BANCS.OUTPARAM.id+"/"+BANCS.OUTPARAM.number
+                                                                print(BANCS.OUTPUT.ReservedField1)
+                                                                print(BANCS.OUTPARAM.schmcodex)
+                                                                IF (BANCS.OUTPARAM.schmcodex=="SB777") THEN
+                                                                        BANCS.OUTPUT.RespCode = "00"
+                                                                        print(BANCS.OUTPUT.RespCode)
+                                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                                        print(BANCS.OUTPUT.successOrFailure)
+                                                                        exitscript
+                                                                ENDIF
+                                                        ELSE
+                                                                print(BANCS.INPUT.Foracid)
+                                                                sv_s = "schmcodex,name,custId,number,id "
+                                                                sv_s = sv_s + " | "
+                                                                sv_s = sv_s + " SELECT gam.schm_code,RPAD(GAM.acct_name,80,' '),GAM.cif_id,gam.del_flg,CMG.nat_id_card_num "
+                                                                sv_s = sv_s + " FROM TBAADM.GAM , TBAADM.CMG "
+                                                                sv_s = sv_s + " WHERE CMG.cif_id=GAM.cif_id "
+                                                                sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+                                                                sv_s = sv_s + " AND GAM.bank_id = ?SVAR  and GAM.schm_code='SB777' "
+                                                                sv_s = sv_s + " AND GAM.bank_id = CMG.bank_id and rownum<2 "
+                                                                print(sv_s)
+                                                                BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+                                                                print(sv_s)
+                                                                sv_d = urhk_dbSelectWithBind(sv_s)
+                                                                print(sv_d)
+                                                                if (sv_d == 0) then
+                                                                        print(BANCS.OUTPARAM.name)
+                                                                        print(BANCS.OUTPARAM.id)
+                                                                        print(BANCS.OUTPARAM.custId)
+                                                                        BANCS.OUTPARAM.number=""
+                                                                        print(BANCS.OUTPARAM.number)
+                                                                        BANCS.OUTPUT.ReservedField1=BANCS.OUTPARAM.name+"/"+BANCS.OUTPARAM.id+"/"+BANCS.OUTPARAM.number
+                                                                        print(BANCS.OUTPUT.ReservedField1)
+                                                                        print(BANCS.OUTPARAM.schmcodex)
+                                                                        IF (BANCS.OUTPARAM.schmcodex=="SB777") THEN
+                                                                                BANCS.OUTPUT.RespCode = "00"
+                                                                                print(BANCS.OUTPUT.RespCode)
+                                                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                                                print(BANCS.OUTPUT.successOrFailure)
+                                                                                exitscript
+                                                                        ENDIF
+                                                                ENDIF
+                                                        ENDIF
+                                                ENDIF
+
+                                        ELSE
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                BANCS.OUTPUT.successOrFailure="F"
+                                                exitscript
+                                        ENDIF
+                                ELSE
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        BANCS.OUTPUT.successOrFailure="F"
+                                        exitscript
+                                ENDIF
+                        ELSE
+                                BANCS.OUTPUT.RespCode = "99"
+                                BANCS.OUTPUT.successOrFailure="F"
+                                exitscript
+                        ENDIF
+                ELSE
+                        BANCS.OUTPUT.RespCode = "99"
+                        BANCS.OUTPUT.successOrFailure="F"
+                        exitscript
+                ENDIF
+        #}
+        ENDIF
+#}
+ENDIF
+#}
+ENDIF
+
+
+#Changes done by sri for making PCLR as advices - 21 nov
+IF ((BANCS.INPUT.DccId == "EAZ") or (BANCS.INPUT.DccId == "OMK") or (BANCS.INPUT.DccId == "WYM")) THEN
+#{
+        IF (BANCS.INPUT.Command == "PCLR") THEN
+           #{
+           print(BANCS.INPUT.DccId)
+           print("this is changed to advice PCLR")
+           BANCS.OUTPUT.Qualifier="9"
+           #}
+        ENDIF
+#}
+ENDIF
+
+    #-----------------------------------------------
+    # To Get The Input Sol Id from the Input Foracid
+    #----------------------------------------------
+
+        IF(FIELDEXISTS(BANCS.INPUT.Foracid) == 1) THEN
+        #{
+                IF(BANCS.INPUT.Foracid != "" ) THEN
+                #{
+
+                sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.Foracid)
+                print(sv_t)
+                IF (sv_t == 0) THEN
+                #{
+                        print(BANCS.INPUT.Foracid)
+                        BANCS.INPUT.SolId = BANCS.OUTPARAM.acctSolId
+                        BANCS.OUTPUT.SolId = BANCS.OUTPARAM.acctSolId
+                        CUST.ATM.DbCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+                        print(CUST.ATM.DbCrncyCode)
+                #}
+                ELSE
+                #{
+                        BANCS.OUTPUT.RespCode = "03"
+                        BANCS.OUTPUT.successOrFailure="F"
+                        exitscript
+                #}
+                ENDIF
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+    #-----------------------------------------------
+    # To Get The Input Sol Id from the Input Foracid
+    #----------------------------------------------
+
+        IF ((FIELDEXISTS(BANCS.INPUT.CrForacid) == 1) AND (BANCS.INPUT.DccId != "C24") AND (BANCS.INPUT.CrForacid != "VODAFONE")) THEN
+        #{
+                IF(BANCS.INPUT.CrForacid != "" ) THEN
+                #{
+                sv_t= urhk_getAcctDetailsInRepository(BANCS.INPUT.CrForacid)
+                print(sv_t)
+                IF (sv_t == 0) THEN
+                #{
+                        print(BANCS.INPUT.CrForacid)
+                        BANCS.INPUT.CrSolId = BANCS.OUTPARAM.acctSolId
+                        BANCS.OUTPUT.CrSolId = BANCS.OUTPARAM.acctSolId
+                        CUST.ATM.CrCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+                        print(CUST.ATM.CrCrncyCode)
+                #}
+                ELSE
+                #{
+                        BANCS.OUTPUT.RespCode = "03"
+                        BANCS.OUTPUT.successOrFailure="F"
+                        exitscript
+                #}
+                ENDIF
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+IF(((BANCS.INPUT.Command == "TRTR") OR (BANCS.INPUT.Command == "TRRR")) AND (BANCS.INPUT.DccId == "BWY")) THEN
+#{
+        #Checking if Multicurrency FundsTransfer Transaction
+        IF ((CUST.ATM.DbCrncyCode != CUST.ATM.CrCrncyCode) OR (BANCS.INPUT.TranCrncy != CUST.ATM.DbCrncyCode) OR (BANCS.INPUT.TranCrncy != CUST.ATM.CrCrncyCode)) THEN
+        #{
+                IF (FIELDEXISTS(BANCS.INPUT.ReservedField1)) THEN
+                #{
+                        IF (STRLEN(BANCS.INPUT.ReservedField1) >= 1) THEN
+                        #{
+                                 IF (FIELDEXISTS(BANCS.INPUT.ReservedField3)) THEN
+                                        IF ((BANCS.INPUT.ReservedField3=="RTG") OR (BANCS.INPUT.ReservedField3=="SWT")) THEN
+                                                CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+                                                print(CUST.ATM.RateCode)
+                                        ELSE
+                                                #CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+                                                CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,82,5)
+                                                print(CUST.ATM.RateCode)
+                                        ENDIF
+                                 ELSE
+                                        #CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,getposition(BANCS.INPUT.ReservedField1,"-"),STRLEN(BANCS.INPUT.ReservedField1))
+                                        CUST.ATM.RateCode = MID$(BANCS.INPUT.ReservedField1,82,5)
+                                        print(CUST.ATM.RateCode)
+                                 ENDIF
+                                CUST.ATM.RateCode  = trim(CUST.ATM.RateCode)
+                                print(CUST.ATM.RateCode)
+                                print(BANCS.INPUT.ReservedField1)
+                                #BANCS.INPUT.ReservedField1 =  MID$(BANCS.INPUT.ReservedField1,0,getposition(BANCS.INPUT.ReservedField1,"-")-1)
+                                BANCS.OUTPUT.ReservedField1 =  MID$(BANCS.INPUT.ReservedField1,0,50)
+                                print(BANCS.OUTPUT.ReservedField1)
+                                CUST.ATM.RateCode ="CDCI_RATE_CODE|" + CUST.ATM.RateCode
+                                CUST.ATM.Put = urhk_putEnv(CUST.ATM.RateCode)
+                                print(CUST.ATM.Put)
+
+                                CUST.ATM.Get = urhk_getEnv("CDCI_RATE_CODE")
+                                IF(CUST.ATM.Get == 0 ) THEN
+                                        print(BANCS.OUTPARAM.envValue)
+                                ENDIF
+                                BANCS.OUTPUT.successOrFailure="Y"
+                        #}
+                        ENDIF
+                #}
+                ENDIF
+        #}
+        ENDIF
+#}
+ENDIF
+IF (FIELDEXISTS(BANCS.INPUT.ReservedField2) == 1) THEN
+#{
+        IF (MID$(BANCS.INPUT.ReservedField2,0,7) == "AUTOTOD") THEN
+        #{
+                BANCS.OUTPUT.RespCode = "99"
+                BANCS.OUTPUT.successOrFailure = "F"
+                BANCS.OUTPUT.ReservedField3 = "Not Allowed Contact Branch"
+                exitscript
+                IF (BANCS.INPUT.ReservedField2 != "AUTOTODAVAILREQMC") THEN
+                        call ("copyBancsToCustC24.scr")
+                        CALL("createTODmn001.scr")
+                        call ("copyCust24ToBancs.scr")
+                        IF(CUST.ATM.SuccessOrFailure == "S" ) THEN
+                        #{
+                                        BANCS.OUTPUT.RespCode = "00"
+                                        BANCS.OUTPUT.ReservedField3 = CUST.TOD.Output
+                                        print(BANCS.OUTPUT.ReservedField3)
+                        #}
+                        ELSE
+                        #{
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        BANCS.OUTPUT.ReservedField3 = CUST.TOD.Output
+                                        print(BANCS.OUTPUT.ReservedField3)
+                        #}
+                        ENDIF
+                ENDIF
+        #}
+        ENDIF
+#}
+ENDIF
+
+#sv_u=urhk_B2k_PrintRepos("BANCS")
+#print(sv_u)
+
+IF (FIELDEXISTS(BANCS.INPUT.ReservedField2) == 1) THEN
+#{
+        IF (BANCS.INPUT.ReservedField2 == "AUTOTODAVAILREQMC") THEN
+        #{
+                IF (BANCS.INPUT.Foracid != "")THEN
+                        sv_s = "frezCode,acctStatus,schmCode "
+                        sv_s = sv_s + " ,acctnamed,solidd,cifid | "
+                        sv_s = sv_s + " SELECT nvl(trim(GAM.frez_code),'N'),smt.acct_status, "
+                        sv_s = sv_s + " GAM.schm_code, gam.acct_name,gam.sol_id,gam.cif_id  "
+                        sv_s = sv_s + " FROM TBAADM.GAM,TBAADM.SMT WHERE GAM.acid = smt.acid "
+                        sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+                        sv_s = sv_s + " AND GAM.bank_id = SMT.bank_id "
+                        sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+                        BANCS.INPARAM.BINDVARS = BANCS.INPUT.Foracid + "|" + BANCS.STDIN.contextBankId
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        IF(sv_d == 0) THEN
+                                print(BANCS.OUTPARAM.frezCode)
+                                print(BANCS.OUTPARAM.acctStatus)
+                                print(BANCS.INPUT.Command)
+                                print(BANCS.OUTPUT.DccId)
+                                CUST.ATM.schmCode = BANCS.OUTPARAM.schmCode
+                                print(CUST.ATM.schmCode)
+                                print(BANCS.OUTPARAM.acctStatus)
+                                CUST.ATM.solid = BANCS.OUTPARAM.solidd
+                                print(CUST.ATM.solid)
+                                CUST.ATM.acctname = BANCS.OUTPARAM.acctnamed
+                                print(CUST.ATM.acctname)
+                                CUST.ATM.cifid = BANCS.OUTPARAM.cifid
+                                print(CUST.ATM.cifid)
+
+                                IF  ((CUST.ATM.schmCode == "SB100") OR (CUST.ATM.schmCode == "SB777") OR (CUST.ATM.schmCode == "SB109") OR (CUST.ATM.schmCode == "SB117") OR (CUST.ATM.schmCode == "SB118") OR (CUST.ATM.schmCode == "SB190") OR (CUST.ATM.schmCode == "SB140") OR (CUST.ATM.schmCode == "SB104") OR (CUST.ATM.schmCode == "SB103")) THEN
+
+                                        IF (CUST.ATM.schmCode == "SB777") THEN
+                                                IF (CUST.ATM.solid=="777") THEN
+                                                        print("Not Allowed Contact Branch")
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                        BANCS.OUTPUT.ReservedField3 = "Not Allowed Contact Branch"
+                                                        exitscript
+                                                ENDIF
+                                        ENDIF
+                                        IF (BANCS.OUTPARAM.frezCode == "D") THEN
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.ReservedField3 = "84|TOD CREATION FAILED"
+                                                exitscript
+                                        ENDIF
+                                        IF (BANCS.OUTPARAM.frezCode == "T") THEN
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.ReservedField3 = "84|TOD CREATION FAILED"
+                                                exitscript
+                                        ENDIF
+                                        IF (BANCS.OUTPARAM.acctStatus == "D") THEN
+                                                BANCS.OUTPUT.RespCode = "99"
+                                                BANCS.OUTPUT.successOrFailure = "F"
+                                                BANCS.OUTPUT.ReservedField3 = "84|TOD CREATION FAILED"
+                                                exitscript
+                                        ENDIF
+                                        ###### loan start
+                                        IF (BANCS.INPUT.ReservedField2=="AUTOTODAVAILREQMC") THEN
+
+                                                CUST.ATM.solid = CUST.ATM.solid
+                                                print(CUST.ATM.solid)
+                                                CUST.ATM.operaccnt = BANCS.INPUT.Foracid
+                                                print(CUST.ATM.operaccnt)
+
+                                                sv_k = "brgtCountsum| select sum(DRWNG_POWER) from tbaadm.gam g, tbaadm.cmg c where g.schm_code='LA527'  "
+                                                sv_k = sv_k + " and g.cif_id=c.cif_id and g.bank_id=c.bank_id  and g.bank_id='54' and g.acct_cls_flg='N' and g.clr_bal_amt!='0' "
+                                                sv_k = sv_k + " and g.cif_id=(select cif_id from tbaadm.gam where  foracid=?SVAR and BANK_ID = ?SVAR )  "
+                                                BANCS.INPARAM.BINDVARS = CUST.ATM.operaccnt  + "|" + BANCS.STDIN.contextBankId
+                                                PRINT(BANCS.INPARAM.BINDVARS)
+                                                PRINT(sv_k)
+                                                sv_h = urhk_dbselectWithBind(sv_k)
+                                                PRINT(sv_h)
+                                                IF (sv_h  == 0) THEN
+                                                #{
+                                                        IF (BANCS.OUTPARAM.brgtCountsum !="") THEN
+                                                                CUST.ATM.brgtCountsum = BANCS.OUTPARAM.brgtCountsum
+                                                                PRINT(CUST.ATM.brgtCountsum)
+                                                        ELSE
+                                                                CUST.ATM.brgtCountsum = "0"
+                                                                PRINT(CUST.ATM.brgtCountsum)
+                                                        ENDIF
+                                                #}
+                                                ELSE
+                                                #{
+                                                        CUST.ATM.brgtCountsum = "0"
+                                                #}
+                                                ENDIF
+
+                                                sv_k = "forCountsum| select count(foracid) from tbaadm.gam g, tbaadm.cmg c where g.schm_code='LA527'  "
+                                                sv_k = sv_k + " and g.cif_id=c.cif_id and g.bank_id=c.bank_id  and g.bank_id='54' and g.acct_cls_flg='N' and g.clr_bal_amt!='0' "
+                                                sv_k = sv_k + " and g.cif_id=(select cif_id from tbaadm.gam where  foracid=?SVAR and BANK_ID = ?SVAR )  "
+                                                BANCS.INPARAM.BINDVARS = CUST.ATM.operaccnt  + "|" + BANCS.STDIN.contextBankId
+                                                PRINT(BANCS.INPARAM.BINDVARS)
+                                                PRINT(sv_k)
+                                                sv_h = urhk_dbselectWithBind(sv_k)
+                                                PRINT(sv_h)
+                                                IF (sv_h  == 0) THEN
+                                                #{
+                                                        IF (BANCS.OUTPARAM.forCountsum !="") THEN
+                                                                CUST.ATM.forCountsum = BANCS.OUTPARAM.forCountsum
+                                                                PRINT(CUST.ATM.forCountsum)
+                                                        ELSE
+                                                                CUST.ATM.forCountsum = "0"
+                                                                PRINT(CUST.ATM.forCountsum)
+                                                        ENDIF
+                                                #}
+                                                ELSE
+                                                #{
+                                                        CUST.ATM.forCountsum = "0"
+                                                #}
+                                                ENDIF
+
+                                                IF (CINT(CUST.ATM.forCountsum)>0 ) THEN
+                                                        print("Eazzy loan Exist.")
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                        BANCS.OUTPUT.ReservedField3 = "Eazzy loan Exist."
+                                                        exitscript
+                                                ENDIF
+
+                                                sv_a = "countzero|select count(1) FROM custom.MICALOANSS where BANK_ID=?SVAR and OPER_ACCNT =?SVAR and STATUS='0' "
+                                                print(sv_a)
+                                                BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" +  CUST.ATM.operaccnt
+                                                print(BANCS.INPARAM.BINDVARS)
+                                                sv_s= urhk_dbSelectWithBind(sv_a)
+                                                print(sv_s)
+                                                print(BANCS.OUTPARAM.countzero)
+                                                IF (BANCS.OUTPARAM.countzero!="0") THEN
+                                                        print("Unprocessed Request Exist")
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                        BANCS.OUTPUT.ReservedField3 = "Unprocessed Request Exist"
+                                                        exitscript
+                                                ENDIF
+
+                                                CUST.ATM.acctname = CUST.ATM.acctname
+                                                print(CUST.ATM.acctname)
+                                                CUST.ATM.custid = CUST.ATM.cifid
+                                                print(CUST.ATM.custid)
+                                                print(BANCS.INPUT.TranAmt)
+                                                sv_g = MID$(BANCS.INPUT.TranAmt,0,14)
+                                                print(sv_g)
+                                                sv_j =  "0.01"
+                                                print(sv_j)
+                                                sv_k =  "0.1"
+                                                print(sv_k)
+                                                sv_q = "sumamountj|select ( ( ('" + sv_g + "' * '"+ sv_j +"')  +  ( ('" + sv_g + "' * '"+ sv_j +"')))  + '" + sv_g + "')  from dual "
+                                                print(sv_q)
+                                                sv_w=urhk_dbSelectWithBind(sv_q)
+                                                if (sv_w == 0) then
+                                                        print("sumamountj")
+                                                        CUST.ATM.amountsvggmt = cdouble(BANCS.OUTPARAM.sumamountj)
+                                                        print(CUST.ATM.amountsvggmt)
+                                                endif
+                                                CUST.ATM.loanamount = cdouble(sv_g)
+                                                print(CUST.ATM.loanamount)
+
+                                                ###############
+                                                CUST.ATM.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+                                                print(CUST.ATM.BODDate)
+
+                                                sv_a = "count|select count(1) FROM custom.CATOD_MASTER_TABLE  WHERE bank_id=?SVAR and acct_num=?SVAR and contract_amt!=0 "
+                                                print(sv_a)
+                                                BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" +  CUST.ATM.operaccnt
+
+                                                print(BANCS.INPARAM.BINDVARS)
+                                                sv_s= urhk_dbSelectWithBind(sv_a)
+                                                print(sv_s)
+
+                                                IF (BANCS.OUTPARAM.count=="0") THEN
+                                                        print("Not Scored")
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                        BANCS.OUTPUT.ReservedField3 = "Not Scored"
+                                                        exitscript
+                                                ELSE
+
+                                                        sv_a = "MaxAmtcontract|select contract_amt FROM custom.CATOD_MASTER_TABLE  WHERE bank_id=?SVAR and acct_num =?SVAR and contract_amt!=0  and  rownum <2  "
+                                                        print(sv_a)
+                                                        BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" +  CUST.ATM.operaccnt
+                                                        print(BANCS.INPARAM.BINDVARS)
+                                                        sv_s= urhk_dbSelectWithBind(sv_a)
+                                                        print(sv_s)
+                                                        IF (sv_s ==0) THEN
+                                                                CUST.ATM.MaxAmtcontract = BANCS.OUTPARAM.MaxAmtcontract
+                                                                print (CUST.ATM.MaxAmtcontract)
+                                                        ELSE
+                                                                CUST.ATM.MaxAmtcontract="0"
+                                                        ENDIF
+                                                        sv_s = "limit,contractId,maxAvailAmt,contractPeriodMM,todAmt|SELECT SANCT_AMT,REQUEST_ID,REQ_AMT,REQ_PERIOD,TOD_AMT from custom.CATOD_SANCTION_TABLE "
+                                                        sv_s = sv_s + " WHERE BANK_ID = ?SVAR and ACCT_NUM = ?SVAR "
+                                                        sv_s = sv_s + " AND DEL_FLG = 'N' "
+                                                        sv_s = sv_s + " AND EXPIRY_DATE >= TO_DATE(?SVAR,'DD-MM-YYYY')"
+                                                        #sv_s = sv_s + " AND CLS_FLG = 'N'"
+                                                        sv_s = sv_s + " AND STATUS_FLG in ( 'A','P') and rownum<2"
+                                                        print(sv_s)
+                                                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ATM.operaccnt + "|" + CUST.ATM.BODDate
+                                                        print(BANCS.INPARAM.BINDVARS)
+                                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                                        print(sv_d)
+                                                        IF (sv_d == 0) THEN
+                                                                CUST.ATM.limit = BANCS.OUTPARAM.limit
+                                                                print (CUST.ATM.limit)
+                                                                CUST.ATM.contractId = BANCS.OUTPARAM.contractId
+                                                                print (CUST.ATM.contractId)
+                                                                CUST.ATM.maxAvailAmt = BANCS.OUTPARAM.maxAvailAmt
+                                                                print (CUST.ATM.maxAvailAmt)
+                                                                CUST.ATM.contractPeriodMM = BANCS.OUTPARAM.contractPeriodMM
+                                                                print (CUST.ATM.contractPeriodMM)
+                                                                CUST.ATM.todAmt = BANCS.OUTPARAM.todAmt
+                                                                print (CUST.ATM.todAmt)
+                                                        ELSE
+                                                                CUST.ATM.limit="0"
+                                                        ENDIF
+
+                                                        print(CUST.ATM.MaxAmtcontract)
+                                                        print(CUST.ATM.limit)
+                                                        CUST.ATM.loanamount = CUST.ATM.loanamount
+                                                        print(CUST.ATM.loanamount)
+
+                                                        sv_q = "countsumm|select  ((('"+ CUST.ATM.MaxAmtcontract +"' - '"+CUST.ATM.limit+"')  - '"+CUST.ATM.loanamount+"') - '"+CUST.ATM.brgtCountsum+"')  from dual  "
+                                                        print(sv_q)
+                                                        sv_w=urhk_dbSelectWithBind(sv_q)
+                                                        print(sv_w)
+                                                        if (sv_w == 0) then
+                                                                print("countsumm")
+                                                                CUST.ATM.countsumm = BANCS.OUTPARAM.countsumm
+                                                                print(CUST.ATM.countsumm)
+                                                                if (CINT(CUST.ATM.countsumm) < 0) then
+                                                                        print("Not Qualified")
+                                                                        BANCS.OUTPUT.RespCode = "99"
+                                                                        BANCS.OUTPUT.successOrFailure = "F"
+                                                                        BANCS.OUTPUT.ReservedField3 = "Not Qualified"
+                                                                        exitscript
+                                                                endif
+                                                        endif
+                                                ENDIF
+                                                ###############
+
+                                                CUST.ATM.loanperiod = "1"
+                                                print(CUST.ATM.loanperiod)
+                                                sv_s = "reqid|"
+                                                sv_s = sv_s + " SELECT CUSTOM.EAZZY_LOAN_SEQ.nextval "
+                                                sv_s = sv_s + " FROM DUAL"
+                                                PRINT(sv_s)
+                                                sv_d = urhk_dbSelectWithBind(sv_s)
+                                                PRINT(sv_d)
+                                                IF(sv_d!=0)THEN
+                                                #{
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.ReservedField3 = "Bad Sequence"
+                                                        print(BANCS.OUTPUT.ReservedField3)
+                                                        #}
+                                                ELSE
+                                                        #{
+                                                        CUST.ATM.reqid = BANCS.OUTPARAM.reqid
+                                                        PRINT(CUST.ATM.reqid)
+                                                        #}
+                                                ENDIF
+                                                CUST.ATM.phonenumber = BANCS.INPUT.CardAcceptorName
+                                                print(CUST.ATM.phonenumber)
+                                                CUST.ATM.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+                                                print(CUST.ATM.BODDate)
+                                                CUST.ATM.regdate = CUST.ATM.BODDate
+                                                print(CUST.ATM.regdate)
+                                                CUST.ATM.currency = "KES"
+                                                print(CUST.ATM.currency)
+                                                CUST.ATM.status ="0"
+                                                print(CUST.ATM.status)
+                                                CUST.ATM.channelid = "COR"
+                                                print(CUST.ATM.channelid)
+                                                CUST.ATM.bankid = "54"
+                                                print(CUST.ATM.bankid)
+                                                CUST.ATM.processed = "1"
+                                                print(CUST.ATM.processed)
+
+                                                sv_s = "INSERT INTO "
+                                                sv_s = sv_s + " custom.MICALOANSS "
+                                                sv_s = sv_s + " (SOL_ID,OPER_ACCNT,ACCT_NAME,CUST_ID,LOAN_AMOUNT,LOAN_PERIOD,REQ_ID,PHONE_NUMBER,REG_DATE,CURRENCY,STATUS,CHANNEL_ID,BANK_ID,PROCESSED) "
+                                                sv_s = sv_s + " values "
+                                                sv_s = sv_s + " ( ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR, ?SVAR)"
+                                                BANCS.INPARAM.BINDVARS = CUST.ATM.solid + "|" + CUST.ATM.operaccnt +"|"+ CUST.ATM.acctname + "|" +CUST.ATM.custid + "|"+ CUST.ATM.loanamount +"|" + CUST.ATM.loanperiod +"|" + CUST.ATM.reqid  +"|" + CUST.ATM.phonenumber +"|" + CUST.ATM.regdate +"|" + CUST.ATM.currency +"|" + CUST.ATM.status +"|" + CUST.ATM.channelid +"|" + CUST.ATM.bankid +"|" + CUST.ATM.processed
+                                                print(BANCS.INPARAM.BINDVARS)
+                                                print(sv_s)
+                                                sv_d = urhk_dbSqlWithBind(sv_s)
+
+                                                IF (sv_d == 0) then
+                                                #{
+                                                        #sv_d = urhk_dbSqlWithBind("COMMIT")
+                                                        CUST.ATM.SuccessOrFailure = "S"
+                                                        print(CUST.ATM.SuccessOrFailure)
+                                                #}
+                                                ENDIF
+                                        ENDIF
+                                        IF (CUST.ATM.SuccessOrFailure == "S") THEN
+                                        #{
+                                                        BANCS.OUTPUT.RespCode = "00"
+                                                        BANCS.OUTPUT.ReservedField3 = "Good One"
+                                                        print(BANCS.OUTPUT.ReservedField3)
+                                        #}
+                                        ELSE
+                                        #{
+                                                        BANCS.OUTPUT.RespCode = "99"
+                                                        BANCS.OUTPUT.ReservedField3 = "Bad One"
+                                                        print(BANCS.OUTPUT.ReservedField3)
+                                        #}
+                                        ENDIF
+                                        ###### loan end
+                                ELSE
+                                        print("Scheme code Not allowed")
+                                        BANCS.OUTPUT.RespCode = "99"
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        BANCS.OUTPUT.ReservedField3 = "Scheme code Not allowed"
+                                        exitscript
+                                ENDIF
+                        ENDIF
+                ENDIF
+        #}
+        ENDIF
+#}
+ENDIF
+ENDOFSCRIPT:
+IF(CUST.ATM.errMsg != "" ) THEN
+#{
+        print(CUST.ATM.errMsg)
+        BANCS.OUTPUT.successOrFailure = "F"
+        BANCS.OUTPUT.RespCode = "99"
+#}
+ENDIF
+
+####trace off
+end-->

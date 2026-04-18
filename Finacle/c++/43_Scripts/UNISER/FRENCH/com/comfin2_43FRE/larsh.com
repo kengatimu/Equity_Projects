@@ -1,0 +1,77 @@
+######################################################################################
+#  Source Name         :   larsh.com
+#  Author              :   Ankita
+#  Date                :   18-Mar-2014
+#  Description         :   Inserts data into C_LARSH and C_LARSH_H custom tables
+#  Called by           :   batchlarsh.scr
+#
+#  <serial No>     <Date>          <Author Name>       	<Description>
+#       1    	18-Mar-2014	      Ankita	       Original Version
+#       2    	15-Aug-2014	      Shiva	       Modified Version to append sysdate,bankID
+#       3		23-Feb-2018		  Anshul	   Added TAX Compenent column in Insert Stmts.
+#######################################################################################
+echo "larsh com is called">test12345.txt
+echo $1 >> test12345.txt
+echo $PWD >> test12345.txt
+cd $1
+echo $PWD >> test12345.txt
+echo `ls -l`>> test2345.txt
+for file_name in `ls -1 *.LST`
+do
+#{  	
+        bankID=$2
+        cut -d "|" -f3,16,35,49,68,72,73,39 $file_name > LARSH1.txt
+        sed 's/$/|'$bankID'/g' LARSH1.txt > LARSH.txt
+
+		######################## tax changes ########################
+		
+		#cut -d "|" -f 1,2,7,9 LARSH.txt > LARSH2.txt
+		IFS=$'\n'
+		count=0
+		cat LARSH.txt | while read line ; do
+		#print - "$line"
+		#echo "$line" >>b.txt
+		#echo "$line" | awk -F'|' '{print $1}' >> acct.txt
+		#echo "$line" | awk -F'|' '{print $2}' >> int.txt
+
+		count=$((count+1))
+		flow=`echo $line | cut -d'|' -f1`
+        acct=`echo $line | cut -d'|' -f2`
+		interest=`echo $line | cut -d'|' -f7`
+		fileName="LARSH.txt"
+		#echo $interest
+	
+		#exebatch babx4061 ${B2K_SESSION_ID} larshTaxCalc.scr ${acct} ${interest} ${flow} ${fileName} ${count}
+
+		done
+		######################## end of TAX changes ########################
+ 
+        acctId=`cut -d "|" -f16 $file_name`    
+        acct=`head -1 $file_name | cut -d "|" -f16`
+        echo $acct>>foracid.txt
+		echo "INSERT INTO custom.C_LARSH_HIST SELECT * FROM custom.C_LARSH_TBL WHERE ACCT_NUM='$acct';"  >> sqlInp.sql
+        echo "DELETE FROM custom.C_LARSH_TBL WHERE ACCT_NUM='$acct';"  >> sqlInp.sql
+		awk -F'|' '{ print "insert into custom.C_LARSH_TBL values ( to_date(""'\''"$1"'\'',""'\''dd-mm-yyyy'\''),","'\''"$2"'\''",",to_date(""'\''"$3"'\'',""'\''dd-mm-yyyy'\''),","'\''"$4"'\'',","'\''"$5"'\'',","'\''"$6"'\'',","'\''"$7"'\'',","'\''"$8"'\'',","'\''"$9"'\'',","sysdate);"}' LARSH.txt >> sqlInp.sql	
+		#awk -F'|' '{ print "insert into custom.C_LARSH_TBL values ( to_date(""'\''"$1"'\'',""'\''dd-mm-yyyy'\''),","'\''"$2"'\''",",to_date(""'\''"$3"'\'',""'\''dd-mm-yyyy'\''),","'\''"$4"'\'',","'\''"$5"'\'',","'\''"$6"'\'',","'\''"$7"'\'',","'\''"$8"'\'',","sysdate);"}' LARSH.txt >> sqlInp.sql	
+		#awk -F'|' '{ print "insert into custom.C_LARSH_TBL(FLOW_DATE, ACCT_NUM, LST_RPHSD_DATE, SHDL_NUM,  CHRG_COMP,PRIN_COMP, INT_COMP, FLOW_AMOUNT, BANK_ID, RCRE_TIME, TAX_COMP) values  ( to_date(""'\''"$1"'\'',""'\''dd-mm-yyyy'\''),","'\''"$2"'\''",",to_date(""'\''"$3"'\'',""'\''dd-mm-yyyy'\''),","'\''"$4"'\'',","'\''"$5"'\'' ,","'\''"$6"'\'',","'\''"$10"'\'',(""'\''"$6"'\''+""'\''"$10"'\''+""'\''"$11"'\''),","'\''"$9"'\'',","sysdate,","'\''"$11"'\'');"}' LARSH.txt >> sqlInp.sql
+
+        echo "UPDATE custom.C_LARSH_acc set status = 'S' , Remarks ='Success' WHERE FORACID='$acct';"  >> sqlInp.sql
+		echo "update custom.C_LARSH_TBL set LST_RPHSD_DATE=to_date((select lchg_time from(select lchg_time from  tbaadm.LRS  where acid=(select acid from tbaadm.gam where foracid ='$acct' ) order by lchg_time desc) where rownum <2))where ACCT_NUM='$acct';" >> sqlInp.sql
+		echo "commit;" >> sqlInp.sql 
+#}
+done 
+#exebatch bauu9151 /tmp/CLARSH/sqlInp.sql
+echo `ls -l`>> test345.txt
+
+if [ -s sqlInp.sql ]
+then
+        echo "inside execute script">>status.txt
+		exebatch bauu9151 sqlInp.sql >>test.txt 
+fi
+
+echo `ls -l`>> test45.txt
+exit $?
+#================================
+# End of com script
+#================================
+

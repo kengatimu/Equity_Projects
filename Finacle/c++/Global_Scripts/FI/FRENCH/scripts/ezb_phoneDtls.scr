@@ -1,0 +1,251 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_phoneDtls.scr
+#  Description     : fetchs Communication details attached to a CIF
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2023     Harrison Ruiru		Original Version
+#-----------------------------------------------------------------------------------------------
+####
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "EZB")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "EZB", 5)
+	#}
+	ENDIF
+
+	#BANCS.INPUT.AccountNo = "0040195625735"
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNo"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="please enter CIFId"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "PhoneDetails_RES.Error | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		exitscript
+   	ELSE 
+   		CUST.EZB.accountNo = BANCS.INPUT.AccountNo
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+
+	CUST.EZB.prefdPhone = ""
+	CUST.EZB.prefdEmail =""
+
+	#----------------------------------------------------------------------------------------------
+	# validations
+	#----------------------------------------------------------------------------------------------
+
+	sv_q = "acctName, acctCrncy, cif,cntryCode |"
+	sv_q = sv_q + " SELECT * from (select acct_name,acct_crncy_code,cif_id, "
+	sv_q = sv_q + " (select country from crmuser.accounts a where a.orgkey=g.cif_id) countrycode"
+	sv_q = sv_q + " FROM tbaadm.gam g "
+	sv_q = sv_q + " WHERE bank_id=?SVAR AND entity_cre_flg='Y' AND del_flg='N' AND acct_cls_flg='N' AND foracid=?SVAR) "
+	print(sv_q)
+	
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId+"|"+CUST.EZB.accountNo
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_c = urhk_dbSelectWithBind(sv_q)
+	PRINT(sv_c)
+
+	IF(sv_c == 0)THEN
+	#{
+		CUST.EZB.acctName = BANCS.OUTPARAM.acctName
+		print(CUST.EZB.acctName)
+		CUST.EZB.acctCrncy = BANCS.OUTPARAM.acctCrncy
+		print(CUST.EZB.acctCrncy)
+		CUST.EZB.cif = BANCS.OUTPARAM.cif
+		print(CUST.EZB.cif)
+		CUST.EZB.cntryCode = BANCS.OUTPARAM.cntryCode
+		print(CUST.EZB.cntryCode)
+
+		sv_t = "AccountDetails.<rec_1>.AccountName| " + CUST.EZB.acctName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "AccountDetails.<rec_1>.AccountNumber| " + CUST.EZB.accountNo
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "AccountDetails.<rec_1>.AccountCurrency| " + CUST.EZB.acctCrncy
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "AccountDetails.<rec_1>.CifID| " + CUST.EZB.cif
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "AccountDetails.<rec_1>.CountryCode| " + CUST.EZB.cntryCode
+		sv_u = urhk_SetOrbOut(sv_t)
+
+		sv_q = "phoneNo, prefdFlg |"
+		sv_q = sv_q + " SELECT phoneno,preferredflag "
+		sv_q = sv_q + " from tbaadm.cphone "
+		sv_q = sv_q + " where phone_b2kid=?SVAR AND bank_id=?SVAR "
+		print(sv_q)
+		
+		BANCS.INPARAM.BINDVARS =  CUST.EZB.cif +"|"+BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_c = urhk_dbcursorOpenWithBind(sv_q)
+		PRINT(sv_c)
+
+		IF (sv_c == 0)THEN
+		#{
+			CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			PRINT(CUST.EZB.cursor_number)
+
+			sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+			print(sv_d)
+
+			sv_q = 0
+			print(sv_q)
+
+			WHILE (sv_d == 0)
+			#{
+				sv_q = sv_q + 1
+				print(sv_q)	
+
+				sv_v = "PrefdFlg_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.prefdFlg
+
+				IF(("CUST").("EZB").(sv_v) == "Y")THEN
+				#{
+					CUST.EZB.prefdPhone = BANCS.OUTPARAM.phoneNo
+					print(CUST.EZB.prefdPhone)
+					IF(CUST.EZB.prefdPhone !="")THEN
+						sv_t = "PhoneDetails.<rec_" + FORMAT$(sv_q,"%d") + ">.PreferredPhoneNumber| " + CUST.EZB.prefdPhone
+						sv_u = urhk_SetOrbOut(sv_t)
+					ENDIF
+					#sv_v = "PhoneNo_" + FORMAT$(sv_q, "%d")
+					#("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.phoneNo
+				ELSE 
+					sv_v = "PhoneNo_" + FORMAT$(sv_q, "%d")
+					("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.phoneNo
+
+					sv_v = "PhoneNo_" + FORMAT$(sv_q, "%d")
+					IF(("CUST").("EZB").(sv_v) !="")THEN
+						print( ("CUST").("EZB").(sv_v) )
+						sv_t = "PhoneDetails.<rec_" + FORMAT$(sv_q,"%d") + ">.Phone| " + ("CUST").("EZB").(sv_v)
+						sv_u = urhk_SetOrbOut(sv_t)
+					ENDIF
+				#}
+				ENDIF
+
+				sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+				print(sv_d)
+				
+			#} 
+			DO 
+
+			sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+			print(sv_x)
+			print(CUST.EZB.cursor_number)
+		ELSE 
+			CUST.EZB.errMsg="An Error Occured!! Try Again or Contact Admin"
+			sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+			sv_t = "PhoneDetails_RES.Error | " +CUST.EZB.errMsg
+			sv_u = urhk_SetOrbOut(sv_t)
+	   		exitscript
+		#}
+		ENDIF
+
+		#=====FETCH EMAILS=======
+
+		sv_q = "email,prefdFlg |"
+		sv_q = sv_q + " SELECT email,preferredflag "
+		sv_q = sv_q + " from tbaadm.cemail "
+		sv_q = sv_q + " where email_b2kid=?SVAR AND bank_id=?SVAR "
+		print(sv_q)
+		
+		BANCS.INPARAM.BINDVARS =  CUST.EZB.cif +"|"+BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_c = urhk_dbcursorOpenWithBind(sv_q)
+		PRINT(sv_c)
+
+		IF (sv_c == 0)THEN
+		#{
+			CUST.EZB.cursor_number = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			PRINT(CUST.EZB.cursor_number)
+
+			sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+			print(sv_d)
+
+			sv_q = 0
+			print(sv_q)
+
+			WHILE (sv_d == 0)
+			#{
+				sv_q = sv_q + 1
+				print(sv_q)
+
+				sv_v = "PrefdFlg_" + FORMAT$(sv_q, "%d")
+				("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.prefdFlg
+
+				IF(("CUST").("EZB").(sv_v) == "Y")THEN
+				#{
+					CUST.EZB.prefdEmail = BANCS.OUTPARAM.email
+					print(CUST.EZB.prefdEmail)
+					IF(CUST.EZB.prefdEmail !="")THEN
+						sv_t = "EmailDetails.<rec_" + FORMAT$(sv_q,"%d") + ">.PreferredEmail| " + CUST.EZB.prefdEmail
+						sv_u = urhk_SetOrbOut(sv_t)
+					ENDIF
+					#sv_v = "Email_" + FORMAT$(sv_q, "%d")
+					#("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.email
+				ELSE 
+					sv_v = "Email_" + FORMAT$(sv_q, "%d")
+					("CUST").("EZB").(sv_v) = BANCS.OUTPARAM.email
+					sv_v = "Email_" + FORMAT$(sv_q, "%d")
+					IF(("CUST").("EZB").(sv_v) !="")THEN
+						print( ("CUST").("EZB").(sv_v) )
+						sv_t = "EmailDetails.<rec_" + FORMAT$(sv_q,"%d") + ">.Email| " + ("CUST").("EZB").(sv_v)
+						sv_u = urhk_SetOrbOut(sv_t)
+					ENDIF 
+				#}
+				ENDIF
+
+				sv_d = urhk_dbCursorFetch(CUST.EZB.cursor_number)
+				print(sv_d)
+				
+			#} 
+			DO 
+
+			sv_x = urhk_dbCursorClose(CUST.EZB.cursor_number)
+			print(sv_x)
+			print(CUST.EZB.cursor_number)
+		ELSE 
+			CUST.EZB.errMsg="An Error Occured!! Try Again or Contact Admin"
+			sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+			sv_t = "PhoneDetails_RES.Error | " +CUST.EZB.errMsg
+			sv_u = urhk_SetOrbOut(sv_t)
+	   		exitscript
+		#}
+		ENDIF
+	ELSE 
+		CUST.EZB.errMsg="An Error Occured!! Try Again or Contact Admin"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "PhoneDetails_RES.Error | " +CUST.EZB.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		exitscript
+	#}
+	ENDIF
+ENDSCRIPT:
+trace off
+END-->
+

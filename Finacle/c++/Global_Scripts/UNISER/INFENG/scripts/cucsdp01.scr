@@ -1,0 +1,699 @@
+<--START
+
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CUCS Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CUCS")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CUCS",5)
+	#}
+	ENDIF
+	
+	#==========================================================*
+	# Intilializing the Variables
+	#==========================================================*
+	
+	
+	CUST.CUCS.rate = ""
+	CUST.CUCS.rateCode =""
+	CUST.CUCS.creditBacid = ""
+	CUST.CUCS.creditAcct = ""
+	print(CUST.CUCS.acctNo)
+	CUST.CUCS.paidAmt = ""
+	CUST.CUCS.frez_code =""
+	CUST.CUCS.lien_amt = ""
+	sv_s= "BACID|SELECT BACID FROM TBAADM.PTT WHERE EVENT_ID = 'BC' AND PART_TRAN_TYPE = 'C' AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N' AND BANK_ID =?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_q = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_q)
+	IF(sv_q == 0)THEN
+	#{
+		CUST.CUCS.creditBacid = BANCS.OUTPARAM.BACID
+		PRINT(CUST.CUCS.creditBacid)
+		#}
+	ELSE
+		#{
+		CUST.CUCS.remark = "Couldn't Fetch Credit Account details"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Credit Account details^status")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	
+	CUST.CUCS.bodDate =BANCS.STDIN.BODDate
+#credit acct
+	CUST.CUCS.DoorStepAc = CUST.CUCS.creditAcct
+    CUST.CUCS.trandate = BANCS.STDIN.BODDate
+	CUST.CUCS.glDate = BANCS.STDIN.BODDate
+	CUST.CUCS.valuedate = BANCS.STDIN.BODDate
+	CUST.CUCS.InstrDate = BANCS.STDIN.BODDate
+	CUST.CUCS.foracid = CUST.CUCS.acctNo
+	CUST.CUCS.amount  = CUST.CUCS.paidAmt
+	CUST.CUCS.ChequeNo = CUST.CUCS.chqNo
+	
+	print(BANCS.STDIN.mySolId)
+	##########################################################
+	#Account details - debit
+	##########################################################
+		sv_s= "acid,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id,lien_amt|SELECT ACID,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id,lien_amt FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.foracid + "|"+ BANCS.STDIN.contextBankId
+		sv_q = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_q)
+		IF(sv_q == 0)THEN
+		#{
+			CUST.CUCS.acid = BANCS.OUTPARAM.acid
+			CUST.CUCS.acctCrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+			CUST.CUCS.CLR_BAL_AMT = BANCS.OUTPARAM.CLR_BAL_AMT
+			CUST.CUCS.sol_id = BANCS.OUTPARAM.sol_id
+			CUST.CUCS.lien_amt = BANCS.OUTPARAM.lien_amt
+			
+			PRINT(CUST.CUCS.acid)
+		#}
+		ELSE
+		#{
+			CUST.CUCS.remark = "Couldn't Fetch Credit Account details"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Account details^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	
+	
+	##########################################################
+	#Account status - debit
+	##########################################################
+	
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acid + "|" + BANCS.STDIN.contextBankId
+		CUST.CUCS.schm_type = ""
+		sv_q= "schm_type,schm_code,frez_code,acct_cls_flg|select schm_type,schm_code,frez_code,acct_cls_flg from tbaadm.gam where acid = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		sv_q= sv_q + " AND bank_id=?SVAR"
+		PRINT(sv_q)
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.CUCS.schm_type = TRIM(BANCS.OUTPARAM.schm_type)
+			CUST.CUCS.schm_code = TRIM(BANCS.OUTPARAM.schm_code)
+			CUST.CUCS.frez_code = TRIM(BANCS.OUTPARAM.frez_code)
+			CUST.CUCS.acct_cls_flg = TRIM(BANCS.OUTPARAM.acct_cls_flg)
+		#}
+		ENDIF
+		
+		IF(CUST.CUCS.schm_type == "ODA")THEN
+		#{
+			sv_q= "acctStat|select ACCT_STATUS from tbaadm.cam where acid = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+			#}
+		ELSE
+			#{
+			sv_q= "acctStat|select ACCT_STATUS from tbaadm.SMT where acid = ?SVAR "
+		#}
+		ENDIF
+		
+		sv_q= sv_q + " AND bank_id=?SVAR"
+		PRINT(sv_q)
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acid + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.CUCS.acctStat = BANCS.OUTPARAM.acctStat
+			#frez_code = ' '
+			IF(CUST.CUCS.acctStat!="A")THEN
+			#{
+				CUST.CUCS.remark = "Account is not active"
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Account is inactive/Dormant^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+
+			#}
+			ELSE
+			#{
+				IF(CUST.CUCS.frez_code != "")THEN
+				#{
+					IF(CUST.CUCS.frez_code == "T")THEN
+					#{
+						CUST.CUCS.remark = "Account is Total Freezed"
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						PRINT(sv_u)
+						sv_u = urhk_SetOrbOut("Error_1|Error^Account is frozen - Total Freeze^status")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+						IF(CUST.CUCS.frez_code == "D")THEN
+						#{
+							CUST.CUCS.remark = "Account is Debit Freezed"
+							sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+							PRINT(sv_u)
+							sv_u = urhk_SetOrbOut("Error_1|Error^Account is frozen - Debit Freeze^status")
+							PRINT(sv_u)
+							GOTO ENDOFSCRIPT
+						#}
+						ELSE
+						#{
+							CUST.CUCS.remark = "Account is Credit Freezed"
+							sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+							PRINT(sv_u)
+							sv_u = urhk_SetOrbOut("Error_1|Error^Account is frozen - credit Freeze^status")
+							PRINT(sv_u)
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			
+			#}
+			ENDIF
+			IF(CUST.CUCS.acct_cls_flg == "Y")THEN
+			#{
+				CUST.CUCS.remark = "Account is Closed"
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Account is Closed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	##########################################################
+	#Account details - credit
+	##########################################################
+	
+		PRINT(CUST.CUCS.creditBacid)
+
+		#sv_e = CUST.CUCS.creditBacid + "|" + CUST.CUCS.acctCrncy + "|" + BANCS.STDIN.mySolId
+		sv_e = CUST.CUCS.creditBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+		sv_m = urhk_B2k_BacidToAcctId(sv_e)
+		PRINT(sv_m)
+		IF (sv_m == 0 ) THEN
+		#{
+			CUST.CUCS.creditAcct = BANCS.OUTPARAM.AcctId
+			PRINT(CUST.CUCS.creditAcct)
+			#}
+		ELSE
+			#{
+			CUST.CUCS.remark = "Credit Account not Found"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Credit Account not Found^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		
+		#}
+		ENDIF
+
+	####################################################
+	#Fetch Amount to be deducted
+	####################################################
+	
+		print(CUST.CUCS.acctNo)
+		CUST.CUCS.paidAmt = ""
+		
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.schm_code + "|" +  CUST.CUCS.acctCrncy + "|" + BANCS.STDIN.contextBankId
+		
+		sv_q = "CHARG_AMT,CHARGE_TYPE|select CHRG_AMT,CHARGE_TYPE from custom.custom_ccprm where event_id ='BC' AND SCHM_CODE = ?SVAR "
+		sv_q = sv_q + "AND CRNCY_CODE = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N' AND BANK_ID = ?SVAR"
+		
+		PRINT(sv_q)
+		sv_r = urhk_dbselectWithBind(sv_q)
+		PRINT(sv_r)
+		IF (sv_r == 0) THEN
+		#{
+			CUST.CUCS.CHARG_AMT = TRIM(BANCS.OUTPARAM.CHARG_AMT)
+			CUST.CUCS.CHARGE_TYPE = TRIM(BANCS.OUTPARAM.CHARGE_TYPE)
+			print(CUST.CUCS.CHARGE_TYPE)
+		#}
+		ENDIF
+		
+		IF(CUST.CUCS.CHARG_AMT == "")THEN
+		#{
+			CUST.CUCS.remark = "Charge Amount is not maintained"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Charge Amount is not maintained^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(CUST.CUCS.CHARGE_TYPE == "F")THEN
+		#{
+			CUST.CUCS.paidAmt = CUST.CUCS.CHARG_AMT
+		#}
+		ELSE
+		#{
+			sv_p = 1/100
+			sv_q = CDOUBLE(CUST.CUCS.CHARG_AMT)
+			sv_r = sv_p * sv_q
+			sv_s = CDOUBLE(CUST.CUCS.chqAmt)*sv_r
+			CUST.CUCS.paidAmt = sv_s
+		
+		#}
+		ENDIF
+		IF(CDOUBLE(CUST.CUCS.CLR_BAL_AMT)<=CDOUBLE(CUST.CUCS.lien_amt))THEN
+		#{
+			CUST.CUCS.remark = "Account Balance is less than existing lien amount"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Account Balance is less than existing lien amount^acctNo")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		CUST.CUCS.vat=CDOUBLE("0")
+#########################################################################
+########## Checking if VAT is waived off for the account ################
+		
+	sv_s = "count|select count(1) from TBAADM.FCFTT where ACID IN (SELECT ACID FROM TBAADM.GAM WHERE foracid=?SVAR AND BANK_ID=?SVAR) AND FREE_CODE_2='N' "
+	sv_s = sv_s+ "AND bank_id=?SVAR "
+	sv_s = sv_s+ "AND del_flg='N' "
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS=CUST.CUCS.foracid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		CUST.CUCS.vatNCount = BANCS.OUTPARAM.count
+		PRINT(CUST.CUCS.vatNCount)
+		
+		IF(CUST.CUCS.vatNCount == 0) THEN
+		#{
+			########## getting the charge % from CPARAM ################
+			sv_s = "vatPcnt | select CUSTOM.getCparamValue('VAT_FOR_CHRG_PCNT','OT',?SVAR)  from dual "
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d == 0) THEN
+			#{
+				CUST.CUCS.vatPcnt = BANCS.OUTPARAM.vatPcnt
+				PRINT (CUST.CUCS.vatPcnt)
+				
+				IF (CUST.CUCS.vatPcnt > 0) THEN
+				#{			
+					CUST.CUCS.vat = CDOUBLE(CUST.CUCS.CHARG_AMT) * (CDOUBLE(CUST.CUCS.vatPcnt)/100)
+PRINT(CUST.CUCS.vat)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+
+		IF(CDOUBLE(CUST.CUCS.CLR_BAL_AMT)<(CDOUBLE(CUST.CUCS.paidAmt)+CDOUBLE(CUST.CUCS.vat)))THEN
+		#{
+			CUST.CUCS.remark = "Account Balance is less than the charge amount"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Account Balance is less than the charge amount^acctNo")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	##########################################################
+	#RateCode######
+	##########################################################
+	CUST.CUCS.conv_paidAmt = CUST.CUCS.paidAmt
+		CUST.CUCS.conv_bal = CUST.CUCS.CLR_BAL_AMT
+		IF(BANCS.STDIN.homeCrncyCode != CUST.CUCS.acctCrncy)THEN
+		#{
+			
+			sv_r = REPEXISTS("CUST")
+			
+			IF(sv_r == 0) THEN
+			#{
+				CREATEREP ("CUST")
+			#}
+			ENDIF
+			sv_r = CLASSEXISTS("CUST","RATE")
+			IF(sv_r == 0) THEN
+			#{
+				CREATECLASS ("CUST","RATE",5)
+			#}
+			ENDIF
+			
+			CUST.RATE.acctCrncy	=	CUST.CUCS.acctCrncy
+			CUST.RATE.refCrncy	=	BANCS.STDIN.homeCrncyCode
+			CUST.RATE.TranType	=	"T"
+			CALL("fetchRateCode.scr")
+			
+			CUST.CUCS.rateCode	=	CUST.RATE.rateCode
+			CUST.CUCS.rate		=	CUST.RATE.rate
+			
+		
+		
+	
+		####################################################
+		#validation
+		####################################################
+			
+			BANCS.INPARAM.InputAmount = CUST.CUCS.CLR_BAL_AMT
+			BANCS.INPARAM.FromCurrency = CUST.CUCS.acctCrncy
+			BANCS.INPARAM.ToCurrency = BANCS.STDIN.homeCrncyCode
+			BANCS.INPARAM.Rate		= CUST.CUCS.rate
+			BANCS.INPARAM.RateCode = CUST.CUCS.rateCode
+
+			sv_c = urhk_B2k_ConvertAmount("")
+			if(sv_c == 0)then
+			#{
+				CUST.CUCS.conv_bal = BANCS.OUTPARAM.OutputAmount
+				CUST.CUCS.conv_bal = TRIM(CUST.CUCS.conv_bal)
+			#}
+			endif
+			
+			BANCS.INPARAM.InputAmount =CDOUBLE(CUST.CUCS.paidAmt)+CDOUBLE(CUST.CUCS.vat)
+			BANCS.INPARAM.FromCurrency = CUST.CUCS.acctCrncy
+			BANCS.INPARAM.ToCurrency = BANCS.STDIN.homeCrncyCode
+			BANCS.INPARAM.Rate		= CUST.CUCS.rate
+			BANCS.INPARAM.RateCode = CUST.CUCS.rateCode
+
+			sv_c = urhk_B2k_ConvertAmount("")
+			if(sv_c == 0)then
+			#{
+				CUST.CUCS.conv_paidAmt = BANCS.OUTPARAM.OutputAmount
+				CUST.CUCS.conv_paidAmt = TRIM(CUST.CUCS.conv_paidAmt)
+			#}
+			endif
+		#}
+		ENDIF	
+		#CHARGE_COLLECTED
+		
+		
+		#IF(CDOUBLE(CUST.CUCS.CLR_BAL_AMT) < CDOUBLE(CUST.CUCS.paidAmt))THEN
+		IF(CDOUBLE(CUST.CUCS.conv_bal) < CDOUBLE(CUST.CUCS.conv_paidAmt))THEN
+		#{
+			CUST.CUCS.remark = "Insufficient balance to collect Charges"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Insufficient balance to collect Charges^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+	IF(CDOUBLE(CUST.CUCS.vat) > CDOUBLE("0"))THEN
+#{
+sv_s= "BACID|SELECT BACID FROM TBAADM.PTT WHERE EVENT_ID = 'VAT' AND PART_TRAN_TYPE = 'C' AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N' AND BANK_ID =?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_q = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_q)
+	IF(sv_q == 0)THEN
+	#{
+		CUST.CUCS.creditVatBacid = BANCS.OUTPARAM.BACID
+		PRINT(CUST.CUCS.creditVatBacid)
+		#}
+	ELSE
+		#{
+		CUST.CUCS.remark = "Couldn't Fetch VAT Credit Account details"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch VAT Credit Account details^status")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+		##########################################################
+	#Account details - credit
+	##########################################################
+	
+		PRINT(CUST.CUCS.creditVatBacid)
+
+		
+		sv_e = CUST.CUCS.creditVatBacid + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.mySolId
+		sv_m = urhk_B2k_BacidToAcctId(sv_e)
+		PRINT(sv_m)
+		IF (sv_m == 0 ) THEN
+		#{
+			CUST.CUCS.creditVatAcct = BANCS.OUTPARAM.AcctId
+			PRINT(CUST.CUCS.creditVatAcct)
+			#}
+		ELSE
+			#{
+			CUST.CUCS.remark = "VAT Credit Account not Found"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^VAT Credit Account not Found^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		
+		#}
+		ENDIF			
+	
+#}
+ENDIF
+	####################################################
+	#Initializing a tran to collect charges
+	####################################################
+	
+	
+
+	####################################################################
+	#MTT BEGIN
+	####################################################################
+	
+	
+	#sv_z = urhk_MTTS_Close("")
+#	PRINT(sv_z)
+
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.CommitFlg = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+	BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw = "Y"
+	BANCS.INPARAM.CheckExceptions = "Y"
+	sv_r = urhk_MTTS_Initialize("")
+	PRINT(sv_r)
+       
+	
+	 ############################################
+		#Define Transaction  2
+		#############################################
+		MTT.TranDetails.TranID                                  = ""
+		MTT.TranDetails.TranDate                = "0"
+		MTT.TranDetails.TranType                = "T"
+		MTT.TranDetails.PostFlag                = "Y"
+		MTT.TranDetails.TranSubType             = "CI"
+	#	MTT.TranDetails.TranSubType             = "BI"
+		MTT.TranDetails.ReversalFlag            = "N"
+		MTT.TranDetails.IgnoreExcp              = "I"
+		MTT.TranDetails.Consolidate             = "Y"
+		MTT.TranDetails.Remarks                 = "Certified Cheque Charges"
+		sv_t = urhk_MTTS_DefineTransaction("CHRCHQ")
+
+		IF(sv_t != "0")THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CUCS.errMsg=MTT.Error.Description
+				PRINT(CUST.CUCS.errMsg)
+				GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	######################################
+	# Debit part tran for charge and vat
+	#####################################
+		
+		MTT.PartTranDetails.Account     = CUST.CUCS.acctNo
+		MTT.PartTranDetails.RefCurrency = CUST.CUCS.acctCrncy
+		MTT.PartTranDetails.Particulars = "Certified Cheque Charges"
+		MTT.PartTranDetails.Remarks = "Certified Cheque Charges"
+		MTT.PartTranDetails.RateCode= CUST.CUCS.rateCode
+		MTT.PartTranDetails.Rate = CUST.CUCS.rate
+		#MTT.PartTranDetails.RefAmount = -cdouble(CUST.CUCS.paidAmt)
+		MTT.PartTranDetails.RefAmount = -cdouble(CUST.CUCS.paidAmt)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = "CHRCHQ"
+		MTT.PartTranDetails.CarveAmtFlg="Y"
+        sv_r = urhk_MTTS_DefinePartTran("DEBIT")
+		PRINT(sv_r)
+
+		IF(sv_r != "0")THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CUCS.errMsg=MTT.Error.Description
+				PRINT(CUST.CUCS.errMsg)
+				GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+			
+		
+		######################################
+		# Credit part tran for charge
+		######################################
+		
+		
+		MTT.PartTranDetails.Account=CUST.CUCS.creditAcct
+		MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CUCS.paidAmt)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Particulars="Certified Cheque Charges"
+		MTT.PartTranDetails.RateCode= CUST.CUCS.rateCode
+		MTT.PartTranDetails.Rate = CUST.CUCS.rate
+		MTT.PartTranDetails.RefCurrency=  CUST.CUCS.acctCrncy
+		MTT.PartTranDetails.ValueDate="0"
+		MTT.PartTranDetails.ReportCode = ""
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier="CHRCHQ"
+		MTT.PartTranDetails.PTranBusinessType=""
+		sv_o = urhk_MTTS_DefinePartTran("CREDIT")
+		PRINT(sv_o)
+
+		IF(sv_o != "0")THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CUCS.errMsg=MTT.Error.Description
+				PRINT(CUST.CUCS.errMsg)
+				GOTO ENDOFSCRIPT
+		#}
+        ENDIF
+IF(CDOUBLE(CUST.CUCS.vat) > CDOUBLE("0"))THEN
+#{
+		
+	######################################
+	# Debit part tran for charge and vat
+	#####################################
+		
+		MTT.PartTranDetails.Account     = CUST.CUCS.acctNo
+		MTT.PartTranDetails.RefCurrency = CUST.CUCS.acctCrncy
+		MTT.PartTranDetails.Particulars = "Certified Cheque Charges VAT"
+		MTT.PartTranDetails.Remarks = "Certified Cheque Charges VAT"
+		MTT.PartTranDetails.RateCode= CUST.CUCS.rateCode
+		MTT.PartTranDetails.Rate = CUST.CUCS.rate
+		MTT.PartTranDetails.RefAmount = -cdouble(CUST.CUCS.vat)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = "CHRCHQ"
+		MTT.PartTranDetails.CarveAmtFlg="Y"
+        sv_r = urhk_MTTS_DefinePartTran("DEBIT")
+		PRINT(sv_r)
+
+		IF(sv_r != "0")THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CUCS.errMsg=MTT.Error.Description
+				PRINT(CUST.CUCS.errMsg)
+				GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+			
+		
+		######################################
+		# Credit part tran for charge
+		######################################
+		
+		
+		MTT.PartTranDetails.Account=CUST.CUCS.creditVatAcct
+		MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CUCS.vat)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Particulars="Certified Cheque Charges VAT"+CUST.CUCS.acctNo
+		MTT.PartTranDetails.RateCode= CUST.CUCS.rateCode
+		MTT.PartTranDetails.Rate = CUST.CUCS.rate
+		MTT.PartTranDetails.RefCurrency=  CUST.CUCS.acctCrncy
+		MTT.PartTranDetails.ValueDate="0"
+		MTT.PartTranDetails.ReportCode = ""
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.TranIdentifier="CHRCHQ"
+		MTT.PartTranDetails.PTranBusinessType=""
+		sv_o = urhk_MTTS_DefinePartTran("CREDIT")
+		PRINT(sv_o)
+
+		IF(sv_o != "0")THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				PRINT(MTT.Error.Description)
+				CUST.CUCS.errMsg=MTT.Error.Description
+				PRINT(CUST.CUCS.errMsg)
+				GOTO ENDOFSCRIPT
+		#}
+        ENDIF
+		#}
+		ENDIF
+		sv_r = urhk_MTTS_EndDefinition("")
+                PRINT(sv_r)
+                IF(sv_r != "0")THEN
+                #{
+                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                        PRINT(MTT.Error.Description)
+                        CUST.CUCS.errMsg=MTT.Error.Description
+                        PRINT(CUST.CUCS.errMsg)
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+                PRINT(BANCS.OUTPARAM.MTTTranId)
+                CUST.CUCS.tranid = BANCS.OUTPARAM.MTTTranId
+                sv_z = urhk_MTTS_Close("")
+                PRINT(sv_z)
+		
+		
+		
+		
+		IF(CUST.CUCS.tranid == "" )THEN
+		#{
+			CUST.CUCS.lienflg ="Y"
+			CUST.CUCS.errMsg = "Transcation failed for account : " + CUST.CUCS.acctNo
+			CUST.CUCS.pstdFlg = "N"
+			CUST.CUCS.remark = CUST.CUCS.errMsg
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^" + CUST.CUCS.errMsg + "^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT1
+		#}
+		ELSE
+		#{
+			CUST.CUCS.CHARGE_TRAN_ID = CUST.CUCS.tranid
+			CUST.CUCS.collection = "Success"
+		#}
+		ENDIF
+		
+		sv_z = urhk_MTTS_Close("")
+		PRINT(sv_z)
+		
+		
+	ENDOFSCRIPT1:
+	
+exitscript
+end-->

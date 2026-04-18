@@ -1,0 +1,226 @@
+##########################################################################################
+# Source Name           : SRV_charge_cheque.scr
+# Date                  : 23-April-2022
+# Description           : Transfers funds and posts transactions
+# Author                : Harrison Ruiru
+# Calling Script	    : Inward_clr.scr
+# Modification History  :
+# <Serial No.>  <Date>        <Author>             					<Description>
+# ------------  -----------   -----------------         				--------------
+#      1        23-April-2022   Harrison Ruiru - EMTECH HOUSE			Base Version     
+###########################################################################################
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+        endif
+	
+	#CUST.DATA.drAcctNum = "1000102274532"
+	#CUST.DATA.crAcctNum = "1000101607594"
+	#CUST.DATA.refAmt = "2000"
+
+	CUST.DATA.drAcctNum = COLL.GLBDATA.account 
+	CUST.DATA.refAmt =  BANCS.INPUT.TranAmt
+	BANCS.STDIN.menuId = "HTM"
+	BANCS.STDIN.onlineOrBatch = "O"
+	#CUST.DATA.drCrncyCode ="UGX"
+
+	#----------------------------Getting Charge Account start--------------------------------#
+	CUST.DATA.crAcctNum = "PROSFEGL"
+	print(CUST.DATA.crAcctNum)
+
+	sv_a = CUST.DATA.crAcctNum +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+	sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+	print(sv_k)
+				
+	IF(sv_k == 0)THEN
+	#{
+		CUST.DATA.crAcctNum = BANCS.OUTPARAM.AcctId
+		PRINT(CUST.DATA.crAcctNum)
+	#}
+	ENDIF
+	#----------------------	Getting Charge Account End-------------------------------------#
+
+
+
+	#----------------------------------------------------------------------------------------------------
+	#--- 1. SRV_FetchAcctDtlForTran - FETCH DEBIT A/C DETAILS
+	#---------------------------------------------------------------------------------------------------- 
+	sv_i = urhk_SetUrhkInp("acct.foracid|" +CUST.DATA.drAcctNum)
+
+
+	sv_o = urhk_SetUrhkOut("acct.crncyCode|drCrncyCode")
+
+
+	sv_q = urhk_ExecSrv("SRV_FetchAcctDtlForTran|retain_all_output = Y|same_user_verify = Y")
+	print(sv_q)
+
+	if (sv_q == 0)then
+		print("Step 1 success")
+
+		CUST.DATA.drCrncyCode = BANCS.OUTPARAM.drCrncyCode
+
+		print(CUST.DATA.drCrncyCode)		
+
+	else
+		GOTO ERRORCHECK	
+	endif
+
+	#----------------------------------------------------------------------------------------------------
+	#--- 1. SRV_FetchAcctDtlForTran - FETCH CREDIT A/C DETAILS
+	#---------------------------------------------------------------------------------------------------- 
+
+	BANCS.STDIN.onlineOrBatch = "O"
+
+	sv_i = urhk_SetUrhkInp("acct.foracid|" +CUST.DATA.crAcctNum)
+
+
+	sv_o = urhk_SetUrhkOut("acct.crncyCode|crCrncyCode")
+
+
+	sv_q = urhk_ExecSrv("SRV_FetchAcctDtlForTran|retain_all_output = Y|same_user_verify = Y")
+	print(sv_q)
+
+	if (sv_q == 0)then
+		print("Step 1 success")
+
+		CUST.DATA.crCrncyCode = BANCS.OUTPARAM.crCrncyCode
+
+		print(CUST.DATA.crCrncyCode)		
+
+	else
+		GOTO ERRORCHECK	
+	endif
+	
+
+	#----------------------------------------------------------------------------------------------------
+	#--- 2. SRV_AddAndPostXferTran
+	#---------------------------------------------------------------------------------------------------- 
+
+	CUST.DATA.test= "O"
+	BANCS.STDIN.onlineOrBatch = CUST.DATA.test
+
+	PRINT(BANCS.STDIN.onlineOrBatch)
+
+	sv_i = urhk_SetUrhkInp("tranDtl.onlineOrBatchMode|O")
+	sv_i = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|" + BANCS.STDIN.BODDate)
+	sv_i = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranType|T")
+	sv_i = urhk_SetUrhkInp("tranHdr.tranTypeSubType.tranSubType|CI")
+	sv_i = urhk_SetUrhkInp("tranHdr.initSol.solId|" + BANCS.STDIN.mySolId)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.key.serial_num|1")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.partTranType.code|D")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.acctId.foracid|" + CUST.DATA.drAcctNum)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.glDate|" + BANCS.STDIN.BODDate)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranAmt|" + CUST.DATA.refAmt+"|"+CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.rate|1")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranCrncyCode.crncyCode|" + CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refCrncyCode.crncyCode|" + CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.refAmt|" + CUST.DATA.refAmt +"|"+CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.treaRate|0.0000")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.delFlg|N")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.entryUserId.userId|" + BANCS.STDIN.userId)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_0>.tranParticulars|ODCA1 Transfer charge Debit")
+
+	# CREDIT DETAILS
+	#------------------------------------------
+	#
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.key.serial_num|2")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.partTranType.code|C")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.acctId.foracid|" + CUST.DATA.crAcctNum)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.valueDate|" + BANCS.STDIN.BODDate)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.glDate|" + BANCS.STDIN.BODDate)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranAmt|" + CUST.DATA.refAmt +"|"+CUST.DATA.crCrncyCode)
+	#sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rateCode.refCode|")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.rate|1")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranCrncyCode.crncyCode|" + CUST.DATA.crCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refCrncyCode.crncyCode|" + CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.refAmt|" + CUST.DATA.refAmt +"|"+CUST.DATA.drCrncyCode)
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.treaRate|0.0000")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.delFlg|N")
+	sv_i = urhk_SetUrhkInp("tranDtl.partTranDetailLL.<rec_1>.tranParticulars|ODCA1 Transfer charge Credit")
+
+	sv_o = urhk_SetUrhkOut("tranHdr.tranIdentifier.tranId|tranId")
+	sv_o = urhk_SetUrhkOut("tranDtl.onlineOrBatchMode|mode")
+
+
+	BANCS.STDIN.onlineOrBatch = "O"
+	#print(BANCS.STDIN.onlineOrBatch)
+
+	sv_q = urhk_ExecSrv("SRV_AddAndPostXferTran|retain_all_output = Y|same_user_verify = Y")
+	print(sv_q)
+
+	#print(BANCS.STDIN.onlineOrBatch)
+
+	if (sv_q == 0)then
+		print("SRV_AddAndPostXferTran success")
+		print(BANCS.OUTPARAM.tranId)
+
+		EXITSCRIPT		
+
+	else
+		GOTO ERRORCHECK	
+	endif
+	
+	ERRORCHECK:
+	#----------------------------------------------------------------------------------------------------
+	# SRV Error check
+	#----------------------------------------------------------------------------------------------------
+	IF (sv_q != 0) THEN
+	#{
+		IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+		#{
+			print(BANCS.OUTPARAM.Error_num)
+			sv_v = BANCS.OUTPARAM.Error_num
+		#}									
+		ELSE
+		#{
+			sv_v = 0
+		#}
+		ENDIF
+		IF(sv_v > 0)THEN
+		#{
+			sv_u = system("echo 'Error'")
+			sv_i = 1
+			WHILE (sv_i <= sv_v)
+			#{
+				sv_f = FORMAT$(sv_i,"%d")
+				sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+				sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+				sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+				print(sv_e)
+
+				#sv_t = "executeFinacleScript_CustomData.ERROR | " + sv_e
+				#sv_u = urhk_SetOrbOut(sv_t)	
+				#print(sv_u)
+
+				sv_i = sv_i + 1
+				sv_u = system("echo '"+sv_e+"' >>XXXXXXXXXXXXXloanMgr.log")
+				print(sv_u)
+				
+				#Error response
+				sv_t = "ERROR | " +sv_e
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				EXITSCRIPT
+			#}
+			DO
+			#}
+		ENDIF
+	#}
+	ENDIF
+
+
+
+
+ENDSCRIPT:
+
+
+trace off
+
+end-->

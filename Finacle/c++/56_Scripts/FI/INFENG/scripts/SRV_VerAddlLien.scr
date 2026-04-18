@@ -1,0 +1,234 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : SRV_VerAddLien.scr
+#  Description     : 
+#  Date            : 09-04-2024
+#  Author          :JAMES GICHIRI
+#  Input           : NA
+#  Output          : NA
+#  Calling Script  : Multiple - Failed Charge Scripts
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             07-04-2024     JAMES GICHIRI                 Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+  TRACE ON
+
+  #------------------------------------------------------------------------------
+  #Creating repository and class
+  #------------------------------------------------------------------------------
+  IF (REPEXISTS("CUSS") == 0) THEN
+  #{
+        CREATEREP("CUSS")
+  #}
+  ENDIF
+
+  IF(CLASSEXISTS("CUSS","VERVAL")==0) THEN
+  #{
+        CREATECLASS("CUSS","VERVAL",5)
+  #}
+  ENDIF
+
+
+	##Create lien
+	CUSS.VERVAL.SuccessOrFailure = "F"
+    CUSS.VERVAL.foracid = VERL.GLBDATA.isDrAcctId
+    print(CUSS.VERVAL.foracid)
+
+    # Total or New Amount
+    #CUSS.VERVAL.amt = CUST.GCHRG.chargeAmount
+	CUSS.VERVAL.amt = "5000"
+    print(CUSS.VERVAL.amt)
+
+    CUSS.VERVAL.reasonCode = "CHRGL"
+    CUSS.VERVAL.lienRemarks = VERL.GLBDATA.lienRemarks  
+    CUSS.VERVAL.eventIdX = "SIDDFE"
+    print(CUSS.VERVAL.eventIdX)
+
+    #CUSS.VERVAL.acid = CUSTL.VERVAL.acid
+    
+    # Customer Account Currency
+    CUSS.VERVAL.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+    print(CUSS.VERVAL.acctCrncyCode)
+	#-------------------------------------
+	#---1. SRV_FetchLienDtlsOnAcForMod  
+	#-------------------------------------
+		sv_k = urhk_SetUrhkInp("acct.foracid|"+CUSS.VERVAL.foracid)
+		print(CUSS.VERVAL.foracid)
+		sv_k = urhk_SetUrhkOut("acct.crncyCode|acctCrncyCode")
+		sv_k = urhk_SetUrhkOut("acct.acid|acid")
+		sv_a = urhk_ExecSrv("SRV_FetchAcctDtlForTran|retain_all_output = Y")
+		print(sv_a)
+
+   IF (sv_a == 0)then
+	#{
+		print("Step 1 success")
+		CUSS.VERVAL.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		CUSS.VERVAL.acid = BANCS.OUTPARAM.acid
+		print(CUSS.VERVAL.acid)
+   #}
+   ELSE
+   #{
+        GOTO ERROR_HANDLING
+   #}
+   ENDIF
+
+     
+   #sv_m = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND BANK_ID= ?SVAR AND lien_remarks= ?SVAR"
+    sv_m = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND BANK_ID= ?SVAR"
+
+   PRINT(sv_m)
+   #BANCS.INPARAM.BINDVARS = CUSS.VERVAL.acid + "|" + BANCS.STDIN.contextBankId + "|" + CUSS.VERVAL.lienRemarks
+    BANCS.INPARAM.BINDVARS = CUSS.VERVAL.acid + "|" + BANCS.STDIN.contextBankId 
+
+   sv_a = urhk_dbSelectWithBind(sv_m)
+   PRINT(sv_a)
+	 IF (sv_a != 0) THEN
+	 #{
+		CUSS.VERVAL.LienSuccessOrFailure = "F"
+		CUSS.VERVAL.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+		sv_s = CUSS.VERVAL.foracid+ "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+		PRINT(sv_s)
+		GOTO ENDOFSCRIPT_LIEN_MOD
+	  #}
+	  ELSE
+	  #{
+		CUSS.VERVAL.NewRecNum = BANCS.OUTPARAM.count
+		PRINT(CUSS.VERVAL.NewRecNum)
+				
+				IF(CUSS.VERVAL.NewRecNum == 0)THEN				
+				#{                                                                                       
+					  sv_l = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUSS.VERVAL.foracid)
+					  sv_l = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+					  sv_a = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|31-12-2099 00:00:00")
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.key.serial_num|0")
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.newLienAmt|" + CUSS.VERVAL.amt + "|"+CUSS.VERVAL.acctCrncyCode)
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.oldLienAmt|0|"+CUSS.VERVAL.acctCrncyCode)
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.expiryDate|31-12-2099 00:00:00")
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienRemarks|" + CUSS.VERVAL.lienRemarks)
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.lienReasonCode.refCode|" + CUSS.VERVAL.reasonCode)
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.effFromDate|" + BANCS.STDIN.BODDate)
+					  sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_0>.requestDept|" + CUSS.VERVAL.eventIdX)
+					  #Call the service for adding and verifying the new lien.
+					  sv_a = urhk_ExecSrvNoCommit ("SRV_AddLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+					  PRINT(sv_a) 
+					  IF(sv_a == 0)THEN
+					   #{
+							CUSS.VERVAL.SuccessOrFailure ="S"
+							EXITSCRIPT
+						#}	
+					  ENDIF
+				#}
+						
+				ELSE 
+				#{
+					
+					#Modify Lien
+					
+					BANCS.INPARAM.BINDVARS = CUSS.VERVAL.acid + "|" + BANCS.STDIN.contextBankId + "|" + CUSS.VERVAL.reasonCode + "|" + CUSS.VERVAL.lienRemarks
+					sv_a = "count|select count(*) from tbaadm.alt where acid = ?SVAR AND b2k_type='ULIEN' AND BANK_ID= ?SVAR AND LIEN_REASON_CODE = ?SVAR AND LIEN_REMARKS= ?SVAR"
+					PRINT(sv_a)
+					sv_s = urhk_dbSelectWithBind(sv_a)
+					PRINT(sv_s)
+					IF (sv_s !=0) THEN 
+					#{                                                                                            
+					   CUSS.VERVAL.LienSuccessOrFailure = "F"
+					   CUSS.VERVAL.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+					   sv_s = CUSS.VERVAL.foracid+ "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+					   PRINT(sv_s)
+					   GOTO ENDOFSCRIPT_LIEN_MOD
+					#}
+					ELSE 
+					#{                                                           
+						 sv_a = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUSS.VERVAL.foracid)
+						 sv_a = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+						 sv_a = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|31-12-2099 00:00:00")
+						 sv_a = urhk_ExecSrvNoCommit("SRV_FetchLienDtlsOnAcForMod|retain_all_output = Y")
+						 PRINT(sv_a)
+						IF (sv_a != 0) THEN
+						#{
+							GOTO ERROR_HANDLING
+						
+						#}
+						ENDIF
+						 sv_a = urhk_CopyOutToIn("")
+						 PRINT(sv_a)
+						 PRINT("MODIFYING LIEN")
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.key.serial_num|0")
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.newLienAmt|" + CUSS.VERVAL.amt +  "|" +CUSS.VERVAL.acctCrncyCode)
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.oldLienAmt|0|"+CUSS.VERVAL.acctCrncyCode)
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.expiryDate|31-12-2099 00:00:00")
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.lienRemarks|" + CUSS.VERVAL.lienRemarks)
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.lienReasonCode.refCode|" + CUSS.VERVAL.reasonCode)
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.effFromDate|" + BANCS.STDIN.BODDate ) 
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.requestedBy|")
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.requestDept|"+CUSS.VERVAL.eventIdX)
+						 sv_l = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSS.VERVAL.NewRecNum + ">.contactNum|")
+						 sv_a = urhk_ExecSrvNoCommit("SRV_ModifyLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+						 PRINT(sv_a)
+						 IF(sv_a == 0)THEN
+						 #{
+							CUSS.VERVAL.SuccessOrFailure ="S"
+							EXITSCRIPT
+						 #}
+						 ELSE	 
+						 #{
+								GOTO ERROR_HANDLING
+						 #}
+						 ENDIF
+					
+					#}
+					ENDIF             
+			#}
+			ENDIF                                                           
+                          
+                          
+          ERROR_HANDLING:
+          #-------------Error handling when the SRV returns failure.--------------------#
+          IF (sv_a != 0) THEN 
+          #{                                                                                                                    
+				CUSS.VERVAL.LienSuccessOrFailure = "F"
+				PRINT(CUSS.VERVAL.LienSuccessOrFailure)
+				sv_c = BANCS.OUTPARAM.Error_num
+				IF (sv_c > 0) THEN  
+				#{                                                                                                                                              
+					IF (STRLEN(BANCS.OUTPARAM.ErrorMesg_1) > 0) THEN
+					#{
+					   CUSS.VERVAL.LienFailureReason = BANCS.OUTPARAM.ErrorMesg_1
+					   PRINT(CUSS.VERVAL.LienFailureReason)
+					   sv_s = CUSS.VERVAL.foracid + "|" + CUSS.VERVAL.LienFailureReason
+					   PRINT(sv_s)
+					#}
+					ENDIF
+					 sv_d = 1
+					 WHILE(sv_d <= sv_c) 
+					 #{                                                                                                                                                           
+					   sv_f = FORMAT$(sv_d, "%d")
+					   sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_" + sv_f)
+					   PRINT(sv_e)
+					   sv_e = ("BANCS").("OUTPARAM").("ErrorCode_" + sv_f)
+					   PRINT(sv_e)
+					   sv_e = ("BANCS").("OUTPARAM").("Tag_" + sv_f)
+					   PRINT(sv_e)
+					   sv_d = sv_d + 1  
+					#}                                                                                                                                                                     
+					 DO
+			  #}
+			  ENDIF
+          ELSE
+          #{
+                CUSS.VERVAL.LienSuccessOrFailure = "F"
+          #}
+          ENDIF
+                                                                
+          ENDOFSCRIPT_LIEN_MOD:
+          Print (CUSS.VERVAL.LienSuccessOrFailure)
+          
+
+       #}      
+
+
+
+EXITSCRIPT
+END-->
+
+

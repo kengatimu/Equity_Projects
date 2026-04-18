@@ -1,0 +1,470 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : CodlpayAgentODInterestRun.scr
+#  Description     : CODLPAY interest run on payment
+#  Date            : 18-07-2024
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             18-07-2024      Dennis Chirchir      Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        EBSRV.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+       BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "N"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "N"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_r = urhk_MTTS_Close("")
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                EBSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EBSRV.GLBDATA.srvErrCode = "MTT"
+                EBSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+
+        EBSRV.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+        EBSRV.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        MTT.TranDetails.TranDate        = "0"
+        MTT.TranDetails.TranType        = "T"
+        MTT.TranDetails.TranSubType     = "IC"
+        MTT.TranDetails.IgnoreExcp      = "I"
+        MTT.TranDetails.Consolidate     = "N"
+        MTT.TranDetails.Remarks         = "ECO Interest Calculation"
+        MTT.TranDetails.ValidationFlag  = "Y"
+        MTT.TranDetails.PostTranFlg     = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.ModuledDisbAmtId= "HTM"
+        sv_u = urhk_MTTS_DefineTransaction("OD549Int")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                EBSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EBSRV.GLBDATA.srvErrCode = "MTT"
+                EBSRV.GLBDATA.srvSucFail = "F"
+                sv_r = urhk_MTTS_Close("")
+                goto Endofscript
+        endif
+
+	EBSRV.GLBDATA.odAcctId = ""
+        EBSRV.GLBDATA.OperativeAcctId = ""
+        EBSRV.GLBDATA.odAcid = ""
+        EBSRV.GLBDATA.odSolId = ""
+        EBSRV.GLBDATA.opSolId = ""
+        EBSRV.GLBDATA.opAcid = ""
+        EBSRV.GLBDATA.repayFeq = ""
+        EBSRV.GLBDATA.isBatch='Y'
+        EBSRV.GLBDATA.srvErrCode = ""
+        EBSRV.GLBDATA.srvErrMsg = ""
+        EBSRV.GLBDATA.srvSucFail = ""
+#F-FlatRate / V-Variable Rate
+        EBSRV.GLBDATA.loanMethod = "V"
+#get schedule data to generate demand either from batch or runtime
+        lv_h = "Foracid,dmdDate,dmdOvDate,dmdAmt,AdjAmt,OvAmt,penalExist,PDate|select foracid,DMD_DATE,DMD_OVDU_DATE,DMD_AMT,TOT_ADJ_AMT,(DMD_AMT-TOT_ADJ_AMT),PENAL_INT,to_char(PENAL_RUN_DATE,'DD-MM-YYYY')  "
+        lv_h = lv_h + " from custom.agddt where bank_id=?SVAR and sol_id=?SVAR and dmd_date<to_date(?SVAR,'DD-MM-RRRR') "
+        lv_h = lv_h + " and foracid in (select foracid from tbaadm.gam where bank_id=?SVAR and acct_cls_flg<>'Y' "
+        lv_h = lv_h + " and entity_cre_flg='Y' and del_flg<>'Y' and schm_code in ('SB126','CA207')) "
+	lv_h = lv_h + " and foracid = ?SVAR "
+        lv_h = lv_h + " and del_flg='N' and entity_cre_flg='Y' and dmd_amt-tot_adj_amt<>0 order by dmd_ovdu_date "
+
+    	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" +  mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId  + "|" + EBSRV.GLBDATA.OpAcctId
+        print(BANCS.INPARAM.BINDVARS)
+
+        sv_u = urhk_dbCursorOpenWithBind(lv_h)
+
+        if(sv_u==0)then
+                EBSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EBSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EBSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EBSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        EBSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EBSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+                EBSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EBSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EBSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                EBSRV.GLBDATA.Foracid = BANCS.OUTPARAM.Foracid
+                EBSRV.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+                EBSRV.GLBDATA.dmdOvDate = BANCS.OUTPARAM.dmdOvDate
+                EBSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+                EBSRV.GLBDATA.AdjAmt = BANCS.OUTPARAM.AdjAmt
+                EBSRV.GLBDATA.OvAmt = BANCS.OUTPARAM.OvAmt
+                EBSRV.GLBDATA.penalExist = BANCS.OUTPARAM.penalExist
+                EBSRV.GLBDATA.PDate = BANCS.OUTPARAM.PDate
+		#######Get the OD
+                sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.Foracid)
+		if(sv_u ==0) then
+			EBSRV.GLBDATA.cifId = BANCS.OUTPARAM.cifId
+			print(EBSRV.GLBDATA.cifId)
+		else
+			goto NXTREC
+		endif
+
+		lv_q = "ODForacid|select foracid from tbaadm.gam where schm_code='OD541' and cif_id = ?SVAR and acct_cls_flg='N' and bank_id =?SVAR "
+		BANCS.INPARAM.BINDVARS = EBSRV.GLBDATA.cifId + "|" + BANCS.STDIN.contextBankId
+		lv_t = urhk_dbSelectWithBind(lv_q)
+		if(lv_t ==0) then
+		        EBSRV.GLBDATA.ODForacid = BANCS.OUTPARAM.ODForacid
+		else
+			EBSRV.GLBDATA.ODForacid = ""
+			goto NXTREC
+		endif
+                print(EBSRV.GLBDATA.ODForacid)
+                sv_u = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.ODForacid)
+                if(sv_u == 0)then
+                        EBSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                        EBSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                        EBSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                        EBSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                        EBSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                        EBSRV.GLBDATA.odSchmCode = BANCS.OUTPARAM.schmCode
+                        EBSRV.GLBDATA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+                        EBSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                else
+                        EBSRV.GLBDATA.drdrawingPower = 0
+                        EBSRV.GLBDATA.drEffBal = 0
+                        EBSRV.GLBDATA.drclearBalance = 0
+                        EBSRV.GLBDATA.drsanLim = 0
+                        EBSRV.GLBDATA.dravalAmt = 0
+                        EBSRV.GLBDATA.odSchmCode = ""
+                        EBSRV.GLBDATA.acctCrncyCode = ""
+                        EBSRV.GLBDATA.acid = ""
+                endif
+
+		lv_u = "chrgOffFld|select CHRGE_OFF_FLG from tbaadm.gac where CHRGE_OFF_FLG ='Y' and bank_id = ?SVAR and acid = ?SVAR "
+		lv_v = urhk_dbSelectWithBind(lv_u)
+		if(lv_v ==0) then
+		        EBSRV.GLBDATA.chrgOffFld = BANCS.OUTPARAM.chrgOffFld
+			IF(EBSRV.GLBDATA.chrgOffFld == "Y") then
+				print("account is charged_off")
+				goto NXTREC
+			ENDIF			
+		else
+			EBSRV.GLBDATA.chrgOffFld = ""
+			goto NXTREC
+		endif
+
+        lv_t = " intTblCode | select int_tbl_code from tbaadm.csp where bank_id=?SVAR and schm_code=?SVAR and crncy_code=?SVAR and del_flg='N' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.odSchmCode + "|" + BANCS.STDIN.homeCrncyCode
+        print(lv_t)
+        print(BANCS.INPARAM.BINDVARS)
+        lv_u = urhk_dbSelectWithBind(lv_t)
+        if(lv_u==0)then
+        #{
+                EBSRV.GLBDATA.intTblCode = BANCS.OUTPARAM.intTblCode
+        #}
+        else
+        #{
+                EBSRV.GLBDATA.intTblCode = ""
+        #}
+        endif
+
+        lv_i = " drIntPcnt,drPenalInt| select NRML_INT_PCNT,PENAL_INT_PCNT from tbaadm.ivs where bank_id=?SVAR and int_tbl_code=?SVAR  and crncy_code=?SVAR and int_slab_dr_cr_flg='D' and int_tbl_ver_num in (select  max(int_tbl_ver_num) from tbaadm.icv where bank_id=?SVAR and int_tbl_code=?SVAR and crncy_code=?SVAR and entity_cre_flg='Y' and del_flg='N' and int_slab_dr_cr_flg='D' and int_slab_srl_num in (select max(int_slab_srl_num) from tbaadm.icv where bank_id=?SVAR and int_tbl_code=?SVAR and crncy_code=?SVAR and entity_cre_flg='Y' and del_flg='N' and int_slab_dr_cr_flg='D')) and entity_cre_flg='Y' and del_flg='N' "
+
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.intTblCode + "|" + EBSRV.GLBDATA.acctCrncyCode + "|" + BANCS.STDIN.contextBankId +"|" + EBSRV.GLBDATA.intTblCode + "|" + EBSRV.GLBDATA.acctCrncyCode + "|" + BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.intTblCode + "|" + EBSRV.GLBDATA.acctCrncyCode
+        print(lv_i)
+        print(BANCS.INPARAM.BINDVARS)
+        lv_d = urhk_dbSelectWithBind(lv_i)
+        if(lv_d==0)then
+        #{
+                EBSRV.GLBDATA.drIntPcnt = BANCS.OUTPARAM.drIntPcnt
+                EBSRV.GLBDATA.drPenalInt = BANCS.OUTPARAM.drPenalInt
+        else
+                EBSRV.GLBDATA.drIntPcnt = 0
+                EBSRV.GLBDATA.drPenalInt = 0
+        #}
+        endif
+        print(EBSRV.GLBDATA.drIntPcnt)
+        print(EBSRV.GLBDATA.drPenalInt)
+
+        IF((EBSRV.GLBDATA.penalExist == "") and (EBSRV.GLBDATA.PDate == ""))then
+        #{
+        ########Manual input the date Interest collection process changed to prevent recalculation. DO NOT MODIFY!!
+        BANCS.INPARAM.date1 = mid$(BANCS.STDIN.BODDate,0,10)
+        BANCS.INPARAM.date2 = EBSRV.GLBDATA.dmdDate
+        sv_u = urhk_B2K_dateDiff("")
+        print(sv_u)
+        if(sv_u == 0 ) then
+        #{
+                BANCS.INPUT.migdatediff = BANCS.OUTPARAM.dateDiff
+        else
+                BANCS.INPUT.migdatediff = "0"
+        #}
+        endif
+        else
+        EBSRV.GLBDATA.dmdDate = EBSRV.GLBDATA.PDate
+        BANCS.INPARAM.date1 = mid$(BANCS.STDIN.BODDate,0,10)
+        BANCS.INPARAM.date2 = EBSRV.GLBDATA.dmdDate
+        sv_u = urhk_B2K_dateDiff("")
+        print(sv_u)
+        if(sv_u == 0 ) then
+        #{
+
+              BANCS.INPUT.migdatediff = BANCS.OUTPARAM.dateDiff
+        #}
+        else
+        #{
+                BANCS.INPUT.migdatediff = "0"
+        #}
+        endif
+        ENDIF
+        print(BANCS.INPUT.migdatediff)
+        EBSRV.GLBDATA.fiIntPcnt = cdouble(EBSRV.GLBDATA.drPenalInt)/100
+        print(EBSRV.GLBDATA.fiIntPcnt)
+        EBSRV.GLBDATA.emiPyCnt = cdouble(BANCS.INPUT.migdatediff)/365
+        print(EBSRV.GLBDATA.fiIntPcnt)
+        print(EBSRV.GLBDATA.emiPyCnt)
+#emi-amount
+        EBSRV.GLBDATA.PenalAmt = cdouble(EBSRV.GLBDATA.OvAmt) * cdouble(EBSRV.GLBDATA.fiIntPcnt) * cdouble(EBSRV.GLBDATA.emiPyCnt)
+        print(EBSRV.GLBDATA.PenalAmt)
+
+        EBSRV.GLBDATA.PenalAmt1 = cdouble(EBSRV.GLBDATA.PenalAmt) + cdouble(EBSRV.GLBDATA.penalExist)
+        print(EBSRV.GLBDATA.PenalAmt1)
+
+        EBSRV.GLBDATA.PenalAmt1 = FORMAT$(cdouble(EBSRV.GLBDATA.PenalAmt1),"%.2f")
+        print(EBSRV.GLBDATA.PenalAmt1)
+
+        EBSRV.GLBDATA.PenalAmt = FORMAT$(cdouble(EBSRV.GLBDATA.PenalAmt),"%.2f")
+        print(EBSRV.GLBDATA.PenalAmt)
+
+        #EBSRV.GLBDATA.PenalAmt = cdouble(EBSRV.GLBDATA.PenalAmt)
+        BANCS.INPUT.ebodDate = mid$(BANCS.STDIN.BODDate,0,10)
+        print(EBSRV.GLBDATA.emiPyCnt)
+        print(EBSRV.GLBDATA.PenalAmt)
+        lv_j = " plBacid,intCollbacid | select int_pandl_bacid_dr,int_coll_bacid from tbaadm.gsp where bank_id=?SVAR and schm_code=?SVAR and del_flg='N'  and
+ schm_type='ODA' and int_coll_flg='Y' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|OD549"
+        print(lv_j)
+        print(BANCS.INPARAM.BINDVARS)
+        lv_j = urhk_dbSelectWithBind(lv_j)
+        if(lv_j==0)then
+        #{
+                        EBSRV.GLBDATA.plBacid = BANCS.OUTPARAM.plBacid
+                         EBSRV.GLBDATA.intCollbacid = BANCS.OUTPARAM.intCollbacid
+        else
+                         EBSRV.GLBDATA.plBacid = ""
+                         EBSRV.GLBDATA.intCollbacid = ""
+        #}
+        endif
+        print(EBSRV.GLBDATA.plBacid)
+        if(EBSRV.GLBDATA.plBacid=="")then
+        #{
+                GOTO NXTREC
+        #}
+        else
+        #{
+               EBSRV.GLBDATA.plBacid = EBSRV.GLBDATA.plBacid
+        #}
+        endif
+        sv_t = EBSRV.GLBDATA.plBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ BANCS.STDIN.mySolId
+        print(sv_t)
+        sv_u = urhk_B2k_BacidToAcctId(sv_t)
+        if(sv_u == 0 )then
+        #{
+                EBSRV.GLBDATA.IntCrGlAcctId = BANCS.OUTPARAM.AcctId
+                print(EBSRV.GLBDATA.IntCrGlAcctId)
+        #}
+        else
+        #{
+                EBSRV.GLBDATA.IntCrGlAcctId = ""
+        #}
+        endif
+        if(EBSRV.GLBDATA.IntCrGlAcctId!="")then
+        #{
+             lv_d = urhk_getAcctDetailsInRepository(EBSRV.GLBDATA.IntCrGlAcctId)
+        if(lv_d==0)then
+        #{
+                               EBSRV.GLBDATA.schemeType = BANCS.OUTPARAM.schemeType
+                        EBSRV.GLBDATA.partitionedFlg = BANCS.OUTPARAM.partitionedFlg
+                        EBSRV.GLBDATA.partitionedType = BANCS.OUTPARAM.partitionedType
+        else
+                        EBSRV.GLBDATA.schemeType = ""
+                        EBSRV.GLBDATA.partitionedFlg = ""
+                        EBSRV.GLBDATA.partitionedType = ""
+        #}
+        endif
+        #}
+        else
+        #{
+                     sv_r = urhk_MTTS_Close("")
+                     exitscript
+        #}
+        endif
+        print(EBSRV.GLBDATA.ODForacid)
+        print(EBSRV.GLBDATA.PenalAmt1)
+        if((EBSRV.GLBDATA.ODForacid!="") and (EBSRV.GLBDATA.PenalAmt1 > 0))then
+                        MTT.PartTranDetails.Account             = EBSRV.GLBDATA.ODForacid
+                        MTT.PartTranDetails.RefCurrency         = BANCS.STDIN.homeCrncyCode
+                        MTT.PartTranDetails.TranCurrency        = BANCS.STDIN.homeCrncyCode
+                        MTT.PartTranDetails.Particulars         = "Int.Coll " + EBSRV.GLBDATA.dmdDate + " to " + BANCS.INPUT.ebodDate + "for " + EBSRV.GLBDATA.IntCrGlAcctId
+                        MTT.PartTranDetails.RefAmount           = -1*cdouble(EBSRV.GLBDATA.PenalAmt)
+                        MTT.PartTranDetails.Amount              = -1*cdouble(EBSRV.GLBDATA.PenalAmt)
+                        MTT.PartTranDetails.Refnum              = "Disb.No" +EBSRV.GLBDATA.schlNum + "/ShdlNum." + EBSRV.GLBDATA.schlNum
+                        MTT.PartTranDetails.RateCode            = ""
+                        MTT.PartTranDetails.Rate                = ""
+                        MTT.PartTranDetails.TranIdentifier      = "OD549Int"
+                        MTT.PartTranDetails.Consolidate         = "N"
+                        MTT.PartTranDetails.CarveAmtFlg         = "Y"
+                        MTT.PartTranDetails.ReportCode          = "OD549"
+                        MTT.PartTranDetails.ValueDateDiff       = "0"
+                        MTT.PartTranDetails.Remarks             = EBSRV.GLBDATA.IntCrGlAcctId
+                        MTT.PartTranDetails.PstFlg              = "Y"
+                        MTT.TranDetails.IgnoreExcp         = "Y"
+                        MTT.PartTranDetails.TODRefType          = "IC"
+                        MTT.PartTranDetails.TodEntityType       = "TODIC"
+                        MTT.PartTranDetails.TodEntityId         = EBSRV.GLBDATA.ODForacid
+                        MTT.PartTranDetails.TodLevIntFlg        = "N"
+                        MTT.PartTranDetails.TodExpiryDate       = BANCS.STDIN.BODDate
+                        MTT.PartTranDetails.TodPenalDate        = BANCS.STDIN.BODDate
+                        MTT.PartTranDetails.TodPermittedBy      = BANCS.STDIN.userId
+                        MTT.PartTranDetails.TodRemarks          = "OD549 Int.Coll TOD"
+                        sv_r = urhk_MTTS_DefinePartTran("OD549IntDr")
+                        print(sv_r)
+                        if(sv_r!=0)then
+                                print("define debit fail")
+                        else
+                                print("define debit success")
+                        endif
+                        MTT.PartTranDetails.Account             = EBSRV.GLBDATA.IntCrGlAcctId
+                        MTT.PartTranDetails.RefCurrency         = BANCS.STDIN.homeCrncyCode
+                        MTT.PartTranDetails.TranCurrency        = BANCS.STDIN.homeCrncyCode
+                        MTT.PartTranDetails.Particulars         = "Int.Coll " + EBSRV.GLBDATA.dmdDate + " to " + BANCS.INPUT.ebodDate + "for " + EBSRV.GLBDATA.IntCrGlAcctId
+                        MTT.PartTranDetails.RefAmount           = 1*cdouble(EBSRV.GLBDATA.PenalAmt)
+                        MTT.PartTranDetails.Amount              = 1*cdouble(EBSRV.GLBDATA.PenalAmt)
+                        MTT.PartTranDetails.Refnum              = "Disb.No" +EBSRV.GLBDATA.schlNum + "/ShdlNum." + EBSRV.GLBDATA.schlNum
+                        MTT.PartTranDetails.RateCode            = ""
+                        MTT.PartTranDetails.Rate                = ""
+                        MTT.PartTranDetails.TranIdentifier      = "OD549Int"
+                        MTT.PartTranDetails.Consolidate         = "N"
+                        MTT.PartTranDetails.CarveAmtFlg         = "Y"
+                        MTT.PartTranDetails.ReportCode          = "OD549"
+                        MTT.PartTranDetails.ValueDateDiff       = "0"
+                        MTT.PartTranDetails.Remarks             = EBSRV.GLBDATA.ODForacid
+                        MTT.PartTranDetails.PstFlg              = "Y"
+                        MTT.TranDetails.IgnoreExcp         = "Y"
+                        if(EBSRV.GLBDATA.partitionedFlg=="Y")then
+                        MTT.PartTranDetails.ACPARTB2kId         = EBSRV.GLBDATA.ODForacid
+                        MTT.PartTranDetails.EntryUserId      = BANCS.STDIN.userId
+                        MTT.PartTranDetails.EntryTime           = BANCS.STDIN.BODDate
+                 MTT.PartTranDetails.ACPARTB2kType       = EBSRV.GLBDATA.partitionedType
+                        endif
+                        sv_r = urhk_MTTS_DefinePartTran("OD549IntCr")
+                        print(sv_r)
+                        if(sv_r!=0)then
+                                print("define debit fail")
+                        else
+                                print("define debit success")
+                        endif
+                                sv_u = urhk_MTTS_EndDefinition("")
+                                print(sv_u)
+                                if (sv_u != 0) then
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        print (MTT.Error.Description)
+                                        EBSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        EBSRV.GLBDATA.srvErrCode = "MTT"
+                                        EBSRV.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                        EBSRV.GLBDATA.TranId = ""
+                                else
+                                        EBSRV.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                                        print(EBSRV.GLBDATA.TranId)
+                                endif
+
+                                print(MTT.XCPN.NumExceptions)
+                                print(MTT.XCPN.NumWarnings)
+                                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                EBSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                EBSRV.GLBDATA.srvErrCode = "MTT"
+                                                EBSRV.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                else
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                EBSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                EBSRV.GLBDATA.srvErrCode = "MTT"
+                                                EBSRV.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                endif
+                ELSE
+                        GOTO NXTREC
+                ENDIF
+
+                if((cdouble(EBSRV.GLBDATA.PenalAmt1)>0) and (EBSRV.GLBDATA.TranId!=""))then
+                #{
+                lv_j = "update custom.AGENT_ODLIMT_DMD_TB set penal_int = ?SVAR,PENAL_RUN_DATE=to_date(?SVAR,'dd-mm-yyyy') where od_acid=?SVAR and bank_id=?SVAR and del_flg='N' and shdl_num = ?SVAR"
+                print(EBSRV.GLBDATA.PenalAmt)
+                print(EBSRV.GLBDATA.ODAcid)
+                print(EBSRV.GLBDATA.schlNum)
+                EBSRV.GLBDATA.BODDate = mid$(BANCS.STDIN.BODDate,0,10)
+                print(EBSRV.GLBDATA.BODDate)
+                BANCS.INPARAM.BINDVARS = EBSRV.GLBDATA.PenalAmt1 + "|" + EBSRV.GLBDATA.BODDate + "|" + EBSRV.GLBDATA.ODAcid + "|" + BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.schlNum
+                print(BANCS.INPARAM.BINDVARS)
+                lv_p = urhk_dbSqlWithBind(lv_j)
+                print(lv_p)
+                #}
+                endif
+                NXTREC:
+                sv_u = urhk_dbCursorFetch(EBSRV.GLBDATA.schdlcurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                #{
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EBSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        EBSRV.GLBDATA.srvErrMsg =  "lara Cursor Fetch Failed"
+                        EBSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EBSRV.GLBDATA.srvSucFail = "F"
+                        goto Endofscript
+                #}
+                endif
+                EBSRV.GLBDATA.ddaRec = cint(EBSRV.GLBDATA.ddaRec) + 1
+                EBSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EBSRV.GLBDATA.ddaRec
+                print(EBSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EBSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+sv_s = urhk_MTTS_Close("")
+print(EBSRV.GLBDATA.srvErrCode)
+print(EBSRV.GLBDATA.srvErrMsg)
+print(EBSRV.GLBDATA.srvSucFail)
+#trace off
+end-->

@@ -1,0 +1,282 @@
+<--START
+CHECKSUM="5214eec61b359bd1777a13dfcd0b2e7c1f39c706e705b44212df021eed1d05b5"
+	TRACE ON
+	
+	
+	#----------------------------------------------------------------------------
+	# Check whether CUST Repository exists else create it
+	#----------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------------
+	# Check whether DATA Class exists else create it
+	#----------------------------------------------------------------------------
+	
+	sv_r = CLASSEXISTS("CUST","DATA")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	sv_a = urhk_B2k_PrintRepos("BANCS")
+    PRINT(sv_a)
+	sv_k=""
+	sv_y=""
+	sv_w=""
+	sv_o=""
+	CUST.DATA.freezeRemarks = "Le client doit se rendre au bureau douverture de compte"
+				print(CUST.DATA.freezeRemarks)
+	BANCS.OUTPARAM.BENEFICIARYACCOUNT=""
+	BANCS.OUTPARAM.ACID=""
+	sv_q="BENEFICIARYACCOUNT,acid|"
+	sv_q = sv_q + " select foracid,acid from tbaadm.gam  where bank_id='43'   and acct_cls_flg='N' and  FREZ_REASON_CODE='DOC' and foracid in (select distinct trim(BENEFICIARYACCOUNT)  from custom.int_credit2 where   pull_flg='N') "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+        PRINT(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			exitscript
+		#}
+		ENDIF
+		print(sv_q)
+		WHILE(sv_q==0)
+		#{
+			
+			###############
+			CUST.DATA.foracid  = BANCS.OUTPARAM.BENEFICIARYACCOUNT
+			print(CUST.DATA.foracid)
+			CUST.DATA.acid  = BANCS.OUTPARAM.acid
+			print(CUST.DATA.acid)
+		        CUST.DATA.sweeps	= "N"
+
+			#--------------------------------------------------------------------------------------------------------------
+			# Inputs for Account Modify services
+			# urhk_SetUrhkInp is used to set inputs 
+			#--------------------------------------------------------------------------------------------------------------
+
+			sv_u = urhk_SetUrhkInp("acctFreezeCriteria.acctId.foracid|" + CUST.DATA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctFreezeCriteria.acctId.acid|" + CUST.DATA.acid)
+			PRINT(sv_u)
+
+			#--------------------------------------------------------------------------------------------------------------
+			# Fetch the account data for modify
+			#--------------------------------------------------------------------------------------------------------------
+			sv_u = urhk_ExecSrv("SRV_FetchAcctsForUnfreeze|retain_all_output = Y")
+			PRINT(sv_u)
+
+			IF (sv_u == 0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkInp("acctFreezeCriteria.acctId.foracid|"+CUST.DATA.foracid)
+				sv_u = urhk_SetUrhkInp("acctFreezeCriteria.freezeCode.code| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeCriteria.modFreezeInd|Y")
+				sv_u = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.acctId.foracid|"+CUST.DATA.foracid)
+				sv_u = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeCode.code| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeCriteria.freezeReason.refCode| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeReason.refCode| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeCriteria.freezeRemarks| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeRemarks| ")
+				sv_u = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.selFlg|t")
+
+				sv_u = urhk_ExecSrv("SRV_UnFreezeAcctsAutoVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+			IF (sv_u != 0) THEN
+			#{
+				IF (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}
+				ELSE
+				#{
+					sv_v = 0
+				#}
+				ENDIF
+			
+				IF (sv_v > 0) then
+				#{
+					sv_i =1
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					PRINT(sv_e)
+				#}
+				ELSE
+				#{
+					CUST.DATA.errMsg = "Account could not be modified"
+					print(CUST.DATA.errMsg)
+				#}
+				ENDIF
+
+			ELSE
+				CUST.DATA.errMsg = "SUCCESS"
+			#}
+			ENDIF
+				
+				
+				#----------------------------------------------------------------------------------------------------
+				# 3. SRV_FetchAcctsForFreeze
+				#---------------------------------------------------------------------------------------------------- 
+				
+
+				CUST.DATA.freezeReason = "KYCCH"
+				print(CUST.DATA.freezeReason)
+
+				CUST.DATA.frezCode="D"
+				
+				CUST.DATA.freezeRemarks = "Le client doit se rendre au bureau douverture de compte"
+				print(CUST.DATA.freezeRemarks)
+				
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.acctId.foracid|" + CUST.DATA.foracid)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.freezeCode.code|" + CUST.DATA.frezCode)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.freezeReason.refCode|" + CUST.DATA.freezeReason)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.freezeRemarks|" + CUST.DATA.freezeRemarks)
+				PRINT(sv_a)	
+
+				sv_q = urhk_ExecSrv("SRV_FetchAcctsForFreeze|retain_all_output = Y")
+				PRINT(sv_q)
+				
+				IF (sv_q != 0) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ENDIF
+				
+				
+				#----------------------------------------------------------------------------------------------------
+				# 4. SRV_FreezeAccts
+				#---------------------------------------------------------------------------------------------------- 
+				
+				sv_a = urhk_CopyOutToIn("")
+				PRINT(sv_a)
+										
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.modFreezeInd|N")
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.key.serial_num|00001")
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.selFlg|t")
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.acctId.foracid|" + CUST.DATA.foracid)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeCode.code|" + CUST.DATA.frezCode)
+				PRINT(sv_a)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeReason.refCode|" + CUST.DATA.freezeReason)
+				PRINT(sv_a)
+				sv_i = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.freezeRemarks|" + CUST.DATA.freezeRemarks)
+				print(sv_i)
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.masterAcctInd|N")
+				PRINT(sv_a)
+				
+				sv_q = urhk_ExecSrv("SRV_FreezeAccts|retain_all_output = Y|same_user_verify = Y|call_mode = N|ignore_excp_flg = Y|override_xcpn_flg = Y")
+				PRINT(sv_q)
+
+				IF (sv_q != 0) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ENDIF
+				
+				#----------------------------------------------------------------------------------------------------
+				# 4. SRV_VerifyFrozenAccts
+				#---------------------------------------------------------------------------------------------------- 
+				
+				sv_a = urhk_SetUrhkInp("acctFreezeCriteria.acctId.foracid|" + CUST.DATA.foracid)
+				PRINT(sv_a)
+				
+				sv_q = urhk_ExecSrv("SRV_FetchFrozenAcctsForVerify|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = Y|override_xcpn_flg = Y")
+				PRINT(sv_q)
+				
+				IF (sv_q != 0) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ENDIF
+				
+				sv_a = urhk_CopyOutToIn("")
+				PRINT(sv_a)
+				
+				sv_a = urhk_SetUrhkInp("acctFreezeLL.<rec_0>.acctId.foracid|" + CUST.DATA.foracid)
+				PRINT(sv_a)
+				
+				sv_q = urhk_ExecSrv("SRV_VerifyFrozenAccts|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = Y|override_xcpn_flg = Y")
+				PRINT(sv_q)
+					
+				IF (sv_q != 0) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ELSE
+				#{
+					print("Success_Freeze")
+				#}
+				ENDIF
+				
+				ERRORCHECK:
+	
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				
+				IF (sv_q != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF(sv_v > 0)THEN
+					#{
+						sv_i =1
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						GOTO nextrec
+					#}
+					ENDIF
+				#}
+				ENDIF
+					
+			################
+			
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+		#}
+		DO
+		TRACE OFF
+		EXITSCRIPT
+		
+	END-->

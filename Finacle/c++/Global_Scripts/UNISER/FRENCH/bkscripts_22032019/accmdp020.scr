@@ -1,0 +1,170 @@
+	
+	#**************************************************************************************************************
+	# Filename              : accmdp020.scr
+	# Description           : The script is used for creating a transaction for the charges of contract
+	# Input                 :
+	# Output                :
+	# Called Script         :
+	# Calling Script        : accmdp013.scr
+	# Modification History
+	# Sl. #           Date             Author             Modification           Version
+	# -----          ------           --------          ----------------        ---------
+	#  1           25-04-2013       Kalvin Joseph     	original		             1.0
+	#  2		    02-07-2013		Kalvin Joseph	Modification for TO:357446
+	#  3		    28-07-2013		Bharath				Modified foor TOL 359299
+	#  4 		    31-07-2013 		Dileep 				Modified for TOL  362785
+	#   5		21-08-2013	Priya K		  Modified for TO:367198	2.0
+	#**************************************************************************************************************
+	
+<--START
+CHECKSUM="fa1ce0b5efc81697a1bde4b37f5bd38623449bfe1d40db369576c5a8582d783f"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "CONTRACT") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CONTRACT", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST", "GCHRG", 5)
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "INTERFACE") == 0) THEN
+	#{
+		CREATECLASS("CUST", "INTERFACE", 5)
+	#}
+	ENDIF
+	
+	
+	
+	print(CUST.CONTRACT.drAccount)
+	print(CUST.CONTRACT.ChargingAcctCrncy)
+	print(CUST.CONTRACT.ChargingAcctSol)
+	print(CUST.CONTRACT.ChargeEventID)
+	
+	CUST.CONTRACT.ChargeTranId=""
+	CUST.CONTRACT.charges=""
+	CUST.CONTRACT.successFlg="S"
+	
+	#-----------------------------------------------------------------------
+	#Code added as a part of TO: 357446
+	#Logic: checking if the charges for the given contract is zero and
+	#	   if so skipping the posting of transaction
+	#-------------------------------------------------------------------------
+	
+	BANCS.INPARAM.BINDVARS = CUST.CONTRACT.acctNo +"|"+CUST.CONTRACT.contractId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS+"|"+ BANCS.STDIN.contextBankId+"|"+'N'
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = " charges|SELECT  FEE FROM  CUSTOM.CATOD_SANCTION_TABLE  "
+	sv_s = sv_s + " WHERE  ACCT_NUM=?SVAR  "
+	sv_s = sv_s + " AND REQUEST_ID= ?SVAR  "
+	sv_s = sv_s + " AND BANK_ID=?SVAR "
+	sv_s = sv_s + " AND DEL_FLG=?SVAR "
+	PRINT(sv_s)
+	sv_d= urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF(sv_d!=0) THEN
+	#{
+		
+		CUST.INTERFACE.errorCode="ACCM_ERR_012"
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			CUST.CONTRACT.errorMsg = "Could not fetch CPARAM value for " +  CUST.INTERFACE.errorCode
+			sv_z = "Error_0|ERROR^" + CUST.CONTRACT.errorMsg + "^contrctAmt"
+			sv_u = urhk_SetOrbOut(sv_z)
+			CUST.CONTRACT.successFlg = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+		#{
+		CUST.CONTRACT.charges=BANCS.OUTPARAM.charges
+		IF (CUST.CONTRACT.charges==0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	#----------------------END OF ADDED CODE FOR TO : 357446 -------------------------------
+	
+	# TO 362785 - changed MTT to charge script.
+	CUST.CONTRACT.contractAmt				= CUST.CONTRACT.contractAmt
+	CUST.CONTRACT.acctNum					= CUST.CONTRACT.acctNo
+	CUST.CONTRACT.crncyCode					= BANCS.STDIN.homeCrncyCode
+	CUST.GCHRG.drAcctId                     = CUST.CONTRACT.drAccount
+	CUST.GCHRG.acctCrncyCode        		= CUST.CONTRACT.ChargingAcctCrncy
+	CUST.GCHRG.eventId                      = CUST.CONTRACT.ChargeEventID
+	CUST.GCHRG.chrgAmt                      = CUST.CONTRACT.charges + "|" +CUST.CONTRACT.ChargingAcctCrncy
+	CUST.GCHRG.tranType                     = "T"
+	CUST.GCHRG.tranSubType         	 		= "BI"
+	
+	###Modification done for TO:367198
+	print(CUST.CONTRACT.charges)
+	sv_u = urhk_getAcctDetailsInRepository(CUST.CONTRACT.acctNum)
+	print(sv_u)
+	print(BANCS.OUTPARAM.AvailableAmt)
+	CUST.CONTRACT.availableAmt = BANCS.OUTPARAM.ClearBalance
+	IF(CDOUBLE(CUST.CONTRACT.availableAmt) < 0 ) THEN
+	#{
+		CUST.CONTRACT.availableAmt = "0"
+	#}
+	ENDIF
+	print(CUST.CONTRACT.availableAmt)
+	print(CUST.CONTRACT.availableAmt)
+	print(CUST.CONTRACT.charges)
+	print(CUST.CONTRACT.todAmt)
+	
+	IF(CDOUBLE(CUST.CONTRACT.availableAmt) <= 0) THEN
+	#{
+		IF(CDOUBLE(CUST.CONTRACT.availableAmt) < CDOUBLE(CUST.CONTRACT.charges) ) THEN
+		#{
+			
+			CUST.CONTRACT.todAmt = CDOUBLE(CUST.CONTRACT.charges)
+		#}
+		ENDIF
+		CUST.CONTRACT.todAmt = FORMAT$(CDOUBLE(CUST.CONTRACT.todAmt),"%.2f")
+		print(CUST.CONTRACT.todAmt)
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.CONTRACT.availableAmt) > 0) THEN
+	#{
+		IF(CDOUBLE(CUST.CONTRACT.availableAmt) < CDOUBLE(CUST.CONTRACT.charges) ) THEN
+		#{
+			
+			CUST.CONTRACT.todAmt = CDOUBLE(CUST.CONTRACT.charges) - CDOUBLE(CUST.CONTRACT.availableAmt)
+		#}
+		ENDIF
+		CUST.CONTRACT.todAmt = FORMAT$(CDOUBLE(CUST.CONTRACT.todAmt),"%.2f")
+		print(CUST.CONTRACT.todAmt)
+	#}
+	ENDIF
+	
+	CALL("gchrgcommon.scr")
+	IF(CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		print(CUST.GCHRG.tranId)
+		CUST.CONTRACT.ChargeTranId = CUST.GCHRG.tranId
+		#}
+	ELSE
+		#{
+		CUST.CONTRACT.errMsg = CUST.GCHRG.gchrgErrMsg
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		
+		#trace off
+END-->

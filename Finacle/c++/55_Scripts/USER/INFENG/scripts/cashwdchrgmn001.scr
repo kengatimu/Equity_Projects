@@ -1,0 +1,373 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: cashwdchrgmn001.scr
+# Type: NA|default
+# Description: cashwdchrgmn001.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#------------------------------------------------------------------------------------------------
+#  Name			: cashwdchrgmn001.scr
+#  Description		: When a withdrawal is made by sb102, tran details will be updated in c_sja if
+#			: records count is more than one else it inserts into the table.
+#  Date			: 31-01-2013
+#  Author		: Dhana Prabhakaran
+#  Input		: NA
+#  Output		: NA
+#  Called Script	: NA
+#  Calling Script	: getcparamvalue.scr
+#  Menu Option		:  (Batch Job)
+#  Srl. No         Date            Author          		Description.
+#  -------         ------          ------          		------------
+#  1.0             31-01-2013      Dhana Prabhakaran    	Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="481b19140095ac97fbe7f6ee12eb886dc11b8dd24ef75004fb49d31ea6cd640f"
+	TRACE ON
+	
+	#--------------------------------------------------------------------------
+	#  Creation of BANCS repository and CSHWD class
+	#--------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CSHWD") == 0) THEN
+	#{
+		CREATECLASS("CUST","CSHWD", 5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM", 5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Initializing the variables
+	#------------------------------------------------------------------------------
+	CUST.CSHWD.errMsg = ""
+	CUST.CSHWD.BODdate= LEFT$(BANCS.STDIN.BODDate,10)
+	PRINT(CUST.CSHWD.BODdate)
+	CUST.CSHWD.year	= MID$(CUST.CSHWD.BODdate,6,4)
+	PRINT(CUST.CSHWD.year)
+	
+	#------------------------------------------------------------------------------
+	#Getting CSHWDS_SHCDE values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName  = "CSHWDS"
+	BANCS.INPUT.parameterId = "CSHWDS_SHCDE"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.schmCode= BANCS.OUTPUT.parameterVal
+		PRINT(CUST.CPARAM.schmCode)
+		#}
+	ELSE
+		#{
+		CUST.CSHWD.errMsg = "CPARAM setup not done for SchmCode "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#Getting CSHWDS_TRXNS values from CPARAM
+	#------------------------------------------------------------------------------
+	BANCS.INPUT.parameterId = "CSHWDS_TRXNS"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CPARAM.trxns= BANCS.OUTPUT.parameterVal
+		PRINT(CUST.CPARAM.trxns)
+		#}
+	ELSE
+		#{
+		CUST.CSHWD.errMsg = "CPARAM setup not done for SchmCode "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of cash withdrawals from dtd
+	# if the count is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = "Count|SELECT COUNT(1) "
+	sv_s = sv_s + " FROM tbaadm.DTD ,tbaadm.GAM "
+	sv_s = sv_s + " WHERE DTD.sol_id = ?SVAR"
+	sv_s = sv_s + " AND GAM.acid=DTD.acid "
+	sv_s = sv_s + " AND GAM.bank_id = DTD.bank_id"
+	sv_s = sv_s + " AND GAM.acct_ownership='C' "
+	sv_s = sv_s + " AND GAM.del_flg='N' "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+	sv_s = sv_s + " AND GAM.schm_code=?SVAR "
+	sv_s = sv_s + " AND GAM.acct_crncy_code=?SVAR "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	sv_s = sv_s + " AND DTD.tran_type in ('C','T') "
+	sv_s = sv_s + " AND DTD.tran_sub_type in ('CI','NP') "
+	sv_s = sv_s + " AND DTD.part_tran_type='D' "
+	sv_s = sv_s + " AND DTD.PSTD_FLG='Y' "
+	sv_s = sv_s + " AND DTD.del_flg='N' "
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.schmCode + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.homeCrncyCode + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbselectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.CSHWD.count = BANCS.OUTPARAM.Count
+		PRINT(CUST.CSHWD.count)
+		#}
+	ELSE
+		#{
+		CUST.CSHWD.errMsg =" Error in Finding Count of Accounts "
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF (CINT(CUST.CSHWD.count) == 0) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Selecting records of cash withdrawals from dtd
+	#--------------------------------------------------------------------------
+	sv_s = " tranId,tranDate,tranAmt,acid,crncyCode,partTrantype,foracid|"
+	sv_s = sv_s + " SELECT"
+	sv_s = sv_s + " DTD.tran_id,"
+	sv_s = sv_s + " DTD.tran_date,"
+	sv_s = sv_s + " DTD.tran_amt,"
+	sv_s = sv_s + " DTD.acid,"
+	sv_s = sv_s + " DTD.CRNCY_CODE,"
+	sv_s = sv_s + " DTD.part_tran_type,"
+	sv_s = sv_s + " GAM.foracid "
+	sv_s = sv_s + " FROM tbaadm.DTD ,tbaadm.GAM  "
+	sv_s = sv_s + " WHERE DTD.sol_id= ?SVAR "
+	sv_s = sv_s + " AND GAM.acid=DTD.acid "
+	sv_s = sv_s + " AND GAM.bank_id = DTD.bank_id"
+	sv_s = sv_s + " AND GAM.acct_ownership='C' "
+	sv_s = sv_s + " AND GAM.del_flg='N' "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+	sv_s = sv_s + " AND GAM.schm_code=?SVAR "
+	sv_s = sv_s + " AND GAM.acct_crncy_code=?SVAR "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	sv_s = sv_s + " AND DTD.tran_type in ('C','T') "
+	sv_s = sv_s + " AND DTD.tran_sub_type in ('CI','NP') "
+	sv_s = sv_s + " AND DTD.part_tran_type='D' "
+	sv_s = sv_s + " AND DTD.PSTD_FLG='Y' "
+	sv_s = sv_s + " AND DTD.del_flg='N' "
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.schmCode + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.homeCrncyCode + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_c = urhk_dbcursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	IF (sv_c == 0) THEN
+	#{
+		CUST.CSHWD.DB_CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		PRINT(CUST.CSHWD.DB_CURSOR_NUMBER)
+		#}
+	ELSE
+		#{
+		CUST.CSHWD.errMsg = "Error in opening cursor"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------
+	# FETCHING VALUES
+	#---------------------------------------------------------------
+	WHILE (sv_c == 0)
+	#{
+		sv_c = urhk_dbCursorFetch(CUST.CSHWD.DB_CURSOR_NUMBER)
+		PRINT(sv_c)
+		IF (sv_c != 0) THEN
+		#{
+			sv_c = urhk_dbCursorClose(CUST.CSHWD.DB_CURSOR_NUMBER)
+			PRINT(sv_c)
+			sv_c = 1
+			#}
+		ELSE
+			#{
+			CUST.CSHWD.tranDate 	= BANCS.OUTPARAM.tranDate
+			CUST.CSHWD.tranType 	= BANCS.OUTPARAM.partTrantype
+			CUST.CSHWD.foracid	  	= BANCS.OUTPARAM.foracid
+			PRINT(BANCS.OUTPARAM.foracid)
+			
+			sv_s = "cSjaCount|"
+			sv_s = sv_s + " SELECT COUNT(1) "
+			sv_s = sv_s + " FROM CUSTOM.C_SJA "
+			sv_s = sv_s + " WHERE C_SJA.sol_id=?SVAR "
+			sv_s = sv_s + " AND C_SJA.foracid=?SVAR "
+			sv_s = sv_s + " AND C_SJA.tran_year=?SVAR "
+			sv_s = sv_s + " AND C_SJA.del_flg='N' "
+			sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.foracid + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.year + "|"
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_d)
+			
+			IF (sv_d == 0) THEN
+			#{
+				CUST.CSHWD.cSjaCount=BANCS.OUTPARAM.cSjaCount
+				PRINT(CUST.CSHWD.cSjaCount)
+				#}
+			ELSE
+				#{
+				CUST.CSHWD.errMsg =" Error in Finding Count of Accounts for " + CUST.CSHWD.foracid
+				GOTO NEXTREC
+			#}
+			ENDIF
+			
+			#-------------------------------------------
+			# If the count is not zero, then system will
+			# update the num_dr_trxns = num_dr_trxns + 1
+			# else it will insert a new record into c_sja
+			# table with num_dr_trxns value as 1.
+			#-------------------------------------------
+			IF (CINT(CUST.CSHWD.cSjaCount )!= 0) THEN
+			#{
+				sv_s = "cSjaForacid,cSjaNoDr|"
+				sv_s = sv_s + " SELECT "
+				sv_s = sv_s + " foracid,"
+				sv_s = sv_s + " num_dr_trxns,tran_year "
+				sv_s = sv_s + " FROM CUSTOM.C_SJA "
+				sv_s = sv_s + " WHERE C_SJA.sol_id=?SVAR"
+				sv_s = sv_s + " AND C_SJA.foracid=?SVAR "
+				sv_s = sv_s + " AND C_SJA.tran_year=?SVAR "
+				sv_s = sv_s + " AND C_SJA.del_flg='N' "
+				sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+				PRINT(sv_s)
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.foracid + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.year + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_d = urhk_dbselectWithBind(sv_s)
+				PRINT(sv_d)
+				
+				IF (sv_d == 0) THEN
+				#{
+					CUST.CSHWD.cSjaNoDr=BANCS.OUTPARAM.cSjaNoDr
+					PRINT(CUST.CSHWD.cSjaNoDr)
+					#}
+				ELSE
+					#{
+					CUST.CSHWD.errMsg ="Error in Finding  The Number of Debit transactions for " + CUST.CSHWD.foracid
+					GOTO NEXTREC
+				#}
+				ENDIF
+				
+				
+				IF (CUST.CSHWD.tranType == "D") THEN
+				#{
+					CUST.CSHWD.NewDrNum = CINT(CUST.CSHWD.cSjaNoDr) + CINT(CUST.CPARAM.trxns)
+					PRINT(CUST.CSHWD.NewDrNum)
+					
+					sv_s = " UPDATE CUSTOM.C_SJA SET C_SJA.NUM_DR_TRXNS=?SVAR,"
+					sv_s = sv_s + " C_SJA.LAST_DR_DATE = to_date(?SVAR,'dd-mm-yyyy')"
+					sv_s = sv_s + " WHERE C_SJA.foracid = ?SVAR "
+					sv_s = sv_s + " AND C_SJA.tran_year = ?SVAR "
+					sv_s = sv_s + " AND C_SJA.del_flg = 'N' "
+					sv_s = sv_s + " AND C_SJA.bank_id = ?SVAR "
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS = CUST.CSHWD.NewDrNum + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.BODdate + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.foracid + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.year + "|"
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+					
+					PRINT(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF ( sv_d != 0 ) THEN
+					#{
+						CUST.CSHWD.errMsg ="Update is not Successfull for " + CUST.CSHWD.foracid
+						GOTO NEXTREC
+					#}
+					ENDIF
+					sv_d = urhk_dbSQLWithBind("COMMIT")
+				#}
+				ENDIF
+				#}
+			ELSE
+				#{
+				sv_s = "INSERT INTO CUSTOM.C_SJA VALUES("
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " 'N',"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " to_date(?SVAR,'dd-mm-yyyy'),"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " SYSDATE,"
+				sv_s = sv_s + " ?SVAR,"
+				sv_s = sv_s + " SYSDATE,"
+				sv_s = sv_s + " ?SVAR)"
+				PRINT(sv_s)
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.foracid + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.year + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CPARAM.trxns + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.CSHWD.tranDate + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.userId + "|"
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+				
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				
+				IF ( sv_d != 0 ) THEN
+				#{
+					CUST.CSHWD.errMsg ="Insertion is not Successfull for " + CUST.CSHWD.foracid
+					GOTO NEXTREC
+				#}
+				ENDIF
+				sv_d = urhk_dbSQLWithBind("COMMIT")
+				PRINT(sv_d)
+				
+			#}
+			ENDIF
+		#}
+		ENDIF
+		NEXTREC:
+			IF (CUST.CSHWD.errMsg != "") THEN
+			#{
+				sv_u = SYSTEM("echo '"+ CUST.CSHWD.errMsg +"' >>cashwdchrg.log")
+				CUST.CSHWD.errMsg = ""
+			#}
+			ENDIF
+		#}
+		DO
+		
+	ENDOFSCRIPT:
+		IF (CUST.CSHWD.errMsg != "") THEN
+		#{
+			sv_u = SYSTEM("echo '"+ CUST.CSHWD.errMsg +"' >>cashwdchrg.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

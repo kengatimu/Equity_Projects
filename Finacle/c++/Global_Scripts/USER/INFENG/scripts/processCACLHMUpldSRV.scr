@@ -1,0 +1,301 @@
+#==============================================================
+# Category: Custom service Script Name Based
+# Event: CACLHM - function M
+#==============================================================
+
+<--start
+trace on
+
+
+libname CUSTOMSO
+
+############################################################################
+	# Create repository and class
+	############################################################################
+	
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+
+	IF(REPEXISTS("EQSRV") == 0 ) THEN
+	#{
+    		CREATEREP("EQSRV")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("EQSRV","GLBDATA") == 0) THEN
+	#{
+    		CREATECLASS("EQSRV","GLBDATA",5)
+	#}
+	ENDIF
+	
+	IF(REPEXISTS("MTT") == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	lv_f = "reviewDate,limitPenaltyDate,expDate|select to_char(to_date(to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss')-1),'dd-mm-yyyy hh24:mi:ss'),to_char(to_date(to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss')+1),'dd-mm-yyyy hh24:mi:ss'),to_char(to_date(to_date(?SVAR,'dd-mm-yyyy hh24:mi:ss')),'dd-mm-yyyy hh24:mi:ss') from dual "
+	BANCS.INPARAM.BINDVARS = CUST.DATA.expDate + "|" + CUST.DATA.expDate + "|" + CUST.DATA.expDate
+        lv_m = urhk_dbSelectWithBind(lv_f)
+        if(lv_m==0)then
+        #{
+                CUST.DATA.reviewDate = BANCS.OUTPARAM.reviewDate
+                CUST.DATA.limitPenaltyDate = BANCS.OUTPARAM.limitPenaltyDate
+                CUST.DATA.expDate= BANCS.OUTPARAM.expDate
+		print(CUST.DATA.reviewDate)
+		print(CUST.DATA.limitPenaltyDate)
+		print(CUST.DATA.expDate)
+        #}
+        else
+        #{
+                CUST.DATA.reviewDate = ""
+                CUST.DATA.limitPenaltyDate = ""
+        #}
+        endif
+
+		CUST.DATA.SanctionLimit = CUST.DATA.limit
+		CUST.DATA.applcbldate = BANCS.STDIN.BODDate
+		print(CUST.DATA.reviewDate)		
+		print(CUST.DATA.upldForacid)
+		print(CUST.DATA.expDate)
+		print(CUST.DATA.limit)
+		print(CUST.DATA.applcbldate)
+		CUST.DATA.procStatus="S"
+		CUST.DATA.procRmks="Processed Successfully"
+
+        lv_s = " actLimcnt | select count(*) from tbaadm.lht where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' and status='A' "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.upldForacid
+        print(BANCS.INPARAM.BINDVARS)
+        print(lv_s)
+        lv_m = urhk_dbSelectWithBind(lv_s)
+        if(lv_m==0)then
+        #{
+                CUST.DATA.actLimcnt = BANCS.OUTPARAM.actLimcnt
+        #}
+        else
+        #{
+                CUST.DATA.actLimcnt = "0"
+        #}
+        endif
+
+
+        CUST.DATA.srvErrCode = ""
+        CUST.DATA.srvErrMsg = ""
+        CUST.DATA.srvSucFail = ""
+
+	lv_j = urhk_getAcctDetailsInRepository(CUST.DATA.upldForacid)
+	if(lv_j == 0) then
+		CUST.DATA.odacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+	else
+		exitscript
+	endif
+
+      	if(cdouble(CUST.DATA.actLimcnt)>=1)then
+        #{
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + CUST.DATA.upldForacid)
+        print(sv_a)
+        sv_a = urhk_SetUrhkOut("limitHdr.schmCookie|schmCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.GAMCookie|GAMCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.sanctLimit|sanctLimit")
+        sv_a = urhk_SetUrhkOut("limitHdr.count|count")
+        sv_a = urhk_SetUrhkOut("limitHdr.isLacType|isLacType")
+        sv_u = urhk_ExecSrv("SRV_FetchAcctSanctLimitForModify|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+                sv_s = "X"
+        #}
+        endif
+
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("modify Fetch success")
+                CUST.DATA.schmCookie = BANCS.OUTPARAM.schmCookie
+                        print(CUST.DATA.schmCookie)
+                CUST.DATA.GAMCookie = BANCS.OUTPARAM.GAMCookie
+                        print(CUST.DATA.GAMCookie)
+                CUST.DATA.count  =  BANCS.OUTPARAM.count
+                        print(CUST.DATA.count)
+                CUST.DATA.isLacType  =  BANCS.OUTPARAM.isLacType
+                        print(CUST.DATA.isLacType)
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvAcctId = CUST.DATA.upldForacid
+                callscriptifexist("ebsrvHandler.scr")
+                CUST.DATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                CUST.DATA.srvErrCode = "Failed : SRV_FetchAcctSanctLimitForModify "
+                CUST.DATA.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + CUST.DATA.srvErrMsg )
+		CUST.DATA.procStatus="Failure"
+		CUST.DATA.procRmks=EQSRV.GLBDATA.sErrorMsg
+                goto EOS
+        #}
+        endif
+        sv_a = urhk_CopyOutToIn("")
+        print(sv_a)
+        #}
+        endif
+
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + CUST.DATA.upldForacid)
+        print(sv_a)
+        sv_a = urhk_SetUrhkOut("limitHdr.schmCookie|schmCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.GAMCookie|GAMCookie")
+        sv_a = urhk_SetUrhkOut("limitHdr.sanctLimit|sanctLimit")
+        sv_a = urhk_SetUrhkOut("limitHdr.count|count")
+
+        sv_u = urhk_ExecSrv("SRV_InquireAcctSanctLimit|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+              print(BANCS.OUTPARAM.successOrFailure)
+              sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+              sv_s = "X"
+        #}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+              print(BANCS.OUTPARAM.schmCookie)
+              print(BANCS.OUTPARAM.GAMCookie)
+              print(BANCS.OUTPARAM.count)
+              CUST.DATA.schmCookie = BANCS.OUTPARAM.schmCookie
+              CUST.DATA.GAMCookie = BANCS.OUTPARAM.GAMCookie
+              CUST.DATA.count = BANCS.OUTPARAM.count
+              print("Inquire success")
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvAcctId = CUST.DATA.upldForacid
+                callscriptifexist("ebsrvHandler.scr")
+                CUST.DATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                CUST.DATA.srvErrCode = "Failed : SRV_InquireAcctSanctLimit "
+                CUST.DATA.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + CUST.DATA.srvErrMsg )
+		CUST.DATA.procStatus="Failure"
+		CUST.DATA.procRmks=EQSRV.GLBDATA.sErrorMsg
+                goto EOS
+        #}
+        endif
+        lv_c = cint("0")
+        print(lv_c)
+        sv_a = urhk_CopyOutToIn("")
+        print(sv_a)
+        sv_a = urhk_SetUrhkInp("limitHdr.limitAcct.foracid|" + CUST.DATA.upldForacid)
+        print(CUST.DATA.odacctCrncyCode)
+
+        if(CUST.DATA.odacctCrncyCode!="")then
+        #{
+                sv_a = urhk_SetUrhkInp("limitHdr.maxAlwdLimForAcct|" + CUST.DATA.SanctionLimit + "|" + CUST.DATA.odacctCrncyCode )
+        #}
+        else
+        #{
+                sv_a = urhk_SetUrhkInp("limitHdr.maxAlwdLimForAcct|" + CUST.DATA.SanctionLimit + "|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        endif
+        sv_a = urhk_SetUrhkInp("limitHdr.GAMCookie|" + CUST.DATA.GAMCookie )
+        sv_a = urhk_SetUrhkInp("limitHdr.schmCookie|" + CUST.DATA.schmCookie )
+        CUST.DATA.serial_num = cint(CUST.DATA.count) + 1
+        print(CUST.DATA.serial_num)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.key.serial_num|" + CUST.DATA.serial_num )
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.applicableDate|" + CUST.DATA.applcbldate)
+        if(CUST.DATA.odacctCrncyCode!="")then
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLimit|" + CUST.DATA.SanctionLimit + "|" + CUST.DATA.odacctCrncyCode )
+        #}
+        else
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLimit|" + CUST.DATA.SanctionLimit + "|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        endif
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitLevelIntFlg|N")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.supercedeFlg|Y")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.expiryDate|" + CUST.DATA.expDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctDate|" + CUST.DATA.applcbldate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyMth|0")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyDay|0")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitPenaltyDate|" + CUST.DATA.limitPenaltyDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.loanPaperDate|" + CUST.DATA.applcbldate )
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.limitReviewDate|" + CUST.DATA.reviewDate)
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctRefNum|GPL")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctAuthCode.refCode|OTH")
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.sanctLevelCode.refCode|OTHER")
+        if(CUST.DATA.odacctCrncyCode!="")then
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.crncyCode|" + CUST.DATA.odacctCrncyCode)
+        #}
+        else
+        #{
+                sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.crncyCode|" + BANCS.STDIN.homeCrncyCode )
+        #}
+        endif
+        sv_a = urhk_SetUrhkInp("limitLL.<rec_" + FORMAT$(lv_c, "%d") + ">.recordFlg|Y")
+
+        sv_u = urhk_ExecSrvNoCommit("SRV_AddAcctSanctLimitAndVerify|retain_all_output = Y|same_user_verify = Y|ignore_excp_flg = I|call_mode=N")
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+        #{
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        #}
+        else
+        #{
+                sv_s = "X"
+        #}
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                print("Sanction Limit Modified Successfully")
+		sv_a = "update custom.C_ACLHMUPLD set process_status = 'V',process_remarks='Verified Successfully',lchg_user_id = ?SVAR,LCHG_TIME=sysdate where foracid = ?SVAR AND UPLOAD_DATE=to_date(?SVAR,'DD-MON-RR') AND BANK_ID = ?SVAR "
+		PRINT(sv_a)
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.DATA.upldForacid+ "|" +CUST.DATA.upldDate + "|" +CUST.DATA.bankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_c = urhk_dbSqlWithBind(sv_a)
+		PRINT(sv_c)
+		sv_c = urhk_dbSqlWithBind("commit")
+		PRINT(sv_c)
+	#}
+        else
+        #{
+                EQSRV.GLBDATA.srvAcctId = CUST.DATA.upldForacid
+                callscriptifexist("ebsrvHandler.scr")
+                CUST.DATA.srvErrMsg = EQSRV.GLBDATA.SrvError
+                CUST.DATA.srvErrCode = "Failed : SRV_AddAcctSanctLimitAndVerify"
+                CUST.DATA.srvSucFail = "F"
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_u = urhk_SetOrbOut("Message|" + CUST.DATA.srvErrMsg )
+		CUST.DATA.procStatus="Failure"
+		CUST.DATA.procRmks=EQSRV.GLBDATA.sErrorMsg
+
+		sv_a = "update custom.C_ACLHMUPLD set process_status = 'V',process_remarks='Verification Failed',lchg_user_id = ?SVAR,LCHG_TIME=sysdate where foracid = ?SVAR AND UPLOAD_DATE=to_date(?SVAR,'dd-mm-yyyy') AND BANK_ID = ?SVAR "
+		PRINT(sv_a)
+		
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.userId + "|" +CUST.DATA.upldForacid+ "|" +CUST.DATA.BODDate + "|" +CUST.DATA.bankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_c = urhk_dbSqlWithBind(sv_a)
+		PRINT(sv_c)
+		sv_c = urhk_dbSqlWithBind("commit")
+		PRINT(sv_c)
+                goto EOS
+        #}
+        endif
+EOS:
+exitscript
+end-->
+

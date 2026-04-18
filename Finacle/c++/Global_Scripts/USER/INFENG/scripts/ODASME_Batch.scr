@@ -1,0 +1,307 @@
+<--START
+TRACE ON
+
+        IF (REPEXISTS("CUST")==0)THEN
+                CREATEREP("CUST")
+        ENDIF
+        IF(CLASSEXISTS("CUST","DATA")==0)then
+                CREATECLASS("CUST","DATA",5)
+        ENDIF
+
+        #-----------------------------
+        ## Variable Intialization
+        #-----------------------------
+                CUST.DATA.errMsg   = ""
+                CUST.DATA.LaceCharge = ""
+                CUST.DATA.chrgcollected   = "Y"
+                CUST.DATA.remarks_1  = ""
+
+        #-----------Getting Charge Account start---------------------#
+        CUST.DATA.CrVatBacid = "EXCISEDUTY"
+        print(CUST.DATA.CrVatBacid)
+
+        sv_a = CUST.DATA.CrVatBacid+"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+        sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+        print(sv_k)
+
+        IF(sv_k == 0)THEN
+        #{
+                CUST.DATA.CrVatAcct = BANCS.OUTPARAM.AcctId
+                PRINT(CUST.DATA.CrVatAcct)
+        #}
+        ENDIF
+        #---------------------- Getting Charge Account End-------------------------------------#
+
+        #----------------------------Getting Charge Account start--------------------------------#
+        CUST.DATA.CrChargeBacid = "LACE_OD548"
+        print(CUST.DATA.CrChargeBacid)
+
+        sv_a = CUST.DATA.CrChargeBacid+"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+        sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+        print(sv_k)
+
+        IF(sv_k == 0)THEN
+        #{
+                CUST.DATA.CrChargeAcct = BANCS.OUTPARAM.AcctId
+                PRINT(CUST.DATA.CrChargeAcct)
+        #}
+        ENDIF
+        #---------------------- Getting Charge Account End-------------------------------------#
+
+
+        ########################################
+        #Fetch Operative Account                        ##
+        ########################################
+        sv_s = "Crforacid,AccontName,ClrAmt,SchmCode,CifId,poolid|"
+        sv_s = sv_s + " select foracid,acct_name,clr_bal_amt, schm_code,cif_id,pool_id from tbaadm.gam where schm_type in('SBA','CAA') "
+        sv_s = sv_s + " and bank_id=?SVAR and sol_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and clr_bal_amt < 0.00 and cif_id in(select cif_id from tbaadm.gam "
+        sv_s = sv_s + " where schm_code IN('OD548')) "
+        print(sv_s)
+        BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId
+        print(BANCS.INPARAM.BINDVARS)
+
+        sv_e = urhk_dbcursorOpenWithBind(sv_s)
+        print(sv_e)
+
+IF(sv_e == 0) THEN
+#{
+
+                CUST.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                print(CUST.DATA.CURSOR_NUMBER)
+                sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+                print(sv_c)
+                lv_t=1
+                print(lv_t)
+
+WHILE(sv_c == "0")
+#{
+
+                CUST.DATA.poolid = ""
+                CUST.DATA.ClrAmt = BANCS.OUTPARAM.ClrAmt
+                PRINT(CUST.DATA.ClrAmt)
+                CUST.DATA.OriClrAmt = BANCS.OUTPARAM.ClrAmt
+                CUST.DATA.Crforacid = BANCS.OUTPARAM.Crforacid
+                PRINT(CUST.DATA.Crforacid)
+                CUST.DATA.CifId = BANCS.OUTPARAM.CifId
+                PRINT(CUST.DATA.CifId)
+                CUST.DATA.poolid = BANCS.OUTPARAM.poolid
+                PRINT(CUST.DATA.poolid)
+
+                ############################################
+                ### CHECK DTD TRANSACTION POSTED ###########
+                ############################################
+                sv_s = "count| SELECT count(*) FROM TBAADM.DTD WHERE ACID IN(SELECT ACID FROM tbaadm.gam where FORACID=?SVAR) AND BANK_ID=?SVAR AND VFD_DATE='' AND VFD_USER_ID='' AND PSTD_USER_ID='' AND DEL_FLG='N' AND (PSTD_FLG='N' OR PSTD_FLG='Y')"
+                print(sv_s)
+                BANCS.INPARAM.BINDVARS =  CUST.DATA.Crforacid +"|"+ BANCS.STDIN.contextBankId
+                print(BANCS.INPARAM.BINDVARS)
+
+                sv_e = urhk_dbSelectWithBind(sv_s)
+                print(sv_e)
+
+                IF(sv_e==0)then
+                 #{
+                        BANCS.INPUT.count = BANCS.OUTPARAM.count
+                        PRINT(BANCS.INPUT.count)
+                 #}
+                ENDIF
+                PRINT(BANCS.INPUT.count)
+                IF(BANCS.INPUT.count >0) THEN
+                #{
+                        CUST.DATA.errMsg = "UNPOSTED TRANSACTION EXIST FOR ACCOUNT" +" "+ CUST.DATA.Crforacid
+                        PRINT(CUST.DATA.errMsg)
+                        GOTO NEXTREC
+                #}
+                ENDIF
+                ########################################
+                #Fetch Overdraft Account                        ##
+                ########################################
+
+                sv_s = "Drforacid,DrAccontName,DrSchmCode,CCifId|"
+                sv_s = sv_s + " select foracid,acct_name, schm_code,cif_id from tbaadm.gam where schm_code in('OD548') "
+                sv_s = sv_s + " and bank_id=?SVAR and cif_id=?SVAR and entity_cre_flg='Y' and acct_cls_flg!='Y' and del_flg='N' and pool_id=?SVAR "
+                print(sv_s)
+                BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ CUST.DATA.CifId +"|"+ CUST.DATA.poolid
+                print(BANCS.INPARAM.BINDVARS)
+
+                sv_e = urhk_dbSelectWithBind(sv_s)
+                print(sv_e)
+
+                IF(sv_e == 0) THEN
+                #{
+                        CUST.DATA.Drforacid= BANCS.OUTPARAM.Drforacid
+                        PRINT(CUST.DATA.Drforacid)
+                        CUST.DATA.CCifId = BANCS.OUTPARAM.CCifId
+                        PRINT(CUST.DATA.CCifId)
+                #}
+                ELSE
+                #{
+                        GOTO NEXTREC
+                #}
+                ENDIF
+
+                PRINT(CUST.DATA.ClrAmt)
+
+                ###################Fetch Account Details###################################################################
+                sv_a = CUST.DATA.Drforacid
+                print(sv_a)
+                sv_b = urhk_getAcctDetailsInRepository(sv_a)
+
+                IF(sv_b == 0) THEN
+
+                sv_e = BANCS.OUTPARAM.sanctionLimit
+                sv_s = BANCS.OUTPARAM.cleanAdhocLimit
+                sv_w = BANCS.OUTPARAM.drawingPower
+                sv_q = BANCS.OUTPARAM.usedUnclearOverDACC
+                sv_r = BANCS.OUTPARAM.FXClearBalance
+                sv_x = BANCS.OUTPARAM.ClearBalance
+                sv_h = BANCS.OUTPARAM.FxAvailableAmt
+                sv_l = BANCS.OUTPARAM.AvailableAmt
+                print(sv_l)
+                sv_i = BANCS.OUTPARAM.DACCLimit
+                sv_j = BANCS.OUTPARAM.FxFFDAvailableAmt
+                print(sv_j)
+                sv_n = BANCS.OUTPARAM.FFDAvailableAmt
+                print(sv_n)
+                sv_k = BANCS.OUTPARAM.lienAmt
+                print(sv_k)
+                sv_o = BANCS.OUTPARAM.FxEffAvailableAmt
+                print(sv_o)
+                sv_t = BANCS.OUTPARAM.EffAvailableAmt
+                print(sv_t)
+                sv_v = BANCS.OUTPARAM.systemGeneratedLimit
+                sv_p = BANCS.OUTPARAM.SystemReservedAmt
+
+                ENDIF
+
+                ####################################Getting CPARAM Value Start#############################################
+
+                CUST.DATA.parameterId="LACE_OD548"
+
+                sv_s = "LaceCharge|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+                sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+                sv_s = sv_s + " AND M.MODULE_NAME = 'CHARGE'"
+                sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+                sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+                sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+                sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+                sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+                sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+                sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+                sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+                PRINT(sv_s)
+
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.parameterId
+                PRINT(BANCS.INPARAM.BINDVARS)
+
+                sv_d = urhk_dbSelectWithBind(sv_s)
+                PRINT(sv_d)
+
+                IF(sv_d == 0)THEN
+                #{
+                        CUST.DATA.LacePercent = BANCS.OUTPARAM.LaceCharge
+
+                #}
+                ENDIF
+
+
+                ###############################Charge Calculation start#################################################
+
+                                PRINT(CUST.DATA.LacePercent)
+                                PRINT(CUST.DATA.ClrAmt)
+                                CUST.DATA.LaceCharge = (CDOUBLE(CUST.DATA.LacePercent) * CDOUBLE(CUST.DATA.ClrAmt))/100
+                                CUST.DATA.LaceCharge = -(CDOUBLE(CUST.DATA.LaceCharge))
+                                PRINT(CUST.DATA.LaceCharge)
+                ################################Charge Calculation End###################################################
+                ###############################Exercise Duty Calculation start#################################################
+                                CUST.DATA.Vatperct = "20"
+                                PRINT(CUST.DATA.Vatperct)
+                                PRINT(CUST.DATA.LaceCharge)
+                                CUST.DATA.VatAmt = (CDOUBLE(CUST.DATA.Vatperct) * CDOUBLE(CUST.DATA.LaceCharge))/100
+                                PRINT(CUST.DATA.VatAmt)
+                ################################Exercise Duty Calculation End###################################################
+
+
+                CUST.DATA.TotAmt = (CDOUBLE(CUST.DATA.VatAmt) + CDOUBLE(CUST.DATA.LaceCharge))
+                CUST.DATA.ClrAmt=CDOUBLE(CUST.DATA.TotAmt) *-1
+                print(CUST.DATA.ClrAmt)
+                CUST.DATA.ClrAmt = FORMAT$(CDOUBLE(CUST.DATA.ClrAmt),"%.2f")
+                print(CUST.DATA.ClrAmt)
+                CUST.DATA.EffAvalBal = FORMAT$(CDOUBLE(sv_l),"%.2f")
+                print(CUST.DATA.EffAvalBal)
+
+                IF(CDOUBLE(CUST.DATA.ClrAmt) >= CDOUBLE(CUST.DATA.EffAvalBal)) THEN
+                #{
+                        CUST.DATA.chrgcollected   = "N"
+                        CUST.DATA.remarks_1  = "insufficient funds Currenct Balance :" + CUST.DATA.EffAvalBal
+                        GOTO NEXTREC
+                #}
+                ELSE
+                #{
+                        print("Sufficient balance")
+                        print(CUST.DATA.ClrAmt)
+                        CUST.DATA.ClrAmt = (CDOUBLE(CUST.DATA.ClrAmt)+CDOUBLE(CUST.DATA.LaceCharge))
+                        CUST.DATA.ClrAmt = CDOUBLE(CUST.DATA.ClrAmt)
+                        CUST.DATA.ClrAmt = FORMAT$(CDOUBLE(CUST.DATA.ClrAmt),"%.2f")
+                        print(CUST.DATA.ClrAmt)
+
+                #}
+                ENDIF
+                print(CUST.DATA.ClrAmt)
+                ###############################srv to collect charge and VAT ###########################################################
+		print(sv_t)
+		print(CUST.DATA.TotAmt)
+		IF(((cdouble(CUST.DATA.ClrAmt))<=("0.00")) and (cdouble(sv_t) >= cdouble(CUST.DATA.TotAmt))) THEN
+                #{
+                        #call("ODASME_Batch_srv.scr")
+                        call("ODASME_Batch_Mtt.scr")
+
+                        GOTO NEXTREC
+
+                #}
+                ELSE
+                #{
+                        CUST.DATA.chrgcollected   = "N"
+                        CUST.DATA.remarks_1  = "insufficient funds Currenct Balance :" + CUST.DATA.EffAvalBal
+
+                #}
+                ENDIF
+
+                lv_t = lv_t + 1
+                PRINT(lv_t)
+
+
+                NEXTREC:
+
+                IF(CUST.DATA.chrgcollected == "N")THEN
+                #{
+                #----------- Start Insert
+                        CUST.DATA.VatAmt = FORMAT$(cdouble(CUST.DATA.VatAmt),"%.2f")
+                        CUST.DATA.LaceCharge = FORMAT$(cdouble(CUST.DATA.LaceCharge),"%.2f")
+                        CUST.DATA.TotAmt = FORMAT$(cdouble(CUST.DATA.TotAmt),"%.2f")
+                        CUST.DATA.OriClrAmt = FORMAT$(cdouble(CUST.DATA.OriClrAmt),"%.2f")
+
+                        sv_s = " insert into CUSTOM.C_DEFERRED_ODA_CHARGE (Dr_OD_Account,Del_flg,Excise_Duty_chrg,Lace_chrg,Uncollected_charge_amount,consumption_amount,rcre_date,collected_flg,remarks_1)"
+                        sv_s = sv_s + " values (?SVAR,'N',?SVAR,?SVAR,?SVAR,?SVAR,sysdate,'N',?SVAR)"
+                        print(sv_s)
+                        BANCS.INPARAM.BINDVARS = CUST.DATA.Drforacid + "|" + CUST.DATA.VatAmt +"|"+ CUST.DATA.LaceCharge +"|"+CUST.DATA.TotAmt +"|"+ CUST.DATA.OriClrAmt +"|"+ CUST.DATA.remarks_1
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        sv_w = urhk_dbsqlWithBind(sv_s)
+                        sv_w = urhk_dbsqlWithBind("COMMIT")
+                        print(sv_w)
+                #}
+                ENDIF
+
+                sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+                print(sv_c)
+
+#}
+DO
+sv_u = urhk_dbCursorClose(CUST.DATA.CURSOR_NUMBER)
+
+#}
+ENDIF
+
+ENDOFSCRIPT:
+EXITSCRIPT
+trace off
+END-->

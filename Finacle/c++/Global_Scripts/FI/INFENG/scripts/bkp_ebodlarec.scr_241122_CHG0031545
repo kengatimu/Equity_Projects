@@ -1,0 +1,266 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebodlarec.scr 
+#  Description     : batch
+#  Date            : 23-04-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-04-2021      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+	callscriptifexist("ebodlarecPPayLienRec.scr")
+	exitscript
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+	EQSRV.GLBDATA.TranId = ""
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                goto EndScr
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "OD Loan Recovery" 
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        sv_u = urhk_MTTS_DefineTransaction("eftdrcrsweep")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                GOTO EndScr
+        endif
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+	lv_q = " shdlNum,flowId,crAcid,drAcid,dmdAmt,totAdjAmt,outstanAmt,numOfInstall,dmdDate,numOfpay,monthofPay | "
+	lv_q = lv_q + " select a.shdl_num,a.flow_id,a.od_acid,a.op_acid,a.dmd_amt,a.tot_adj_amt,"
+	lv_q = lv_q + " a.dmd_amt-a.tot_adj_amt,b.number_of_payments,b.next_dmd_date,a.free_text_1,a.free_text_2 " 
+	lv_q = lv_q + " from custom.odla_dmd_tbl a,custom.odla_schl_tbl b "
+	lv_q = lv_q + " where a.bank_id=?SVAR "
+	lv_q = lv_q + " and b.bank_id=?SVAR "
+	lv_q = lv_q + " and a.od_acid = b.od_acid "
+	lv_q = lv_q + " and a.op_acid = b.op_acid "
+	lv_q = lv_q + " and a.op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+        lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) " 
+	lv_q = lv_q + " and a.dmd_amt >= a.tot_adj_amt "
+	lv_q = lv_q + " and a.dmd_date <= to_date(?SVAR,'DD-MM-RR') " 
+	lv_q = lv_q + " and a.entity_cre_flg='Y' "
+	lv_q = lv_q + " and a.del_flg='N' "
+	lv_q = lv_q + " and a.free_text_3 is null "
+	lv_q = lv_q + " and b.entity_cre_flg='Y' "
+	lv_q = lv_q + " and b.del_flg='Y' "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.mySolId + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+	print(lv_q)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		EQSRV.GLBDATA.shdlNum = BANCS.OUTPARAM.shdlNum
+		EQSRV.GLBDATA.flowId = BANCS.OUTPARAM.flowId
+		EQSRV.GLBDATA.crAcid = BANCS.OUTPARAM.crAcid
+		EQSRV.GLBDATA.drAcid = BANCS.OUTPARAM.drAcid
+		EQSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+		EQSRV.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+		EQSRV.GLBDATA.outstanAmt = BANCS.OUTPARAM.outstanAmt
+		EQSRV.GLBDATA.numOfInstall = BANCS.OUTPARAM.numOfInstall
+		EQSRV.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+		EQSRV.GLBDATA.numOfpay = BANCS.OUTPARAM.numOfpay
+		EQSRV.GLBDATA.monthofPay = BANCS.OUTPARAM.monthofPay
+                sv_a= urhk_B2k_AcidToForacid(EQSRV.GLBDATA.drAcid)
+                if(sv_a==0)then
+                        EQSRV.GLBDATA.drAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        EQSRV.GLBDATA.drAcctId = ""
+                endif
+                sv_a= urhk_B2k_AcidToForacid(EQSRV.GLBDATA.crAcid)
+                if(sv_a==0)then
+                        EQSRV.GLBDATA.crAcctId = BANCS.OUTPARAM.Foracid
+                else
+                        EQSRV.GLBDATA.crAcctId = ""
+                endif
+		sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+		if(sv_u == 0)then
+			EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+			EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+			EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+			EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+			EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+		else
+			EQSRV.GLBDATA.drdrawingPower = 0
+			EQSRV.GLBDATA.drEffBal = 0
+			EQSRV.GLBDATA.drclearBalance = 0
+			EQSRV.GLBDATA.drsanLim = 0
+			EQSRV.GLBDATA.dravalAmt = 0
+		endif
+		if(cdouble(EQSRV.GLBDATA.outstanAmt)<=cdouble(EQSRV.GLBDATA.drclearBalance))then
+			EQSRV.GLBDATA.tranAmt = EQSRV.GLBDATA.outstanAmt
+		else
+			EQSRV.GLBDATA.tranAmt = EQSRV.GLBDATA.drclearBalance
+		endif
+		if((EQSRV.GLBDATA.drAcctId!="")and(EQSRV.GLBDATA.crAcctId!="")and(cdouble(EQSRV.GLBDATA.tranAmt)>0))then
+		#{
+					MTT.PartTranDetails.Account = EQSRV.GLBDATA.drAcctId
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.ValueDate   =  "0"
+					if(EQSRV.GLBDATA.flowId=="INDEM")then
+						###MTT.PartTranDetails.Particulars = "IntDmd Dr for:" + EQSRV.GLBDATA.crAcctId 
+						MTT.PartTranDetails.Particulars = "Int recovery for:" + EQSRV.GLBDATA.crAcctId
+					endif
+					if(EQSRV.GLBDATA.flowId=="PRDEM")then
+						###MTT.PartTranDetails.Particulars = "PrinDmd Dr for:" + EQSRV.GLBDATA.crAcctId 
+						MTT.PartTranDetails.Particulars = "Prin recovery for:" + EQSRV.GLBDATA.crAcctId
+					endif
+					MTT.PartTranDetails.RefAmount = -1*cdouble(EQSRV.GLBDATA.tranAmt)
+					print(MTT.PartTranDetails.RefAmount)
+					if(EQSRV.GLBDATA.flowId=="INDEM")then
+					MTT.PartTranDetails.Remarks = "Interest Recovery"
+					endif
+					if(EQSRV.GLBDATA.flowId=="PRDEM")then
+					MTT.PartTranDetails.Remarks = "Principal Recovery"
+					endif
+					MTT.PartTranDetails.RefNum = ""
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "Y"
+					MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+					print(MTT.PartTranDetails.TranIdentifier)
+					sv_e = "PurchaseIncome"
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					if (sv_r != 0) then
+						BANCS.OUTPUT.successOrFailure = "F"
+						print(MTT.Error.Description)
+						MTT.Error.Description="Could not Create Part tran for collection of WTH"
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						sv_r = BANCS.OUTPARAM.MTTErrorDesc
+						GOTO EndScr
+					endif
+					MTT.PartTranDetails.Account = EQSRV.GLBDATA.crAcctId
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.ValueDate           =  "0"
+                                        if(EQSRV.GLBDATA.flowId=="INDEM")then
+                                                ##MTT.PartTranDetails.Particulars = "IntDmd Cr from:" + EQSRV.GLBDATA.drAcctId
+						MTT.PartTranDetails.Particulars = "Int recovery from:" + EQSRV.GLBDATA.drAcctId 
+                                        endif
+                                        if(EQSRV.GLBDATA.flowId=="PRDEM")then
+                                                ##MTT.PartTranDetails.Particulars = "PrinDmd Cr from:" + EQSRV.GLBDATA.drAcctId
+						MTT.PartTranDetails.Particulars = "Prin recovery from:" + EQSRV.GLBDATA.drAcctId 
+                                        endif
+					MTT.PartTranDetails.RefAmount = 1 * cdouble(EQSRV.GLBDATA.tranAmt)
+					print(MTT.PartTranDetails.RefAmount)
+					if(EQSRV.GLBDATA.flowId=="INDEM")then
+					MTT.PartTranDetails.Remarks = "Interest Recovery"
+					endif
+					if(EQSRV.GLBDATA.flowId=="PRDEM")then
+					MTT.PartTranDetails.Remarks = "Principal Recovery"
+					endif
+					MTT.PartTranDetails.RefNum = ""
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "Y"
+					MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+					sv_r = urhk_MTTS_definePartTran("eftdrcrsweep")
+					if (sv_r == 1) then
+						EQSRV.GLBDATA.expErrMsg = "Unable to define part-tran."
+						goto EndScr
+					endif
+				sv_u = urhk_MTTS_EndDefinition("")
+				print(sv_u)
+				EQSRV.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+				print(EQSRV.GLBDATA.TranId)
+
+				print(MTT.XCPN.NumExceptions)
+				print(MTT.XCPN.NumWarnings)
+				if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+					sv_u = urhk_MTTS_HandleExceptions("POST")
+					if (sv_u != 0) then
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						print (MTT.Error.Description)
+					endif
+				else
+					sv_u = urhk_MTTS_HandleExceptions("POST")
+					if (sv_u != 0) then
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						print (MTT.Error.Description)
+					endif
+				endif
+				EQSRV.GLBDATA.totrecamt = cdouble(EQSRV.GLBDATA.totAdjAmt) +  cdouble(EQSRV.GLBDATA.tranAmt)
+				lv_p = "update custom.odla_dmd_tbl set tot_adj_amt=?NVAR ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR where bank_id=?SVAR and op_acid=?SVAR and od_acid=?SVAR and op_sol_id=?SVAR  and shdl_num=?NVAR and flow_id=?SVAR and free_text_1=?SVAR and free_text_2=?SVAR" 
+				BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.totrecamt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.TranId + "|" +  BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.shdlNum + "|" + EQSRV.GLBDATA.flowId + "|" + EQSRV.GLBDATA.numOfpay + "|" + EQSRV.GLBDATA.monthofPay 
+				print(lv_p)
+				print(BANCS.INPARAM.BINDVARS)
+				lv_h = urhk_dbSqlWithBind(lv_p)
+				print(lv_h)
+			
+		else
+			goto NXTREC
+		#}
+		endif
+		NXTREC:
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "lara Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto Endofscript
+                endif
+                EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+trace off
+end-->

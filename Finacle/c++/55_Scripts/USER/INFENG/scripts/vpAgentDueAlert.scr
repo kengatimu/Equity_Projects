@@ -1,0 +1,159 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpAgentDueAlert.scr 
+#  Description     : batch AGALR
+#  Date            : 15-06-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             15-06-2022      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Caution : Do not Change any variables and logics whitout proper change request and business rules
+#-------------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","GCHRG")==0)then
+                createclass("CUST","GCHRG",5)
+        endif
+        sv_a = "rm -f AgentDueAlert.lst"
+        sv_a = system(sv_a)
+        sv_a = "touch AgentDueAlert.lst"
+        sv_a = system(sv_a)
+
+
+        print(BANCS.STDIN.BODDate)
+        EQSRV.GLBDATA.boddate = left$(BANCS.STDIN.BODDate,10)
+        lv_a = EQSRV.GLBDATA.boddate
+        print(lv_a)
+        print(BANCS.STDIN.mySolId)
+        lv_x = BANCS.STDIN.mySolId + "|" + lv_a
+        print(lv_x)
+        sv_e = urhk_GetNextWorkingDate(lv_x)
+        print(sv_e)
+        if(sv_e==0)then
+        #{
+                print(BANCS.OUTPARAM.NextWorkingDate)
+                print(BANCS.OUTPARAM.PrevWorkingDate)
+                print(BANCS.OUTPARAM.NextDataCentreWorkingDate)
+                print(BANCS.OUTPARAM.PrevDataCentreWorkingDate)
+                EQSRV.GLBDATA.commissionDate = left$(BANCS.OUTPARAM.PrevDataCentreWorkingDate,10)
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.commissionDate = ""
+                exitscript
+        #}
+        endif
+
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+
+	####lv_q = " AgentAcctId,DmdDate,DmdOvduDate,dmdAmt,totAdjAmt,DueAmt,LoanAmount | select foracid,dmd_date,dmd_ovdu_date,dmd_amt,tot_adj_amt,dmd_amt-tot_adj_amt as due, (select clr_bal_Amt from tbaadm.gam where bank_id=?SVAR and schm_type='ODA' and schm_code='OD541' and entity_cre_flg='Y' and del_flg='N' and cif_id=free_text1 ) as odbalance from custom.agddt where bank_id=?SVAR and dep_srl_num='NOSWEEPDIRECT_CREDIT' and sol_id=?SVAR and dmd_amt-tot_adj_amt >0 and dmd_date <= (select db_stat_date-1 from tbaadm.gct where bank_id=?SVAR) order by foracid,rcre_time desc "
+		lv_q = " AgentAcctId,DmdDate,DmdOvduDate,dmdAmt,totAdjAmt,DueAmt,LoanAmount | select foracid,to_char(dmd_date,'DD-MM-YYYY'),to_date(dmd_ovdu_date,'DD-MM-YYYY'),dmd_amt,tot_adj_amt,dmd_amt-tot_adj_amt as due, (select clr_bal_Amt from tbaadm.gam where bank_id=?SVAR and schm_type='ODA' and schm_code='OD541' and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg ='N' and cif_id=free_text1 and rownum <2  ) as odbalance from custom.agddt where bank_id=?SVAR and dep_srl_num='NOSWEEPDIRECT_CREDIT' and sol_id=?SVAR and dmd_amt-tot_adj_amt >0 and dmd_date-1 = (select db_stat_date from tbaadm.gct where bank_id=?SVAR) order by foracid,rcre_time desc "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+        print(lv_q)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                EQSRV.GLBDATA.AgentAcctId = BANCS.OUTPARAM.AgentAcctId
+                EQSRV.GLBDATA.DmdDate = BANCS.OUTPARAM.DmdDate
+                EQSRV.GLBDATA.DmdOvduDate = BANCS.OUTPARAM.DmdOvduDate
+                EQSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+                EQSRV.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+                EQSRV.GLBDATA.DueAmt = BANCS.OUTPARAM.DueAmt
+                EQSRV.GLBDATA.LoanAmount = BANCS.OUTPARAM.LoanAmount
+
+		if(cdouble(EQSRV.GLBDATA.LoanAmount)>=0)then
+		#{
+			goto NXTREC
+		#}
+		else
+		#{
+			EQSRV.GLBDATA.DccId = "COR"
+			EQSRV.GLBDATA.Command = "DUE"
+			EQSRV.GLBDATA.CifId = "COR"
+			BANCS.OUTPUT.agntValYN = "DUEALERT"
+ sv_a = EQSRV.GLBDATA.AgentAcctId  + "|" + EQSRV.GLBDATA.DccId + "|" + EQSRV.GLBDATA.Command + "|" + EQSRV.GLBDATA.CifId + "|" + EQSRV.GLBDATA.DmdDate + "|" + BANCS.OUTPUT.agntValYN + "|" + EQSRV.GLBDATA.DueAmt
+                                sv_q = "echo '" + sv_a + "' >> AgentDueAlert.lst "
+                                print(sv_q)
+                                sv_s = system(sv_q)
+                                print(sv_s)
+                                goto NXTREC
+		#}
+		endif
+
+                NXTREC:
+                        print(EQSRV.GLBDATA.srvErrMsg)
+                        print(EQSRV.GLBDATA.srvErrCode)
+                        print(EQSRV.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+				goto ALERTRUN
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+ALERTRUN:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        sv_s = "echo $B2K_SESSION_ID"
+        print(system(sv_s))
+        sv_n = "5"
+        sv_a = "nohup exebatch -n "+sv_n+" -i AgentDueAlert.lst babx4061 $B2K_SESSION_ID vpAgentFloatAlert_bt.scr @s"
+        sv_r = system(sv_a)
+        exitscript
+Endofscript:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        exitscript
+trace off
+end-->

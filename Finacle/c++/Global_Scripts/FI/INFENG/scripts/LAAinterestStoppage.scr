@@ -1,0 +1,325 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : LAAinterestStoppage.scr
+#  Description     : stop interest for lOAN accounts whose system classification is NPA
+#  Date            : 24-02-2022
+#  Author          : James Maina
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             24-02-2022      James Maina		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","LAA") == 0) THEN
+#{
+	CREATECLASS("CUST","LAA",5)
+#}
+ENDIF
+
+
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+print (sv_a)
+
+
+########SOS/SD2332959/30-09-2022#########
+	#------------------------------------------------------------------------------------------------------------------------
+	#FETCHING ELIGIBLE LAA ACCOUNTS
+	#------------------------------------------------------------------------------------------------------------------------
+	sv_s = "ACID" 
+
+	sv_s = sv_s + " |  SELECT   ENTITY_ID   FROM    (select  itc.entity_id,INT_TBL_CODE   from    tbaadm.itc,TBAADM.GAM,(select  max(INT_TBL_CODE_SRL_NUM)max_srl ,entity_id,bank_id from    tbaadm.itc  where   bank_id='54'  " 
+	sv_s = sv_s + "and entity_id in (SELECT L.ACID FROM TBAADM.ACD A, TBAADM.LAM L  WHERE "
+	sv_s = sv_s + "L.BANK_ID=?SVAR AND L.DEL_FLG='N' AND L.ENTITY_CRE_FLG='Y' AND "
+	sv_s = sv_s + " (L.INT_DMD_OS > L.PRIN_DMD_OS) AND A.MAIN_CLASSIFICATION_USER='NPA' "
+	sv_s = sv_s + "AND A.B2K_ID= L.ACID AND L.CHRGE_OFF_FLG!='Y')  group    by  bank_id,entity_id)a "
+	sv_s = sv_s + "where    itc.bank_id=a.bank_id "
+	sv_s = sv_s + "and  itc.entity_id=a.entity_id "
+	sv_s = sv_s + "and    itc.bank_id=GAM.bank_id "
+	sv_s = sv_s + "and  itc.entity_id=GAM.acid "
+	sv_s = sv_s + "and  GAM.SOL_ID=?SVAR "
+	sv_s = sv_s + "and  itc.INT_TBL_CODE_SRL_NUM=max_srl) "
+	sv_s = sv_s + "where INT_TBL_CODE!='LZERO'"
+   
+
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId  + "|" + BANCS.STDIN.mySolId
+	PRINT(BANCS.INPARAM.BINDVARS)
+########SOS/SD2332959/30-09-2022#########
+	#sv_s = sv_s + " |SELECT B2K_ID FROM TBAADM.ACD WHERE"
+	#sv_s = sv_s + " BANK_ID=?SVAR AND MAIN_CLASSIFICATION_USER='PA' AND B2K_ID IN ('AH7895161', 'AH7899513', 'AH7901174','AH7902154','AH7902746','AH7903494','AH7903766','AH7903909','AH7905493','AH7907653','AH7908669')"
+	#BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+	#PRINT(BANCS.INPARAM.BINDVARS)
+
+	sv_v = urhk_dbcursorOpenWithBind(sv_s)
+       	PRINT(sv_v)	
+
+	IF(sv_v == 0) THEN
+       	 #{
+        	CUST.LAA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+       		print(CUST.LAA.CURSOR_NUMBER)
+       		sv_b = urhk_dbCursorFetch(CUST.LAA.CURSOR_NUMBER)
+        	print(sv_b)
+		#BANCS.INPUT.RECCOUNT = CINT("1")
+        	#print(BANCS.INPUT.RECCOUNT)
+
+		WHILE(sv_b == "0")
+        	#{
+
+			CUST.LAA.ACID = BANCS.OUTPARAM.ACID 
+			print(CUST.LAA.ACID)
+
+			#------------------------------------------------------------------------------------------------------------------------
+			#Getting the current interest table code
+			#------------------------------------------------------------------------------------------------------------------------
+			sv_s="code,pegged, pfreqdays,pfreqmonths|"
+			sv_s = sv_s + " SELECT INT_TBL_CODE,PEGGED_FLG,PEG_FREQUENCY_IN_DAYS,PEG_FREQUENCY_IN_MONTHS FROM TBAADM.ITC WHERE "
+			sv_s = sv_s + " BANK_ID=?SVAR AND ENTITY_ID=?SVAR order by INT_TBL_CODE_SRL_NUM desC "
+			sv_s = sv_s + " OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY "
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.LAA.ACID
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+			  	CUST.LAA.code= BANCS.OUTPARAM.code
+				print(CUST.LAA.code)
+
+			  	CUST.LAA.pegged= BANCS.OUTPARAM.pegged
+				print(CUST.LAA.pegged)
+			  	CUST.LAA.pfreqdays= BANCS.OUTPARAM.pfreqdays
+				print(CUST.LAA.pfreqdays)
+			  	CUST.LAA.pfreqmonths= BANCS.OUTPARAM.pfreqmonths
+				print(CUST.LAA.pfreqmonths)
+
+
+
+				IF(CUST.LAA.code == "CZERO")THEN
+				#{
+					GOTO NEXTREC
+
+				#}
+				ENDIF			
+
+			#}
+			ENDIF
+			
+			#------------------------------------------------------------------------------------------------------------------------
+			#Getting the foracid
+			#------------------------------------------------------------------------------------------------------------------------
+
+ 			sv_u = urhk_B2k_AcidToForacid(CUST.LAA.ACID)
+			IF(sv_u==0)THEN
+			#{
+				CUST.LAA.Foracid= BANCS.OUTPARAM.Foracid
+				PRINT(CUST.LAA.Foracid)
+			#}
+			ENDIF
+
+
+
+			#------------------------------------------------------------------------------------------------------------------------
+			#Getting the account currency
+			#------------------------------------------------------------------------------------------------------------------------
+			sv_a = urhk_getAcctDetailsInRepository(CUST.LAA.Foracid)
+			print(sv_a)
+
+			IF(sv_a==0)THEN
+			#{
+				CUST.LAA.crncyCode = trim(BANCS.OUTPARAM.acctCrncyCode)
+				print(CUST.LAA.crncyCode)
+
+				CUST.LAA.solidsh = BANCS.OUTPARAM.acctSolId
+				print(CUST.LAA.solidsh)
+				CUST.LAA.schmcodesh = BANCS.OUTPARAM.schmCode
+				print(CUST.LAA.schmcodesh)
+				CUST.LAA.schmType = BANCS.OUTPARAM.schmType
+				print(CUST.LAA.schmType)
+
+				sv_s="gspschm_code,int_tbl_code,min_int_pcnt_dr,max_int_pcnt_dr|"
+				sv_s = sv_s + " SELECT gsp.SCHM_CODE,INT_TBL_CODE,MIN_INT_PCNT_DR,MAX_INT_PCNT_DR FROM TBAADM.csp,TBAADM.gsp WHERE gsp.SCHM_CODE=csp.SCHM_CODE AND csp.CRNCY_CODE=?SVAR and gsp.BANK_ID=?SVAR "
+				sv_s = sv_s + " AND csp.BANK_ID=?SVAR and gsp.del_flg='N' and gsp.schm_type ='LAA' and gsp.schm_code =?SVAR "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS =  CUST.LAA.crncyCode + "|" +BANCS.STDIN.contextBankId + "|" +BANCS.STDIN.contextBankId + "|" + CUST.LAA.schmcodesh 
+				print(BANCS.INPARAM.BINDVARS)
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_d)
+				IF (sv_d == 0) THEN 
+				#{ 
+					CUST.LAA.min_int_pcnt_dr= BANCS.OUTPARAM.min_int_pcnt_dr
+					PRINT(CUST.LAA.min_int_pcnt_dr)
+					CUST.LAA.min_int_pcnt_dr="0.000000"
+					print(CUST.LAA.min_int_pcnt_dr)
+					CUST.LAA.max_int_pcnt_dr= BANCS.OUTPARAM.max_int_pcnt_dr
+					PRINT(CUST.LAA.max_int_pcnt_dr)
+					CUST.LAA.max_int_pcnt_dr="0.000000"
+					print(CUST.LAA.max_int_pcnt_dr)
+				#}
+				ENDIF
+
+			#}
+			ENDIF
+
+
+			#------------------------------------------------------------------------------------------------------------------------
+			#Getting Interest Table code and version (LZERO)
+			#------------------------------------------------------------------------------------------------------------------------
+
+			sv_s="tablecode|"
+			sv_s = sv_s + " SELECT INT_TBL_CODE FROM TBAADM.ICV WHERE "
+			sv_s = sv_s + " INT_TBL_CODE='CZERO' AND CRNCY_CODE=?SVAR AND ENTITY_CRE_FLG='Y' "
+			sv_s = sv_s + " AND DEL_FLG='N' AND BANK_ID=?SVAR AND "
+			sv_s = sv_s + " INT_TBL_VER_NUM = (SELECT MAX(INT_TBL_VER_NUM) FROM TBAADM.ICV WHERE INT_TBL_CODE='CZERO' "
+			sv_s = sv_s + " AND CRNCY_CODE=?SVAR AND ENTITY_CRE_FLG='Y' AND DEL_FLG='N')"
+			print(sv_s)
+
+			BANCS.INPARAM.BINDVARS =  CUST.LAA.crncyCode + "|" +  BANCS.STDIN.contextBankId + "|" + CUST.LAA.crncyCode
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			IF(sv_d==0)THEN
+			#{
+			  	CUST.LAA.tablecode= BANCS.OUTPARAM.tablecode
+				PRINT(CUST.LAA.tablecode)
+
+			#}
+			ELSE
+			#{
+				GOTO NEXTREC
+			#}
+			ENDIF
+
+			sv_u = urhk_SetUrhkInp("loanIntTblCrit.funcCode|M")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("loanIntTblCrit.laAcct.foracid|" + CUST.LAA.Foracid)
+			PRINT(sv_u)
+			
+			sv_u = urhk_ExecSrv("SRV_FetchLoanIntTblDtl|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+
+			IF(sv_u==0)THEN
+			#{
+				PRINT("SUCCESS1")
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.key.serial_num|1")
+				PRINT(sv_u)
+
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.intTblCode.tblCode|" + CUST.LAA.tablecode)
+				PRINT(sv_u)
+
+				CUST.LAA.intTblVerNum=""
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.intTblVerNum|" + CUST.LAA.intTblVerNum)
+				print(sv_u)
+				#new porting changes
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.minInt|" + CUST.LAA.min_int_pcnt_dr)
+				print(sv_u)
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.maxInt|" + CUST.LAA.max_int_pcnt_dr)
+				print(sv_u)
+
+				IF(CUST.LAA.pegged=="Y")THEN
+				#{
+
+					CUST.LAA.pegged="N"
+			
+				sv_u = urhk_SetUrhkInp("loanIntTblDtlLL.<rec_0>.peggedFlg|" + CUST.LAA.pegged)
+				print(sv_u)
+				#}
+				ENDIF
+
+				sv_u = urhk_ExecSrv("SRV_processLoanIntTblDtlAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+
+				IF(sv_u==0)THEN
+				#{
+					PRINT("SUCCESS2")
+
+				#}
+				ELSE
+				#{
+					GOTO CHECKERROR
+				#}
+				ENDIF
+
+			#}
+			ELSE
+			#{
+				GOTO CHECKERROR
+
+			#}
+			ENDIF
+
+				CHECKERROR:
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF (sv_v > 0) then
+					#{
+						sv_u = system("echo 'Error'")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							sv_u = system("echo '"+sv_e+"' >>loanMgr.log")
+							print(sv_u)			
+
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF		
+
+			
+
+       			GOTO NEXTREC
+
+      			 BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+        		 PRINT(BANCS.INPUT.RECCOUNT)
+
+        		 NEXTREC:
+       			 sv_b = urhk_dbCursorFetch(CUST.LAA.CURSOR_NUMBER)
+       			 print(sv_b)
+		#}
+	
+		DO
+		sv_u = urhk_dbCursorClose(CUST.LAA.CURSOR_NUMBER)
+	#}
+	ENDIF
+
+
+TRACE OFF
+END-->
+

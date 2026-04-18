@@ -1,0 +1,194 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : sol_trasferscriptRW.scr
+#   Description     : This script is called from job
+#   Date            : 14-05-2024
+#   Author          : jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : NA
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             14-05-2024      jane     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="dfc1af8bd32e4de7c44ee76d4e9d8e9765297a394aef7a43fedffc97380ba96e"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	#}
+	ENDIF
+	
+	
+	sv_b = BANCS.STDIN.mySolId
+	print(sv_b)
+	
+	sv_q="foracid,solid,newSol|"
+	sv_q = sv_q + "select foracid, sol_id, cust_pref FROM  CUSTOM.int_change where ENTITY_CRE_FLG='XFR' AND  bank_id = ?SVAR  "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		
+		WHILE(sv_q==0)
+		#{
+			CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+			print (CUSTS.GLBDATA.foracid)
+			CUSTS.GLBDATA.tosolid=BANCS.OUTPARAM.newSol
+			print (CUSTS.GLBDATA.tosolid)
+			CUSTS.GLBDATA.solidfrom = BANCS.OUTPARAM.solid
+			print(CUSTS.GLBDATA.solidfrom)
+
+			sv_u = "solid,acid,schmcode,crncycode,glSubHeadCode|"
+                        sv_u = sv_u + "select sol_id,acid,schm_code,acct_crncy_code,GL_SUB_HEAD_CODE from tbaadm.gam  "
+                        sv_u = sv_u + " where foracid = ?SVAR  AND bank_id= ?SVAR"
+                        PRINT(sv_u)
+
+                        BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+
+                        sv_w =  urhk_dbSelectWithBind(sv_u)
+                        PRINT(sv_w)
+
+			IF (sv_w==0) THEN
+                        #{
+                                CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+                                PRINT(CUSTS.GLBDATA.acid)
+                                CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+                                PRINT(CUSTS.GLBDATA.schmcode)
+                                CUSTS.GLBDATA.solid=BANCS.OUTPARAM.solid
+                                PRINT(CUSTS.GLBDATA.solid)
+                                CUSTS.GLBDATA.crncycode=BANCS.OUTPARAM.crncycode
+                                PRINT(CUSTS.GLBDATA.crncycode)
+				CUSTS.GLBDATA.glSubHeadCode=BANCS.OUTPARAM.glSubHeadCode
+                                PRINT(CUSTS.GLBDATA.glSubHeadCode)
+
+                                IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+                                #{
+                                        sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+                                        PRINT(sv_u)
+                                        sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                                        PRINT(sv_u)
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+
+
+			sv_a=urhk_SetUrhkInp("fromSol.solId|" + CUSTS.GLBDATA.solidfrom)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("toSol.solId|" + CUSTS.GLBDATA.tosolid)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("xferAcct.foracid|" + CUSTS.GLBDATA.foracid)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("acctStat.code|A")
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("xferAcct.crncyCode|" + CUSTS.GLBDATA.crncycode)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("schm.schmCode|" + CUSTS.GLBDATA.schmcode)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("glSubHead.glSubHeadCode|"+ CUSTS.GLBDATA.glSubHeadCode)
+			print(sv_a)
+			
+			sv_a=urhk_SetUrhkInp("verifyStat|Y")
+			print(sv_a)
+			
+			sv_u = urhk_ExecSrv("SRV_XferAcctBtwnSolAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+			
+			IF(sv_u == 0) THEN
+			#{
+				#print (BANCS.OUTPARAM.foracid)
+				sv_s = "UPDATE CUSTOM.Int_change "
+				sv_s = sv_s + " SET ENTITY_CRE_FLG='DONE' "
+				sv_s = sv_s + " WHERE foracid= ?SVAR"
+				sv_s = sv_s + " AND bank_id = ?SVAR"
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+				
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				
+				IF (sv_v > 0) THEN
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>transfer.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>transfer.log")
+						print(sv_u)
+					#}
+					DO
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+			
+		#}
+		DO
+		print("ALL ACCOUNTS ARE TRANSFERED")
+	#}
+	ENDIF
+	
+	
+	TRACE OFF
+	exitscript
+END-->

@@ -1,0 +1,559 @@
+#=======================================================================
+# Name                   : ODCA1_Batch_Demand.scr
+# Date                   : 22-11-2020
+# Description            : To fetch the OD541 accounts for demand
+# MenuOption             : HBJSTM/HBJE
+# Author                 : Silvester M
+# Called Script          : NA
+# Calling Script         : NA
+# Reference Document     : NA
+# Modification History
+# S.No.  Date          Name                 Description
+# -----  ----------    ----------------     -----------------------------
+#  1.0   17-08-2021     Silvester               Original Version
+#  2.0   21-11-2023     Rajesh R                Coding Alignment and modified the runtime error
+#  3.0   23-11-2023     Rajesh R                Addressed clients would have multiple liens due to the same overdraft
+#                                               Frozen and dormant accounts are not to be debited
+#========================================================================
+
+<--START
+TRACE ON
+
+        IF (REPEXISTS("CUSTS")==0)THEN
+        #{
+                CREATEREP("CUSTS")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUSTS","DATA")==0)then
+        #{
+                CREATECLASS("CUSTS","DATA",5)
+        #}
+        ENDIF
+
+        IF (REPEXISTS("CUSTS") == 0) THEN
+        #{
+                CREATEREP("CUSTS")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUSTS","DATA") == 0) THEN
+        #{
+                CREATECLASS("CUSTS","DATA",5)
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("CUSTS","DATA") == 0) THEN
+        #{
+                CREATECLASS("CUSTS","DATA", 5)
+        #}
+        ENDIF
+
+        #-----------------------------
+        ## Variable Intialization
+        #-----------------------------
+
+        CUSTS.DATA.errMsg   = ""
+        #CUSTS.DATA.CrChargeAcct   = "0006500104658"
+        #CUSTS.DATA.CrChargeBacid = "TODLACE"
+        #CUSTS.DATA.LaceCharge = ""
+        CUSTS.DATA.OppBalance = "0"
+        #---------------------------------
+        # Populate MTT details
+        #---------------------------------
+
+        sv_r = urhk_MTTS_PopulateInputDetails("")
+        Print(sv_r)
+
+        IF (sv_r != 0) THEN
+        #{
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                CUSTS.DATA.errMsg = MTT.Error.Description
+                PRINT(CUSTS.DATA.errMsg)
+                EXITSCRIPT
+        #}
+        ENDIF
+
+        #---------------------------------
+        #  Closing of MTT if it is opened
+        #---------------------------------
+
+        sv_g = urhk_MTTS_Close("")
+        print(sv_g)
+
+        IF (sv_g != 0) THEN
+        #{
+                sv_r = urhk_MTTS_ReportErrorCondition("")
+                CUSTS.DATA.errMsg = MTT.Error.Description
+                PRINT(CUSTS.DATA.errMsg)
+                EXITSCRIPT
+        #}
+        ENDIF
+
+        BANCS.INPARAM.PostTranFlg = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+        BANCS.INPARAM.CommitFlg="Y"
+        BANCS.INPARAM.RestrictModifyInd="FOURTH_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw="Y"
+        BANCS.INPARAM.CheckExceptions="N"
+
+        sv_r = urhk_MTTS_Initialize("")
+        print(sv_r)
+
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "N"
+        MTT.TranDetails.Remarks = "ODASM Sweep Of Accounts"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+
+        ########################################
+        #Fetch overdraft Account                        ##
+        ########################################
+
+        sv_s = "Crforacid,CrAccontName,CrSchmCode,CCifId, clramt, pool |"
+        sv_s = sv_s + " select foracid,acct_name, schm_code,cif_id, clr_bal_amt, pool_id from tbaadm.gam g where schm_code in('ODCA1') "
+        sv_s = sv_s + " and bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and clr_bal_amt<0.00 and pool_id is not null"
+        sv_s = sv_s + " and exists (select 1 from tbaadm.cam where acid = g.acid and acct_status = 'A') "
+        print(sv_s)
+
+        BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+        print(BANCS.INPARAM.BINDVARS)
+
+        sv_e = urhk_dbcursorOpenWithBind(sv_s)
+        print(sv_e)
+
+        IF (sv_e == 0) THEN
+        #{
+                CUSTS.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                print(CUSTS.DATA.CURSOR_NUMBER)
+                sv_c = urhk_dbCursorFetch(CUSTS.DATA.CURSOR_NUMBER)
+                print(sv_c)
+                BANCS.INPUT.RECCOUNT=cint("1")
+                print(BANCS.INPUT.RECCOUNT)
+
+                WHILE(sv_c == "0")
+                #{
+                        CUSTS.DATA.Crforacid= BANCS.OUTPARAM.Crforacid
+                        PRINT(CUSTS.DATA.Crforacid)
+                        CUSTS.DATA.CrAccontName= BANCS.OUTPARAM.CrAccontName
+                        PRINT(CUSTS.DATA.CrAccontName)
+                        CUSTS.DATA.CrSchmCode= BANCS.OUTPARAM.CrSchmCode
+                        PRINT(CUSTS.DATA.CrSchmCode)
+                        CUSTS.DATA.CCifId= BANCS.OUTPARAM.CCifId
+                        PRINT(CUSTS.DATA.CCifId)
+                        CUSTS.DATA.clramt= BANCS.OUTPARAM.clramt
+                        PRINT(CUSTS.DATA.clramt)
+                        CUSTS.DATA.pool = BANCS.OUTPARAM.pool
+                        PRINT(CUSTS.DATA.pool)
+
+                        #Convert the clramt to positive
+                        CUSTS.DATA.clramt = -(cdouble(CUSTS.DATA.clramt))
+                        print(CUSTS.DATA.clramt)
+                        CUSTS.DATA.clramt = FORMAT$(CDOUBLE(CUSTS.DATA.clramt),"%.2f")
+                        print(CUSTS.DATA.clramt)
+
+                        ################################################################
+                        ### Fetch Operative account             #
+                        ################################################################
+
+                        IF (CUSTS.DATA.pool!="") THEN
+                        #{
+                                sv_s = "Drforacid,AccontName,clr_bal_amt1,SchmCode,CifId|"
+                                sv_s = sv_s + "select foracid,acct_name,clr_bal_amt,schm_code,cif_id from tbaadm.gam g"
+                                sv_s = sv_s + " where schm_type in('SBA','CAA') "
+                                sv_s = sv_s + " and bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and cif_id=?SVAR and pool_id=?SVAR "
+                                sv_s = sv_s + " and exists (select 1 from tbaadm.smt where acid = g.acid and acct_status = 'A') "
+                                print(sv_s)
+
+                                BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ CUSTS.DATA.CCifId +"|"+CUSTS.DATA.pool
+                                print(BANCS.INPARAM.BINDVARS)
+
+                                sv_e = urhk_dbSelectWithBind(sv_s)
+                                print(sv_e)
+
+                                CUSTS.DATA.Drforacid= BANCS.OUTPARAM.Drforacid
+                                PRINT(CUSTS.DATA.Drforacid)
+                                CUSTS.DATA.AccontName= BANCS.OUTPARAM.AccontName
+                                PRINT(CUSTS.DATA.AccontName)
+
+				lv_u = urhk_getAcctDetailsInRepository(CUSTS.DATA.Drforacid)	
+				PRINT(lv_u)
+
+				if(lv_u == 0)then
+				#{
+					CUSTS.DATA.OppBalance = BANCS.OUTPARAM.EffAvailableAmt 
+					PRINT(CUSTS.DATA.OppBalance)	
+				#}
+				ENDIF
+
+                                #--------------------------------------------------------------------------------------------------------------
+                                #Logic for Lien
+                                #--------------------------------------------------------------------------------------------------------------
+
+                                #CUSTS.DATA.OppBalance = BANCS.OUTPARAM.clr_bal_amt1
+                                #PRINT(CUSTS.DATA.OppBalance)
+                                CUSTS.DATA.OppBalance = FORMAT$(CDOUBLE(CUSTS.DATA.OppBalance),"%.2f")
+                                PRINT(CUSTS.DATA.OppBalance)
+                                PRINT(CUSTS.DATA.clramt)
+
+                                IF  (CDOUBLE(CUSTS.DATA.OppBalance) < CDOUBLE(CUSTS.DATA.clramt)) THEN
+                                #{
+                                        CUSTS.DATA.lienAmnt = CDOUBLE(CUSTS.DATA.clramt) - CDOUBLE(CUSTS.DATA.OppBalance)
+                                        CUSTS.DATA.lienAmnt = FORMAT$(CDOUBLE(CUSTS.DATA.lienAmnt),"%.2f")
+                                        PRINT(CUSTS.DATA.lienAmnt)
+                                        PRINT(CUSTS.DATA.OppBalance)
+                                #}
+                                ENDIF
+
+                                #CUSTS.DATA.OppBalance = BANCS.OUTPARAM.clr_bal_amt1
+                                #PRINT(CUSTS.DATA.OppBalance)
+                                #PRINT(CUSTS.DATA.clramt)
+
+                                IF ((CUSTS.DATA.OppBalance) <= (0.00)) THEN
+                                        GOTO LIENTX
+                                ENDIF
+
+                                IF (CDOUBLE(CUSTS.DATA.OppBalance) == CDOUBLE(CUSTS.DATA.clramt)) THEN
+                                #{
+                                        CUSTS.DATA.clramt1 = CUSTS.DATA.OppBalance
+                                        PRINT(CUSTS.DATA.clramt1)
+                                        CUSTS.DATA.lienAmnt = "0"
+                                        PRINT(CUSTS.DATA.lienAmnt)
+                                #}
+                                ENDIF
+
+                                IF ((CUSTS.DATA.OppBalance) > (0.00) AND CDOUBLE(CUSTS.DATA.OppBalance) < CDOUBLE(CUSTS.DATA.clramt))  THEN
+                                #{
+                                        CUSTS.DATA.clramt1 = CUSTS.DATA.OppBalance
+                                        PRINT(CUSTS.DATA.clramt1)
+                                        PRINT(CUSTS.DATA.clramt)
+                                        CUSTS.DATA.lienAmnt = CDOUBLE(CUSTS.DATA.clramt) - CDOUBLE(CUSTS.DATA.clramt1)
+                                        CUSTS.DATA.lienAmnt = FORMAT$(CDOUBLE(CUSTS.DATA.lienAmnt),"%.2f")
+                                        PRINT(CUSTS.DATA.lienAmnt)
+                                #}
+                                ENDIF
+
+                                IF (CDOUBLE(CUSTS.DATA.OppBalance) >= CDOUBLE(CUSTS.DATA.clramt)) THEN
+                                #{
+                                        CUSTS.DATA.clramt1 = CUSTS.DATA.clramt
+                                        CUSTS.DATA.lienAmnt ="0"
+                                        print(CUSTS.DATA.lienAmnt)
+                                #}
+                                ENDIF
+
+                                sv_u = urhk_MTTS_DefineTransaction("ODASMTrans")
+
+                                #Account to Credit
+
+                                MTT.PartTranDetails.Account     = CUSTS.DATA.Crforacid
+                                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.RateCode    ="MEAN"
+                                MTT.PartTranDetails.Rate        = "0"
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.Particulars = "ODA Cr Sweep To " + CUSTS.DATA.Crforacid
+                                MTT.PartTranDetails.Particulars2 = CUSTS.DATA.Crforacid
+                                MTT.PartTranDetails.RefAmount = (cdouble(CUSTS.DATA.clramt1))
+                                MTT.PartTranDetails.Amount   = (cdouble(CUSTS.DATA.clramt1))
+                                MTT.PartTranDetails.Remarks = "Cr from Overdraft Account"
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODASMTrans"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("CustCr")
+                                print(sv_r)
+
+                                IF (fieldexists(MTT.Error.Description)) THEN
+                                #{
+                                        print(MTT.Error.Description)
+                                        CUSTS.DATA.MTTErrDesc = MTT.Error.Description
+                                #}
+                                ENDIF
+
+                                #Account to Debit
+
+                                MTT.PartTranDetails.Account     = CUSTS.DATA.Drforacid
+                                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.RateCode    ="MEAN"
+                                MTT.PartTranDetails.Rate        = "0"
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.Particulars = "Operative Dr Sweep From " + CUSTS.DATA.Drforacid
+                                MTT.PartTranDetails.Particulars2 = CUSTS.DATA.Drforacid
+                                MTT.PartTranDetails.RefAmount = -(cdouble(CUSTS.DATA.clramt1))
+                                MTT.PartTranDetails.Remarks = "Sweep from " + CUSTS.DATA.Drforacid
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODASMTrans"
+                                #MTT.PartTranDetails.TranIdentifier = "ODCASMTrans"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("CustCr")
+                                print(sv_r)
+
+                                IF (fieldexists(MTT.Error.Description)) THEN
+                                #{
+                                        print(MTT.Error.Description)
+                                        CUSTS.DATA.MTTErrDesc = MTT.Error.Description
+                                #}
+                                ENDIF
+
+                                sv_r = urhk_MTTS_EndDefinition("")
+                                print(sv_r)
+
+                                IF (fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+                                #{
+                                        print(BANCS.OUTPARAM.MTTTranId)
+                                        CUSTS.DATA.tranid = BANCS.OUTPARAM.MTTTranId
+                                        print(CUSTS.DATA.tranid)
+
+					IF(CUSTS.DATA.tranid != "")THEN
+					#{
+						lv_q = "pstFlg | SELECT PSTD_FLG FROM TBAADM.DTD WHERE TRAN_ID = LPAD(?SVAR,9) AND TRAN_DATE = to_date(?SVAR,'DD-MM-YYYY') and ROWNUM < 2 "
+						print(lv_q)
+
+						BANCS.INPARAM.BINDVARS = CUSTS.DATA.tranid +"|"+ MID$(BANCS.STDIN.BODDate,0,10)
+						PRINT(BANCS.INPARAM.BINDVARS)
+
+						lv_u = urhk_dbSelectWithBind(lv_q)
+						PRINT(lv_u)
+
+						IF(lv_u == 0)THEN
+						#{
+							 CUSTS.DATA.pstFlg = BANCS.OUTPARAM.pstFlg
+
+							IF(CUSTS.DATA.pstFlg == "N")THEN
+							#{
+								lv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranDate|"+MID$(BANCS.STDIN.BODDate,0,10)+ " 00:00:00")
+								PRINT(lv_a)
+
+								lv_a = urhk_SetUrhkInp("tranHdr.tranIdentifier.tranId|"+CUSTS.DATA.tranid)
+								PRINT(lv_a)
+
+								lv_s = urhk_ExecSrvNoCommit(" SRV_FetchTranDtlsForPost|same_user_verify = Y|retain_all_output = Y|call_mode = E|ignore_xcpn_flg = Y ")
+								PRINT(lv_s)
+								lv_s = urhk_CopyOutToIn("")
+								PRINT(lv_s)
+								lv_s = urhk_ExecSrv(" SRV_PostTran|same_user_verify = Y|retain_all_output = Y|call_mode = E|ignore_xcpn_flg = Y ")
+								PRINT(lv_s)
+
+								IF(lv_s != 0)THEN
+								#{
+									lv_y = urhk_CopyOutToIn("")
+									PRINT(lv_y)
+
+									#lv_a = urhk_SetUrhkInp("tranDtl.dthCookie|")
+									#lv_a = SYSTEM("sleep 0.1")
+									#PRINT(lv_a)
+
+									lv_s = urhk_ExecSrv(" SRV_PostTran|same_user_verify = Y|retain_all_output = Y|call_mode = N|ignore_xcpn_flg = I ")
+									PRINT(lv_s)
+
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+
+					#}
+					ENDIF	
+                                #}
+                                ENDIF
+
+                                sv_r = urhk_MTTS_EndDefinition("")
+                                print(sv_r)
+                        #}
+                        ENDIF
+
+                        LIENTX:
+
+                        #--------------------------------------------------------------------------------------------------------------
+                        ####Implementing Lien on Operative Account
+                        #--------------------------------------------------------------------------------------------------------------
+
+                        print(CUSTS.DATA.OppBalance)
+                        print(CUSTS.DATA.clramt)
+
+                        IF (CUSTS.DATA.OppBalance == CUSTS.DATA.clramt) THEN
+                        #{
+                                GOTO NEXTREC
+                        #}
+                        ENDIF
+
+                        IF (CDOUBLE(CUSTS.DATA.OppBalance) > CDOUBLE(CUSTS.DATA.clramt)) THEN
+                        #{
+                                CUSTS.DATA.lienAmnt ="0.00"
+                                print(CUSTS.DATA.lienAmnt)
+                        #}
+                        ENDIF
+
+                        CUSTS.DATA.foracid     = CUSTS.DATA.Drforacid
+                        CUSTS.DATA.solid       = BANCS.STDIN.mySolId
+                        CUSTS.DATA.lienamount  = CUSTS.DATA.lienAmnt
+
+                        print(CUSTS.DATA.foracid)
+                        print(CUSTS.DATA.solid)
+                        print(CUSTS.DATA.lienamount)
+
+                        CUSTS.DATA.amount1="0.00|UGX"
+                        CUSTS.DATA.date="31-12-2099 00:00:00"
+
+                        IF (CUSTS.DATA.solid != BANCS.STDIN.mySolId)THEN
+                        #{
+                                sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.DATA.solid)
+                                print(sv_u)
+                                sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                                print(sv_u)
+                        #}
+                        ENDIF
+
+                        BANCS.INPARAM.BINDVARS = CUSTS.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+                        sv_a = "count|select count(*) from tbaadm.alt where acid = (select acid from tbaadm.gam where foracid = ?SVAR) AND b2k_type='ULIEN' AND BANK_ID= ?SVAR"
+                        PRINT(sv_a)
+                        sv_s = urhk_dbSelectWithBind(sv_a)
+                        PRINT(sv_s)
+                        IF (sv_s !=0) THEN
+                        #{
+                                CUSTS.DATA.LienSuccessOrFailure = "F"
+                                CUSTS.DATA.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+                                sv_s = CUSTS.DATA.foracid+ "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+                                PRINT(sv_s)
+                                GOTO NEXTREC
+                        #}
+                        ELSE
+                        #{
+                                CUSTS.DATA.NewRecNum = BANCS.OUTPARAM.count
+                                PRINT(CUSTS.DATA.NewRecNum)
+                                IF ((CUSTS.DATA.NewRecNum) == 0 ) THEN
+                                #{
+                                        sv_u = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUSTS.DATA.foracid)
+                                        sv_u = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+                                        sv_u = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|" + CUSTS.DATA.date)
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.key.serial_num|0")
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.newLienAmt|" + CUSTS.DATA.lienamount+"|UGX")
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.oldLienAmt|" + CUSTS.DATA.amount1)
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.expiryDate|" + CUSTS.DATA.date)
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.lienRemarks|ODASME")
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.delFlg|N")
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.lienReasonCode.refCode|OTH")
+                                        sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.effFromDate|" + BANCS.STDIN.BODDate)
+                                        #Call the service for adding and verifying the new lien.
+                                        sv_a = urhk_ExecSrvNoCommit("SRV_AddLienOnAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+                                        PRINT(sv_a)
+                                        IF (sv_a != 0) THEN
+                                        #{
+                                                GOTO NEXTREC
+                                        #}
+                                        ENDIF
+                                #}
+                                ELSE
+                                #{
+                                        BANCS.INPARAM.BINDVARS = CUSTS.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+                                        sv_a = "count|select count(*) from tbaadm.alt where acid = (select acid from tbaadm.gam where foracid = ?SVAR) AND b2k_type='ULIEN' AND BANK_ID= ?SVAR AND LIEN_REASON_CODE = 'OTH' and lien_remarks = 'ODASME' "
+                                        PRINT(sv_a)
+                                        sv_s = urhk_dbSelectWithBind(sv_a)
+                                        PRINT(sv_s)
+                                        IF (sv_s !=0) THEN
+                                        #{
+                                                CUSTS.DATA.LienSuccessOrFailure = "F"
+                                                CUSTS.DATA.LienFailureReason = "Query to fetch count of lien record details of normal lien ON ALT table failed"
+                                                sv_s = CUSTS.DATA.foracid + "|" + "Query to fetch count of lien record details of normal lien ON ALT table failed"
+                                                PRINT(sv_s)
+
+                                                GOTO NEXTREC
+                                        #}
+                                        ELSE
+                                        #{
+                                                PRINT (BANCS.OUTPARAM.count)
+                                                IF (BANCS.OUTPARAM.count != 0) THEN
+                                                #{
+                                                        GOTO NEXTREC
+                                                #}
+                                                ENDIF
+
+                                                sv_a = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUSTS.DATA.foracid)
+                                                sv_a = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+                                                sv_a = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|31-12-2099 00:00:00")
+
+                                                sv_a = urhk_ExecSrvNoCommit("SRV_FetchLienDtlsOnAcForMod|retain_all_output = Y")
+                                                PRINT(sv_a)
+
+                                                IF (sv_a != 0) THEN
+                                                #{
+                                                        GOTO NEXTREC
+                                                #}
+                                                ENDIF
+
+                                                sv_a = urhk_CopyOutToIn("")
+                                                PRINT(sv_a)
+
+                                                #---------------------------------------
+                                                # Inputs for Account lien services
+                                                # urhk_SetUrhkInp is used to set inputs
+                                                #---------------------------------------
+
+                                                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.acctNum.foracid|" + CUSTS.DATA.foracid)
+                                                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.moduleType.type|ULIEN")
+                                                sv_u = urhk_SetUrhkInp("acctLienMaintCrit.lienExpiryDate|" + CUSTS.DATA.date)
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.key.serial_num|0")
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.newLienAmt|" + CUSTS.DATA.lienamount+"|UGX")
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.oldLienAmt|" + CUSTS.DATA.amount1)
+#                                               sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.expiryDate|" + CUSTS.DATA.date)
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.lienRemarks|ODASME")
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.delFlg|N")
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.lienReasonCode.refCode|OTH")
+                                                sv_u = urhk_SetUrhkInp("lienMaintLL.<rec_" + CUSTS.DATA.NewRecNum + ">.effFromDate|" + BANCS.STDIN.BODDate)
+
+                                                sv_u = urhk_ExecSrv("SRV_ModifyLienOnAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+                                                PRINT(sv_u)
+
+                                                IF (sv_u == 0) THEN
+                                                #{
+                                                        PRINT("Lien Modifed Successfully")
+                                                #}
+                                                ELSE
+                                                #{
+                                                        CALLSCRIPTIFEXIST("Error_Capturing.scr")
+                                                        CUSTSOM.BOI.Error = CUSTS.IIB.LICREALError
+                                                        GOTO NEXTREC
+                                                #}
+                                                ENDIF
+                                        #}
+                                        ENDIF
+                                #}
+                                ENDIF
+                        #}
+                        ENDIF
+
+                        GOTO NEXTREC
+
+                        BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+                        PRINT(BANCS.INPUT.RECCOUNT)
+
+                        #sv_c = urhk_dbCursorFetch(CUSTS.DATA.CURSOR_NUMBER)
+                        #PRINT(sv_c)
+
+                        NEXTREC:
+                        sv_c = urhk_dbCursorFetch(CUSTS.DATA.CURSOR_NUMBER)
+                        print(sv_c)
+
+                        #sv_q = urhk_dbCursorFetch(sv_c)
+                        #print(sv_q)
+                #}
+                DO
+
+                #sv_c = urhk_dbCursorClose(CUSTS.DATA.CURSOR_NUMBER)
+                #print(sv_c)
+        #}
+        ENDIF
+
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+
+ENDOFSCRIPT:
+        EXITSCRIPT
+END-->

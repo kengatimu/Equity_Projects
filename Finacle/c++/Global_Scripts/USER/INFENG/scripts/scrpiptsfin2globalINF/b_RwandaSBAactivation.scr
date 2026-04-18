@@ -1,0 +1,311 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_RwandaSBAactivation.scr
+#  Description     : This script will call CDAA modifiation services to activate all SBA acctount in Rwanda
+#  Date            : 19-04-2017
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             19-04-2017      Timothy Karemeri		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUSTS") == 0) THEN
+#{
+	CREATEREP("CUSTS")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","CDAAA") == 0) THEN
+#{
+	CREATECLASS("CUSTS","CDAAA",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUSTS","CPARAM") == 0) THEN
+#{
+    CREATECLASS("CUSTS","CPARAM", 5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUSTS.CDAAA.errMsg = ""
+
+#------------------------------------------------------------------------------
+#Finding count of records that need to be processed
+#------------------------------------------------------------------------------
+sv_s="foracid|"
+sv_s = sv_s + " select foracid from tbaadm.gam where bank_id =?SVAR "
+sv_s = sv_s + " and schm_code in "
+sv_s = sv_s + " ('SB100','SB101','SB102','SB103','SB104','SB106', "
+sv_s = sv_s + " 'SB108','SB109','SB110','SB113','SB114','SB115','SB117', "
+sv_s = sv_s + " 'SB126','SB127','SB128','SB129','SB130','SB135','SB190') "
+sv_s = sv_s + " and acct_cls_flg !='Y' "
+sv_s = sv_s + " and sol_id =?SVAR "
+sv_s = sv_s + " and acid in (select acid from tbaadm.smt where acct_status = 'D')  "
+sv_s = sv_s + " and foracid not in (select foracid from custom.int_change where bank_id = '50') "
+print(sv_s)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_c = urhk_dbCursorOpenWithBind(sv_s)
+print(sv_c)
+
+IF (sv_c==0) then
+#{
+	CUSTS.CDAAA.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_k = urhk_dbCursorFetch(CUSTS.CDAAA.DbcursorNumber)
+	print(sv_k)
+
+	WHILE (sv_k == 0)
+	#{
+		CUSTS.CDAAA.foracid= BANCS.OUTPARAM.foracid
+		print(CUSTS.CDAAA.foracid)
+		
+
+		sv_s="acid,schmtype,schmcode,sweeps,solid|"
+		sv_s = sv_s + " SELECT acid,schm_type,schm_code,allow_sweeps,sol_id "
+		sv_s = sv_s + " FROM tbaadm.gam "
+		sv_s = sv_s + " WHERE foracid= ?SVAR"
+		sv_s = sv_s + " AND bank_id= ?SVAR"
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = CUSTS.CDAAA.foracid + "|" + BANCS.STDIN.contextBankId 
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+
+		IF (sv_d == 0) THEN 
+		#{ 
+			CUSTS.CDAAA.acid	= BANCS.OUTPARAM.acid
+			PRINT(CUSTS.CDAAA.acid)
+			CUSTS.CDAAA.schmtype	= BANCS.OUTPARAM.schmtype
+			PRINT(CUSTS.CDAAA.schmtype)
+			CUSTS.CDAAA.schmcode	= BANCS.OUTPARAM.schmcode
+			PRINT(CUSTS.CDAAA.schmcode)
+			CUSTS.CDAAA.sweeps	= BANCS.OUTPARAM.sweeps
+			PRINT(CUSTS.CDAAA.sweeps)
+			CUSTS.CDAAA.solid	= BANCS.OUTPARAM.solid
+			PRINT(CUSTS.CDAAA.solid)
+
+			IF (CUSTS.CDAAA.sweeps == "") THEN
+			#{
+				CUSTS.CDAAA.sweeps = "N" 
+			#}
+			ENDIF
+
+			IF(CUSTS.CDAAA.solid != BANCS.STDIN.mySolId)THEN
+			#{
+				sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.CDAAA.solid)
+				print(sv_u)
+				sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+				print(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------------------------------------------
+		# Inputs for Account Modify services
+		# urhk_SetUrhkInp is used to set inputs 
+		#--------------------------------------------------------------------------------------------------------------
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.CDAAA.foracid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.CDAAA.acid)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.CDAAA.schmtype)
+		PRINT(sv_u)
+		sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.CDAAA.schmcode)
+		PRINT(sv_u)
+		
+		sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|retain_all_output = Y")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			PRINT(sv_u)
+			
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTS.CDAAA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTS.CDAAA.acid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTS.CDAAA.schmtype)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTS.CDAAA.schmcode)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|"+CUSTS.CDAAA.sweeps)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("operAcctSchmDtls.acctStat.code|A")
+			PRINT(sv_u)
+			sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctGeneralInfoEntered|1")
+			PRINT(sv_u)
+			sv_u =urhk_SetUrhkInp("acctCommonInfo.acctJointHolder.acctJointHolderEntered|1")
+			PRINT(sv_u)
+			sv_u =urhk_SetUrhkInp("acctCommonInfo.acctInterestTax.acctInterestTaxEntered|1")
+			PRINT(sv_u)
+			sv_u =urhk_SetUrhkInp("operAcctSchmDtls.acctSchemeEntered|1")
+			PRINT(sv_u)
+			
+				sv_b = "count,nomFlg|"
+				sv_b = sv_b + "select count(*),NOM_AVAILABLE_FLG from tbaadm.gam  where "
+				sv_b = sv_b + "bank_id = '50' and schm_type = 'SBA' "
+				sv_b = sv_b + "and foracid = ?SVAR "
+				sv_b = sv_b + "and cust_id in (select addr_b2kid from tbaadm.nma where bank_id = '50' "
+				sv_b = sv_b + "and (PIN_CODE = 'N/A' or ADDRESS1 = 'N/A' or PIN_CODE IS NULL OR ADDRESS1 is null)) "
+				sv_b = sv_b + "group by NOM_AVAILABLE_FLG "
+				print(sv_b)
+
+				BANCS.INPARAM.BINDVARS = CUSTS.CDAAA.foracid 
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSelectWithBind(sv_b)
+				print(sv_d)
+
+				IF (sv_d==0) THEN
+				#{
+					CUSTS.CDAAA.count = BANCS.OUTPARAM.count
+					print(CUSTS.CDAAA.count)
+					CUSTS.CDAAA.nomFlg = BANCS.OUTPARAM.nomFlg
+					PRINT(CUSTS.CDAAA.nomFlg)
+					IF ((CUSTS.CDAAA.count > 0) AND (CUSTS.CDAAA.nomFlg == "Y")) THEN
+					#{
+						sv_u =urhk_SetUrhkInp("acctNomination.acctNominationLL.<rec_0>.serialNum.serial_num|0")
+						PRINT(sv_u)
+						sv_u =urhk_SetUrhkInp("acctNomination.acctNominationLL.<rec_0>.nomAddr.pinCode|NA")
+						PRINT(sv_u)
+						sv_u =urhk_SetUrhkInp("acctNomination.acctNominationLL.<rec_0>.nomAddr.address1|NA")
+						PRINT(sv_u)
+					#}
+					ENDIF
+				#}
+				ENDIF
+		
+			sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+			PRINT(sv_u)
+			
+
+			IF (sv_u != 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+
+				sv_f = "acctMgr|"
+				sv_f = sv_f + "select USER_ID from TBAADM.UPR "
+				sv_f = sv_f + "where home_bank_id = '50' "
+				sv_f = sv_f + "and del_flg ='N' "
+				sv_f = sv_f + "and sol_id = ?SVAR "
+				#sv_f = sv_f + "and user_work_class > '080' "
+				sv_f = sv_f + "and rownum <2 "
+				print (sv_f)
+
+				BANCS.INPARAM.BINDVARS = CUSTS.CDAAA.solid 
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_c = urhk_dbSelectWithBind(sv_f)
+				print(sv_c)
+
+				IF (sv_c==0) THEN
+				#{
+					CUSTS.CDAAA.acctMgr = BANCS.OUTPARAM.acctMgr
+					print(CUSTS.CDAAA.acctMgr)
+				#}
+				ENDIF
+				
+				sv_u =urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId|" + CUSTS.CDAAA.acctMgr)
+			
+				sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		#----------------------------------------------------------------------------------------------------
+		# SRV Error check
+		#----------------------------------------------------------------------------------------------------
+		IF (sv_u != 0) THEN
+		#{
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}									
+			ELSE
+			#{
+				sv_v = 0
+			#}
+			ENDIF
+			IF (sv_v > 0) then
+			#{
+				sv_u = system("echo 'Error for Acct:"+CUSTS.CDAAA.foracid+" ' >>acctivated.log")
+
+				sv_i = 1
+				sv_v = 1
+				WHILE (sv_i <= sv_v)
+				#{
+				print(sv_i) 
+				print(sv_v)
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+					sv_u = system("echo '"+sv_e+"' >>acctivated.log")
+					print(sv_u)
+
+					#----------------------------------------------------------------------------------------------------
+					# Insert custom table status
+					#----------------------------------------------------------------------------------------------------
+					CUSTS.CDAAA.sysDate = MID$(BANCS.STDIN.BODDate,0,10)
+					print(CUSTS.CDAAA.sysDate)
+					sv_s = "Insert into CUSTOM.INT_CHANGE "
+					sv_s = sv_s + " (FORACID, ENTITY_CRE_FLG, acct_opn_date,ACCT_PREF,BANK_ID) "
+					sv_s = sv_s + " Values (?SVAR,'E',TO_DATE(?SVAR,'DD-MM-YYYY HH24:MI:SS'),?SVAR,?SVAR) "
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.CDAAA.foracid + "|" + CUSTS.CDAAA.sysDate + "|" + sv_e + "|" + BANCS.STDIN.contextBankId 
+					print(BANCS.INPARAM.BINDVARS)
+			
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+				#}
+				DO
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		sv_k = urhk_dbCursorFetch(CUSTS.CDAAA.DbcursorNumber)
+		print(sv_k)
+
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(CUSTS.CDAAA.DbcursorNumber)
+	print(sv_c)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF(CUSTS.CDAAA.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUSTS.CDAAA.errMsg+"' >>acctivated.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

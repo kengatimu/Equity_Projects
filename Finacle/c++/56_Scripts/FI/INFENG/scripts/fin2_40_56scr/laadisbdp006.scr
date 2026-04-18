@@ -1,0 +1,178 @@
+#------------------------------------------------------------------------------------------------    
+#   Name			: laadisbdp006.scr
+#   Description		: Script for calculating the insuarance amount
+#   Date			: 02-04-2013
+#   Author			: Sateesh
+#   Input			: NA
+#   Output			: NA
+#   Called Script	: None
+#   Calling Script	: laadisbdp008.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             02-04-2013      Sateesh				Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="a9df68313b618cea8f1560ff760aa742b48b63391020e612bb0742f217942112"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	# Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","LADISB") == 0) THEN
+	#{
+		CREATECLASS("CUST","LADISB",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------
+	#Initializing Required variables
+	#-------------------------------------------------------------------------------
+	CUST.LADISB.errMsg 		= ""
+	CUST.LADISB.company		= ""
+	CUST.LADISB.pattrns		= ""
+	
+	#-------------------------------------------------------------------------
+	# Selecting the Free TEXT 1  in table gac
+	#--------------------------------------------------------------------------
+	print(CUST.LADISB.loanAcctId)
+	print(CUST.LADISB.disbAmt)
+	CUST.LADISB.tmpDisbAmt = CUST.LADISB.disbAmt
+	
+	sv_s = "freeText1,freeText2|"
+	sv_s = sv_s + " SELECT free_text_1,free_text_2"
+	sv_s = sv_s + " FROM TBAADM.GAC"
+	sv_s = sv_s + " WHERE"
+	sv_s = sv_s + " GAC.acid = ("
+	sv_s = sv_s + 				" SELECT acid"
+	sv_s = sv_s + 					" FROM TBAADM.GAM"
+	sv_s = sv_s + 					" WHERE GAM.foracid=?SVAR"
+	sv_s = sv_s + 					" AND GAM.bank_id=GAC.bank_id) "
+	sv_s = sv_s + " AND GAC.bank_id=?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+	
+	sv_d = urhk_dbselectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.LADISB.freeText1 = BANCS.OUTPARAM.freeText1
+		CUST.LADISB.freeText2 = BANCS.OUTPARAM.freeText2
+		print(CUST.LADISB.freeText1)
+		print(CUST.LADISB.freeText2)
+		
+		IF (CUST.LADISB.freeText1 > 0 ) THEN
+		#{
+			CUST.LADISB.pattrns = CUST.LADISB.freeText1
+			print(CUST.LADISB.pattrns)
+		#}
+		ENDIF
+		
+		IF (CUST.LADISB.freeText2 != "") THEN
+		#{
+			CUST.LADISB.company = CUST.LADISB.freeText2
+			print(CUST.LADISB.company)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.LADISB.errMsg = "Error in finding freetext values"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Selecting the period in table lam
+	# if the period is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = "period|"
+	sv_s = sv_s + " SELECT rep_perd_mths"
+	sv_s = sv_s + "	FROM TBAADM.LAM,TBAADM.GAM"
+	sv_s = sv_s + " WHERE LAM.acid=GAM.acid"
+	sv_s = sv_s + " AND LAM.bank_id=GAM.bank_id"
+	sv_s = sv_s + " AND GAM.foracid =?SVAR"
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.LADISB.loanAcctId + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbselectWithBind(sv_s)
+	
+	IF (sv_d == 0) THEN
+	#{
+		CUST.LADISB.period 		= BANCS.OUTPARAM.period
+		#}
+	ELSE
+		#{
+		CUST.LADISB.errMsg = "Error in finding loan period"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_a=getPosition(CUST.CPARAM.shLst,"!" + CUST.LADISB.laSchmCode + "!")
+	print(sv_a)
+	IF (sv_a > 0) THEN
+	#{
+		CUST.LADISB.glPcnt	= CUST.CPARAM.glPcnt1
+		CUST.LADISB.ptdPcnt	= CUST.CPARAM.ptdPcnt1
+		#}
+	ELSE
+		#{
+		CUST.LADISB.glPcnt 	= CUST.CPARAM.glPcnt2
+		CUST.LADISB.ptdPcnt	= CUST.CPARAM.ptdPcnt2
+	#}
+	ENDIF
+	
+	IF (CDOUBLE(CUST.LADISB.disbAmt) > CDOUBLE(CUST.CPARAM.disbAmt)) THEN
+	#{
+		CUST.LADISB.disbAmt = CUST.CPARAM.disbAmt
+	#}
+	ENDIF
+	
+	CUST.LADISB.glFee1 = CDOUBLE(CUST.LADISB.disbAmt) * CDOUBLE(CUST.LADISB.glPcnt) * CDOUBLE(CUST.LADISB.period)
+	CUST.LADISB.glFee1 = CDOUBLE(CUST.LADISB.glFee1) / CDOUBLE("12")
+	print(CUST.LADISB.glFee1)
+	
+	CUST.LADISB.ptdFee1 = CDOUBLE(CUST.LADISB.disbAmt) * CDOUBLE(CUST.LADISB.ptdPcnt) * CDOUBLE(CUST.LADISB.period)
+	CUST.LADISB.ptdFee1 = CDOUBLE(CUST.LADISB.ptdFee1) / CDOUBLE("12")
+	print(CUST.LADISB.ptdFee1)
+	
+	CUST.LADISB.ptdAdd1= CDOUBLE(CUST.LADISB.ptdFee1) * CDOUBLE(CUST.CPARAM.ptdAdd)
+	print(CUST.LADISB.ptdAdd1)
+	CUST.LADISB.ptdFee2 = CDOUBLE(CUST.LADISB.ptdAdd1) + CDOUBLE(CUST.LADISB.ptdFee1)
+	print(CUST.LADISB.ptdFee2)
+	
+	CUST.LADISB.ttlFee = CDOUBLE(CUST.LADISB.glFee1) + CDOUBLE(CUST.LADISB.ptdFee2)
+	print(CUST.LADISB.ttlFee)
+	
+	IF (CINT(CUST.LADISB.pattrns) > CINT(CUST.CPARAM.patrnVal)) THEN
+	#{
+		CUST.LADISB.ttlFee = CDOUBLE(CUST.LADISB.ttlFee) * CDOUBLE(CUST.LADISB.pattrns) * CDOUBLE(CUST.CPARAM.discount)
+		print(CUST.LADISB.ttlFee)
+	#}
+	ENDIF
+	
+	IF (CUST.LADISB.company == "Y") THEN
+	#{
+		CUST.LADISB.ttlFee = "0"
+	#}
+	ENDIF
+	
+	CUST.LADISB.insuAmt = CUST.LADISB.ttlFee
+	print(CUST.LADISB.insuAmt)
+	CUST.LADISB.disbAmt = CUST.LADISB.tmpDisbAmt
+	print(CUST.LADISB.disbAmt)
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

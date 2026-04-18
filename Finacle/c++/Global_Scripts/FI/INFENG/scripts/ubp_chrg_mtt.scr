@@ -1,0 +1,189 @@
+<--START
+CHECKSUM="1383090a9b213cea1ef9686fbc442fde88f928175490715cc3cb9543563aece5"
+	TRACE ON
+	
+	IF (REPEXISTS("MTT") == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT", "TranDetails") == 0) THEN
+	#{
+		CREATECLASS("MTT", "TranDetails", 5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT", "PartTranDetails") == 0) THEN
+	#{
+		CREATECLASS("MTT", "PartTranDetails", 5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("MTT", "Error") == 0) THEN
+	#{
+		CREATECLASS("MTT", "Error", 5)
+	#}
+	ENDIF
+	
+	PRINT(CUST.UBP.chargeEventId)
+	PRINT(CUST.UBP.chargeAmtCcy)
+	PRINT(CUST.UBP.chargeTranId)
+	PRINT(CUST.UBP.chargeTranDate)
+	PRINT(CUST.UBP.drAmt)
+	PRINT(CUST.UBP.crChrgAc)
+	PRINT(CUST.UBP.drChrgAc)
+	
+	CUST.UBP.TranId = ""
+	
+	print("All initializations over")
+	
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+	
+	BANCS.INPARAM.PostTranFlg 		= "Y"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+	BANCS.INPARAM.ValidationFlag 		= "Y"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "N"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	print (sv_u)
+	
+	IF (sv_u != 0) THEN
+	#{
+		sv_c = "Initialisation of MTT Failed"
+		MTT.Error.Description = sv_c
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+		GOTO EndofScript
+	#}
+	ENDIF
+	
+	#######################################################################
+	## Populate the details required for Transaction header		     ##
+	#######################################################################
+	sv_u = urhk_MTTS_PopulateInputDetails("")
+	
+	MTT.TranDetails.TranDate                = "0"
+	MTT.TranDetails.TranType                = "C"
+	MTT.TranDetails.TranSubType		= "CR"
+	MTT.TranDetails.IgnoreExcp              = "I"
+	MTT.TranDetails.Consolidate             = "N"
+	MTT.TranDetails.ReversalFlag            = "N"
+	MTT.TranDetails.PostFlag                = "Y"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.CommitFlg               = "Y"
+	MTT.TranDetails.Remarks                 = "ZERO"
+	MTT.TranDetails.ValidationFlag		= "N"
+	
+	sv_u = urhk_MTTS_DefineTransaction("UBPREV")
+	print(sv_u)
+	IF (sv_u != "0") THEN
+	#{
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	
+	##################################################
+	# Debiting the customer account
+	##################################################
+	
+	MTT.PartTranDetails.Account                     =  CUST.UBP.drChrgAc
+	MTT.PartTranDetails.RefAmount                   =  CDOUBLE(CUST.UBP.drAmt)*-1
+	MTT.PartTranDetails.RefCurrency                 =  BANCS.STDIN.homeCrncyCode
+	MTT.PartTranDetails.ValueDate                   =  "0"
+	MTT.PartTranDetails.Particulars                 =  "UBP Charge Reversal"
+	MTT.PartTranDetails.TranIdentifier              =  "UBPREV"
+	MTT.PartTranDetails.Consolidate                 =  "N"
+	MTT.PartTranDetails.CarveAmtFlg                 =  "Y"
+	MTT.PartTranDetails.Refnum                      =  ""
+	MTT.PartTranDetails.Remarks                     =  "UBP Charge Reversal"
+	MTT.PartTranDetails.PTranBusinessType           =  ""
+	
+	
+	sv_r = urhk_MTTS_DefinePartTran("UBPREV1")
+	print(sv_r)
+	
+	IF (sv_r != "0") THEN
+	#{
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	
+	################################################################
+	# Crediting the Income
+	################################################################
+	
+	MTT.PartTranDetails.Account                     =   CUST.UBP.crChrgAc
+	MTT.PartTranDetails.RefAmount                   =   CDOUBLE(CUST.UBP.drAmt)
+	MTT.PartTranDetails.RefCurrency         	=   BANCS.STDIN.homeCrncyCode
+	MTT.PartTranDetails.ValueDate                   =   "0"
+	MTT.PartTranDetails.Particulars                 =   "UBP Charge Reversal"
+	MTT.PartTranDetails.TranIdentifier              =   "UBPREV"
+	MTT.PartTranDetails.Consolidate                 =   "N"
+	MTT.PartTranDetails.Refnum                      =    ""
+	MTT.PartTranDetails.Remarks                     =   "UBP Charge Reversal"
+	#MTT.PartTranDetails.RateCode = "NOR"
+	print(MTT.PartTranDetails.Account)
+	
+	sv_r = urhk_MTTS_DefinePartTran("UBPREV2")
+	print(sv_r)
+	
+	IF (sv_r == 1) THEN
+	#{
+		print("Unable to create MTT Part transaction")
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	#############################
+	# Commit the transaction
+	#############################
+	sv_u = urhk_MTTS_EndDefinition("")
+	print(sv_u)
+	
+	CUST.UBP.TranId = BANCS.OUTPARAM.MTTTranId
+	print(CUST.UBP.TranId)
+	
+	
+	##################################################
+	# If any error tran id will not be created
+	##################################################
+	IF ((sv_u != 0)  OR (CUST.UBP.TranId==""))THEN
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print (MTT.Error.Description)
+		CUST.UBP.ResStatus = "F"
+		CUST.UBP.Response = "Transaction creation Failed."
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO EndOfScript
+	#}
+	ENDIF
+	
+	##########################################
+	# Close the MTT
+	##########################################
+	sv_r = urhk_MTTS_Close("")
+	print(sv_r)
+	
+	EndOfScript:
+		############################
+		## Exiting the script ##
+		############################
+		print("end of script")
+		
+		exitscript
+		
+		
+		TRACE OFF
+		
+END-->
+
+#################################################################################################
+# EndOfScript
+#################################################################################################

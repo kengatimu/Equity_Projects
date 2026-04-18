@@ -1,0 +1,192 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: fetchChrgEvntId.scr
+# Type: NA|default
+# Description: Script to Fetch the Charge Event Id for Transaction
+# Author: Anshul_Singh04
+# Date: 9/27/18 1:44 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="21f0c677223e10ca2ae4021ebc0b7145757f01121a044a8bcf0e9852e90f9e92"
+	# Script body goes here
+	TRACE ON
+	IF (REPEXISTS("EQT") == 0) THEN
+	#{
+		CREATEREP("EQT")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("EQT","TRAN") == 0) THEN
+	#{
+		CREATECLASS("EQT","TRAN",5)
+	#}
+	ENDIF
+	
+	EQT.TRAN.errorFlg = "N"
+	EQT.TRAN.errorMsg = " "
+	EQT.TRAN.chrgEvntId = " "
+	EQT.TRAN.crlineSchms = " "
+	EQT.TRAN.schmCode = " "
+	
+	IF(FIELDEXISTS(BANCS.INPUT.acctId))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.acctId) != "")THEN
+		#{
+			EQT.TRAN.acctId = TOUPPER(BANCS.INPUT.acctId)
+			PRINT(EQT.TRAN.acctId)
+			#}
+		ELSE
+			#{
+			EQT.TRAN.errorFlg ="Y"
+			EQT.TRAN.errorMsg ="Account Id not passed!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		EQT.TRAN.errorFlg ="Y"
+		EQT.TRAN.errorMsg ="Account Id not passed!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------#
+	#          Checking Ownership of Account         #
+	#------------------------------------------------#
+	
+	sv_s = "owner,schmCode|select acct_ownership,schm_code from tbaadm.gam where foracid=?SVAR and bank_id= ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = EQT.TRAN.acctId + "|" +  BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.owner)
+		EQT.TRAN.owner = BANCS.OUTPARAM.owner
+		EQT.TRAN.schmCode = BANCS.OUTPARAM.schmCode
+		
+		IF(TRIM(EQT.TRAN.owner)=="")THEN
+		#{
+			EQT.TRAN.errorFlg = "Y"
+			EQT.TRAN.errorMsg = "Unable to Fetch Account Details!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(EQT.TRAN.owner!="C")THEN
+		#{
+			#EQT.TRAN.errorFlg = "Y"
+			#EQT.TRAN.errorMsg = "Not a Customer Account!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#}
+	ELSE
+		#{
+		EQT.TRAN.errorFlg = "Y"
+		EQT.TRAN.errorMsg = "Unable to Fetch Account Details!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------#
+	#          Fetching Event ID from CPARAM         #
+	#------------------------------------------------#
+	
+	BANCS.INPUT.moduleName = "OT"
+	BANCS.INPUT.parameterId = "CREDITLINE_SCHEMES"
+	
+	CALL("getCustomParamValue.scr")
+	
+	IF(sv_h =="Y")THEN
+	#{
+		EQT.TRAN.errorFlg = "Y"
+		EQT.TRAN.errorMsg = sv_i
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.parameterVal)
+	
+	EQT.TRAN.crlineSchms = BANCS.OUTPARAM.parameterVal
+
+	sv_c = GETPOSITION(EQT.TRAN.crlineSchms,EQT.TRAN.schmCode)
+	IF(sv_c!=0) THEN
+	#{
+		BANCS.INPUT.moduleName = "OT"
+		BANCS.INPUT.parameterId = "XFER_CRLINE_CHRG_EVNT"
+	#}
+	ELSE
+	#{
+		BANCS.INPUT.moduleName = "OT"
+		BANCS.INPUT.parameterId = "XFER_CHRG_EVNT_ID"
+	#}
+	ENDIF	
+	CALL("getCustomParamValue.scr")
+	
+	IF(sv_h =="Y")THEN
+	#{
+		EQT.TRAN.errorFlg = "Y"
+		EQT.TRAN.errorMsg = sv_i
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.parameterVal)
+	
+	EQT.TRAN.chrgEvntId = BANCS.OUTPARAM.parameterVal
+	
+	#------------------------------------------------#
+	#        	  Validating Event ID                #
+	#------------------------------------------------#
+	
+	sv_s = "count|SELECT count(*) FROM tbaadm.PTT where ENTITY_CRE_FLG ='Y' and del_flg='N' "
+	sv_s = sv_s + " and  event_type ='TRANF' and event_id =?SVAR and  bank_id= ?SVAR "
+	
+	BANCS.INPARAM.BINDVARS = EQT.TRAN.chrgEvntId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.count)
+		IF(BANCS.OUTPARAM.count == "0")THEN
+		#{
+			EQT.TRAN.errorFlg = "Y"
+			EQT.TRAN.errorMsg = "Invalid Event Id: "+EQT.TRAN.chrgEvntId+" for Charge Collection!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		EQT.TRAN.errorFlg = "Y"
+		EQT.TRAN.errorMsg = "Invalid Event Id: "+EQT.TRAN.chrgEvntId+" for Charge Collection!"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		print(EQT.TRAN.errorMsg)
+		sv_u = urhk_SetOrbOut("errorFlg|"+EQT.TRAN.errorFlg)
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("message|"+EQT.TRAN.errorMsg)
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("chrgEventId|"+EQT.TRAN.chrgEvntId)
+		PRINT(sv_u)
+		
+		#DELETECLASS("EQT","TRAN")
+		#DELETEREP("EQT")
+TRACE OFF
+END-->

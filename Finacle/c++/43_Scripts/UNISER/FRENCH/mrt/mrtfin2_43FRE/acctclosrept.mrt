@@ -1,0 +1,722 @@
+# ******************************************************************
+#    Spool File Name	: ACCTCLOSREPT.MRT
+#    Author    		: NAGAMANI/LAKSHMI 
+#
+####################################################################
+# The First field in the mri is the record indicator, for each
+# record in the spool file there will be an record indicator.
+# The indicators are ATD, CD, OD
+# ATD - Default Record.(This contains the details of Term Deposit.
+#		eg. Mat.Amount, Maturity Date, etc. 
+#		There will be only one record in the spool file with this indicator)
+#       in the spool file for the Account.
+# CD  - Customer Instruction Details. (This may contain more
+#		than a record in the spool file).
+# OD  - Overdraft Regularization Details. (This may contain more
+#       than a record in the spool file).
+# TDS - TDS Calculation Details.
+# GROUPANDSORT is done for the records based on the record indicator
+# fields in the order ATD, CD, OD, TDS
+# 
+####################################################################
+RECORDLAYOUT
+####################################################################
+#   MANDATORY SECTION (1st Section)
+#   This section tell the record layout of the input ASCII file
+#   This has to be First Section in the template file
+####################################################################
+$$$include acctclosrept.mri
+
+LOCALVARIABLES
+####################################################################
+#   MANDATORY SECTION (2nd Section)
+#   Any Local Variable can be defined here
+###################################################################
+	tds_amount		numberType
+	penal_int_waived	numberType
+	localdate		numberType
+	localyears		numberType
+	toDate			stringType
+	matDate			stringType
+	acctName		stringType
+	acctType		stringType
+	brName			stringType	
+	userName		stringType	
+	matMons			numberType
+	matDays			numberType
+	callscript		stringType
+	acct_name		stringType
+	mrtForacid		stringType
+	mrtForacidAcctType      stringType
+	mrtOpenEffDate		stringType 
+	srlNum			numberType
+####################################################################
+#   MANDATORY SECTION (3rd Section)
+GROUPANDSORT
+####################################################################
+rec_ind
+
+####################################################################
+REPOSITORY argv4
+####################################################################
+numberOfPages       numberType
+
+#############################################################################
+REPOSITORY bankRepos.rip readonly
+#############################################################################
+bankName       		stringtype
+branchName     		stringtype
+localYearsToAdd		stringType
+
+############################################################################
+PAGEFORMAT
+####################################################################
+#   This section tell about the page Layout
+#   Here the valid pageformat keywords are 
+#   Linesperpage, Leftmargin, Rightmargin, Topmargin, Columnsperpage
+####################################################################
+linesperPage	65
+columnsperline	90
+pageHeaderLines 5 
+pageFooterLines	4
+topMargin		1
+
+####################################################################
+ONSTARTOFREPORT
+####################################################################
+set pageNumber = 1
+set localyears = strToNum localYearsToAdd
+set mrtForacid = tdforacid
+set mrtForacidAcctType = tdforacid
+set callscript = runscript "fetchPreTDClosureHeadDet.scr" "mrtForacid|mrtForacidAcctType" "userName|brName"
+
+
+####################################################################
+ONEVERYRECORD
+####################################################################
+execute detailRecord
+
+####################################################################
+BEFOREBREAKOF rec_ind 
+####################################################################
+execute brkof
+######################################################################
+PAGEHEADER
+######################################################################
+#   This section tell about the header Layout
+######################################################################
+execute header_block 
+
+####################################################################
+ONENDOFREPORT
+####################################################################
+execute onEndrpt
+
+
+##################################################################
+#PROCEDURE BLOCK onEndrpt
+##################################################################
+PROCEDURE onEndrpt
+begin 
+ if (srlNum = 1) 
+ begin
+                separatorline
+                nextLine
+                nextLine
+                print "Signature Agent" leftjustify column 1
+                print "Signature du client" rightjustify column 70
+                set numberOfPages = pageNumber
+end
+else if( srlNum != 1) 
+begin
+        separatorline
+        nextLine
+        nextLine
+        print "================================================================================="
+        set numberOfPages = pageNumber
+end
+end
+###################################################################
+#  PROCEDURE BLOCK
+###################################################################
+PROCEDURE header_block
+begin
+	if (stringToDate today  < stringToDate maturity_date)
+       	begin
+		set srlNum = 1
+		separatorline
+		set localdate = stringToDate  today
+		set localdate = periodAdd localdate localyears Y
+		print localdate DateFormat "" column 1
+		print " "
+		set localdate = stringToDate  today
+		set localdate = periodAdd localdate localyears Y
+		print localdate DateFormat "HH24:NN:SS"
+		print bankName column 25
+		print branchName
+		print "Page: " column 76
+		print pageNumber column 82 size 4
+		nextline
+		nextline
+	        print "Cloture prématurée DAT" column 28
+       		nextline
+       		nextline
+        	print "Agence :" column 28
+        	print brName column 39
+        	nextline
+        	nextline
+        	print "Cloturé par :" column 28
+        	print userName column 40
+        	nextline
+		separatorline
+	end
+	else if(stringToDate today >= stringToDate maturity_date) 
+	begin
+		separatorline
+		set localdate = stringToDate  today
+		set localdate = periodAdd localdate localyears Y
+		print localdate DateFormat "" column 1
+		print " "
+		set localdate = stringToDate  today
+		set localdate = periodAdd localdate localyears Y
+		print localdate DateFormat "HH24:NN:SS"
+		print bankName column 25
+		print branchName
+		print "Page: " column 76
+		print pageNumber column 82 size 4
+		nextline
+		nextline
+		if txod_flg = "Y"
+		begin
+        		print "Details of Transfer of Overdue Deposits" column 28
+		end
+		else
+		begin
+        		print "Details of Account Closure" column 28
+		end
+		separatorline
+	end
+
+end
+###################################################################
+#  PROCEDURE BLOCK detailRecord
+###################################################################
+PROCEDURE detailRecord
+begin
+	if (srlNum = 1)
+	begin
+		set mrtForacid = tdforacid
+		set mrtForacidAcctType = tdforacid
+		set mrtOpenEffDate = open_eff_date
+		set callscript = runscript "fetchPreTDClosureDet.scr" "mrtForacid|mrtForacidAcctType|mrtOpenEffDate" "acctName|acctType|matMons|matDays"
+		if (rec_ind = "ATD")
+		begin
+			print "N° de compte" column 1 
+			print ":" column 25
+			print tdforacid  column 26 size 16
+			nextline		
+			print "Intitulé du compte" column 1
+			print ":" column 25
+			print acctName column 26 size 24
+			nextLine		
+			print "Montant"  column 1 
+			print ":" column 25
+			print withdrawal_amt  column 26 autocomma size 24 leftjustify
+			nextLine		
+			if (crncy_code != "")
+			begin
+				print "Devise"  column 1 
+				print ":" column 25
+				print crncy_code  column 26 size 5
+				nextline
+			end		
+			print "Date d'ouverture"  column 1 
+			print ":" column 25
+			set localdate = stringToDate  open_eff_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+			nextline		
+			print "Date de maturité"  column 1 
+			print ":" column 25
+			set localdate = stringToDate  maturity_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+			nextLine		
+			print "Maturité en mois"  column 1 
+			print ":" column 25
+			print matMons  column 26 size 3 
+			print "/" column 29
+			print matDays  column 31 size 3
+			nextline
+			print "Type de compte" column 1
+			print ":" column 25
+				print acctType column 26 size 24	
+			nextline	
+			if (exc_short_int > 0 and mudAcctFlg !="Y")
+				print "Interets Recouvrables"  column 1
+				else if ( exc_short_int <= 0 and mudAcctFlg !="Y")
+				begin
+						print "Interets à payer"  column 1
+						set exc_short_int = (-1) * exc_short_int
+				end
+				print ":" column 25
+				print exc_short_int  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+		
+		end
+	
+	
+	else if(srlNum != 1)
+	begin	
+		if (rec_ind = "ATD")
+		begin
+			print "Account Number"  column 1 
+			print ":" column 25
+			print tdforacid  column 26 size 16
+			nextline
+			if (crncy_code != "")
+			begin
+				print "Currency Code"  column 1 
+				print ":" column 25
+				print crncy_code  column 26 size 5
+				nextline
+			end
+			print "Deposit/Installment Amt."  column 1 
+			print ":" column 25
+			print deposit_amt  column 26 autocomma size 24 leftjustify
+			nextline
+			print "Withdrawn Amount"  column 1 
+			print ":" column 25
+			print withdrawal_amt  column 26 autocomma size 24 leftjustify
+			nextline
+			print "Value Date"  column 1 
+			print ":" column 25
+			
+			set localdate = stringToDate  open_eff_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+		
+			nextline
+			print "Deposit Period"  column 1 
+			print ":" column 25
+			print dep_period_mths  column 26 size 3 
+			print "/" column 29
+			print dep_period_days  column 31 size 3
+			nextline
+			print "Maturity Date"  column 1 
+			print ":" column 25
+			
+			set localdate = stringToDate  maturity_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+		
+			nextline
+			print "Closed Date"  column 1 
+			print ":" column 25
+			set localdate = stringToDate  bod_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+		
+			nextline
+			print "Closure Value Date"  column 1 
+			print ":" column 25
+		
+			set localdate = stringToDate  cls_value_date
+			set localdate = periodAdd localdate localyears Y
+			print localdate DateFormat "" column 26 
+		
+			nextline
+			print "Period Run"  column 1 
+			print ":" column 25
+			print run_mths  column 26 size 3
+			print "/" column 29
+			print run_days  column 31 size 3
+			nextline
+			nextline
+			if (tran_id != "")
+			begin
+				print "Closure Tran Id"  column 1 
+				print ":" column 25
+				print tran_id  column 26 size 12
+				nextline
+			end
+			if (int_tran_id != "" and mudAcctFlg !="Y")
+			begin
+				print "Int. Adj. Tran Id"  column 1 
+				print ":" column 25
+				print int_tran_id  column 26 size 12
+			if (intRoute_tran_id != "")
+			begin
+				print "," column 40
+				print intRoute_tran_id  column 42 size 12
+				nextline
+			end
+				nextline
+			end
+			if (book_tran_id != ""	and mudAcctFlg !="Y")
+			begin
+				print "Book. Adj. Tran Id"  column 1 
+				print ":" column 25
+				print book_tran_id  column 26 size 12
+				nextline
+			end
+			print "Interest Taken"  column 1 
+			print ":" column 25
+			print interest_taken  column 26 autocomma size 24 leftjustify
+			nextline
+			if (eff_normal_roi != 0 and mudAcctFlg !="Y")
+			begin
+				if (func_code = "E")
+				begin
+					print "Extension Int Pcnt" column 1
+				end
+				else
+				begin
+					print "Normal Int Pcnt"  column 1 
+				end	
+				print ":" column 25
+				if (func_code = "E")
+				begin
+					print normal_roi column 26 size 25
+				end
+				else
+				begin
+					print eff_normal_roi column 26 size 25
+				end	
+				nextline
+			end
+			if (normal_int != 0)
+			begin
+				if (absolute_interest_rate = 0 and mudAcctFlg !="Y")
+				begin
+					if (func_code = "E")
+					begin
+						print "Extension Interest" column 1
+					end
+					else
+					begin
+						print "Normal Interest"  column 1
+					end	
+					print ":" column 25
+					print normal_int  column 26 autocomma size 24 leftjustify
+					nextline
+				end
+			end
+			if (use_repayment_acct_only != "")
+			begin
+				print "Use Repayment Acct Only" column 1 
+				print ":" column 25
+				print use_repayment_acct_only  column 26 size 1
+				nextline
+			end
+			if (overdue_int_code != "" and mudAcctFlg !="Y")
+			begin
+				print "Overdue Interest Code"  column 1 
+				print ":" column 25
+				print overdue_int_code  column 26 size 5
+				nextline
+			end
+			if (func_code != "E")
+			begin
+				if (eff_penal_roi != 0 and mudAcctFlg !="Y")
+				begin
+					print "Penalty Int Pcnt"  column 1 
+					print ":" column 25
+					print eff_penal_roi  column 26 size 25
+					nextline
+				end
+				if (penalty_int != 0 and mudAcctFlg !="Y")
+				begin
+					print "Penalty Interest"  column 1
+					print ":" column 25
+					print penalty_int  column 26 autocomma size 24 leftjustify
+					nextline
+					if (penalty_int_flg = "N")
+						if (normal_int > penalty_int)
+						begin
+							print "Penalty Int Waived"  column 1 
+							set penal_int_waived = (normal_int - penalty_int)
+							print ":" column 25
+							print  penal_int_waived column 26 autocomma size 25 leftjustify
+							nextline
+						end
+				end
+			end
+			if (adjust_amt != 0 and mudAcctFlg !="Y")
+			begin
+				print "Adjust Amount"  column 1 
+				print ":" column 25
+				print adjust_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (simple_int != 0 and mudAcctFlg !="Y")
+			begin
+				print "Simple Interest"  column 1 
+				print ":" column 25
+				print simple_int  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (exc_short_int >= 0 and mudAcctFlg !="Y")
+				print "Interest Recoverable"  column 1 
+			else if ( exc_short_int < 0 and mudAcctFlg !="Y")
+			begin
+				print "Interest Payable"  column 1
+				set exc_short_int = (-1) * exc_short_int
+			end	
+			print ":" column 25
+			print exc_short_int  column 26 autocomma size 24 leftjustify
+			nextline
+			if (pre_cls_int_tbl_code != "" and mudAcctFlg !="Y")
+			begin
+				print "Pre/Part Cls Int Tbl"  column 1
+				print ":" column 25
+				print pre_cls_int_tbl_code  column 26 size 5
+				nextline
+			end
+			if (pre_cls_fee > 0)
+			begin
+				print "Pre/Part Closure Fee"  column 1 
+				print ":" column 25
+				print pre_cls_fee  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (absolute_interest_rate != 0  and mudAcctFlg !="Y")
+			begin
+				print "Pre/Part Cls Int Rate"  column 1 
+				print ":" column 25
+				print absolute_interest_rate  column 26 size 25
+				nextline
+				print "Pre/Part Cls Interest"  column 1
+				print ":" column 25
+				print normal_int  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (tds_amt != 0  and mudAcctFlg !="Y")
+			begin
+				print "Income Tax (flat)"  column 1 
+				print ":" column 25
+				print tds_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (penalty_fee != 0  and mudAcctFlg !="Y")
+			begin
+				print "Total Penalty Fee"  column 1 
+				print ":" column 25
+				print penalty_fee  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (prev_shortfall_amt != 0 and  mudAcctFlg !="Y")
+			begin
+				print "Previous Shortfall Amt"  column 1 
+				print ":" column 25
+				print prev_shortfall_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			print "Repayment Amount"  column 1 
+			print ":" column 25
+			print repayment_amt  column 26 autocomma size 24 leftjustify
+			nextline
+			if (conv_rate_code != "")
+			begin
+				print "Conversion Rate Code"  column 1
+				print ":" column 25
+				print conv_rate_code column 26 size 5
+				nextline
+			end
+			if (conv_rate != 0)
+			begin
+				print "Conversion Rate"  column 1 
+				print ":" column 25
+				print conv_rate  column 26 size 25
+				nextline
+			end
+			if (broken_period_profit_rate != 0 and  mudAcctFlg = "Y" )
+			begin
+				print "Broken Period Profit  Rate"  column 1
+				print ":" column 25
+				print broken_period_profit_rate  column 26 size 25
+				nextline
+			end
+			if (total_profit_amt != 0 and  mudAcctFlg = "Y" )
+			begin
+				print "Total Profit Amt"  column 1
+				print ":" column 25
+				print total_profit_amt  column 26 size 25
+				nextline
+			end
+			if (total_payout_amt != 0 and  mudAcctFlg = "Y" )
+			begin
+				print "Total Payout Amount "  column 1
+				print ":" column 25
+				print total_payout_amt  column 26 size 25
+				nextline
+			end
+			if (matrix_int_amt > 0)
+			begin
+				print "Matrix Interest Amount"  column 1 
+				print ":" column 25
+				print matrix_int_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (saving_int_amt > 0)
+			begin
+				print "Savings Interest Amount"  column 1 
+				print ":" column 25
+				print saving_int_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+			if (saving_int_applied != "")
+			begin
+				print "Savings Int Applied" column 1 
+				print ":" column 25
+				print saving_int_applied  column 26 size 1
+				nextline
+			end
+			if (saving_int_applied != "" and saving_int_applied = "Y")
+			begin
+				print "Savings Interest Period"  column 1 
+				print ":" column 25
+				print saving_int_Applied_mths  column 26 size 3
+				print "/" column 29
+				print saving_int_Applied_days  column 31 size 3
+				nextline
+			end
+			if (pss_beneficiary_amt > 0)
+			begin
+				print "PSS Beneficiary Amount"  column 1 
+				print ":" column 25
+				print pss_beneficiary_amt  column 26 autocomma size 24 leftjustify
+				nextline
+			end
+		end
+		if rec_ind = "CD"
+		begin
+			nextline
+			print cd_foracid column 1 size 16
+			print cd_amt column 18 autocomma size 24 leftjustify
+			print cd_crncy_code column 43 size 5
+			print cd_rmks column 50 size 40
+		end
+		if rec_ind = "OD"
+		begin
+			nextline
+			if (od_foracid != "")
+			begin
+				print od_foracid column 1 size 16
+				print od_solid column 18 size 10
+				print od_amt column 39 autocomma size 24 leftjustify
+				print od_transfer_type column 65 size 25
+			end
+			else
+			begin
+				print "No Amt Transfer for Collatral/FFD/Sweep Regularization." column 1
+			end
+		end
+		if rec_ind = "TDS"
+		begin
+			nextline
+			print "TDS CIF ID   " column 1
+			print ":" column 25
+			print tds_custId column 26
+			nextline
+			print "Interest Amount " column 1
+			print ":" column 25
+			print   int_amt column 26 autocomma size 24 leftjustify 
+			print   tds_crncy_code column 52 size 5 
+			nextline
+			print "TDS Rate  " column 1
+			print ":" column 25
+			print tds_rate column 26 size 25 
+			nextline
+			print "TDS Amount " column 1
+			set tds_amount = (tds_from_oper_acct + tds_from_orig_acct + tds_from_other_acct)
+			print ":" column 25
+			print tds_amount column 26 autocomma size 24 leftjustify 
+			print   tds_crncy_code column 52 size 5 
+			nextline
+			print "ShortFall Amount " column 1
+			print ":" column 25
+			print shortfall_amt column 26 autocomma size 24 leftjustify 
+			print   tds_crncy_code column 52 size 5 
+			nextline
+			if (tds_tran_id != "")
+			begin
+				print "TDS Tran Id"  column 1 
+				print ":" column 25
+				print tds_tran_id  column 26 size 12
+				nextline
+			end
+			if (intRoute_tran_id != "")
+			begin
+				print "Int Tran Id"  column 1 
+				print ":" column 25
+				print intRoute_tran_id  column 26 size 12
+				nextline
+			end
+			nextline
+		
+		end
+	
+	end
+
+end
+###############################################################################
+#PROCEDURE brkof#
+###############################################################################
+PROCEDURE brkof
+begin
+if (srlNum != 1)
+ begin
+	if rec_ind = "ATD"
+        begin
+                print "------------------------------------------------------------"
+                nextline
+                print "Parameter                    Value" column 1
+                nextline
+                print "------------------------------------------------------------"
+                nextline
+        end
+        if rec_ind = "CD"
+        begin
+                nextline
+                print "----------------------------------"
+                nextline
+                print "Customer Instruction Details" column 1
+                nextline
+                print "----------------------------------"
+                nextline
+                print "Account Id." column 1
+                print "Amount" column 21
+                print "Remarks" column 50
+        end
+        if rec_ind = "OD"
+        begin
+                nextline
+                nextline
+                print "----------------------------------"
+                nextline
+                print "Overdraft Regularization Details :" column 1
+                nextline
+                print "----------------------------------"
+                nextline
+                print "Account Id." column 1
+                print "Sol Id." column 18
+                print "Amount" column 39
+                print "Transfer Type" column 65
+        end
+        if rec_ind = "TDS"
+        begin
+                nextline
+                print "-----------------------------------"
+                nextline
+                print " TAX DEDUCTION AT SOURCE DETAILS " column 4
+                nextline
+                print "-----------------------------------"
+                nextline
+        end
+
+end
+end
+###############################    end of file    ##############################
+

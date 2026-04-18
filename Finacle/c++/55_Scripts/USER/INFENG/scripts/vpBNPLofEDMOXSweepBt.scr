@@ -1,0 +1,225 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpBNPLofEDMOXSweepBt.scr
+#  Description     : BPLSW
+#  Date            : 01-08-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             01-08-2022      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        sv_p = urhk_B2k_PrintRepos("BANCS")
+        print(sv_p)
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+        #{
+                exitscript
+        #}
+        endif
+        EBSRV.GLBDATA.crAcct = ""
+        EBSRV.GLBDATA.OdDrAmt = "0"
+        EBSRV.GLBDATA.OdCrAmt = "0"
+        EBSRV.GLBDATA.totEdmoxCrAmt = "0"
+        EBSRV.GLBDATA.totEdmoxDrAmt = "0"
+        EBSRV.GLBDATA.totTranDrAmt = "0"
+        EBSRV.GLBDATA.totTranAmt = "0"
+        EBSRV.GLBDATA.drAcct = ""
+        EBSRV.GLBDATA.sClrBalAmt = "0"
+        sv_a = "rm -f EDMOXSweepFailure.lst"
+        sv_a = system(sv_a)
+        sv_a = "touch EDMOXSweepFailure.lst"
+        sv_a = system(sv_a)
+        sv_a = "rm -f EDMOXSweepSuccessAndReversal.lst"
+        sv_a = system(sv_a)
+        sv_a = "touch EDMOXSweepSuccessAndReversal.lst"
+        sv_a = system(sv_a)
+        sv_a = "rm -f EDMOXSweepFailureWithDetails.lst" 
+        sv_a = system(sv_a)
+        sv_a = "touch EDMOXSweepFailureWithDetails.lst" 
+        sv_a = system(sv_a)
+#fetch
+        sv_l = "sCifId,sAcctId,sAcid,sClrBalAmt,sSchmCode |  select cif_id,foracid,acid,nvl(clr_bal_amt,0),schm_code,acct_opn_date from tbaadm.gam where bank_id=?SVAR and sol_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and schm_code='SB778' and exists (select 1 from tbaadm.dctd_acli where bank_id=?SVAR and acid=gam.acid and pstd_user_id='FIVUSR54' and pstd_flg='Y' and tran_rmks='BNPL Faraja Disb' and part_tran_type='C' and tran_date<=to_date(?SVAR,'DD-MM-RRRR')) order by cif_id,acct_opn_date "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10)
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_c = urhk_dbCursorOpenWithBind(sv_l)
+        print(sv_c)
+        if(sv_c != 0)then
+        #{
+                print("fetching failed")
+                goto VAYU
+        #}
+        endif
+        sv_p = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        print(sv_p)
+        sv_r = urhk_dbCursorFetch(sv_p)
+        print(sv_r)
+        if(sv_r != 0)then
+        #{
+            goto VAYU
+        #}
+        endif
+        EBSRV.GLBDATA.record_count = 0
+        while(sv_r == 0)
+        #{
+                EBSRV.GLBDATA.sCifId    =       BANCS.OUTPARAM.sCifId
+                EBSRV.GLBDATA.sAcctId   =       BANCS.OUTPARAM.sAcctId
+                EBSRV.GLBDATA.sAcid     =       BANCS.OUTPARAM.sAcid
+                EBSRV.GLBDATA.sClrBalAmt        =       BANCS.OUTPARAM.sClrBalAmt
+                EBSRV.GLBDATA.sSchmCode                 =       BANCS.OUTPARAM.sSchmCode
+        #Inital Credit was Sweeped
+                lv_o = "OdDrAmt | select nvl(sum(tran_amt),0) from tbaadm.dctd_acli where bank_id=?SVAR and acid=?SVAR and part_tran_type='D' and pstd_flg='Y' and tran_date<=to_Date(?SVAR,'DD-MM-YYYY') and tran_rmks='BNPL Faraja Disb' and entry_user_id='FIVUSR54' and tran_particular like '%Disbursement:for%' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.sAcid + "|" + left$(BANCS.STDIN.BODDate,10)
+                print(BANCS.INPARAM.BINDVARS)
+                print(lv_o)
+                lv_o = urhk_dbSelectWithBind(lv_o)
+                if(lv_o==0)then
+                #{
+                        EBSRV.GLBDATA.OdDrAmt = BANCS.OUTPARAM.OdDrAmt
+                else
+                        EBSRV.GLBDATA.OdDrAmt = "0"
+                #}
+                endif
+        #Inital Credit Amount
+                lv_o = "OdCrAmt | select nvl(sum(tran_amt),0) from tbaadm.dctd_acli where bank_id=?SVAR and acid=?SVAR and part_tran_type='C' and pstd_flg='Y' and tran_date<=to_Date(?SVAR,'DD-MM-YYYY') and tran_rmks='BNPL Faraja Disb' and entry_user_id='FIVUSR54' and tran_particular like '%Disbursement:from%' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.sAcid + "|" + left$(BANCS.STDIN.BODDate,10)
+                print(BANCS.INPARAM.BINDVARS)
+                lv_o = urhk_dbSelectWithBind(lv_o)
+                print(lv_o)
+                if(lv_o==0)then
+                #{
+                        EBSRV.GLBDATA.OdCrAmt = BANCS.OUTPARAM.OdCrAmt
+                else
+                        EBSRV.GLBDATA.OdCrAmt = "0"
+                #}
+                endif
+        #Subseqnet Loan Sweepd
+                lv_d = " totEdmoxDrAmt | select nvl(sum(tran_amt),0) from TBAADM.DCTD_ACLI where bank_id=?SVAR and tran_type='T' and part_tran_type='D' and acid=?SVAR and tran_date<=to_Date(?SVAR,'DD-MM-YYYY') and entry_user_id='FIVUSR54' and tran_particular like '%Disbursement for: 0001300106693%' and tran_rmks='BNPL EDOMX' and pstd_flg='Y' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.sAcid + "|" + left$(BANCS.STDIN.BODDate,10)
+                lv_d = urhk_dbSelectWithBind(lv_d)
+                if(lv_d==0)then
+                #{
+                        EBSRV.GLBDATA.totEdmoxDrAmt = BANCS.OUTPARAM.totEdmoxDrAmt
+                else
+                        EBSRV.GLBDATA.totEdmoxDrAmt = "0"
+                #}
+                endif
+        #Subseqnet Loan Amount
+                lv_c = "totEdmoxCrAmt | select nvl(sum(tran_amt),0) from tbaadm.dctd_acli where bank_id=?SVAR and acid=?SVAR and part_tran_type='C' and pstd_flg='Y' and tran_date<=to_date(?SVAR,'DD-MM-RRRR') and tran_rmks='BNPL EDOMX' and entry_user_id='FIVUSR54' and tran_particular like '%Disbursement:from%' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.sAcid + "|" + left$(BANCS.STDIN.BODDate,10)
+                lv_c = urhk_dbSelectWithBind(lv_c)
+                if(lv_c==0)then
+                #{
+                        EBSRV.GLBDATA.totEdmoxCrAmt = BANCS.OUTPARAM.totEdmoxCrAmt
+                else
+                        EBSRV.GLBDATA.totEdmoxCrAmt = "0"
+                #}
+                endif
+        #Aug2 Swweps
+                lv_a = " augTSwpAmt | select sum(tran_amt) from tbaadm.dctd_acli where bank_id=?SVAR and tran_date=to_date(?SVAR,'DD-MM-RRRR') and entry_user_id='EZ19341' and pstd_flg='Y' and del_flg='N' and part_tran_type='D' and acid=?SVAR and tran_rmks='BNPL EDOMX' and ref_num='Cons:02-08-2022' "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + EBSRV.GLBDATA.sAcid
+                lv_d = urhk_dbSelectWithBind(lv_a)
+                if(lv_d==0)then
+                #{
+                        EBSRV.GLBDATA.augTSwpAmt = BANCS.OUTPARAM.augTSwpAmt
+                else
+                        EBSRV.GLBDATA.augTSwpAmt = "0"
+                #}
+                endif
+                print(EBSRV.GLBDATA.OdDrAmt)
+                print(EBSRV.GLBDATA.totEdmoxDrAmt)
+                print(EBSRV.GLBDATA.OdCrAmt)
+                print(EBSRV.GLBDATA.totEdmoxCrAmt)
+                EBSRV.GLBDATA.totEdmoxDrAmt = cdouble(EBSRV.GLBDATA.totEdmoxDrAmt) +cdouble(EBSRV.GLBDATA.OdDrAmt)
+                print(EBSRV.GLBDATA.augTSwpAmt)
+		EBSRV.GLBDATA.totEdmoxDrAmt = cdouble(EBSRV.GLBDATA.totEdmoxDrAmt) + cdouble(EBSRV.GLBDATA.augTSwpAmt)
+                EBSRV.GLBDATA.totEdmoxCrAmt = cdouble(EBSRV.GLBDATA.totEdmoxCrAmt) + cdouble(EBSRV.GLBDATA.OdCrAmt)
+                print(EBSRV.GLBDATA.totEdmoxDrAmt)
+                print(EBSRV.GLBDATA.totEdmoxCrAmt)
+
+		if(cdouble(EBSRV.GLBDATA.totEdmoxCrAmt)>cdouble(EBSRV.GLBDATA.totEdmoxDrAmt))then
+		#{
+			EBSRV.GLBDATA.trDrAmt = cdouble(EBSRV.GLBDATA.totEdmoxCrAmt) - cdouble(EBSRV.GLBDATA.totEdmoxDrAmt)
+			EBSRV.GLBDATA.isReversal = "T"
+		#}
+		endif
+		if(cdouble(EBSRV.GLBDATA.totEdmoxCrAmt)<cdouble(EBSRV.GLBDATA.totEdmoxDrAmt))then
+		#{
+			EBSRV.GLBDATA.trDrAmt = cdouble(EBSRV.GLBDATA.totEdmoxDrAmt) - cdouble(EBSRV.GLBDATA.totEdmoxCrAmt)
+			EBSRV.GLBDATA.isReversal = "R"
+		#}
+		endif
+		if(cdouble(EBSRV.GLBDATA.totEdmoxCrAmt)==cdouble(EBSRV.GLBDATA.totEdmoxDrAmt))then
+		#{
+			EBSRV.GLBDATA.trDrAmt = "0" 
+			EBSRV.GLBDATA.isReversal = "N"
+		#}
+		endif
+		print(EBSRV.GLBDATA.trDrAmt)
+		print(EBSRV.GLBDATA.isReversal)
+                if(cdouble(EBSRV.GLBDATA.trDrAmt)>0)then
+                #{
+                        EBSRV.GLBDATA.totTranAmt = cdouble(EBSRV.GLBDATA.trDrAmt)
+                #}
+                endif
+                EBSRV.GLBDATA.crAcct = "0001300106693"
+                EBSRV.GLBDATA.drAcct = EBSRV.GLBDATA.sAcctId
+                EBSRV.GLBDATA.totTranDrAmt = 1* cdouble(EBSRV.GLBDATA.totTranAmt)
+                if((cdouble(EBSRV.GLBDATA.totTranDrAmt)>0) and (EBSRV.GLBDATA.crAcct!="") and (EBSRV.GLBDATA.drAcct!=""))then
+                #{
+                        if(cdouble(EBSRV.GLBDATA.sClrBalAmt)>=cdouble(EBSRV.GLBDATA.totTranDrAmt))then
+                        #{
+                                sv_a = EBSRV.GLBDATA.drAcct + "|" + EBSRV.GLBDATA.crAcct + "|" + EBSRV.GLBDATA.sClrBalAmt + "|" + EBSRV.GLBDATA.totEdmoxDrAmt + "|" + EBSRV.GLBDATA.totEdmoxCrAmt + "|" + EBSRV.GLBDATA.augTSwpAmt + "|" + EBSRV.GLBDATA.trDrAmt + "|" + EBSRV.GLBDATA.isReversal
+                                sv_q = "echo '" + sv_a + "' >> EDMOXSweepSuccessAndReversal.lst "
+                                print(sv_q)
+                                sv_s = system(sv_q)
+                                callscriptifexist("vpBNPLofEDMOXSweepBtRun.scr")
+                                goto NXTL
+                        #}
+                        else
+                        #{
+                                sv_a = EBSRV.GLBDATA.drAcct + "|" + EBSRV.GLBDATA.totTranDrAmt + "|" + EBSRV.GLBDATA.sClrBalAmt + "|" + EBSRV.GLBDATA.crAcct
+                                sv_q = "echo '" + sv_a + "' >> EDMOXSweepFailure.lst "
+                                print(sv_q)
+                                sv_s = system(sv_q)
+                                sv_a = EBSRV.GLBDATA.drAcct + "|" + EBSRV.GLBDATA.crAcct + "|" + EBSRV.GLBDATA.sClrBalAmt + "|" + EBSRV.GLBDATA.totEdmoxDrAmt + "|" + EBSRV.GLBDATA.totEdmoxCrAmt + "|" + EBSRV.GLBDATA.augTSwpAmt + "|" + EBSRV.GLBDATA.trDrAmt + "|" + EBSRV.GLBDATA.isReversal
+                                sv_q = "echo '" + sv_a + "' >> EDMOXSweepFailureWithDetails.lst "
+                                print(sv_q)
+                                sv_s = system(sv_q)
+                                goto NXTL
+                        #}
+                        endif
+                #}
+                else
+                #{
+                        goto NXTL
+                #}
+                endif
+        NXTL:
+        sv_r = urhk_dbCursorFetch(sv_p)
+        #}
+        do
+        sv_r = urhk_dbCursorClose(sv_p)
+VAYU:
+        exitscript
+trace off
+end-->

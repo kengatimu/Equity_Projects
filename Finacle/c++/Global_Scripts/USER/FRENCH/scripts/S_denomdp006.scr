@@ -1,0 +1,232 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: S_denomdp006.scr
+# Type: NA|default
+# Description: Equity Finacle - 10.2.13 to 10.2.18 porting
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+###############################################################################
+#   Source Name         :   SRV_PostTran_post_process_data.scr
+#   Date                :   19-JAN-2008
+#   Description         :   This script is for DENOM module to change status to 'P'
+#   Input               :
+#   Output              :
+#   Author              :   MANDAR
+#   Called Script       :   denomdp018.scr
+#   Calling Script      :
+#   MODULE CODE         :   DENOM
+#   Modification History:
+#   <Serial No.>   <Date>   <Author Name>    <Description>
+#	0.2		26-AUG-2011	Arathilakshmi		Edited to include HGCHRG/HTUTM menu
+#################################################################################
+<--START
+	TRACE ON
+	
+	LIBNAME GETMMSG
+	
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	sv_q = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_q)
+	IF ((BANCS.STDIN.moduleIdentity == "FI") OR (BANCS.STDIN.moduleIdentity == "CDCI")) THEN
+	#{
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_a = urhk_B2K_PrintRepos("BANCS")
+		PRINT(sv_a)
+		IF (FIELDEXISTS(BANCS.INPUT.srvcallmode)) THEN
+		#{
+			IF (BANCS.INPUT.srvcallmode == "S") THEN
+			#{
+				IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.serviceName == "SRV_ProcessUnscheduleLaPmtForVrfy")) THEN
+				#{
+					GOTO FINISH
+					sv_d = urhk_SRV_GetVal("tranObj.tranIdentifier.tranDate")
+					#}
+				ELSE
+					#{
+					sv_d = urhk_SRV_GetVal("tranHdr.tranIdentifier.tranDate")
+				#}
+				ENDIF
+				
+				BANCS.INPUT.tranDate = MID$(BANCS.OUTPARAM.srvValue, 0, 10)
+				PRINT(BANCS.INPUT.tranDate)
+				sv_d = urhk_B2k_getDateDiffFromBODDate(BANCS.INPUT.tranDate)
+				PRINT(sv_d)
+				IF (sv_d == 0) THEN
+				#{
+					IF (CINT(BANCS.OUTPARAM.DateDiff) < 0) THEN
+					#{
+						sv_s = urhk_SRV_SetErr("Approval has expired for this referral. Kindly withdraw AND Submit afresh.")
+						PRINT(sv_s)
+						GOTO FINISH
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	CUST.DENOM.bank_id = TOUPPER(BANCS.STDIN.contextBankId)
+	PRINT(CUST.DENOM.bank_id)
+	
+	IF (FIELDEXISTS(BANCS.STDIN.funcName) ==0) THEN
+	#{
+		
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		IF ((BANCS.STDIN.menuId == "HGCHRG") OR (BANCS.STDIN.funcName == "SRV_VerifyGenChrgDtl")) THEN
+		#{
+			sv_q = urhk_SRV_GetVal("genChrgCrit.tranType.tranType")
+			CUST.DENOM.tranType = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.DENOM.tranType)
+			#}
+		ELSE
+			#{
+			
+			GOTO FINISH
+			IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.funcName == "SRV_ProcessUnscheduleLaPmtForVrfy") OR (BANCS.STDIN.serviceName == "SRV_ProcessUnscheduleLaPmtForVrfy")) THEN
+			#{
+				sv_q = urhk_SRV_GetVal("laPayCrit.tranType")
+				#}
+			ELSE
+				#{
+				sv_q = urhk_SRV_GetVal("tranHdr.tranTypeSubType.tranType")
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#-- Getting Tran.id--------------------
+	IF (CUST.DENOM.tranType == "C") THEN
+	#{
+		IF ((FIELDEXISTS(ONS.CUSTOM.custDataIn) == 0) OR (TRIM(ONS.CUSTOM.custDataIn) == "")) THEN
+		#{
+			GOTO FINISH
+		#}
+		ENDIF
+		IF ((BANCS.STDIN.menuId == "HGCHRG") OR (BANCS.STDIN.funcName == "SRV_VerifyGenChrgDtl")) THEN
+		#{
+			sv_q = urhk_SRV_GetVal("genChrgCrit.gchSrlNum")
+			CUST.DENOM.tranId = LPAD(TRIM(BANCS.OUTPARAM.srvValue), 9)
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			lv_s = "tranDate|SELECT to_char(tran_date,'DD-MM-YYYY') FROM CUSTOM.C_DERD "
+			lv_s = lv_s + "WHERE dxfer_id = ?SVAR "
+			lv_s = lv_s + "AND dxfer_flg = 'C' AND bank_id = ?SVAR "
+			lv_s = lv_s + "AND sol_id = ?SVAR"
+			PRINT(lv_s)
+			lv_q = urhk_dbSelectWithBind(lv_s)
+			PRINT(lv_q)
+			IF (lv_q == 0) THEN
+			#{
+				CUST.DENOM.date = BANCS.OUTPARAM.tranDate
+				#}
+			ELSE
+				#{
+				CUST.DENOM.date = LEFT$(BANCS.STDIN.BODDate, 10)
+			#}
+			ENDIF
+			PRINT(CUST.DENOM.date)
+			sv_q = urhk_SRV_GetVal("genChrgCrit.tranId")
+			CUST.DENOM.origTranId = BANCS.OUTPARAM.srvValue
+			sv_q = urhk_SRV_GetVal("genChrgCrit.tranDate")
+			CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue, 10)
+			#}
+		ELSE
+			#{
+			GOTO FINISH
+			IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.funcName == "SRV_ProcessUnscheduleLaPmtForVrfy") OR (BANCS.STDIN.serviceName == "SRV_ProcessUnscheduleLaPmtForVrfy")) THEN
+			#{
+				sv_q = urhk_SRV_GetVal("tranObj.tranIdentifier.tranId")
+				CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+				sv_q = urhk_SRV_GetVal("tranObj.tranIdentifier.tranDate")
+				CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue, 10)
+				#}
+			ELSE
+				#{
+				sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranId")
+				CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+				sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranDate")
+				CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue, 10)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		PRINT(CUST.DENOM.tranId)
+		PRINT(CUST.DENOM.tranDate)
+		
+		PRINT(ONS.CUSTOM.custDataIn)
+		sv_s = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+		CALL("denomdp018.scr")
+		
+		#-----Query to update Dxfer_id as 'P' in C_DETD and C_DERD table---------------
+		sv_l = "UPDATE CUSTOM.c_detd "
+		sv_m = "UPDATE CUSTOM.c_derd "
+		IF ((BANCS.STDIN.menuId == "HGCHRG") OR (BANCS.STDIN.funcName == "SRV_VerifyGenChrgDtl") OR (BANCS.STDIN.serviceName == "SRV_VerifyGenChrgDtl")) THEN
+		#{
+			sv_l = sv_l + "SET dxfer_flg = 'P',lchg_time=sysdate,lchg_user_id = ?SVAR,"
+			sv_l = sv_l + "dxfer_id=?SVAR,tran_date=to_date(?SVAR,'DD-MM-YYYY') "
+			sv_m = sv_m + "SET dxfer_flg = 'P',dxfer_id = ?SVAR,tran_date=to_date(?SVAR,'DD-MM-YYYY') "
+			sv_n = "WHERE dxfer_id = ?SVAR "
+			sv_n = sv_n + "AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') "
+			
+			BANCS.INPARAM.BINDVARS_L = BANCS.STDIN.userId + "|" + LPAD(CUST.DENOM.origTranId, 9, ' ') + "|" + CUST.DENOM.tranDate
+			BANCS.INPARAM.BINDVARS_M = LPAD(CUST.DENOM.origTranId, 9, ' ') + "|" + CUST.DENOM.tranDate
+			BANCS.INPARAM.BINDVARS_N = CUST.DENOM.tranId + "|" + CUST.DENOM.date
+			#}
+		ELSE
+			#{
+			sv_l = sv_l + "SET dxfer_flg = 'P',lchg_time=sysdate,lchg_user_id = ?SVAR "
+			sv_m = sv_m + "SET dxfer_flg = 'P' "
+			sv_n = "WHERE dxfer_id = ?SVAR "
+			sv_n = sv_n + "AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') "
+			
+			BANCS.INPARAM.BINDVARS_L = BANCS.STDIN.userId
+			BANCS.INPARAM.BINDVARS_N = LPAD(CUST.DENOM.tranId, 9, ' ') + "|" + CUST.DENOM.date
+		#}
+		ENDIF
+		
+		PRINT(sv_l + sv_n)
+		PRINT(sv_m + sv_n)
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS_L + "|" + BANCS.INPARAM.BINDVARS_N
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_v = urhk_dbsqlwithbind(sv_l + sv_n)
+		PRINT(sv_v)
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS_M + "|" + BANCS.INPARAM.BINDVARS_N
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_v = urhk_dbsqlwithbind(sv_m + sv_n)
+		PRINT(sv_v)
+	#}
+	ENDIF
+	
+	
+	#------------------------------------------------------------------------
+	FINISH:
+		TRACE OFF
+END-->

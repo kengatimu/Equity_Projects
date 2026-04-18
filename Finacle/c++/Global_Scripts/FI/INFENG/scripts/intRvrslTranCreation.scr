@@ -1,0 +1,297 @@
+###########################################################################################
+#  Script Name     :	intRvrslTranCreation.scr
+#  Author 		   :	Maunang
+#  Input To Script :	MTT.InputDetails.RefAmt
+#						MTT.InputDetails.TranAcct
+#						MTT.InputDetails.TranCrncy
+#						MTT.InputDetails.IsLoansPartTranFlg
+#						MTT.InputDetails.PartTranIden
+#						MTT.InputDetails.TranParticulars
+#						MTT.InputDetails.TypeOfTran
+#						MTT.InputDetails.FlowId
+#						MTT.InputDetails.RvrslTranId
+#						MTT.InputDetails.RvrslTranDate
+#						MTT.InputDetails.RvrslDateDiff
+#						MTT.InputDetails.PartTranSrlNum
+#						MTT.InputDetails.TypeOfDmd
+#  						MTT.InputDetails.OperAcct
+#						MTT.InputDetails.origAcctId 
+##########################################################################################
+
+<--start
+#trace on
+sv_r = urhk_MTTS_PopulateInputDetails("")
+if(sv_r == 1) then
+	exitscript
+endif
+
+###############################################################################
+# Define the Transaction
+###############################################################################
+
+
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="IC"
+#MSG0319569="Create Transaction for Interest Reversal"
+sv_g = urhk_getMSGCodeErrDesc("MSG0319569")
+if(sv_g == 0) then
+MTT.TranDetails.Remarks = BANCS.OUTPARAM.errDesc
+endif
+MTT.TranDetails.IgnoreExcp="I"
+MTT.TranDetails.Consolidate="Y"
+MTT.TranDetails.PrintAdviceInd="B"
+MTT.TranDetails.ReversalFlg="N"
+MTT.TranDetails.sysTranCode = "GNRLAA055"
+
+sv_z = urhk_MTTS_DefineTransaction("intRvrsl")
+if(sv_r == 1) then
+	#MSG0319571="Transaction definition For Interest Reversal could not be created"
+    	sv_g = urhk_getMSGCodeErrDesc("MSG0319571")
+    	if(sv_g == 0) then
+    		MTT.Error.Description = BANCS.OUTPARAM.errDesc
+    	endif	
+	sv_r = urhk_MTTS_ReportErrorCondition("")
+	exitscript
+endif
+
+while(sv_r < 1)
+#{
+
+###############################################################################
+# Get all the amounts into local variables . Please do not set these variables
+# anywhere else in this script. The variables are : -
+# sv_a = RefAmt
+###############################################################################
+	
+
+	
+	sv_a = CDOUBLE(MTT.InputDetails.RefAmt)
+#print(MTT.InputDetails.RefAmt)
+
+	sv_f = MTT.InputDetails.IsLoansPartTranFlg
+
+#####################################################################################
+# All the part trans will be created here in a single while loop. If
+# IsLoansPartTranFlg is true, additional details will also be populated. All
+# other required variables are populated in rlaut068.cxx and sent here. No
+# more calculation or data population. Simply get the data and create part
+# trans. If any problem, either check intRvrslInputRecordToScript in
+# lauu9540.cxx or buildTranLLForRvrsl in rlaut068.cxx. Following Part trans
+# will be handled here :
+# 1) Credit to Loan Acct/Loan Int Acct. for Normal/Penal Interest
+# 2) Debit to Normal P&L.
+# 3) Debit to Penal P&L.
+# 4) Credit to Subsidy Receivable. (When Subsidy Exists)
+# 5) Credit to Interest Receivable. (When Booking is more than Interest
+#					 					Application)
+# 6) Credit to Interest Suspense( For Past Due Accts.)
+#####################################################################################
+if (sv_a != 0) then
+#{
+	
+	print(MTT.InputDetails.PartTranIden)
+	MTT.PartTranDetails.TranCurrency=MTT.InputDetails.TranCrncy
+        MTT.PartTranDetails.RefCurrency=MTT.InputDetails.RefCrncy
+	#MTT.PartTranDetails.RefCurrency=MTT.InputDetails.TranCrncy
+	MTT.PartTranDetails.TranIdentifier="intRvrsl"
+    
+    if(MTT.InputDetails.PartTranIden == "SBSDYRECVCREDIT") then
+    	#MSG0319572="Credit to Subsidy Receivable due to interest reversal "
+    	sv_g = urhk_getMSGCodeErrDesc("MSG0319572")
+    	if(sv_g == 0) then
+    	MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+    	endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN00690" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "PANDLDEBITSBSDY") then
+        #MSG0319573="Debit to P&L due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319573")
+    	if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+   		endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN00691" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "LOANCREDIT") then
+        #MSG0319574="Credit to Loan Account due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319574")
+    	if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+
+    	endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN01727" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "INTSUSPDEBIT") then
+        #MSG0319575="Debit to Interest Suspense due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319575")
+    	if(sv_g == 0) then
+	        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.TranAcct
+        	print("inside INTSUSPDEBIT loop")
+		print(MTT.InputDetails.origAcctId)
+		# Since INT_SUSP accounts will be partioned, ACPART Details to be provided.
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.origAcctId
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    	endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN01728" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "BOOKSUSP") then 
+        MTT.PartTranDetails.Particulars="Debit to Interest Suspense due to booking reversal "
+        print("inside BOOKSUSP loop") 
+	print(MTT.InputDetails.origAcctId)
+        # Since INT_SUSP accounts will be partioned, ACPART Details to be provided. 
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.origAcctId 
+        MTT.PartTranDetails.ACPARTB2kType="ACCNT" 
+	endif 
+    if(MTT.InputDetails.PartTranIden == "PENALINTSUSPDEBIT") then 
+        print("inside PENALINTSUSPDEBIT loop")
+	print(MTT.InputDetails.origAcctId) 
+        MTT.PartTranDetails.Particulars="Debit to Penal Interest Suspense due to interest reversal " 
+        # Since INT_SUSP accounts will be partioned, ACPART Details to be provided. 
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.origAcctId 
+        MTT.PartTranDetails.ACPARTB2kType="ACCNT" 
+    endif 
+    if(MTT.InputDetails.PartTranIden == "BOOKPENALSUSP") then 
+        print("inside BOOKPENALSUSP loop")
+	print(MTT.InputDetails.origAcctId) 
+        MTT.PartTranDetails.Particulars="Debit to Penal Interest Suspense due to booking reversal " 
+        # Since INT_SUSP accounts will be partioned, ACPART Details to be provided. 
+        MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.origAcctId 
+        MTT.PartTranDetails.ACPARTB2kType="ACCNT" 
+    endif 
+    if(MTT.InputDetails.PartTranIden == "PANDLDEBIT") then
+        #MSG0319576="Debit to P&L due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319576")
+    	if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+    	endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN01729" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "PENALPANDLDEBIT") then
+        #MSG0319577="Debit to Penal P&L due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319577")
+   	    if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+    	endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN01730" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "BOOKPNL") then
+        #MSG0319578="Debit to P&L due to additional booking reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319578")
+        if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+        endif
+   	MTT.PartTranDetails.sysPartTranCode = "PTRN01731" 
+    endif
+    if(MTT.InputDetails.PartTranIden == "BOOKRECV") then
+        #MSG0320966="Credit to Booking Receivable due to additional booking reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0320966")
+        if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+        endif
+   		MTT.PartTranDetails.sysPartTranCode = "PTRN01732"
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.origAcctId
+        MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    endif
+	if(MTT.InputDetails.PartTranIden == "BOOKSUSP") then 
+		MTT.PartTranDetails.Particulars="Debit to Interest Suspense due to additional booking reversal " 
+	endif 
+	if(MTT.InputDetails.PartTranIden == "BOOKPENALPNL") then 
+    	MTT.PartTranDetails.Particulars="Dr. from Penal P&L due to additional booking reversal." 
+    endif 
+    if(MTT.InputDetails.PartTranIden == "BOOKPENALRECV") then 
+        MTT.PartTranDetails.Particulars="Cr. to Penal or Suspense Penal Booking Receivable due to booking reversal." 
+    endif
+    if(MTT.InputDetails.PartTranIden == "OPERCREDIT") then
+        #MSG0319581="Credit to Operative Account due to interest reversal "
+        sv_g = urhk_getMSGCodeErrDesc("MSG0319581")
+        if(sv_g == 0) then
+        MTT.PartTranDetails.Particulars = BANCS.OUTPARAM.errDesc
+        endif	
+		MTT.PartTranDetails.sysPartTranCode = "PTRN01733"	
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.OperAcct
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+    endif
+	MTT.PartTranDetails.Account = MTT.InputDetails.TranAcct
+	MTT.PartTranDetails.PTranBusinessType="INTRVRSL"
+	MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.TranAcct
+	MTT.PartTranDetails.ACPARTB2kType="ACCNT"
+	MTT.PartTranDetails.ValueDate = MTT.InputDetails.valueDateDiff
+	
+	IF(FIELDEXISTS(MTT.PartTranDetails.sysPartTranCode)) THEN
+	#{
+		if((MTT.PartTranDetails.sysPartTranCode == "")) then 
+			if(sv_a > 0) then 
+				MTT.PartTranDetails.sysPartTranCode = "PTRN03050" 
+			else 
+				MTT.PartTranDetails.sysPartTranCode = "PTRN03051" 
+			endif 
+		endif 
+	#}
+	ENDIF
+
+#print(sv_a)
+#print(sv_f)
+#print(MTT.InputDetails.TranCrncy)
+#print(MTT.InputDetails.TranAcct)
+
+	if(sv_f == "Y") then
+	#{
+		MTT.PartTranDetails.Consolidate="N"
+		MTT.PartTranDetails.RefAmount = sv_a
+#print(MTT.PartTranDetails.RefAmount)
+
+		#Populate Additional Details	
+		MTT.LAAddnlDetails.LoanAcctId = MTT.InputDetails.TranAcct
+		MTT.LAAddnlDetails.TypeOfDemand = MTT.InputDetails.TypeOfDmd
+		MTT.LAAddnlDetails.raiseDemandFlg = "Y"
+		MTT.LAAddnlDetails.DemandAmt = sv_a
+		MTT.LAAddnlDetails.ReversalTranId = MTT.InputDetails.RvrslTranId
+		MTT.LAAddnlDetails.ReversalTranDate = MTT.InputDetails.RvrslDateDiff
+		MTT.LAAddnlDetails.ReversalPtranSrlNum = MTT.InputDetails.PartTranSrlNum
+		MTT.LAAddnlDetails.DemandFlowId = MTT.InputDetails.FlowId
+
+#print(MTT.LAAddnlDetails.ReversalTranId)
+#print(MTT.LAAddnlDetails.ReversalTranDate)
+#print(MTT.LAAddnlDetails.ReversalPtranSrlNum)
+#print(MTT.LAAddnlDetails.DemandFlowId)
+#print(MTT.LAAddnlDetails.ReversalTranDate)
+#print(MTT.InputDetails.PartTranIden)
+#print(MTT.InputDetails.PartTranIden)
+#print(MTT.InputDetails.PartTranIden)
+	
+		sv_z = urhk_MTTS_DefineLoanPartTran(MTT.InputDetails.PartTranIden)
+#print(sv_z)
+		if (sv_z == 1) then
+			exitscript
+		endif
+	#}
+	else
+	#{
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+		MTT.PartTranDetails.RefAmount = sv_a
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.TranAcct 
+		MTT.PartTranDetails.ACPARTB2kType="ACCNT" 
+
+		sv_z = urhk_MTTS_DefinePartTran(MTT.InputDetails.PartTranIden)
+
+#print(sv_z)
+		if (sv_z == 1) then
+			exitscript
+		endif
+	#}
+	endif
+#}
+endif
+GET_NEXT_REC:
+sv_r = urhk_MTTS_PopulateInputDetails("")
+#print (sv_r)
+	if(sv_r == 1) then
+		sv_r = urhk_MTTS_EndDefinition("")
+		exitscript
+	endif
+DO
+#}
+#trace off
+end-->

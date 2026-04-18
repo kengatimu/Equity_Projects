@@ -1,0 +1,145 @@
+ ################################################################################################
+# Source Name				: penalCaacVal.scr
+# Date						: 
+# Description				: caac validation to chk if the penal outstanding on account
+# Input						: None
+# Output					: 
+# Called Script				: None
+# Calling Script			: None
+# Author					: Sridevi v
+# Modification History		:
+#	< Version No.>		<Date>			<Author Name>		<Description>
+################################################################################################
+<--START
+
+	TRACE ON
+	
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	sv_r = REPEXISTS("CUST")
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether WHT Class exists else create it
+	###########################################################################################
+	sv_c = CLASSEXISTS("CUST", "CPNL")
+	IF(sv_c == 0) THEN
+	#{
+		CREATECLASS("CUST", "CPNL", 5)
+	#}
+	ENDIF
+	
+	CUST.CPNL.acctNum = ""
+	IF(FIELDEXISTS(BANCS.INPUT.acctId))THEN
+	#{
+		IF (BANCS.INPUT.acctId != "")THEN
+		#{
+			CUST.CPNL.acctNum = BANCS.INPUT.acctId
+			PRINT(CUST.CPNL.acctNum)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	CUST.CPNL.errorFlg = "N"
+	CUST.CPNL.errorMsg = " "
+	
+	CUST.CPNL.userId =  BANCS.STDIN.userId
+	CUST.CPNL.recCount = "0"
+	CUST.CPNL.modRecCount = "0"
+	
+	
+	
+	
+	sv_s = "SCHM_TYPE|SELECT SCHM_TYPE FROM TBAADM.GAM WHERE FORACID = ?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG = 'Y' "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = CUST.CPNL.acctNum + "|"+ BANCS.STDIN.contextBankId
+	
+	sv_a = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_a)
+	
+	IF(sv_a == 0)THEN
+	#{
+		PRINT(BANCS.OUTPARAM.SCHM_TYPE)
+		CUST.CPNL.SCHM_TYPE = TRIM(BANCS.OUTPARAM.SCHM_TYPE)
+		IF(CUST.CPNL.SCHM_TYPE != "ODA")THEN
+		#{
+			IF(CUST.CPNL.SCHM_TYPE != "CAA")THEN
+			#{
+				PRINT("NOT AND ODA OR CAA ACCT")
+				
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		PRINT("FAILED TO FETCH DATA FROM DB")
+		CUST.CPNL.errorFlg = "Y"
+		CUST.CPNL.errorMsg = "FAILED TO FETCH DATA FROM DB"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	###############################################
+	#ODA OR CAA - VALIDATION
+	###############################################
+		sv_s = "pnlOutstdngAmt|SELECT nvl(nvl(PENAL_ACCRUED_AMOUNT_DR, 0) - nvl(PENAL_APPLIED_AMOUNT_DR, 0),0) - nvl(TOTAL_WAIVED_OFF_AMT,0) "
+		sv_s = sv_s + " FROM custom.c_pnat WHERE FORACID = ?SVAR AND bank_id = ?SVAR"
+		
+		BANCS.INPARAM.BINDVARS = CUST.CPNL.acctNum + "|"+ BANCS.STDIN.contextBankId
+		
+		sv_a = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_a)
+		
+		IF(sv_a == 0)THEN
+		#{
+			PRINT(BANCS.OUTPARAM.pnlOutstdngAmt)
+			CUST.CPNL.pnlOutstdngAmt = BANCS.OUTPARAM.pnlOutstdngAmt
+			
+			IF(CINT(CUST.CPNL.pnlOutstdngAmt) > 0)THEN
+			#{
+				PRINT("There IS penal outstanding on account")
+				CUST.CPNL.errorFlg = "Y"
+				CUST.CPNL.errorMsg = "There is penal outstanding on account"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			PRINT("FAILED TO FETCH DATA FROM DB")
+			#CUST.CPNL.errorFlg = "Y"
+			#CUST.CPNL.errorMsg = "FAILED TO FETCH DATA FROM DB"
+			CUST.CPNL.errorFlg = "N"
+			CUST.CPNL.errorMsg = ""
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+			
+	
+	
+		
+	ENDOFSCRIPT:
+	
+	PRINT(CUST.CPNL.errorMsg)
+	PRINT(CUST.CPNL.errorFlg)
+	IF(CUST.CPNL.errorFlg =="Y")THEN
+	#{
+	
+		sv_u = urhk_SetOrbOut("errMsg|"+ CUST.CPNL.errorMsg)
+		sv_u = urhk_SetOrbOut("errFlg|"+ CUST.CPNL.errorFlg)
+	#}
+	ENDIF
+	EXITSCRIPT
+END-->

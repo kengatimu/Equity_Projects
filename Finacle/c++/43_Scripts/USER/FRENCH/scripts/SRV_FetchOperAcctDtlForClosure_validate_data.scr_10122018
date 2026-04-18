@@ -1,0 +1,113 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: Event Based
+# Script: SRV_FetchOperAcctDtlForClosure_validate_data.scr
+# Type: GCHRG|default
+# Description: GCHRG - Calculation of General Charges
+# Author: Sridevi_Vutukuru
+# Date: 11/8/18 2:48 PM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="13fd4a92f5e387e16b71d875d3c1067eb67ddacf44eae13fc21449956619eed4"
+	TRACE ON
+	
+	#-----------------------------------------------------------------------------------
+	# Creating the repositories and classes
+	#-----------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "CHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CHRG", 5)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------
+	# Getting the account number
+	#-----------------------------------------------------------------------------------
+	sv_a = urhk_SRV_GetVal("acctBasic.foracid")
+	PRINT(sv_a)
+	
+	CUST.CHRG.foracid = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.CHRG.foracid)
+	
+	#-----------------------------------------------------------------------------------
+	# Getting the scheme type of the account number
+	#-----------------------------------------------------------------------------------
+	sv_q = "schm_type|select SCHM_TYPE from TBAADM.gam where foracid= ?SVAR "
+	sv_q = sv_q + " AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.CHRG.foracid + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbSelectWithBind(sv_q)
+	PRINT(sv_r)
+	
+	IF (sv_r != 0) THEN
+	#{
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		sv_u = urhk_SRV_SetErr("Scheme type not found for the account")
+		GOTO END_OF_SCRIPT
+	#}
+	ENDIF
+	
+	CUST.CHRG.schmType = BANCS.OUTPARAM.schm_type
+	PRINT(CUST.CHRG.schmType)
+	
+	#-----------------------------------------------------------------------------------
+	# Checking whether it is the ODA or SBA or CAA scheme type
+	#-----------------------------------------------------------------------------------
+	IF ((CUST.CHRG.schmType == "ODA") OR (CUST.CHRG.schmType == "SBA") OR (CUST.CHRG.schmType == "CAA")) THEN
+	#{
+		sv_a = "c1|SELECT COUNT(*) FROM CUSTOM.C_CHARGE_COLLECTION WHERE  ACCT_NUM = ?SVAR"
+		sv_a = sv_a + " AND FULLY_ADJUSTED_FLG='N' and BANK_ID = ?SVAR"
+		PRINT(sv_a)
+		BANCS.INPARAM.BINDVARS = CUST.CHRG.foracid + "|" + BANCS.STDIN.contextBankId
+		sv_r = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_r)
+		
+		IF (sv_r != 0) THEN
+		#{
+			# no record found
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SRV_SetErr("Error in fetching the count of records from C_CHARGE_COLLECTION table")
+			GOTO END_OF_SCRIPT
+			#}
+		ELSE
+			#{
+			CUST.CHRG.appCount = BANCS.OUTPARAM.c1
+			PRINT(CUST.CHRG.appCount)
+			
+			#-----------------------------------------------------------------------------------
+			# Checking whether the account is pending for DCHRG charges
+			#-----------------------------------------------------------------------------------
+			IF (CUST.CHRG.appCount == 0) THEN
+			#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+				GOTO END_OF_SCRIPT
+				#}
+			ELSE
+				#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				sv_u = urhk_SRV_SetErr("The account has pending Charges to be collected.")
+				GOTO END_OF_SCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	END_OF_SCRIPT:
+		#DELETECLASS("CUST", "CHRG")
+		#DELETEREP("CUST")
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->
+

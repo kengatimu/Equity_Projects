@@ -1,0 +1,1318 @@
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#    Name               : cdpspmn001.scr
+#    Description        : This script will give the details of the account
+#    Date               : 22-03-2013
+#    Author             : Nagarjuna Reddy
+#    Input              : NA
+#    Output             : It gives the EMD details for the account number, number of transactions happend between from date and todate.
+#    Called Script      : NA
+#    Calling Script     : cdpsp_det_glink.js
+#    Menu Option        :
+#    Srl. No        Date            Author          Description.
+#    -------        ----            ------          ----------------
+#    1.0          22-04-2013      Nagarjuna Reddy M  Original Version
+#    2.0          13-05-2013      Nagarjuna Reddy M  Added code for TOD
+#    3.0          21-06-2013      Nagarjuna Reddy M  Modified error condition
+#     4.0	       25-07-2013	  Vijaya V			Modification for TOL -363018
+#	5.0	     08-Sep-2013	 Vijaya V			ModificationTo print the report online
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="950fe5ff0e29d9bc911707139adadefdc196486f1a6c3480cebeb217258556ee"
+	TRACE ON
+	LIBNAME CUSTOMSO
+	
+	######################################################
+	# Creating Custom Repository
+	######################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "PORT")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "PORT", 5)
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "GCHRG")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "GCHRG", 5)
+	#}
+	ENDIF
+	
+	######################################################
+	# Inputs from jsp
+	######################################################
+	CUST.PORT.acctNum    = TRIM(BANCS.INPUT.acctNum)
+	CUST.PORT.frmDate	= BANCS.INPUT.frmdate_ui
+	CUST.PORT.toDate	= BANCS.INPUT.todate_ui
+	CUST.PORT.chrgAmt    	= BANCS.INPUT.hidchrg
+	CUST.PORT.print_no_tran	= BANCS.INPUT.print_no_tran
+	CUST.PORT.noOfPages = TRIM(BANCS.INPUT.noOfPages)
+	print(CUST.PORT.noOfPages)
+	#sv_d = urhk_SetOrbOut("NOOFPAGES|"+CUST.PORT.noOfPages)
+	#print(sv_d)
+	
+	IF ((BANCS.INPUT.chkfrom_last_print) == "") THEN
+	#{
+		CUST.PORT.chkfrom_last_print = "N"
+		
+		#}
+	ELSE
+		#{
+		CUST.PORT.chkfrom_last_print	= BANCS.INPUT.chkfrom_last_print
+		PRINT(CUST.PORT.chkfrom_last_print)
+	#}
+	ENDIF
+	
+	
+	print(CUST.PORT.acctNum)
+	print(CUST.PORT.frmDate)
+	print(CUST.PORT.toDate)
+	print(CUST.PORT.chrgAmt)
+	print(CUST.PORT.print_no_tran)
+	print(CUST.PORT.chkfrom_last_print)
+	
+	sv_j="PSP|"+CUST.PORT.frmDate
+	sv_k = urhk_putEnv(sv_j)
+	print(sv_k)
+	
+	CUST.PORT.successOrFailure	= "S"
+	CUST.GCHRG.successOrFailure = ""
+	CUST.PORT.errMsg=""
+	######################################################
+	## getting effective available amount
+	######################################################
+	sv_p = urhk_getAcctDetailsInRepository(CUST.PORT.acctNum)
+	
+	IF(sv_p==0) THEN
+	#{
+		CUST.PORT.effAvlAmt=BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.PORT.effAvlAmt)
+		CUST.PORT.amt = BANCS.OUTPARAM.EffAvailableAmt
+		CUST.PORT.solId = BANCS.OUTPARAM.acctSolId
+		CUST.PORT.acctName = BANCS.OUTPARAM.acctName
+		CUST.PORT.acctOwnerShip = BANCS.OUTPARAM.acctOwnerShip
+		CUST.PORT.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		CUST.PORT.acctSolId   = CUST.PORT.solId
+		print(CUST.PORT.acctSolId)
+		
+		#}
+	ELSE
+		#{
+		CUST.PORT.errMsg = "Account is invalid"
+		sv_e = CUST.PORT.errMsg
+		sv_m = "acctNum"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------------
+	#Getting event id value from CPARAM--"test3"
+	#-----------------------------------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "CASA"
+	BANCS.INPUT.parameterId = "EVENTID_PSP_" + CUST.PORT.acctCrncyCode
+	CALL ("getcparamvalue.scr")
+	#print(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.PORT.eventid= BANCS.OUTPUT.parameterVal
+		print(CUST.PORT.eventid)
+		#}
+	ELSE
+		#{
+		CUST.PORT.errMsg = "eventid setup not done in CPARAM"
+		sv_e = CUST.PORT.errMsg
+		sv_m = "acctNum"
+		sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+		sv_u = urhk_SetOrbOut(sv_s)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#sv_q = urhk_B2k_PrintRepos("BANCS")
+	#print(sv_q)
+	
+	sv_a = getEnv("B2K_SESSION_ID")
+	IF (sv_a == 0) THEN
+	#{
+		#  print(BANCS.OUTPARAM.envValue)
+	#}
+	ENDIF
+	
+	print(CUST.PORT.solId)
+	print(CUST.PORT.acctNum)
+	print(CUST.PORT.acctCrncyCode)
+	CUST.PORT.crncy_code = CUST.PORT.acctCrncyCode
+	print(CUST.PORT.crncy_code)
+	print(CUST.PORT.frmDate)
+	print(CUST.PORT.toDate)
+	
+	#-----------------------------------
+	# Checking the date diff
+	#-----------------------------------
+	
+	print(BANCS.STDIN.BODDate)
+	sv_s = "bodnewDate|"
+	sv_s = sv_s + "SELECT SUBSTR(?SVAR,1,10) FROM DUAL"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.BODDate
+	sv_c = urhk_dbSelectWithBind(sv_s)
+	print(sv_c)
+	CUST.PORT.bodnewDate =  BANCS.OUTPARAM.bodnewDate
+	print(CUST.PORT.bodnewDate)
+	
+	
+	BANCS.INPARAM.BINDVARS = CUST.PORT.frmDate + "|" + CUST.PORT.bodnewDate
+	sv_s = "stmtPeriod|"
+	#sv_s = sv_s + "SELECT ADD_MONTHS(TO_DATE(?SVAR,'DD-MM-YYYY'),-1) - TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + "SELECT TO_DATE(?SVAR,'DD-MM-YYYY') - TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + "FROM DUAL "
+	print(sv_s)
+	sv_c = urhk_dbSelectWithBind(sv_s)
+	print(sv_c)
+	
+	CUST.PORT.stmtPeriod = BANCS.OUTPARAM.stmtPeriod
+	print(CUST.PORT.stmtPeriod)
+	
+	BANCS.INPARAM.BINDVARS = CUST.PORT.toDate  + "|" + CUST.PORT.bodnewDate
+	
+	sv_s = "bodPeriod|"
+	sv_s = sv_s + "SELECT TO_DATE(?SVAR,'DD-MM-YYYY') - TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + "FROM DUAL "
+	print(sv_s)
+	sv_c = urhk_dbSelectWithBind(sv_s)
+	print(sv_c)
+	
+	CUST.PORT.bodPeriod =  BANCS.OUTPARAM.bodPeriod
+	print(CUST.PORT.bodPeriod)
+	
+	IF (CINT(CUST.PORT.noOfPages) <= 5 ) THEN
+	#{
+		#-----------------------------------
+		# dat file generation
+		#-----------------------------------
+		sv_s = "tmeStmp|SELECT TO_CHAR(SYSDATE,'DDMMYYYYHHMMSS') FROM DUAL "
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d ==0) THEN
+		#{
+			CUST.PORT.tmeStmp = BANCS.OUTPARAM.tmeStmp
+			PRINT(CUST.PORT.tmeStmp)
+		#}
+		ENDIF
+		
+		CUST.PORT.inputFile = "CDPSP_" + CUST.PORT.tmeStmp + ".DAT"
+		print(CUST.PORT.inputFile)
+		
+		#CUST.PORT.inputFile = "report_cdpsp.DAT"
+		#sv_u = system("touch " +CUST.PORT.inputFile)
+		#print(sv_u)
+		
+		#sv_u = system("chmod 777 " +CUST.PORT.inputFile)
+		#print(sv_u)
+		
+		#-----------------------------------
+		# open the input file in append mode
+		#-----------------------------------
+		sv_k=urtn_fileOpen(CUST.PORT.inputFile + "|a")
+		IF (sv_k < 0) THEN
+		#{
+			sv_u=urhk_TBAF_DispMesg("Error in Reading the file")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		CUST.PORT.InputString   =  CUST.PORT.acctNum
+		
+		IF(TRIM(CUST.PORT.InputString)=="") THEN
+		#{
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.solId)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.InputString)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.InputString)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.crncy_code)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "Y")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "F")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "O")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "Y")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.stmtPeriod)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + CUST.PORT.bodPeriod)
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "!!!!!!!!!")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "!!!!!!!!!")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "!!!")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "P")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "P")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "N")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "B")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "P")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#----------------------------------
+		# Write the record to the input file
+		#----------------------------------
+		sv_r= urtn_fileWrite(sv_k + "|" + "")
+		#print(sv_r)
+		
+		IF(sv_r != 0) THEN
+		#{
+			#------------------------------
+			# Could not write input file
+			#------------------------------
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#=========================================================
+		# SECTION : SECTION 3 BEGIN
+		# Closing the input file
+		#=========================================================
+		FINISH:
+			sv_u = urtn_fileClose(sv_k)
+			#print(sv_u)
+			
+			print("hi")
+			sv_j="CDPSP|Y"
+			sv_k = urhk_putEnv(sv_j)
+			print(sv_k)
+			
+			#=========================================================
+			# SECTION : SECTION 3 BEGIN
+			# Closing the input file
+			#=========================================================
+			sv_u = urhk_getEnv("ONS_LOG_DIR")
+			PRINT(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_z = urhk_SetOrbOut("Error_01|ERROR^CDCI path is not set in common ENV^testMode")
+				sv_z = urhk_SetOrbOut("SuccessOrFailure|N")
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				print(BANCS.OUTPARAM.envValue)
+				CUST.PORT.dataPath = BANCS.OUTPARAM.envValue
+				PRINT(CUST.PORT.dataPath)
+			#}
+			ENDIF
+			
+			sv_r = urhk_getEnv("B2K_SESSION_ID")
+			CUST.PORT.jobId = BANCS.OUTPARAM.envValue
+			CUST.PORT.datFileLocation = CUST.PORT.dataPath + "/" + BANCS.STDIN.userId + "/"
+			CUST.PORT.dat = CUST.PORT.datFileLocation + CUST.PORT.inputFile
+			
+			sv_d = "`execom hpsp.com` " + " " + CUST.PORT.jobId  + " " + CUST.PORT.dat +  " P"
+			print(sv_d)
+			sv_u = system(sv_d)
+			print(sv_u)
+			#}
+		ELSE
+			#{
+			CUST.PORT.programId="PSP"
+			CUST.PORT.ps_swift_code="P"
+			#CUST.PORT.set_id = BANCS.STDIN.mySolId
+			CUST.PORT.set_id = CUST.PORT.acctSolId
+			CUST.PORT.set_id_desc=""
+			CUST.PORT.crncy_code = BANCS.STDIN.homeCrncyCode
+			CUST.PORT.crncy_desc=""
+			CUST.PORT.low_acct_num=CUST.PORT.acctNum
+			CUST.PORT.low_acct_name=""
+			CUST.PORT.low_tran_date=CUST.PORT.frmDate + " 00:00:00"
+			CUST.PORT.high_tran_date=CUST.PORT.toDate + " 00:00:00"
+			CUST.PORT.page_size="F"
+			CUST.PORT.acct_hldr_flg="P"
+			CUST.PORT.cls_opn_flg="O"
+			sv_a = urhk_B2K_printrepos("BANCS")
+			print(sv_a)
+			sv_u = urhk_SetUrhkInp("programID|"+CUST.PORT.programId)
+			PRINT(sv_u)
+			sv_u = urhk_ExecSrv("SRV_GetCriteriaDispProperties|retain_all_output = Y")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchPgmId|"+CUST.PORT.programId)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_0>.key.fieldName|ps_swift_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_0>.fieldValue|"+CUST.PORT.ps_swift_code)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_1>.key.fieldName|adhoc_flg")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_1>.fieldValue|Y")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_2>.key.fieldName|set_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_2>.fieldValue|"+CUST.PORT.set_id)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_3>.key.fieldName|set_id_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_3>.fieldValue|"+CUST.PORT.set_id_desc)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_4>.key.fieldName|custom_list_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_5>.key.fieldName|crncy_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_5>.fieldValue|"+CUST.PORT.crncy_code)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_6>.key.fieldName|crncy_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_6>.fieldValue|"+CUST.PORT.crncy_desc)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_7>.key.fieldName|low_acct_num")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_7>.fieldValue|"+CUST.PORT.low_acct_num)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_8>.key.fieldName|low_acct_sol")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_8>.fieldValue|"+CUST.PORT.set_id)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_9>.key.fieldName|low_acct_crncy")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_9>.fieldValue|"+CUST.PORT.crncy_code)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_10>.key.fieldName|low_acct_name")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_10>.fieldValue|"+CUST.PORT.low_acct_name)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_11>.key.fieldName|high_acct_num")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_11>.fieldValue|"+CUST.PORT.low_acct_num)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_12>.key.fieldName|high_acct_sol")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_13>.key.fieldName|high_acct_crncy")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_14>.key.fieldName|high_acct_name")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_15>.key.fieldName|from_gl_sub_head_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_16>.key.fieldName|from_gl_sub_head_code_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_17>.key.fieldName|to_gl_sub_head_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_18>.key.fieldName|to_gl_sub_head_code_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_19>.key.fieldName|from_schm_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_20>.key.fieldName|from_schm_code_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_21>.key.fieldName|to_schm_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_22>.key.fieldName|to_schm_code_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_23>.key.fieldName|from_cif_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_24>.key.fieldName|to_cif_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_25>.key.fieldName|acct_mgr")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_26>.key.fieldName|acct_mgr_name")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_27>.key.fieldName|acct_label")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_28>.key.fieldName|low_tran_date")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_28>.fieldValue|"+CUST.PORT.low_tran_date)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_29>.key.fieldName|high_tran_date")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_29>.fieldValue|"+CUST.PORT.high_tran_date)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_30>.key.fieldName|ps_holder_only")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_30>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_31>.key.fieldName|page_size")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_31>.fieldValue|"+CUST.PORT.page_size)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_32>.key.fieldName|acct_hldr_flg")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_32>.fieldValue|"+CUST.PORT.acct_hldr_flg)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_33>.key.fieldName|despatch_mode")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_34>.key.fieldName|cls_opn_flg")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_34>.fieldValue|"+CUST.PORT.cls_opn_flg)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_35>.key.fieldName|pref_lang_code")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_36>.key.fieldName|pref_lang_code_desc")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_37>.key.fieldName|from_last_print")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_37>.fieldValue|"+CUST.PORT.chkfrom_last_print)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_38>.key.fieldName|print_no_tran")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_38>.fieldValue|"+CUST.PORT.print_no_tran)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_39>.key.fieldName|local_cal_flg")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_39>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_40>.key.fieldName|waive_cs_charges")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_40>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_41>.key.fieldName|pr_stationary")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_41>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_42>.key.fieldName|user_rmks_1")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_42>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_43>.key.fieldName|master_consol_print_flg")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_43>.fieldValue|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_44>.key.fieldName|low_master_acct_num")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_45>.key.fieldName|acct_name1")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_46>.key.fieldName|consol_crncy_code1")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_47>.key.fieldName|high_master_acct_num")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_48>.key.fieldName|acct_name2")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_49>.key.fieldName|consol_crncy_code2")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_50>.key.fieldName|diff_low_tran_date")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_51>.key.fieldName|diff_high_tran_date")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_52>.key.fieldName|tmp_low_cust_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_52>.fieldValue|!!!!!!!!!")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_53>.key.fieldName|tmp_high_cust_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_53>.fieldValue|!!!!!!!!!")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_54>.key.fieldName|tmp_schm_type")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_54>.fieldValue|!!!")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_55>.key.fieldName|srl_num_list")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_56>.key.fieldName|cif_id_name")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_57>.key.fieldName|context_sol_id")
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_57>.fieldValue|"+CUST.PORT.set_id)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("batchParam.<rec_58>.key.fieldName|list_acct_num")
+			PRINT(sv_u)
+			
+			sv_u = urhk_ExecSrv("NAPI_ExecuteBatch|retain_all_output = Y")
+			print(sv_u)
+			
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				
+				IF (sv_v > 0) THEN
+				#{
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_a = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						print(sv_a)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+					#}
+					DO
+					CUST.PORT.successOrFailure = "F"
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		#IF(sv_u == 0) THEN
+		#{
+		#	sv_u = system("rm -rf "+  CUST.PORT.inputFile)
+		#	print(sv_u)
+		#}
+		#ENDIF
+		
+		
+		sv_j="CDPSP|N"
+		sv_k = urhk_putEnv(sv_j)
+		print(sv_k)
+		
+		IF (sv_k != 0) THEN
+		#{
+			CUST.PORT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		IF(CUST.PORT.successOrFailure == "F") THEN
+		#{
+			sv_e = "Pass sheet printing failed ." +sv_a
+			sv_m = "acctNum"
+			sv_s = "Error_0|ERROR:^"+ sv_e +".^"+ sv_m +""
+			sv_u = urhk_SetOrbOut(sv_s)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		IF(CUST.PORT.successOrFailure == "S") THEN
+		#{
+			CUST.GCHRG.tranType = "T"
+			CUST.GCHRG.tranSubType = "BI"
+			CUST.GCHRG.drAcctId = CUST.PORT.acctNum
+			CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.eventId = CUST.PORT.eventid
+			CUST.GCHRG.chrgAmt = CUST.PORT.chrgAmt + "|" + BANCS.STDIN.homeCrncyCode
+			CUST.PORT.todGrant = "N"
+			CUST.PORT.todSuccFail = "S"
+			IF(CDOUBLE(CUST.PORT.effAvlAmt) < CDOUBLE(CUST.PORT.chrgAmt)) THEN
+			#{
+				CUST.PORT.todGrant = "Y"
+				sv_u = urhk_SetUrhkInp("sumInfo.acct.foracid|"+CUST.PORT.acctNum)
+				sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.acct.foracid|"+CUST.PORT.acctNum)
+				sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.grantDate|"+BANCS.STDIN.BODDate)
+				sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.expiryDate|"+BANCS.STDIN.BODDate)
+				print(CUST.PORT.chrgAmt)
+				print(CUST.PORT.effAvlAmt)
+				IF (CINT(CUST.PORT.effAvlAmt) < 0) THEN
+				#{
+					CUST.PORT.diffAmt = CDOUBLE(CUST.PORT.chrgAmt)
+					print(CUST.PORT.diffAmt)
+				#}
+				ELSE
+				#{
+					CUST.PORT.diffAmt = (CDOUBLE(CUST.PORT.chrgAmt) - CDOUBLE(CUST.PORT.effAvlAmt))
+					print(CUST.PORT.diffAmt)
+				#}
+				ENDIF
+				sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.todAmtToBeGrntd|"+ CUST.PORT.diffAmt +"|"+BANCS.STDIN.homeCrncyCode)
+				sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.todLevIntFlg|N")
+				sv_u = urhk_ExecSrv("SRV_FetchDfltTODForAdd|retain_all_output = Y")
+				print(sv_u)
+				IF(sv_u == 0) THEN
+				#{
+					sv_u = urhk_CopyOutToIn("")
+					sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.permittedBy.userId|"+BANCS.STDIN.userId)
+					sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.discreteAdvnType.code|SINGLE TRAN LIMIT")
+					sv_u = urhk_SetUrhkInp("acctTODLLRec.todBasicDtl.discreteAdvnCatgr.code|CLEAN")
+					#	sv_u = urhk_SetUrhkInp("acctTODLLRec.balance|10|"+BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp("acctTODLLRec.balance|"+ CUST.PORT.diffAmt +"|"+BANCS.STDIN.homeCrncyCode)
+					
+					sv_u = urhk_ExecSrv("SRV_AddAcctTOD|same_user_verify = Y|retain_all_output = Y")
+					print(sv_u)
+					IF(sv_u == 0) THEN
+					#{
+						sv_u = urhk_SetUrhkInp("criteria.acct.foracid|"+CUST.PORT.acctNum)
+						sv_u = urhk_ExecSrv("SRV_FetchAcctTODForVerify|same_user_verify = Y|retain_all_output = Y")
+						print(sv_u)
+						IF(sv_u == 0) THEN
+						#{
+							sv_u = urhk_CopyOutToIn("")
+							sv_u = urhk_ExecSrv("SRV_VerifyAcctTOD|same_user_verify = Y")
+							print(sv_u)
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				IF (sv_u != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+						#}
+					ELSE
+						#{
+						sv_v = 0
+					#}
+					ENDIF
+					
+					IF (sv_v > 0) THEN
+					#{
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							print(sv_e)
+							sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			
+			
+			IF((CUST.PORT.todGrant == "Y") AND (CUST.PORT.todSuccFail == "F")) THEN
+			#{
+				
+				sv_m = "PassSheet Printing intiated Successfully . Charge collection not done. TOD Granting failed due to "+CUST.PORT.errMsg + ". Please check HACTODM"
+				sv_d = urhk_SetOrbOut("RESULT_MSG|"+sv_m)
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				CALL("gchrgcommon.scr")
+			#}
+			ENDIF
+			
+			print(CUST.GCHRG.successOrFailure)
+			IF( CUST.GCHRG.successOrFailure == "S" ) THEN
+			#{
+				sv_m ="PassSheet Printing intiated Successfully AND Charges collected, transaction id is : "+CUST.GCHRG.chargeTranId
+				#}
+			ELSE
+				#{
+				sv_m = "PassSheet Printing intiated Successfully . Charge collection failed."
+			#}
+			ENDIF
+			
+			sv_d = urhk_SetOrbOut("RESULT_MSG|"+sv_m)
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+			
+		#}
+		ENDIF
+		
+		sv_m = sv_m + "!" + CUST.PORT.noOfPages
+		print(sv_m)
+		sv_d = urhk_SetOrbOut("RESULT_MSG|"+sv_m)
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+		
+		
+	ENDOFSCRIPT:
+		#trace off
+		EXITSCRIPT
+END-->

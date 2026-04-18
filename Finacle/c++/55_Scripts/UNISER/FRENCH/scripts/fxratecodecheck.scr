@@ -1,0 +1,578 @@
+<--START
+CHECKSUM="93e44c0ea8622e0d985c4c6a0c80d8319f3586d09622e9b02aabb2dee59a1e90"
+	TRACE ON
+	
+	####################################################################
+	#section      :creating new repository if required
+	#Description  :Checks for the existence of the repository STDWFS and
+	#               creates a new one by that name if it does not exist
+	#####################################################################
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	############################################################################
+	#section      :creating new class if required
+	#Desscription :checks for the existence of the class GLBDATA in the
+	#repository
+	#               create a new one if it does not exist
+	##############################################################################
+	
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	############################################
+	#Assigns the values to the variables
+	############################################
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	sv_y=0
+	#vp
+        CUST.DATA.errMsg = ""
+	if(fieldexists(BANCS.INPUT.fromAmount)==1)then
+		CUST.DATA.fromAmount = BANCS.INPUT.fromAmount
+	else
+		CUST.DATA.fromAmount = 1
+	endif
+	CUST.DATA.cAmt = 0.000000
+	#vp
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("account_number"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply account_number"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.account_number = BANCS.INPUT.account_number
+		print(CUST.DATA.account_number)
+	#}
+	ENDIF
+	
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("bank_id"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply bank_id"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.bank_id = BANCS.INPUT.bank_id
+		print(CUST.DATA.bank_id)
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("from_currency"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply from_currency"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.from_currency = BANCS.INPUT.from_currency
+		print(CUST.DATA.from_currency)
+	#}
+	ENDIF
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("to_currency"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply to_currency"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.to_currency = BANCS.INPUT.to_currency
+		print(CUST.DATA.to_currency)
+	#}
+	ENDIF
+
+        CUST.DATA.cAmt = ""
+        CUST.DATA.from_currency=BANCS.INPUT.from_currency
+        CUST.DATA.to_currency=BANCS.INPUT.to_currency
+        CUST.DATA.bank_id=BANCS.STDIN.contextBankId
+        CUST.DATA.ratecode="TTS"
+        CUST.DATA.ratecode1="TTB"
+
+
+	IF (CUST.DATA.to_currency == CUST.DATA.from_currency) THEN	
+		CUST.DATA.errMsg="No FX for same Currency"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+	ENDIF
+
+
+        sv_u = urhk_getAdvanceDetailsForAccount(CUST.DATA.account_number)
+        print(sv_u)
+        IF(sv_u==0)then
+                print(BANCS.OUTPARAM.FreeCode7)
+                CUST.DATA.FreeCode7 = BANCS.OUTPARAM.FreeCode7
+                print(CUST.DATA.FreeCode7)
+
+
+        #VP
+        CUST.DATA.rmd = ""
+        if((CUST.DATA.from_currency=="EUR") and (CUST.DATA.to_currency=="GBP"))then
+                CUST.DATA.rmd   = "M"
+        endif
+        if((CUST.DATA.from_currency=="GBP") and (CUST.DATA.to_currency=="EUR"))then
+                CUST.DATA.rmd   = "D"
+        endif
+                CUST.DATA.rtlYN =""
+        if(CUST.DATA.FreeCode7 != "")then
+        sv_q = " FXratecode| select CUSTOM.RETURN_FX_RATE_CODE(?SVAR,?SVAR,?SVAR,?SVAR) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.DATA.FreeCode7 + "|" + BANCS.STDIN.contextBankId
+        print(BANCS.INPARAM.BINDVARS)
+        sv_w=urhk_dbSelectWithBind(sv_q)
+        print(sv_w)
+        if ( sv_w != 0 ) then
+             sv_e=urhk_SetOrbOut("StatusCode|2")
+             CUST.DATA.errMsg="FX Group Not Maintained "
+             sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+             GOTO End
+        else
+                CUST.DATA.FXratecode = BANCS.OUTPARAM.FXratecode
+                print(CUST.DATA.FXratecode)
+                if(strlen(CUST.DATA.FXratecode) <=0)then
+                        CUST.DATA.rtlYN = "Y"
+                else
+                        CUST.DATA.rtlYN = "N"
+                endif
+        endif
+        else
+                CUST.DATA.rtlYN = "Y"
+        endif
+        #VP
+        #******************************************************#
+        #Getting Rate for customers not maintained in FX Groups#
+        #******************************************************#
+        #******************************************************#
+
+                ##IF (CUST.DATA.FreeCode7 =="") THEN
+                IF (((CUST.DATA.FreeCode7 =="") or (CUST.DATA.FreeCode7!="")) and (CUST.DATA.rtlYN=="Y")) THEN
+                        #{
+                        sv_s="count|select count(RATECODE) from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+                        BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.DATA.bank_id
+
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        sv_b =  urhk_dbSelectWithBind(sv_s)
+
+                        IF (sv_b == 0) THEN
+                                #{
+                                        CUST.DATA.count = BANCS.OUTPARAM.count
+
+                                        #************************************************************#
+                                        #IF there is No Record use TTS and CNS   Else Use TTB and CNB#
+                                        #************************************************************#
+
+                                        IF (CUST.DATA.count == 0) THEN
+                                                #{
+
+                                                   sv_f="FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS|select FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE, VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+                                                   sv_f = sv_f + " and RATECODE in(?SVAR)"
+
+                                                   BANCS.INPARAM.BINDVARS=CUST.DATA.to_currency + "|" + CUST.DATA.from_currency + "|" + CUST.DATA.bank_id+ "|" + CUST.DATA.ratecode
+                                                   print(BANCS.INPARAM.BINDVARS)
+                                                   sv_f= urhk_dbCursorOpenWithBind(sv_f)
+
+
+                                                                           IF( sv_f == 0 ) THEN
+                                                                                #{
+
+                                                                                        sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                                                                                         print(sv_m)
+                                                                                        sv_n = urhk_dbCursorFetch(sv_m)
+                                                                                         print(sv_n)
+                                                                                        CUST.DATA.FXD_CRNCY_CODE=BANCS.OUTPARAM.FXD_CRNCY_CODE
+                                                                                           #****************************************#
+                                                                                           #Invalid Currency or Currency Combination
+                                                                                           #****************************************#
+                                                                                        IF (sv_n==1) THEN
+                                                                                                CUST.DATA.errMsg="The Currency or  Combination is Invalid"
+                                                                                                GOTO HandleError
+                                                                                        ENDIF
+
+                                                                                        ELSE
+
+                                                                                         GOTO continue
+                                                                                  #}
+                                                                                ENDIF
+
+                                         ELSE
+                                                 #{
+
+                                                        sv_f="FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS|select FXD_CRNCY_CODE,VAR_CRNCY_CODE,RATECODE, VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS from tbaadm.rtl where fxd_crncy_code = ?SVAR and var_crncy_code = ?SVAR and bank_id =?SVAR"
+                                                        sv_f = sv_f + " and RATECODE in(?SVAR)"
+
+                                                        BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.DATA.bank_id + "|" + CUST.DATA.ratecode1
+                                                        print(BANCS.INPARAM.BINDVARS)
+                                                        sv_f= urhk_dbCursorOpenWithBind(sv_f)
+
+                                                                IF( sv_f == 0 ) THEN
+                                                                 #{
+
+                                                                        sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+                                                                        print(sv_m)
+                                                                        sv_n = urhk_dbCursorFetch(sv_m)
+                                                                        print(sv_n)
+                                                                        CUST.DATA.FXD_CRNCY_CODE=BANCS.OUTPARAM.FXD_CRNCY_CODE
+                                                                        #****************************************#
+                                                                        #Invalid Currency or Combination
+                                                                        #****************************************#
+                                                                        IF (sv_n==1) THEN
+                                                                                CUST.DATA.errMsg="The Currency or Combination is Invalid"
+                                                                                GOTO HandleError
+                                                                                ENDIF
+
+                                                                        ELSE
+
+                                                                         GOTO continue
+                                                                  #}
+                                                                ENDIF
+
+                                                  #}
+
+                                           ENDIF
+
+                        ELSE
+                                #{
+                                        CUST.DATA.errMsg="Data Fetch Error, Please check your query"
+                                        GOTO HandleError
+                                #}
+                        ENDIF
+
+
+                #}
+                                        continue:
+
+                                                CUST.DATA.number = 0
+                                                sv_g =0
+                                                  WHILE(sv_n == 0)
+                                                         #{
+                                                           CUST.DATA.RateCode = BANCS.OUTPARAM.RATECODE
+                                                           CUST.DATA.rate = BANCS.OUTPARAM.VAR_CRNCY_UNITS
+                                                           CUST.DATA.TreasuryRate = BANCS.OUTPARAM.CUST_VAR_CRNCY_UNITS
+
+                                                           if(CUST.DATA.rate !="")then
+                                                                ##if((cdouble(CUST.DATA.fromAmount) >0 ) and (cint(CUST.DATA.rate)>=1))then
+                                                                print(CUST.DATA.rate)
+                                                                print(cdouble(CUST.DATA.rate))
+                                                                print(cint(CUST.DATA.rate))
+                                                                if((cdouble(CUST.DATA.fromAmount) >0 ) and (cdouble(CUST.DATA.rate)>0))then
+                                                                        if(CUST.DATA.from_currency == CUST.DATA.FXD_CRNCY_CODE)then
+                                                                                if(CUST.DATA.rmd =="M")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd =="D")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd =="")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                                print (CUST.DATA.cAmt)
+                                                                        else
+                                                                                if(CUST.DATA.rmd =="M")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd =="D")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd =="")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                                print (CUST.DATA.cAmt)
+                                                                        endif
+                                                                else
+                                                                        print("Invalid Amount")
+                                                                        CUST.DATA.errMsg="Invalid Amount"
+                                                                        GOTO HandleError
+                                                                endif
+                                                        Endif
+
+                                                sv_p = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.RateCode|" + CUST.DATA.RateCode
+                                                CUST.DATA.FXD_CRNCY_CODE = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.CustomerrRate|" + CUST.DATA.rate
+                                                sv_t = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.convertedAmt|" + CUST.DATA.cAmt
+                                                #sv_r = "ExchangeRateDet.<rec_" + CUST.DATA.number + ">.TreasuryRate|" + CUST.DATA.TreasuryRate
+
+
+                                                        print(sv_p)
+                                                   ##sv_u = urhk_SetOrbOut(sv_p)
+                                                   sv_u = urhk_SetOrbOut("RATE_CODE|" + CUST.DATA.RateCode )
+                                                        print(CUST.DATA.FXD_CRNCY_CODE)
+                                                   ##sv_u = urhk_SetOrbOut(CUST.DATA.FXD_CRNCY_CODE)
+                                                   sv_u = urhk_SetOrbOut("StatusCode|1")
+                                                   sv_u = urhk_SetOrbOut("RATE|" + CUST.DATA.rate )
+                                                        print(sv_t)
+                                                   ##sv_u = urhk_SetOrbOut(sv_t)
+                                                sv_u = urhk_SetOrbOut("FromAmount|" + CUST.DATA.fromAmount )
+                                                sv_u = urhk_SetOrbOut("ConvertedAmount|" + CUST.DATA.cAmt )
+                                                sv_u = urhk_SetOrbOut("FXGROUP_CODE|NA")
+                                                   #sv_u = urhk_SetOrbOut(sv_r)
+
+
+                                                           sv_n = urhk_dbCursorFetch(sv_m)
+                                                   sv_g = sv_g + 1
+                                                   CUST.DATA.number = sv_g
+                                                 #}
+                                                DO
+                                                 sv_u = urhk_dbCursorClose(sv_m)
+                                                 print(sv_u)
+                                                 EXITSCRIPT
+                                          #}
+
+
+
+
+                ELSE
+
+        #**********************************************************#
+        #Getting Rate for customers who are maintained in FX Groups#
+        #**********************************************************#
+
+
+                        IF ((CUST.DATA.FreeCode7=="FXGA") OR (CUST.DATA.FreeCode7=="FXGB") OR (CUST.DATA.FreeCode7=="FXGC") OR (CUST.DATA.FreeCode7=="FXGD") OR (CUST.DATA.FreeCode7=="FXGF"))THEN
+                        ####
+                                CUST.DATA.transactiontype=CUST.DATA.FreeCode7
+                                print(CUST.DATA.transactiontype)
+                                sv_q = " FXratecode| select CUSTOM.RETURN_FX_RATE_CODE(?SVAR,?SVAR,?SVAR,?SVAR) from dual"
+                                print(sv_q)
+                                BANCS.INPARAM.BINDVARS=CUST.DATA.from_currency + "|" + CUST.DATA.to_currency + "|" + CUST.DATA.transactiontype + "|" + BANCS.STDIN.contextBankId
+                                print(BANCS.INPARAM.BINDVARS)
+                                sv_w=urhk_dbSelectWithBind(sv_q)
+                                print(sv_w)
+                                IF ( sv_w != 0 ) then
+                                        sv_e=urhk_SetOrbOut("StatusCode|2")
+                                        CUST.DATA.errMsg="FX Group Not Maintained "
+                                        sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+                                        GOTO End
+                                ELSE
+                                        CUST.DATA.FXratecode = BANCS.OUTPARAM.FXratecode
+                                        print(CUST.DATA.FXratecode)
+                                        #VP
+                                        if(strlen(CUST.DATA.FXratecode) <=0)then
+                                                sv_e=urhk_SetOrbOut("StatusCode|2")
+                                                CUST.DATA.errMsg="FX Group Not Maintained "
+                                                sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+                                                GOTO End
+                                        endif
+                                        #VP
+                                        sv_z = urhk_SetOrbOut("RATE_CODE|"+CUST.DATA.FXratecode)
+                                        print(sv_z)
+                                        sv_e=urhk_SetOrbOut("StatusCode|1")
+                                        #####
+                                                BANCS.INPARAM.BINDVARS =CUST.DATA.from_currency + "|" + CUST.DATA.to_currency
+                                                BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.DATA.FXratecode + "|" +BANCS.STDIN.contextBankId
+                                                print(BANCS.INPARAM.BINDVARS)
+                                                sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+                                                sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+                                                sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+                                                sv_u = sv_u + " AND RATECODE= ?SVAR "
+                                                sv_u = sv_u + " AND BANK_ID = ?SVAR  and rownum<2 "
+                                                print(sv_u)
+                                                sv_y=urhk_dbSelectWithBind(sv_u)
+                                                print(sv_y)
+                                                if (sv_y == "0") then
+                                                        sv_k = BANCS.OUTPARAM.fxdcrncycode
+                                                        print(sv_k)
+                                                        sv_j = BANCS.OUTPARAM.ratecode
+                                                        print(sv_j)
+                                                        sv_p = BANCS.OUTPARAM.Rate
+                                                        print(sv_p)
+                                                        CUST.DATA.rate = sv_p
+                                                        sv_x= BANCS.OUTPARAM.treaRate
+                                                        print(sv_x)
+                                                        CUST.DATA.treaRate = sv_x
+                                                        print(CUST.DATA.treaRate)
+                                                        CUST.DATA.fixed_crncy = CUST.DATA.from_currency
+                                                        print(CUST.DATA.fixed_crncy)
+                                                        CUST.DATA.var_crncy = CUST.DATA.to_currency
+                                                        print(CUST.DATA.var_crncy)
+                                                        print(CUST.DATA.rate)
+                                                        sv_z = urhk_SetOrbOut("RATE|"+CUST.DATA.rate)
+                                                        print(sv_z)
+                                                        #vp
+                                                        if(CUST.DATA.rate !="")then
+                                                        print("fin")
+                                                        print(CUST.DATA.fromAmount)
+                                                        print(CUST.DATA.rate)
+                                                        if((cdouble(CUST.DATA.fromAmount) >=1 ) and (cint(CUST.DATA.rate)>=1))then
+                                                                if(CUST.DATA.from_currency == sv_k)then
+                                                                        if(CUST.DATA.rmd=="")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        if(CUST.DATA.rmd=="M")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        if(CUST.DATA.rmd=="D")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        print(CUST.DATA.cAmt)
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        print(CUST.DATA.cAmt)
+                                                                else
+                                                                        if(CUST.DATA.rmd=="")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        if(CUST.DATA.rmd=="M")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        if(CUST.DATA.rmd=="D")then
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                        endif
+                                                                        print(CUST.DATA.cAmt)
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        print(CUST.DATA.cAmt)
+                                                                endif
+                                                        else
+                                                                if(CUST.DATA.from_currency == sv_k)then
+                                                                        CUST.DATA.cAmt = 1 * cdouble(CUST.DATA.rate)
+                                                                        print(CUST.DATA.cAmt)
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        print(CUST.DATA.cAmt)
+                                                                else
+                                                                        CUST.DATA.cAmt = 1 / cdouble(CUST.DATA.rate)
+                                                                        print(CUST.DATA.cAmt)
+                                                                        CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        print(CUST.DATA.cAmt)
+                                                                endif
+                                                        endif
+                                                        print(CUST.DATA.fromAmount)
+                                                        print(CUST.DATA.cAmt)
+                                                        sv_z = urhk_SetOrbOut("FromAmount|"+CUST.DATA.fromAmount)
+                                                        sv_z = urhk_SetOrbOut("ConvertedAmount|"+CUST.DATA.cAmt)
+                                                        print(sv_z)
+                                                        endif
+                                                        #vp
+                                                        sv_e=urhk_SetOrbOut("StatusCode|1")
+                                                else
+                                                        BANCS.INPARAM.BINDVARS = CUST.DATA.to_currency + "|" + CUST.DATA.from_currency
+                                                        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS  + "|" + CUST.DATA.FXratecode + "|" +BANCS.STDIN.contextBankId
+                                                        print(BANCS.INPARAM.BINDVARS)
+                                                        sv_u = "fxdcrncycode,ratecode,Rate,treaRate|SELECT FXD_CRNCY_CODE,RATECODE,VAR_CRNCY_UNITS,CUST_VAR_CRNCY_UNITS FROM tbaadm.rtl "
+                                                        sv_u = sv_u + " WHERE FXD_CRNCY_CODE = ?SVAR"
+                                                        sv_u = sv_u + " AND VAR_CRNCY_CODE= ?SVAR"
+                                                        sv_u = sv_u + " AND RATECODE= ?SVAR "
+                                                        sv_u = sv_u + " AND BANK_ID = ?SVAR and rownum<2 "
+                                                        print(sv_u)
+                                                        sv_y=urhk_dbSelectWithBind(sv_u)
+                                                        print(sv_y)
+                                                        if (sv_y == "0") then
+                                                                sv_k = BANCS.OUTPARAM.fxdcrncycode
+                                                                print(sv_k)
+                                                                sv_j = BANCS.OUTPARAM.ratecode
+                                                                print(sv_j)
+                                                                sv_p = BANCS.OUTPARAM.Rate
+                                                                print(sv_p)
+                                                                CUST.DATA.rate = sv_p
+                                                                print(CUST.DATA.rate)
+                                                                sv_x= BANCS.OUTPARAM.treaRate
+                                                                print(sv_x)
+                                                                CUST.DATA.treaRate = sv_x
+                                                                print(CUST.DATA.treaRate)
+                                                                CUST.DATA.fixed_crncy = CUST.DATA.to_currency
+                                                                print(CUST.DATA.fixed_crncy)
+                                                                CUST.DATA.var_crncy = CUST.DATA.from_currency
+                                                                print(CUST.DATA.var_crncy)
+                                                                sv_z = urhk_SetOrbOut("RATE|"+CUST.DATA.rate)
+                                                                print(sv_z)
+                                                                #vp
+                                                        print("in")
+                                                        print(CUST.DATA.fromAmount)
+                                                        print(CUST.DATA.rate)
+                                                        if(CUST.DATA.rate !="")then
+                                                                if((cdouble(CUST.DATA.fromAmount) >=1 ) and (cint(CUST.DATA.rate)>=1))then
+                                                                        if(CUST.DATA.from_currency == sv_k)then
+                                                                                if(CUST.DATA.rmd=="")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd=="M")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd=="D")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        else
+                                                                                if(CUST.DATA.rmd=="")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd=="D")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) / cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                if(CUST.DATA.rmd=="M")then
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.fromAmount) * cdouble(CUST.DATA.rate)
+                                                                                endif
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        endif
+                                                                else
+                                                                        if(CUST.DATA.from_currency == sv_k)then
+                                                                                CUST.DATA.cAmt = 1 * cdouble(CUST.DATA.rate)
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        else
+                                                                                CUST.DATA.cAmt = 1 / cdouble(CUST.DATA.rate)
+                                                                                CUST.DATA.cAmt = cdouble(CUST.DATA.cAmt)
+                                                                        endif
+                                                                endif
+                                                                        print(CUST.DATA.fromAmount)
+                                                                sv_z = urhk_SetOrbOut("FromAmount|"+CUST.DATA.fromAmount)
+                                                                        print(CUST.DATA.cAmt)
+                                                                sv_z = urhk_SetOrbOut("ConvertedAmount|"+CUST.DATA.cAmt)
+                                                                print(sv_z)
+                                                        endif
+                                                                #vp
+                                                                sv_e=urhk_SetOrbOut("StatusCode|1")
+                                                                goto end
+                                                        ELSE
+                                                                IF (CUST.DATA.to_currency != CUST.DATA.from_currency) THEN
+                                                                #{
+                                                                        CUST.DATA.errMsg="Rate Not Maintained"
+                                                                        sv_e=urhk_SetOrbOut("StatusCode|2")
+                                                                        sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+                                                                #}
+                                                                ENDIF
+                                                                print("Rate Not Maintained")
+                                                        endif
+                                                endif
+                                        #####
+                                ENDIF
+
+                        ####
+                        print(CUST.DATA.FreeCode7)
+                        sv_z = urhk_SetOrbOut("FXGROUP_CODE|"+CUST.DATA.FreeCode7)
+                        print(sv_z)
+                        sv_e=urhk_SetOrbOut("StatusCode|1")
+                        #ELSE
+                                #sv_e=urhk_SetOrbOut("StatusCode|2")
+                                #CUST.DATA.errMsg="Customer Not Maintained for Special Rates"
+                                #sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+
+                        #ENDIF
+        ELSE
+                CUST.DATA.errMsg="Invalid Account"
+                sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+                GOTO End
+        ENDIF
+
+        HandleError:
+        if(CUST.DATA.errMsg!="")then
+        sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+        endif
+
+        End:
+                EXITSCRIPT
+                TRACE OFF
+END-->
+

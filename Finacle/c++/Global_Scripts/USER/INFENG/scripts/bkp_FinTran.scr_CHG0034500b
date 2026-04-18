@@ -1,0 +1,1266 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: FinTran.scr
+# Type: NA|default
+# Description: FinTran.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------
+#   Name			: FinTran.scr
+#   Description		:
+#   Date			: 01-03-2013
+#   Author			: Saurabh Sinha
+#   Input			: NA
+#   Output			: NA
+#   Called Script	:
+#   Calling Script	: getcparamvalue.scr
+#   Menu Option		:
+#	Srl. No         Date            Author          	Description.
+#	-------         ------          ------          	------------
+#   1.0             01-03-2013      Saurabh Sinha		Original Version
+#   1.01            09-10-2013      Saby                        Introduced FIELDEXISTS for BANCS.INPUT.ValueDate
+#   1.02            22-10-2013      Vijaya V                  Currency condition commented as per 7x porting
+#--------------------------------------------------------------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0b14889beee0083cc047c227cc744ad5ea505deb444ff958802847c151fa6714"
+	TRACE ON
+	# ===================================================================================== #
+	# This script provides additional validations, Exception raising and New Workflow
+	# creation. It will get called on TM_ENTRY TM_CHECK_EXCEPTION TM_REQUEST_POST
+	# TM_USER_ADDTL_DETAILS PTRAN_POSTING of TM and OWCLG_LODGE OWCLG_REGULARIZE of OCTM.
+	## Input fields available if called from TM
+	# ========================================
+	# BANCS.INPUT.Event - Valid values are
+	#					"TM_ENTRY"
+	# 					"TM_CHECK_EXCEPTION"
+	# 					"TM_REQUEST_POST"
+	# 					"TM_USER_ADDTL_DETAILS"
+	# 					"PTRAN_POSTING"
+	# BANCS.INPUT.NumLiensLifted			BANCS.INPUT.TranSubType
+	# BANCS.INPUT.TotLienAmtLifted          BANCS.INPUT.InstrumentType
+	# BANCS.INPUT.AddtlDetails              BANCS.INPUT.InstrumentDate
+	# BANCS.INPUT.AcctNum                   BANCS.INPUT.InstrumentAlpha
+	# BANCS.INPUT.SchemeCode                BANCS.INPUT.InstrumentNum
+	# BANCS.INPUT.SchemeType                BANCS.INPUT.ReportCode
+	# BANCS.INPUT.TranAmt                   BANCS.INPUT.TranCurrency
+	# BANCS.INPUT.RefAmt                    BANCS.INPUT.RefCurrency
+	# BANCS.INPUT.Rate                      BANCS.INPUT.RateCode
+	# BANCS.INPUT.ValMode                   BANCS.INPUT.TranDate
+	# BANCS.INPUT.DrCrInd                   BANCS.INPUT.ValueDate
+	# BANCS.INPUT.TranType                  BANCS.INPUT.CustomerId
+	# BANCS.INPUT.ExceptionIgnoreFlg        BANCS.INPUT.AcctSolId
+	# BANCS.INPUT.TranCreationMode			BANCS.INPUT.RestrictModifyInd
+	# BANCS.INPUT.PST_Flag                  BANCS.INPUT.InstantTodAmt
+	# BANCS.INPUT.TodLvlIntFlg              BANCS.INPUT.TranId
+	# BANCS.INPUT.RPCAccountFlag            BANCS.INPUT.PartTranSrlNum
+	# BANCS.INPUT.RefNum
+	# Input fields available if called from OCTM
+	# ==========================================
+	# BANCS.INPUT.Event - Valid values are
+	# 					"OWCLG_LODGE"
+	# 					"OWCLG_REGULARIZE"
+	# BANCS.INPUT.AddtlDetails				BANCS.INPUT.HomeToAcctCrncyRate
+	# BANCS.INPUT.AcctNum                   BANCS.INPUT.SttlInstToAcctCrncyRate
+	# BANCS.INPUT.SchemeCode                BANCS.INPUT.AcctSolId
+	# BANCS.INPUT.SchemeType                BANCS.INPUT.DrCrInd
+	# BANCS.INPUT.SolId                     BANCS.INPUT.InstrumentType
+	# BANCS.INPUT.ClgZoneCode               BANCS.INPUT.InstrumentDate
+	# BANCS.INPUT.ClgZoneDate               BANCS.INPUT.InstrumentAlpha
+	# BANCS.INPUT.TranAmt                   BANCS.INPUT.InstrumentID
+	# BANCS.INPUT.ShdBalRemAmt              BANCS.INPUT.TranDate
+	# BANCS.INPUT.PendingAmt                BANCS.INPUT.TranID
+	# BANCS.INPUT.PtranAmtInInstCrncy       BANCS.INPUT.CustomerId
+	# BANCS.INPUT.SttlInstToHomeCrncyRate
+	# BANCS.INPUT.TranRemarks
+	# BANCS.INPUT.TranParticulars
+	#
+	# Output fields available are
+	# ===========================
+	# BANCS.OUTPUT.successOrFailure			BANCS.OUTPUT.AddtlDetails
+	# BANCS.OUTPUT.ErrorDesc                BANCS.OUTPUT.DeleteUAD
+	#
+	# ===================================================================================== #
+	#  --------------------------------------
+	#  Creating classes and repository
+	#--------------------------------------
+	
+	sv_r = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_r)
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","FINTRAN") == 0) THEN
+	#{
+		CREATECLASS("CUST","FINTRAN",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUST","CPARAM",5)
+	#}
+	ENDIF
+	CUST.FINTRAN.errMsg =""
+	CUST.CPARAM.schemeCodelst = ""
+	
+	sv_r = urhk_getEnv("CB2KFTS")
+	IF ((sv_r == 0) AND ((BANCS.OUTPARAM.envValue) != "")) THEN
+	#{
+		CUST.FINTRAN.envValue = BANCS.OUTPARAM.envValue
+		PRINT(BANCS.OUTPARAM.envValue)
+		
+		#}
+	ELSE
+		#{
+		#--------------------------------------
+		#  	CPARAM Setup for ENV VARIABLE
+		#--------------------------------------
+		BANCS.INPUT.moduleName = "FINTRAN"
+		BANCS.INPUT.parameterId = "FNTRAN_B2KFTS"
+		CALL("getcparamvalue.scr")
+		PRINT(BANCS.OUTPUT.parameterVal)
+		IF(BANCS.OUTPUT.parameterVal != "")THEN
+		#{
+			CUST.CPARAM.schemeCodelst = BANCS.OUTPUT.parameterVal
+			#}
+		ELSE
+			#{
+			CUST.FINTRAN.errMsg = "CPARAM Setup not done for SRGPM scheme List"
+		#}
+		ENDIF
+		
+		sv_j="CB2KFTS|"+CUST.CPARAM.schemeCodelst
+		sv_k = urhk_putEnv(sv_j)
+		PRINT(sv_k)
+	#}
+	ENDIF
+	
+
+IF (BANCS.STDIN.contextBankId == "54") THEN
+
+IF(FIELDEXISTS(BANCS.STDIN.INIT_MENU_ID) == 1)THEN
+IF (BANCS.STDIN.INIT_MENU_ID == "HTV") THEN
+lv_a =""
+lv_a = lv_a + " MakerUserId | select distinct ENTRY_USER_ID   from tbaadm.dth, tbaadm.dtd where dth.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+lv_a = lv_a + " and B2K_EVENT_TYPE ='TTUMP'and dtd.tran_id =dth.tran_id and dth.tran_id ='"+BANCS.INPUT.TranId+"'  "
+lv_a = lv_a + " and dtd.tran_date =dth.tran_date and dtd.bank_id =dth.bank_id and to_char (dth.tran_date,'DD-MM-YYYY') =substr ('"+BANCS.INPUT.TranDate+"',0,10) and rownum = 1 "
+PRINT(lv_a)
+lv_z = urhk_dbSelectWithBind(lv_a)
+print(lv_z)
+IF(lv_z==0) THEN
+lv_q = BANCS.OUTPARAM.MakerUserId
+print(lv_q)
+IF (lv_q == BANCS.STDIN.userId) THEN
+BANCS.OUTPUT.successOrFailure = "F"
+BANCS.OUTPUT.ErrorDesc = "Error:Same HTTUM Maker can not Post transaction"
+CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+BANCS.OUTPUT.AddtlDetails=""
+BANCS.OUTPUT.DeleteUAD = "N"
+GOTO  HTVCHECK
+ENDIF
+ENDIF
+ENDIF
+ENDIF
+IF(FIELDEXISTS(BANCS.STDIN.menuId) == 1)THEN
+IF (BANCS.STDIN.menuId == "HTV") THEN
+lv_a =""
+lv_a = lv_a + " MakerUserId | select distinct ENTRY_USER_ID   from tbaadm.dth, tbaadm.dtd where dth.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+lv_a = lv_a + " and B2K_EVENT_TYPE ='TTUMP'and dtd.tran_id =dth.tran_id and dth.tran_id ='"+BANCS.INPUT.TranId+"'  "
+lv_a = lv_a + " and dtd.tran_date =dth.tran_date and dtd.bank_id =dth.bank_id and to_char (dth.tran_date,'DD-MM-YYYY') =substr ('"+BANCS.INPUT.TranDate+"',0,10) and rownum = 1 "
+PRINT(lv_a)
+lv_z = urhk_dbSelectWithBind(lv_a)
+print(lv_z)
+IF(lv_z==0) THEN
+lv_q = BANCS.OUTPARAM.MakerUserId
+print(lv_q)
+IF (lv_q == BANCS.STDIN.userId) THEN
+BANCS.OUTPUT.successOrFailure = "F"
+BANCS.OUTPUT.ErrorDesc = "Error:Same HTTUM Maker can not Post transaction"
+CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+BANCS.OUTPUT.AddtlDetails=""
+BANCS.OUTPUT.DeleteUAD = "N"
+GOTO  HTVCHECK
+ENDIF
+ENDIF
+ENDIF
+ENDIF
+
+IF(FIELDEXISTS(BANCS.INPUT.SchemeType) == 1)THEN
+IF ((BANCS.INPUT.SchemeType == "OAP") OR (BANCS.INPUT.SchemeType == "OAB") OR (BANCS.INPUT.SchemeType == "OSP")  OR (BANCS.INPUT.SchemeType == "DDA") ) THEN
+	BANCS.OUTPUT.successOrFailure = "S"
+	BANCS.OUTPUT.ErrorDesc = ""
+	BANCS.OUTPUT.AddtlDetails = ""
+	BANCS.OUTPUT.DeleteUAD = "N"
+	GOTO  HTVCHECK
+ENDIF
+ENDIF
+
+ENDIF
+
+
+
+	
+	IF(FIELDEXISTS(BANCS.STDIN.menuId) == 1)THEN
+	#{
+		IF((BANCS.STDIN.menuId == "HTM") OR (BANCS.STDIN.menuId == "HCASHWD") OR (BANCS.STDIN.menuId == "HXFER"))THEN
+		#{
+			IF(BANCS.INPUT.DrCrInd == "D")THEN
+			#{
+				#			IF (BANCS.STDIN.contextBankId == "54") THEN
+				#			#{
+				#
+				#				#IF((BANCS.STDIN.mySolId == "017") OR (BANCS.STDIN.mySolId == "136"))THEN
+				#				#{
+				#			        	CALL("bioValExcp.scr")
+				#				#}
+				#				#ENDIF
+				#			#}
+				#			ELSE
+				#			#{
+				if(BANCS.INPUT.srvcallmode=="E")then
+					CALL("bioValExcp.scr")
+					if(BANCS.STDIN.contextBankId == "54")then
+						callscriptifexist("ebtmReferral.scr")
+						#callscriptifexist("ebtmUNSCRef.scr")
+					endif
+				endif
+				###T-BI changes starts
+				if((BANCS.INPUT.Event == "TM_ENTRY") OR (BANCS.INPUT.Event == "TM_REQ_POST_EVENT")) then
+					if(BANCS.INPUT.srvcallmode == "E") then
+					CALL("finCustBITranExcp.scr")
+					endif
+				endif
+				###T-BI changes ends				
+
+
+				#			#}
+				#			ENDIF
+			#}
+			ENDIF
+			if((BANCS.STDIN.contextBankId=="56") and (BANCS.INPUT.srvcallmode=="E"))then
+				if(BANCS.STDIN.userWorkClass=="060")then
+					if(BANCS.INPUT.AcctNum !="")then
+						CUST.FINTRAN.MidForacid = mid$(BANCS.INPUT.AcctNum,4,13)
+						print(CUST.FINTRAN.MidForacid)
+						if(CUST.FINTRAN.MidForacid =="300010626")then
+							CUST.FINTRAN.SUNDRY="Y"
+						else
+							CUST.FINTRAN.SUNDRY="N"
+						endif
+					endif
+					print(CUST.FINTRAN.SUNDRY)
+					if(CUST.FINTRAN.SUNDRY == "Y")then      
+						print(BANCS.INPUT.DrCrInd)                
+						print(BANCS.INPUT.ValMode)              
+						print(BANCS.INPUT.ExceptionIgnoreFlg)               
+						BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+						BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+						BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+						##BANCS.INPARAM.ExceptionIgnoreFlg = "D"
+						sv_c = urhk_FTS_RaiseException("SUN")
+						PRINT(sv_c)
+						#exitscript
+					endif
+				endif
+			endif
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------
+	# Check to see whether TOD can be granted for the account
+	#-----------------------------------------------------------------
+	CALL("todchkmn001.scr")
+	
+	sv_r = urhk_getEnv("CB2KFTS")
+	IF ((sv_r == 0) AND ((BANCS.OUTPARAM.envValue) != "")) THEN
+	#{
+		CUST.FINTRAN.envValue = BANCS.OUTPARAM.envValue
+		PRINT(BANCS.OUTPARAM.envValue)
+		
+		sv_a=GETPOSITION(CUST.FINTRAN.envValue,"!" + BANCS.INPUT.SchemeCode + "!")
+		PRINT(sv_a)
+		
+		IF (sv_a == 0) THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF(FIELDEXISTS(BANCS.STDIN.menuId))THEN
+	#{
+		IF(BANCS.STDIN.menuId=="HOCCM")THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "S"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	#--------------------------------------
+	#  	CPARAM Setup for SCHMCOD
+	#--------------------------------------
+	BANCS.INPUT.moduleName = "FINTRAN"
+	BANCS.INPUT.parameterId = "SCHMCOD"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.schemeCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.FINTRAN.errMsg = "CPARAM Setup not done for schemeCode"
+	#}
+	ENDIF
+	
+	#--------------------------------
+	#CPARAM Setup for CAL_B2K_TYPE
+	#--------------------------------
+	BANCS.INPUT.moduleName = "FINTRAN"
+	BANCS.INPUT.parameterId = "CAL_B2K_TYPE"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.calB2kType = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.FINTRAN.errMsg = "CPARAM Setup not done for calB2kType"
+	#}
+	ENDIF
+	
+	#--------------------------------
+	#CPARAM Setup for ONLINE_BATCH
+	#--------------------------------
+	BANCS.INPUT.moduleName = "FINTRAN"
+	BANCS.INPUT.parameterId = "ONLINE_BATCH"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.onlineBatch = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.FINTRAN.errMsg = "CPARAM Setup not done for onlineBatch"
+	#}
+	ENDIF
+	
+	#--------------------------------
+	#CPARAM Setup for TRANAMTLMT
+	#--------------------------------
+	BANCS.INPUT.moduleName = "FINTRAN"
+	BANCS.INPUT.parameterId = "TRANAMTLMT"
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.CPARAM.tranAmtLmt = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.FINTRAN.errMsg = "CPARAM Setup not done for tranAmtLmt"
+	#}
+	ENDIF
+	
+	#sv_r = urhk_B2k_PrintRepos("BANCS")
+	#PRINT(sv_r)
+	
+	#--------------------------------------
+	#  Start processing for Event hook
+	#--------------------------------------
+	BANCS.OUTPUT.successOrFailure = "S"
+	BANCS.OUTPUT.ErrorDesc = ""
+	BANCS.OUTPUT.AddtlDetails = ""
+	IF (BANCS.STDIN.contextBankId == "54") THEN
+		BANCS.OUTPUT.DeleteUAD = "N"
+	else
+		BANCS.OUTPUT.DeleteUAD = "Y"
+	endif
+	
+	IF(FIELDEXISTS(BANCS.INPUT.callingProgramId) == 1)THEN
+	#{
+		IF(BANCS.INPUT.callingProgramId == "BJSTM")THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	#Split value date of transaction to day, month and year.
+	
+	IF (FIELDEXISTS(BANCS.INPUT.ValueDate)) THEN
+	#{
+		sv_s = BANCS.INPUT.ValueDate
+		IF(sv_s != "") THEN
+		#{
+			sv_d = mid$(sv_s, 0, 2)
+			#sv_m = mid$(sv_s, 3, 2)
+			#sv_y = mid$(sv_s, 6, 4)
+			#sv_s = sv_m + sv_y
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#Get acct_crncy_code for the account from GAM.
+	
+	IF (BANCS.INPUT.AcctNum != "") THEN
+	#{
+		sv_s = "acct_crncy_code |"
+		sv_s = sv_s + " SELECT GAM.acct_crncy_code "
+		sv_s = sv_s + " FROM TBAADM.GAM"
+		sv_s = sv_s + " WHERE GAM.foracid = ?SVAR"
+		sv_s = sv_s + " AND GAM.bank_id=?SVAR"
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS =  BANCS.INPUT.AcctNum + "|" +  BANCS.STDIN.contextBankId
+		PRINT (BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.FINTRAN.acctCrncyCode = BANCS.OUTPARAM.acct_crncy_code
+			PRINT(CUST.FINTRAN.acctCrncyCode)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#Get cntry code for the crncy code
+	sv_s = "cntry_code|"
+	sv_s = sv_s + " SELECT CNC.cntry_code"
+	sv_s = sv_s + " FROM TBAADM.CNC"
+	sv_s = sv_s + " WHERE CNC.crncy_code = ?SVAR"
+	sv_s = sv_s + " AND CNC.bank_id=?SVAR"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.FINTRAN.acctCrncyCode + "|" +  BANCS.STDIN.contextBankId
+	PRINT (BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.FINTRAN.cntryCode = BANCS.OUTPARAM.cntry_code
+		PRINT(CUST.FINTRAN.acctCrncyCode)
+	#}
+	ENDIF
+	
+	
+	#Get hldy_str from hol for country code and month-year combination
+	sv_s = "hldy_str|"
+	sv_s = sv_s + " SELECT HOL.hldy_str"
+	sv_s = sv_s + " FROM TBAADM.HOL"
+	sv_s = sv_s + " WHERE HOL.CAL_B2K_TYPE = ?SVAR"
+	sv_s = sv_s + " AND HOL.CAL_B2K_ID = ?SVAR"
+	sv_s = sv_s + " AND HOL.bank_id= ?SVAR"
+	#sv_q = sv_q + " and MMYYYY = '" + sv_s + "'"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CPARAM.calB2kType + "|" + CUST.FINTRAN.cntryCode + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.FINTRAN.hldyStr = BANCS.OUTPARAM.hldy_str
+		CUST.FINTRAN.hldyStr = mid$(CUST.FINTRAN.hldyStr, (CINT(sv_d) - 1), 1)
+		PRINT(CUST.FINTRAN.hldyStr)
+	#}
+	ENDIF
+	
+	#Check whether account open date is a holiday. If yes then return failure.
+	#if ((sv_h == "W") or (sv_h == "A") or (sv_h == "P") or (sv_h == "X") or (sv_h == "Y") or (sv_h == "H") or (sv_h == "S"))then
+	#	BANCS.OUTPUT.ErrorDesc = "Transaction Value Date is marked holiday"
+	#	BANCS.OUTPUT.successOrFailure = "F"
+	#	exitscript
+	#endif
+	
+	
+	# ======================================= #
+	#										  #
+	#  	  Process OWCLG related Modes.        #
+	#										  #
+	# ======================================= #
+	
+	
+	# ======================================= #
+	#			OWCLG Lodge mode - Begin	  #
+	# ======================================= #
+	PRINT(BANCS.STDIN.mySolId)
+	PRINT(BANCS.INPUT.AcctSolId)
+	
+	IF (BANCS.INPUT.Event == "OWCLG_LODGE") THEN
+	#{
+		#sv_u = BANCS.STDIN.userId
+		#sv_z = BANCS.INPUT.TranCurrency
+		#sv_n = BANCS.STDIN.mySolId
+		#sv_o = BANCS.INPUT.AcctSolId
+		
+		#print(BANCS.STDIN.userId)
+		#print(BANCS.STDIN.mySolId)
+		#print(BANCS.INPUT.AcctSolId)
+		#print(BANCS.INPUT.TranCurrency)
+		
+		#CUST.FINTRAN.userId = BANCS.STDIN.userId
+		#CUST.FINTRAN.tranCurrency = BANCS.INPUT.TranCurrency
+		#CUST.FINTRAN.mySolId = BANCS.STDIN.mySolId
+		#CUST.FINTRAN.acctSolId = BANCS.INPUT.AcctSolId
+		#print(sv_z)
+		#print(sv_r)
+		# ---------------------------
+		# Hard Coded Error condition.
+		# ---------------------------
+		#print(BANCS.INPUT.ExceptionIgnoreFlg)
+		#sv_u = BANCS.STDIN.userId
+		#print(sv_u)
+		#sv_z = BANCS.INPUT.TranCurrency
+		#print(sv_z)
+		sv_s = "clglmt|"
+		sv_s = sv_s + " SELECT r.user_clg_cr_lim"
+		sv_s = sv_s + " FROM CUSTOM.CRCL r, TBAADM.UPR u"
+		sv_s = sv_s + " WHERE r.role_id=u.role_id "
+		#sv_s = sv_s + " AND u.user_id= ?SVAR"
+		#sv_s = sv_s + " AND r.crncy_code = ?SVAR"
+		sv_s = sv_s + " AND r.bank_id = u.home_bank_id"
+		sv_s = sv_s + " AND r.bank_id = ?SVAR"
+		PRINT(sv_s)
+		#BANCS.INPARAM.BINDVARS = CUST.FINTRAN.userId + "|" + CUST.FINTRAN.tranCurrency + "|" + BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.FINTRAN.clglmt  = BANCS.OUTPARAM.clglmt
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			IF ( CDOUBLE(CUST.FINTRAN.tranAmt) > CDOUBLE(CUST.FINTRAN.clglmt) ) THEN
+			#{
+				#BANCS.INPARAM.ExceptionIgnoreFlg = "N"
+				BANCS.INPARAM.AcctNum = BANCS.INPUT.AcctNum
+				sv_d = urhk_OWCLG_RaiseException("CE9")
+				IF (sv_d == 1) THEN
+				#{
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.ErrorDesc = "Credit Clearing Limit Exceeded for user. Check table CRCL OR menu CPM"
+					CUST.FINTRAN.errMsg=BANCS.OUTPUT.ErrorDesc
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+		#}
+		ENDIF
+		
+		
+		IF (BANCS.INPUT.SchemeCode ==CUST.CPARAM.schemeCode) THEN
+		#{
+			sv_a = CDOUBLE(BANCS.INPUT.TranAmt)
+			IF (sv_a > CUST.CPARAM.tranAmtLmt) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.ErrorDesc = "Part TranAmt exceeded max-100000 in SBGEN Scheme."
+				CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# ---------------------------------------------
+		# If the amount is not multiple of 1000's
+		# in SBGEN scheme code, then raise an exception
+		# ---------------------------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			sv_b = STRLEN(CUST.FINTRAN.tranAmt)
+			sv_c = mid$(CUST.FINTRAN.tranAmt, sv_b - 6, sv_b)
+			PRINT (CUST.FINTRAN.tranAmt)
+			PRINT (sv_c)
+			IF (sv_c != "000.00") THEN
+			#{
+				BANCS.INPARAM.AcctNum = BANCS.INPUT.AcctNum
+				sv_d = urhk_OWCLG_RaiseException("022")
+				IF (sv_d == 1) THEN
+				#{
+					# It is an error.
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.ErrorDesc = BANCS.OUTPARAM.ErrorDesc
+					CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# -------------------------------------
+		# Now accept additional data by calling
+		# parameter acceptance form
+		# -------------------------------------
+	#}
+	ENDIF
+	
+	# ======================================= #
+	#			OWCLG Lodge mode - End	  	  #
+	# ======================================= #
+	
+	
+	# ======================================= #
+	#		OWCLG Regularize mode - Begin  	  #
+	# ======================================= #
+	
+	IF (BANCS.INPUT.Event == "OWCLG_REGULARIZE") THEN
+	#{
+		# Do the processing for OWCLG Regularize mode.
+		
+		# -------------------------------------------------
+		# Call user hook to init the Work Flow repositories
+		# -------------------------------------------------
+		
+		PRINT(BANCS.INPUT.TranParticulars)
+		PRINT(BANCS.INPUT.TranRemarks)
+		
+	#}
+	ENDIF
+	
+	# ======================================= #
+	#										  #
+	# 	  	  Process TM related Modes.       #
+	#										  #
+	# ======================================= #
+	
+	
+	# ======================================= #
+	#			TM Entry mode - Begin		  #
+	# ======================================= #
+	IF (BANCS.INPUT.Event == "TM_ENTRY") THEN
+	#{
+		# -----------------------------------------
+		# Hard Coded Error condition: Amount cannot
+		# be greater than 100000.
+		# -----------------------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = CDOUBLE(BANCS.INPUT.TranAmt)
+			IF (CUST.FINTRAN.tranAmt > CUST.CPARAM.tranAmtLmt) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.ErrorDesc="Part Tran Amount exceeded max-100000 in SBGEN Scheme."
+				CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# -----------------------------------------
+		# Hard Coded Error condition: If RPC_FLG is
+		# Y then can not enter transaction through
+		# TM
+		# -----------------------------------------
+		IF (BANCS.STDIN.onlineOrBatch == CUST.CPARAM.onlineBatch) THEN
+		#{
+			IF (BANCS.INPUT.RPCAccountFlag == "Y") THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "S"
+				sv_u = urhk_SetOrbOut("Warning: Transaction to a Running Packing Credit Account.")
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		# ---------------------------------------------
+		# Check for exception condition
+		# If the amount is not multiple of 1000's
+		# in SBGEN scheme code, then raise an exception
+		# ---------------------------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			sv_b = STRLEN(CUST.FINTRAN.tranAmt)
+			sv_c = mid$(CUST.FINTRAN.tranAmt, sv_b - 6, sv_b)
+			IF (sv_c != "000.00") THEN
+			#{
+				BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+				BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+				BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+				sv_u = urhk_FTS_RaiseException("000")
+				IF (sv_u == 1) THEN
+				#{
+					# It is an error.
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.ErrorDesc = BANCS.OUTPARAM.ErrorDesc
+					CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# -------------------------------------
+		# Now accept additional data by calling
+		# parameter acceptance form
+		# -------------------------------------
+		
+		#  ---------------------------------
+		#  Accept Screen literals and length
+		#  ---------------------------------
+	#}
+	ENDIF
+	
+	# ======================================= #
+	#			TM Entry mode - End		  	  #
+	# ======================================= #
+	
+	
+	# ======================================= #
+	#		TM Excp Check mode - Begin	  	  #
+	# ======================================= #
+	
+	IF (BANCS.INPUT.Event == "TM_CHECK_EXCEPTION") THEN
+	#{
+		# ---------------------------------------------
+		# Check for exception condition
+		# If the amount is not multiple of 1000's
+		# in SBGEN scheme code, then raise an exception
+		# ---------------------------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			sv_b = STRLEN(CUST.FINTRAN.tranAmt)
+			sv_c = mid$(CUST.FINTRAN.tranAmt, sv_b - 6, sv_b)
+			IF (sv_c != "000.00") THEN
+			#{
+				BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+				BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+				BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+				sv_u = urhk_FTS_RaiseException("000")
+				IF (sv_u == 1) THEN
+				#{
+					# It is an error.
+					BANCS.OUTPUT.successOrFailure = "F"
+					CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# Populate the output details.
+		
+		# No need to proceed further
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	# ======================================= #
+	#		TM Excp Check mode - End	  	  #
+	# ======================================= #
+	
+	
+	# ======================================= #
+	#		TM Request Post mode - Begin	  #
+	# ======================================= #
+	PRINT(BANCS.STDIN.mySolId)
+	PRINT(BANCS.INPUT.AcctSolId)
+	
+	IF (BANCS.INPUT.Event == "TM_REQUEST_POST") THEN
+	#{
+		#sv_u = BANCS.STDIN.userId
+		#sv_z = BANCS.INPUT.TranCurrency
+		#sv_n = BANCS.STDIN.mySolId
+		#sv_o = BANCS.INPUT.AcctSolId
+		CUST.FINTRAN.userId = BANCS.STDIN.userId
+		CUST.FINTRAN.tranCurrency = BANCS.INPUT.TranCurrency
+		CUST.FINTRAN.mySolId = BANCS.STDIN.mySolId
+		CUST.FINTRAN.acctSolId = BANCS.INPUT.AcctSolId
+		#print(sv_z)
+		#print(sv_r)
+		IF (BANCS.INPUT.DrCrInd == "C") THEN
+		#{
+			IF (BANCS.INPUT.TranType == "T") THEN
+			#{
+				sv_s = "tranlmt,tranintsolmt|"
+				sv_s = sv_s + " SELECT r.user_xfer_cr_lim,"
+				sv_s = sv_s + " r.user_intersol_xfer_cr_limit"
+				sv_s = sv_s + " FROM CUSTOM.CRCL r, TBAADM.UPR u"
+				sv_s = sv_s + " WHERE r.role_id=u.role_id "
+				sv_s = sv_s + " AND u.user_id=?SVAR"
+				sv_s = sv_s + " AND r.crncy_code =?SVAR"
+				sv_s = sv_s + " AND r.bank_id =u.home_bank_id"
+				sv_s = sv_s + " AND r.bank_id =?SVAR"
+				PRINT(sv_s)
+				BANCS.INPARAM.BINDVARS = ""
+				BANCS.INPARAM.BINDVARS = CUST.FINTRAN.userId + "|" + CUST.FINTRAN.tranCurrency
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					CUST.CPARAM.tranlmt		 = BANCS.OUTPARAM.tranlmt
+					CUST.CPARAM.tranintsolmt = BANCS.OUTPARAM.tranintsolmt
+					CUST.CPARAM.tranAmt		 = BANCS.INPUT.TranAmt
+					#sv_b = cdouble(BANCS.OUTPARAM.tranlmt)
+					#sv_l = cdouble(BANCS.OUTPARAM.tranintsolmt)
+					#sv_t = cdouble(BANCS.INPUT.TranAmt)
+					PRINT(sv_t)
+					IF (CUST.FINTRAN.mysoId == CUST.FINTRAN.acctSolId) THEN
+					#{
+						IF ( CDOUBLE(CUST.CPARAM.tranAmt) > CDOUBLE(CUST.CPARAM.tranlmt) ) THEN
+						#{
+							PRINT(BANCS.INPUT.ExceptionIgnoreFlg)
+							PRINT(BANCS.INPUT.ValMode)
+							BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+							BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+							#BANCS.INPARAM.ExceptionIgnoreFlg = "Y"
+							BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+							sv_t=urhk_B2k_PutUserException("CE1")
+							#sv_t=urhk_TBAF_ShowUserException("")
+							# If the return value is 1 then it is an error. Otherwise the
+							# exception has been raised successfully.
+							IF (sv_t == 1) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.ErrorDesc = "Credit Transfer Limit Exceeded for user. check table CRCL OR menu CPM."
+								CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+								GOTO ENDOFSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+					
+					IF (CUST.FINTRAN.mysoId != CUST.FINTRAN.acctSolId) THEN
+					#{
+						PRINT(CUST.CPARAM.tranintsolmt)
+						PRINT(CUST.CPARAM.tranAmt)
+						IF ( CDOUBLE(CUST.CPARAM.tranAmt)> CDOUBLE(CUST.CPARAM.tranintsolmt) ) THEN
+						#{
+							PRINT(BANCS.INPUT.ExceptionIgnoreFlg)
+							PRINT(BANCS.INPUT.ValMode)
+							PRINT(CUST.CPARAM.tranAmt)
+							BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+							BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+							BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+							sv_u=urhk_B2k_PutUserException("CE1")
+							#sv_u=urhk_TBAF_ShowUserException("")
+							IF (sv_u == 1) THEN
+							#{
+								BANCS.OUTPUT.successOrFailure = "F"
+								BANCS.OUTPUT.ErrorDesc = "Credit Intersol Transfer Limit Exceeded for user.check table CRCL."
+								CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+								GOTO ENDOFSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				IF (BANCS.INPUT.TranType == "T") THEN
+				#{
+					sv_s = "cashlmt,cashintsolmt|"
+					sv_s = sv_s + " SELECT r.user_cash_cr_lim,"
+					sv_s = sv_s + " r.user_intersol_cash_cr_limit"
+					sv_s = sv_s + " FROM CUSTOM.CRCL r, TBAADM.UPR u"
+					sv_s = sv_s + " WHERE r.role_id=u.role_id "
+					sv_s = sv_s + " AND u.user_id=?SVAR"
+					sv_s = sv_s + " AND r.crncy_code =?SVAR"
+					sv_s = sv_s + " AND r.bank_id =u.home_bank_id"
+					sv_s = sv_s + " AND r.bank_id =?SVAR"
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS = ""
+					BANCS.INPARAM.BINDVARS = CUST.FINTRAN.userId + "|" + CUST.FINTRAN.tranCurrency
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						#sv_s = cdouble(BANCS.OUTPARAM.cashlmt)
+						#sv_l = cdouble(BANCS.OUTPARAM.cashintsolmt)
+						#sv_t = cdouble(BANCS.INPUT.TranAmt)
+						CUST.FINTRAN.cashlmt = BANCS.OUTPARAM.cashlmt
+						CUST.FINTRAN.cashintsolmt =	 BANCS.OUTPARAM.cashintsolmt
+						CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+						#print(sv_t)
+						IF (CUST.FINTRAN.mysoId == CUST.FINTRAN.acctSolId) THEN
+						#{
+							IF (CDOUBLE(CUST.FINTRAN.tranAmt) > CDOUBLE(CUST.FINTRAN.tranlmt) ) THEN
+							#{
+								PRINT(BANCS.INPUT.ExceptionIgnoreFlg)
+								PRINT(BANCS.INPUT.ValMode)
+								BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+								BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+								#BANCS.INPARAM.ExceptionIgnoreFlg = "Y"
+								BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+								sv_u=urhk_B2k_PutUserException("CE0")
+								#sv_u=urhk_TBAF_ShowUserException("")
+								# If the return value is 1 then it is an error. Otherwise the
+								# exception has been raised successfully.
+								IF (sv_u == 1) THEN
+								#{
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.ErrorDesc = "Credit Cash Limit Exceeded for user.check table CRCL OR menu CPM."
+									CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+									GOTO ENDOFSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						IF (CUST.FINTRAN.mysoId != CUST.FINTRAN.acctSolId) THEN
+						#{
+							PRINT(CUST.FINTRAN.cashintsolmt)
+							PRINT(CUST.FINTRAN.tranAmt)
+							#print(sv_l)
+							#print(sv_t)
+							IF ( CDOUBLE(CUST.FINTRAN.tranAmt) > CDOUBLE(CUST.FINTRAN.cashintsolmt) ) THEN
+							#{
+								PRINT(BANCS.INPUT.ExceptionIgnoreFlg)
+								PRINT(BANCS.INPUT.ValMode)
+								BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+								BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+								BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+								sv_u=urhk_B2k_PutUserException("CE2")
+								#sv_u=urhk_TBAF_ShowUserException("")
+								IF (sv_u == 1) THEN
+								#{
+									BANCS.OUTPUT.successOrFailure = "F"
+									BANCS.OUTPUT.ErrorDesc = "Credit Intersol cash Limit Exceeded for user.check table CRCL OR menu CPM."
+									CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+									GOTO ENDOFSCRIPT
+								#}
+								ENDIF
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+				# ----------------------------------------------
+				# To check that at least one part tran
+				# belongs to initiating sol id. This check
+				# is only done for non cash type of transactions
+				# ----------------------------------------------
+				
+				CUST.FINTRAN.tranType = BANCS.INPUT.TranType
+				IF( CUST.FINTRAN.tranType != "C") THEN
+				#{
+					CUST.FINTRAN.mySolId = BANCS.STDIN.mySolId
+					CUST.FINTRAN.acctSolId = BANCS.INPUT.AcctSolId
+					
+					#if( sv_a == sv_b ) then
+					
+					# If the Class SOLCHK and field chksol do not exist ,
+					# they are created in the preload script  .
+					
+					#	BANCS.SOLCHK.chksol = 1
+					#endif
+				#}
+				ENDIF
+				
+				# -----------------------------------------
+				# Hard Coded Error condition: Amount cannot
+				# be greater than 100000.
+				# -----------------------------------------
+				IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+				#{
+					CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+					IF ( CDOUBLE(CUST.FINTRAN.tranAmt) > CUST.CPARAM.tranAmtLmt) THEN
+					#{
+						BANCS.OUTPUT.successOrFailure = "F"
+						BANCS.OUTPUT.ErrorDesc="Part Tran Amount exceeded max-100000 in SBGEN Scheme."
+						CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				# ---------------------------------------------
+				# Check for exception condition
+				# If the amount is not multiple of 1000's
+				# in SBGEN scheme code, then raise an exception
+				# ---------------------------------------------
+				IF (BANCS.INPUT.SchemeCode ==  CUST.CPARAM.schemeCode) THEN
+				#{
+					CUST.FINTRAN.tranAmt  = BANCS.INPUT.TranAmt
+					sv_b = STRLEN(CUST.FINTRAN.tranAmt )
+					sv_c = mid$(CUST.FINTRAN.tranAmt , sv_b - 6, sv_b)
+					IF (sv_c != "000.00") THEN
+					#{
+						BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+						BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+						BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+						sv_u = urhk_FTS_RaiseException("000")
+						IF (sv_u == 1) THEN
+						#{
+							# It is an error.
+							BANCS.OUTPUT.successOrFailure = "F"
+							BANCS.OUTPUT.ErrorDesc = BANCS.OUTPARAM.ErrorDesc
+							CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+							GOTO ENDOFSCRIPT
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+				# Populate the output details.
+				BANCS.OUTPUT.AddtlDetails = BANCS.INPUT.AddtlDetails
+				# No need to proceed further
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	# ======================================= #
+	#		TM Request Post mode - End	  	  #
+	# ======================================= #
+	
+	
+	# ========================================== #
+	# TM User Addtl Details Display mode - Begin #
+	# ========================================== #
+	
+	IF (BANCS.INPUT.Event == "TM_USER_ADDTL_DETAILS") THEN
+	#{
+		# Do the processing for TM User Additional Details mode.
+		#  ---------------------------------
+		#  Accept Screen literals and length
+		#  ---------------------------------
+		
+		GOTO ENDOFSCRIT
+	#}
+	ENDIF
+	
+	# ========================================== #
+	# TM User Addtl Details Display mode - End   #
+	# ========================================== #
+	
+	
+	# ========================================== #
+	# 		Part Tran posting Mode - Begin       #
+	# ========================================== #
+	
+	IF (BANCS.INPUT.Event == "PTRAN_POSTING") THEN
+	#{
+		# ----------------------------------------
+		# TO check that at least one ptran belongs
+		# to initiating sol id.This check is only
+		# done for non cash type of transactions.
+		# ----------------------------------------
+		
+		CUST.FINTRAN.tranType = BANCS.INPUT.TranType
+		#sv_x = CLASSEXISTS("BANCS", "SOLCHK")
+		#IF((sv_x != 0) AND (sv_g != "C")) then
+		#{
+		#	sv_e = BANCS.SOLCHK.chksol
+		#	IF (sv_e != 1) then
+		#	#{
+		#		BANCS.OUTPUT.ErrorDesc = "At Least one part tran should belong to Initiating Sol Id "
+		#		BANCS.OUTPUT.successOrFailure = "F"
+		#		CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+		#		GOTO ENDOFSCRIPT
+		#	#}
+		#	ENDIF
+		#}
+		#ENDIF
+		
+		
+		# -----------------------------
+		# Hard Coded Error condition.
+		# -----------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			IF ( CDOUBLE(CUST.FINTRAN.tranAmt) > CUST.CPARAM.tranAmtLmt) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.ErrorDesc = "Part TranAmt exceeded max-100000 in SB Scheme."
+				CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		# ---------------------------------------------
+		# If the amount is not multiple of 1000's
+		# in SBGEN scheme code, then raise an exception
+		# ---------------------------------------------
+		IF (BANCS.INPUT.SchemeCode == CUST.CPARAM.schemeCode) THEN
+		#{
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			sv_b = STRLEN(CUST.FINTRAN.tranAmt)
+			sv_c = mid$(CUST.FINTRAN.tranAmt, sv_b - 6, sv_b)
+			IF (sv_c != "000.00") THEN
+			#{
+				BANCS.INPARAM.ValMode = BANCS.INPUT.ValMode
+				BANCS.INPARAM.DrCrInd = BANCS.INPUT.DrCrInd
+				BANCS.INPARAM.ExceptionIgnoreFlg = BANCS.INPUT.ExceptionIgnoreFlg
+				sv_u = urhk_FTS_RaiseException("000")
+				IF (sv_u == 1) THEN
+				#{
+					# It is an error.
+					BANCS.OUTPUT.successOrFailure = "F"
+					BANCS.OUTPUT.ErrorDesc = BANCS.OUTPARAM.ErrorDesc
+					CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#--------------------------------------------------
+		# If the tod amt changes at the time of posting ,
+		# raise exception if the difference is more than
+		# 100 .
+		#--------------------------------------------------
+		CUST.FINTRAN.instantTodAmt = BANCS.INPUT.InstantTodAmt
+		IF ( CDOUBLE(CUST.FINTRAN.instantTodAmt) != 0.00 ) THEN
+		#{
+			PRINT(BANCS.INPUT.Event)
+			PRINT("The Tod Amount")
+			PRINT(BANCS.INPUT.InstantTodAmt)
+			CUST.FINTRAN.acctNum = BANCS.INPUT.AcctNum
+			sv_u = urhk_getAcctDetailsInRepository(CUST.FINTRAN.acctNum)
+			IF (sv_u == 1) THEN
+			#{
+				BANCS.OUTPUT.OutString = "Account number is invalid"
+				BANCS.OUTPUT.successOrFailure="F"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			CUST.FINTRAN.availableAmt = BANCS.OUTPARAM.AvailableAmt
+			CUST.FINTRAN.fullEffAvailableAmt= BANCS.OUTPARAM.FullEffAvailableAmt
+			IF ( CDOUBLE(CUST.FINTRAN.fullEffAvailableAmt) < 0 ) THEN
+			#{
+				CUST.FINTRAN.fullEffAvailableAmt=0
+			#}
+			ENDIF
+			CUST.FINTRAN.fullAvailableAmt=BANCS.OUTPARAM.FullAvailableAmt
+			sv_h = CDOUBLE(BANCS.INPUT.TranAmt)
+			CUST.FINTRAN.todLvlIntFlg =	BANCS.INPUT.TodLvlIntFlg
+			CUST.FINTRAN.tranAmt = BANCS.INPUT.TranAmt
+			
+			sv_i = CDOUBLE(CUST.FINTRAN.tranAmt) - CDOUBLE(CUST.FINTRAN.fullEffAvailableAmt)
+			sv_j = CDOUBLE(CUST.FINTRAN.instantTodAmt) - 100
+			sv_k = CDOUBLE(CUST.FINTRAN.instantTodAmt) + 100
+			
+			PRINT("Tod amount")
+			PRINT(CUST.FINTRAN.instantTodAmt)
+			PRINT("Your Min Limit")
+			PRINT(sv_j)
+			PRINT("Your Max Limit")
+			PRINT(sv_k)
+			IF ( ( sv_i < sv_j ) OR ( sv_i > sv_k ) ) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				BANCS.OUTPUT.ErrorDesc = "Error: TOD Amt. is different from that of specified value"
+				CUST.FINTRAN.errMsg = BANCS.OUTPUT.ErrorDesc
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	
+	#========================================== #
+	# 		Part Tran posting Mode - End #
+	#========================================== #
+	
+	
+	# Something is wrong. Invalid Entry mode.
+	PRINT (BANCS.INPUT.Event)
+	
+	ENDOFSCRIPT:
+		BANCS.OUTPUT.successOrFailure = "S"
+		BANCS.OUTPUT.ErrorDesc = ""
+		BANCS.OUTPUT.AddtlDetails = ""
+	IF (BANCS.STDIN.contextBankId == "54") THEN
+		BANCS.OUTPUT.DeleteUAD = "N"
+	else
+		BANCS.OUTPUT.DeleteUAD = "Y"
+		
+		IF (FIELDEXISTS(BANCS.STDIN.menuId) == 1)THEN
+		#{
+			IF (BANCS.STDIN.menuId == "HTM") THEN
+			#{
+				IF (BANCS.INPUT.Event == "PTRAN_POSTING") THEN
+				#{
+					IF (BANCS.INPUT.TranParticulars2=="TCR") THEN
+					#{
+						#IF (BANCS.INPUT.DrCrInd=="C") THEN
+						#CUST.FINTRAN.transaction_id ="transaction_deposit"
+						#print(CUST.FINTRAN.transaction_id)
+						#ENDIF
+						IF (BANCS.INPUT.DrCrInd=="D") THEN
+						#{
+							CUST.FINTRAN.transaction_id ="transaction_dispense"
+							PRINT(CUST.FINTRAN.transaction_id)
+							CUST.FINTRAN.TranCurrency= BANCS.INPUT.TranCurrency
+							PRINT(CUST.FINTRAN.TranCurrency)
+							CUST.FINTRAN.TranAmt=BANCS.INPUT.TranAmt
+							PRINT(CUST.FINTRAN.TranAmt)
+							CALL("glory_outbound2.scr")
+						#}
+						ENDIF
+						
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#{
+		#}
+		ENDIF
+HTVCHECK:		
+		IF(CUST.FINTRAN.errMsg != "") THEN
+		#{
+			sv_u = SYSTEM("echo '"+CUST.FINTRAN.errMsg+"' >>fintran.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+		TRACE OFF
+END-->

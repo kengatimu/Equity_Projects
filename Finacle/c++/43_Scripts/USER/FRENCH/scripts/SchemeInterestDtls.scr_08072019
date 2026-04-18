@@ -1,0 +1,301 @@
+########################################################################################################
+#Name               :SchemeInterestDtls.scr
+#Date               :10-05-2019
+#Author             :Irungu James
+#Description        :Gets the TDA Max/Min Int and Slab Int Details
+#Called script      :None
+#Calling Script     :None
+#Input              :
+#Output             : 
+########################################################################################################
+<--start
+trace on
+
+####################################################################
+#section      :creating new repository if required
+#Description  :Checks for the existence of the repository STDWFS and
+#               creates a new one by that name if it does not exist
+#####################################################################
+
+IF (REPEXISTS("CUST") == 0 ) THEN
+#{
+    CREATEREP("CUST")
+    #}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+############################################
+#Assigns the values to the variables
+############################################
+
+sv_a = urhk_b2k_PrintRepos("BANCS")
+print(sv_a)
+sv_y=0
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("Bankid"))== 0) ) THEN
+	CUST.DATA.errMsg="Kindly Supply Bank id"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+ELSE
+	CUST.DATA.Bankid=BANCS.INPUT.Bankid
+	print(CUST.DATA.Bankid)
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("schmcode"))== 0) ) THEN
+	CUST.DATA.errMsg="Kindly Supply The Scheme Code"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+ELSE
+	CUST.DATA.schmcode=BANCS.INPUT.schmcode
+	print(CUST.DATA.schmcode)
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("Crncy"))== 0) ) THEN
+	CUST.DATA.errMsg="Kindly Supply The Currency"
+	sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+	GOTO End
+ELSE
+	CUST.DATA.Crncy=BANCS.INPUT.Crncy
+	print(CUST.DATA.Crncy)
+ENDIF
+
+
+CUST.DATA.RECORD = "" 
+CUST.DATA.number = 1
+sv_j = 1
+
+############################################
+# Fetching the valueS
+############################################
+
+sv_s = " ADDcount | SELECT COUNT(*) FROM TBAADM.GSP WHERE SCHM_CODE =?SVAR AND BANK_ID =?SVAR AND SCHM_TYPE IN ('TDA','LAA')  "                                      
+print(sv_s)
+BANCS.INPARAM.BINDVARS =  CUST.DATA.schmcode + "|" + CUST.DATA.Bankid
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+	IF (sv_d == 0) THEN
+                 	#{
+                        IF (CINT(BANCS.OUTPARAM.ADDcount) == 0 ) THEN
+                                
+                                CUST.DATA.errMsg="No Data. SCHM_TYPE NOT TDA/LAA"
+								sv_e=urhk_SetOrbOut("StattusCode|Error")
+								sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+								exitscript
+
+                        ELSE
+								sv_s=" SCHM_TYPE | SELECT SCHM_TYPE FROM TBAADM.GSP WHERE SCHM_CODE =?SVAR AND BANK_ID =?SVAR AND SCHM_TYPE IN ('TDA','LAA')  "                                       
+								print(sv_s)
+								BANCS.INPARAM.BINDVARS =  CUST.DATA.schmcode + "|" + CUST.DATA.Bankid
+								print(BANCS.INPARAM.BINDVARS)
+								sv_d = urhk_dbSelectWithBind(sv_s)
+								print(sv_d)
+								IF (sv_d == 0) THEN
+								
+									IF (BANCS.OUTPARAM.SCHM_TYPE == "LAA") THEN									
+												
+												sv_q = " AMT_IND, VAL, SCHM_CODE, CRNCY_CODE, NRML_INT_PCNT, INT_SLAB_SRL_NUM, BEGIN_SLAB_AMOUNT, END_SLAB_AMOUNT, PENAL_INT_PCNT | "
+												sv_q = sv_q + "  SELECT D.AMT_IND, D.VAL, A.SCHM_CODE, A.CRNCY_CODE,C.NRML_INT_PCNT, C.INT_SLAB_SRL_NUM, c.BEGIN_SLAB_AMOUNT, c.END_SLAB_AMOUNT, c.PENAL_INT_PCNT FROM "
+												sv_q = sv_q + " (SELECT bank_id, INT_TBL_CODE,CRNCY_CODE, SCHM_CODE , MIN_INT_PCNT_CR,MAX_INT_PCNT_CR FROM TBAADM.CSP ) A, "
+												sv_q = sv_q + " (SELECT DISTINCT crncy_code , INT_TBL_CODE, MAX(INT_VERSION) INT_VERSION , bank_id FROM TBAADM.ICV  GROUP BY INT_TBL_CODE,crncy_code, bank_id)B, "
+												sv_q = sv_q + " (SELECT bank_id, INT_TBL_CODE , CRNCY_CODE , INT_TBL_VER_NUM , INT_SLAB_SRL_NUM, BEGIN_SLAB_AMOUNT,END_SLAB_AMOUNT,NRML_INT_PCNT,PENAL_INT_PCNT "
+												sv_q = sv_q + " FROM TBAADM.lavs  ) C, "												
+												sv_q = sv_q + " (select ptt.bank_id , pct.crncy_code , SCHM_CODE ,AMT_IND, CASE WHEN AMT_IND ='P' THEN TO_CHAR(AMT_PCNT) WHEN AMT_IND ='F' "
+												sv_q = sv_q + "  THEN TO_CHAR (FIXED_AMT) WHEN AMT_IND ='S' THEN FILE_NAME WHEN AMT_IND ='F' THEN AMT_TBL_CODE END VAL from tbaadm.pct,  "
+												sv_q = sv_q + " tbaadm.ptt  , tbaadm.adm where pct.CHARGE_TYPE ='PROSF'  and pct.PTTM_EVENT_ID =ptt.event_id and ptt.AMT_DERV_SRL_NUM "
+												sv_q = sv_q + " =adm.AMT_DRV_SRL_NUM  and ptt.bank_id =adm.bank_id and adm.bank_id =pct.bank_id) D "
+												sv_q = sv_q + " WHERE A.INT_TBL_CODE =B.INT_TBL_CODE AND A.CRNCY_CODE=B.CRNCY_CODE AND B.INT_VERSION =C.INT_TBL_VER_NUM AND B.CRNCY_CODE =C.CRNCY_CODE  "
+												sv_q = sv_q + " AND B.INT_TBL_CODE =C.INT_TBL_CODE AND A.SCHM_CODE =?SVAR and a.bank_id = ?SVAR and a.bank_id =b.bank_id and c.bank_id =b.bank_id and a.CRNCY_CODE = ?SVAR "
+												sv_q = sv_q + " AND D.crncy_code =A.CRNCY_CODE AND D.SCHM_CODE= A.SCHM_CODE AND D.bank_id =A.BANK_ID	"											
+												sv_q = sv_q + " ORDER BY A.SCHM_CODE ,A.CRNCY_CODE ,C.INT_SLAB_SRL_NUM	"							 	
+												print(sv_q)
+												BANCS.INPARAM.BINDVARS =  CUST.DATA.schmcode + "|" + CUST.DATA.Bankid + "|" + CUST.DATA.Crncy
+												print(BANCS.INPARAM.BINDVARS)
+												sv_e = urhk_dbCursorOpenWithBind(sv_q)
+												IF(sv_e == 0) THEN
+												#{
+														sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+														sv_q = urhk_dbCursorFetch(sv_m)
+														print(sv_q)
+															IF(sv_q == 1) THEN
+																sv_x = urhk_dbCursorClose(sv_m)
+																print(sv_x)
+																CUST.DATA.errMsg="No Data. Invalid Scheme/Currency"
+																sv_e=urhk_SetOrbOut("StattusCode|Error")
+																sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+																exitscript
+															ENDIF
+														print(sv_q)
+
+												WHILE (sv_q==0)
+
+
+														CUST.DATA.SCHM_CODE= BANCS.OUTPARAM.SCHM_CODE
+														print (CUST.DATA.SCHM_CODE)
+														CUST.DATA.CRNCY_CODE = BANCS.OUTPARAM.CRNCY_CODE
+														print (CUST.DATA.CRNCY_CODE)
+														CUST.DATA.NRML_INT_PCNT = BANCS.OUTPARAM.NRML_INT_PCNT
+														print (CUST.DATA.NRML_INT_PCNT)
+														CUST.DATA.INT_SLAB_SRL_NUM = BANCS.OUTPARAM.INT_SLAB_SRL_NUM
+														print (CUST.DATA.INT_SLAB_SRL_NUM)
+														CUST.DATA.BEGIN_SLAB_AMOUNT= BANCS.OUTPARAM.BEGIN_SLAB_AMOUNT
+														print (CUST.DATA.BEGIN_SLAB_AMOUNT)
+														CUST.DATA.PENAL_INT_PCNT= BANCS.OUTPARAM.PENAL_INT_PCNT
+														print (CUST.DATA.PENAL_INT_PCNT)
+														CUST.DATA.END_SLAB_AMOUNT= BANCS.OUTPARAM.END_SLAB_AMOUNT
+														print (CUST.DATA.END_SLAB_AMOUNT)
+														CUST.DATA.VAL= BANCS.OUTPARAM.VAL
+														print (CUST.DATA.VAL)
+														CUST.DATA.AMT_IND= BANCS.OUTPARAM.AMT_IND
+														print (CUST.DATA.AMT_IND)
+								
+
+														sv_a = "Record.<rec_" + CUST.DATA.number + ">.INT_SLAB_SRL_NUM"+ CUST.DATA.number +"|" + CUST.DATA.INT_SLAB_SRL_NUM
+														sv_b = "Record.<rec_" + CUST.DATA.number + ">.CRNCY_CODE|" + CUST.DATA.CRNCY_CODE
+														sv_c = "Record.<rec_" + CUST.DATA.number + ">.NRML_INT_PCNT|" + CUST.DATA.NRML_INT_PCNT
+														sv_d = "Record.<rec_" + CUST.DATA.number + ">.SCHM_CODE|" + CUST.DATA.SCHM_CODE
+														sv_e = "Record.<rec_" + CUST.DATA.number + ">.BEGIN_SLAB_AMOUNT|" + CUST.DATA.BEGIN_SLAB_AMOUNT
+														sv_o = "Record.<rec_" + CUST.DATA.number + ">.PENAL_INT_PCNT|" + CUST.DATA.PENAL_INT_PCNT
+														sv_g = "Record.<rec_" + CUST.DATA.number + ">.END_SLAB_AMOUNT|" + CUST.DATA.END_SLAB_AMOUNT
+														sv_w = "Record.<rec_" + CUST.DATA.number + ">.VALUE|" + CUST.DATA.VAL
+														sv_y = "Record.<rec_" + CUST.DATA.number + ">.AMT_IND|" + CUST.DATA.AMT_IND
+
+
+														sv_u = urhk_SetOrbOut(sv_a)
+														sv_u = urhk_SetOrbOut(sv_d)
+														sv_u = urhk_SetOrbOut(sv_c)
+														sv_u = urhk_SetOrbOut(sv_o)
+														sv_u = urhk_SetOrbOut(sv_e)
+														sv_u = urhk_SetOrbOut(sv_g)
+														sv_u = urhk_SetOrbOut(sv_b)
+														sv_u = urhk_SetOrbOut(sv_y)
+														sv_u = urhk_SetOrbOut(sv_w)
+
+														sv_j =sv_j + 1
+														CUST.DATA.number = sv_j
+
+														sv_q = urhk_dbCursorFetch(sv_m)
+														print(sv_q)
+												DO
+
+												ELSE
+														CUST.DATA.errMsg="Data Error"
+														sv_e=urhk_SetOrbOut("StattusCode|Error")
+														sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+														exitscript
+												ENDIF														
+									
+									
+									ELSE
+												sv_q = "  SCHM_CODE,CRNCY_CODE, NRML_INT_PCNT, INT_SLAB_SRL_NUM ,MAX_SLAB_AMOUNT ,MAX_CONTRACTED_MTHS, MIN_INT_PCNT_CR ,MAX_INT_PCNT_CR | "
+												sv_q = sv_q + " SELECT A.SCHM_CODE, A.CRNCY_CODE,C.NRML_INT_PCNT, C.INT_SLAB_SRL_NUM, C.MAX_SLAB_AMOUNT , "
+												sv_q = sv_q + " MAX_CONTRACTED_MTHS,A.MIN_INT_PCNT_CR, A.MAX_INT_PCNT_CR FROM  "
+												sv_q = sv_q + " (SELECT bank_id, INT_TBL_CODE,CRNCY_CODE, SCHM_CODE , MIN_INT_PCNT_CR,MAX_INT_PCNT_CR FROM TBAADM.CSP ) A, "
+												sv_q = sv_q + " (SELECT DISTINCT crncy_code , INT_TBL_CODE, MAX(INT_VERSION) INT_VERSION , bank_id FROM TBAADM.ICV "
+												sv_q = sv_q + " GROUP BY INT_TBL_CODE,crncy_code, bank_id)B, "
+												sv_q = sv_q + " (SELECT   bank_id,INT_TBL_CODE, CRNCY_CODE, INT_TBL_VER_NUM , INT_SLAB_SRL_NUM ,BEGIN_SLAB_AMOUNT,MAX_SLAB_AMOUNT,  "
+												sv_q = sv_q + " MAX_CONTRACTED_MTHS, NRML_INT_PCNT FROM TBAADM.TVS  ) C "
+												sv_q = sv_q + " WHERE A.INT_TBL_CODE =B.INT_TBL_CODE AND A.CRNCY_CODE=B.CRNCY_CODE AND B.INT_VERSION =C.INT_TBL_VER_NUM  "
+												sv_q = sv_q + " AND B.CRNCY_CODE =C.CRNCY_CODE AND B.INT_TBL_CODE =C.INT_TBL_CODE AND A.SCHM_CODE = ?SVAR and a.bank_id = ?SVAR and  A.CRNCY_CODE = ?SVAR "
+												sv_q = sv_q + " and a.bank_id =b.bank_id and c.bank_id =b.bank_id ORDER BY A.SCHM_CODE ,A.CRNCY_CODE ,C.INT_SLAB_SRL_NUM "
+												print(sv_q)
+												BANCS.INPARAM.BINDVARS =  CUST.DATA.schmcode + "|" + CUST.DATA.Bankid + "|" + CUST.DATA.Crncy
+												print(BANCS.INPARAM.BINDVARS)
+												sv_e = urhk_dbCursorOpenWithBind(sv_q)
+												IF(sv_e==0) THEN
+												#{
+														sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+														sv_q = urhk_dbCursorFetch(sv_m)
+														print(sv_q)
+															IF(sv_q == 1) THEN
+																sv_x = urhk_dbCursorClose(sv_m)
+																print(sv_x)
+																CUST.DATA.errMsg="No Data. Invalid Scheme/Currency"
+																sv_e=urhk_SetOrbOut("StattusCode|Error")
+																sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+																exitscript
+															ENDIF
+														print(sv_q)
+
+												WHILE (sv_q==0)
+														CUST.DATA.SCHM_CODE= BANCS.OUTPARAM.SCHM_CODE
+														print (CUST.DATA.SCHM_CODE)
+														CUST.DATA.CRNCY_CODE = BANCS.OUTPARAM.CRNCY_CODE
+														print (CUST.DATA.CRNCY_CODE)
+														CUST.DATA.NRML_INT_PCNT = BANCS.OUTPARAM.NRML_INT_PCNT
+														print (CUST.DATA.NRML_INT_PCNT)
+														CUST.DATA.INT_SLAB_SRL_NUM = BANCS.OUTPARAM.INT_SLAB_SRL_NUM
+														print (CUST.DATA.INT_SLAB_SRL_NUM)
+														CUST.DATA.MAX_SLAB_AMOUNT= BANCS.OUTPARAM.MAX_SLAB_AMOUNT
+														print (CUST.DATA.MAX_SLAB_AMOUNT)
+														CUST.DATA.MAX_CONTRACTED_MTHS= BANCS.OUTPARAM.MAX_CONTRACTED_MTHS
+														print (CUST.DATA.MAX_CONTRACTED_MTHS)
+														CUST.DATA.MIN_INT_PCNT_CR = BANCS.OUTPARAM.MIN_INT_PCNT_CR
+														print (CUST.DATA.MIN_INT_PCNT_CR)
+														CUST.DATA.MAX_INT_PCNT_CR = BANCS.OUTPARAM.MAX_INT_PCNT_CR
+														print (CUST.DATA.MAX_INT_PCNT_CR)
+														
+
+														sv_a = "Record.<rec_" + CUST.DATA.number + ">.INT_SLAB_SRL_NUM"+ CUST.DATA.number +"|" + CUST.DATA.INT_SLAB_SRL_NUM
+														sv_b = "Record.<rec_" + CUST.DATA.number + ">.CRNCY_CODE|" + CUST.DATA.CRNCY_CODE
+														sv_c = "Record.<rec_" + CUST.DATA.number + ">.NRML_INT_PCNT|" + CUST.DATA.NRML_INT_PCNT
+														sv_d = "Record.<rec_" + CUST.DATA.number + ">.SCHM_CODE|" + CUST.DATA.SCHM_CODE
+														sv_e = "Record.<rec_" + CUST.DATA.number + ">.MAX_SLAB_AMOUNT|" + CUST.DATA.MAX_SLAB_AMOUNT
+														sv_o = "Record.<rec_" + CUST.DATA.number + ">.MAX_CONTRACTED_MTHS|" + CUST.DATA.MAX_CONTRACTED_MTHS
+														sv_f = "Record.<rec_" + CUST.DATA.number + ">.MIN_INT_PCNT_CR|" + CUST.DATA.MIN_INT_PCNT_CR
+														sv_g = "Record.<rec_" + CUST.DATA.number + ">.MAX_INT_PCNT_CR|" + CUST.DATA.MAX_INT_PCNT_CR
+
+
+														sv_u = urhk_SetOrbOut(sv_a)
+														sv_u = urhk_SetOrbOut(sv_d)
+														sv_u = urhk_SetOrbOut(sv_c)
+														sv_u = urhk_SetOrbOut(sv_b)
+														sv_u = urhk_SetOrbOut(sv_e)
+														sv_u = urhk_SetOrbOut(sv_o)
+														sv_u = urhk_SetOrbOut(sv_f)
+														sv_u = urhk_SetOrbOut(sv_g)
+
+														sv_j =sv_j + 1
+														CUST.DATA.number = sv_j
+
+														sv_q = urhk_dbCursorFetch(sv_m)
+														print(sv_q)
+												DO
+
+												ELSE
+														CUST.DATA.errMsg="Data Error"
+														sv_e=urhk_SetOrbOut("StattusCode|Error")
+														sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+														exitscript
+												ENDIF
+									
+																															
+								
+		
+									ENDIF
+								ELSE
+														CUST.DATA.errMsg="Data Error"
+														sv_e=urhk_SetOrbOut("StattusCode|Error")
+														sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+														exitscript
+								
+								ENDIF
+								
+						ENDIF
+			ELSE
+					CUST.DATA.errMsg="No Data. SCHM_TYPE NOT TDA/LAA"
+					sv_e=urhk_SetOrbOut("StattusCode|Error")
+					sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+					exitscript
+								
+			ENDIF
+END:
+EXITSCRIPT
+trace off
+END-->
+

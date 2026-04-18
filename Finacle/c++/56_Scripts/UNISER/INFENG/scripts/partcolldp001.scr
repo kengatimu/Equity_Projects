@@ -1,0 +1,231 @@
+#-------------------------------------------------------------------------------------
+#    Name				: partcolldp001.scr
+#    Description     	:
+#    Date            	: 06-04-2013
+#    Author          	: Divya
+#    Input           	: NA
+#    Output				: NA
+#    Called Script		: NA
+#    Calling Script		: NA
+#    Menu Option		: HTM
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0			06-04-2013		Divya	 		Original Version
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="a77cf5a1f3d2490e9bfa34aa4be24e981b2cf61d7d8629fd1061e356351e7f41"
+	TRACE ON
+	
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("OCTR") == 0) THEN
+	#{
+		CREATEREP("OCTR")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("OCTR","GLBVAR") == 0) THEN
+	#{
+		CREATECLASS("OCTR","GLBVAR",5)
+	#}
+	ENDIF
+	
+	OCTR.GLBVAR.errMsg = ""
+	
+	BANCS.INPUT.moduleName  = "PARTCOLL"
+	BANCS.INPUT.parameterId = "ACCNTNO"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		OCTR.GLBVAR.acctNum = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		OCTR.GLBVAR.errMsg = "Account Number setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "AMNT"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		OCTR.GLBVAR.ammt = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		OCTR.GLBVAR.errMsg = "Amount setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Get the number of accounts
+	#-------------------------------------------------------------------------------------------------------
+	sv_u = urhk_SRV_NumOfRecs("partInstrLL")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		OCTR.GLBVAR.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+		PRINT(OCTR.GLBVAR.noOfRecords)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_SetErr("Error:urhk_SRV_NumOfRecs failed")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_l = 0
+	sv_e = ""
+	sv_f = 0
+	WHILE (sv_l < OCTR.GLBVAR.noOfRecords)
+	#{
+		sv_v = Format$(sv_l,"%d")
+		sv_r = "<rec_"+sv_v+">"
+		PRINT(sv_r)
+		
+		
+		#-------------------------------------------------------------------------------------------
+		# Fetch Tran Remarks
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".tranRmks")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			OCTR.GLBVAR.remks = BANCS.OUTPARAM.srvValue
+			PRINT(OCTR.GLBVAR.remks)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for Tran Remarks")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		IF (OCTR.GLBVAR.acct == OCTR.GLBVAR.acctNum) THEN
+		#{
+			IF (OCTR.GLBVAR.remks == "") THEN
+			#{
+				sv_u = urhk_SRV_SetErr("ENTER PRN No. In Remarks Field")
+				BANCS.OUTPUT.successOrFailure = "F"
+				GOTO ENDOFSCRIPT
+				#}
+			ELSE
+				#{
+				sv_u = urhk_B2k_isStringNumeric(OCTR.GLBVAR.tranRmks1)
+				# if B2k_isStringNumeric function returns failure exit out of script.
+				IF( sv_u != 0 ) THEN
+				#{
+					sv_u = urhk_SRV_SetErr("The PRN is not Correct..Numbers Only")
+					BANCS.OUTPUT.successOrFailure = "F"
+					GOTO ENDOFSCRIPT
+					#}
+				ELSE
+					#{
+					sv_s = "count|SELECT COUNT(1) "
+					sv_s = sv_s + "FROM CUSTOM.URA_REG a "
+					sv_s = sv_s + "WHERE status = 'A' "
+					sv_s = sv_s + "AND a.expiresat >= TRUNC(sysdate) "
+					sv_s = sv_s + "AND NOT EXISTS "
+					sv_s = sv_s + "("
+					sv_s = sv_s + "SELECT 1 "
+					sv_s = sv_s + "FROM CUSTOM.ura_pay b "
+					sv_s = sv_s + "WHERE a.regno = b.regno "
+					sv_s = sv_s + "AND bank_id = ?SVAR"
+					sv_s = sv_s + ")"
+					sv_s = sv_s + "AND a.REGNO = ?SVAR "
+					sv_s = sv_s + "AND bank_id = ?SVAR"
+					PRINT(sv_s)
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + OCTR.GLBVAR.remks + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					PRINT(sv_d)
+					IF (sv_d == 0) THEN
+					#{
+						OCTR.GLBVAR.couunt = BANCS.OUTPARAM.count
+						PRINT(OCTR.GLBVAR.couunt)
+						#}
+					ELSE
+						#{
+						OCTR.GLBVAR.couunt = ""
+					#}
+					ENDIF
+					IF (OCTR.GLBVAR.couunt == "0") THEN
+					#{
+						sv_u = urhk_SRV_SetErr("Reg No. Incorrect OR Has expired try again")
+						BANCS.OUTPUT.successOrFailure = "F"
+						GOTO ENDOFSCRIPT
+						#}
+					ELSE
+						#{
+						sv_s = "reg,name,amount|"
+						sv_s = sv_s + "SELECT a.regno,a.taxpayername,a.amount "
+						sv_s = sv_s + "FROM CUSTOM.URA_REG a "
+						sv_s = sv_s + "WHERE status = 'A' "
+						sv_s = sv_s + "AND a.expiresat >= TRUNC(sysdate) "
+						sv_s = sv_s + "AND NOT EXISTS "
+						sv_s = sv_s + "("
+						sv_s = sv_s + "SELECT 1 "
+						sv_s = sv_s + "FROM CUSTOM.URA_PAY b "
+						sv_s = sv_s + "WHERE a.regno = b.regno "
+						sv_s = sv_s + "bank_id = ?SVAR"
+						sv_s = sv_s + ")"
+						sv_s = sv_s + "AND a.REGNO = ?SVAR "
+						sv_s = sv_s + "AND bank_id = ?SVAR"
+						PRINT(sv_s)
+						BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + OCTR.GLBVAR.remks + "|" + BANCS.STDIN.contextBankId
+						PRINT(BANCS.INPARAM.BINDVARS)
+						sv_d = urhk_dbSelectWithBind(sv_s)
+						PRINT(sv_d)
+						IF (sv_d != 0) THEN
+						#{
+							sv_u = urhk_SRV_SetErr("Db Error, Try Later")
+							BANCS.OUTPUT.successOrFailure = "F"
+							GOTO ENDOFSCRIPT
+							#}
+						ELSE
+							#{
+							OCTR.GLBVAR.ref  = BANCS.OUTPARAM.reg
+							OCTR.GLBVAR.name = BANCS.OUTPARAM.name
+							OCTR.GLBVAR.amt  = BANCS.OUTPARAM.amount
+							IF (CINT(OCTR.GLBVAR.amt) != CINT(OCTR.GLBVAR.ammt)) THEN
+							#{
+								sv_u = urhk_SRV_SetErr("Quit,Entered amount does not tally with ura amount: " + OCTR.GLBVAR.amt)
+								BANCS.OUTPUT.successOrFailure = "F"
+								GOTO ENDOFSCRIPT
+							#}
+							ENDIF
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		ENDOFSCRIPT:
+			IF (OCTR.GLBVAR.errMsg != "") THEN
+			#{
+				sv_u = urhk_SRV_SetErr(OCTR.GLBVAR.errMsg)
+				BANCS.OUTPUT.successOrFailure = "F"
+			#}
+			ENDIF
+			
+			
+			TRACE OFF
+			EXITSCRIPT
+	END-->
+	
+	

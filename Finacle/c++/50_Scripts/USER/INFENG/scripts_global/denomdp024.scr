@@ -1,0 +1,220 @@
+################################################################################################    
+#  Name			:  denomdp024.scr
+#  Date			:  29-JUL-2010
+#  Description		:  This script checks If denominations present then checking each
+#				denomination in C_DENM table with C_MDNM table
+#				it will insert newly added denomination to C_DENM table
+#  Input		:  Tran Id, Tran Date
+#  Output		:  Denomination details
+#  Author		:  Sandeep Patil
+#  CallingScript	:  denomdp006.scr
+#  Called JSP		:  -
+#  Menu Option		:
+#  MODULE CODE          :  DENOM
+#
+#  Modification History	:
+#  ====================
+#  Serial No.	DATE		Author			Description
+#	1.1			15/7/2011	Lakshmi Kanth	Added bank_id validation and
+#											uncommented c_denm table deletion.
+################################################################################################
+<--START
+CHECKSUM="f74e2994b88806e3294d2b8f3821272f8147fed84efc738cd6f7976bedb9d0c9"
+	TRACE ON
+	
+	#------- Checking if new denomiantions are added in C_MDNM and then going on to insert
+	#------- those records in C_DENM, C_DENM_CR and C_DENM_DR tables to keep them in sync.
+	
+	print(CUST.DENOM.solId)
+	print(CUST.DENOM.tellerId)
+	print(CUST.DENOM.crncyCode)
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.crncyCode +"|"+BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DENOM.solId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DENOM.tellerId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.DENOM.crncyCode
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	
+	sv_s = "DenomInd,DenomValue|SELECT denom_ind,denom_value "
+	sv_s = sv_s + "FROM c_mdnm "
+	sv_s = sv_s + "WHERE crncy_code= ?SVAR AND del_flg='N' "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR  "
+	sv_s = sv_s + "AND (denom_ind,denom_value) NOT IN "
+	sv_s = sv_s + "(SELECT denom_ind,denom_value "
+	sv_s = sv_s + "FROM c_denm "
+	sv_s = sv_s + "WHERE sol_id = ?SVAR "
+	sv_s = sv_s + " AND BANK_ID = ?SVAR  "
+	sv_s = sv_s + "AND teller_id = ?SVAR "
+	sv_s = sv_s + "AND del_flg = 'N' "
+	sv_s = sv_s + "AND crncy_code = ?SVAR) "
+	print(sv_s)
+	sv_j = urhk_dbCursorOpenWithBind(sv_s)
+	IF(sv_j!=0)THEN
+	#{
+		sv_u = urhk_setOrbOut("Message|N")
+		print(sv_u)
+		sv_u = urhk_setOrbOut("Details|DataBase Error")
+		print(sv_u)
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(sv_m)
+		sv_j = urhk_dbCursorFetch(sv_m)
+		print(sv_j)
+		WHILE(sv_j == 0)
+		#{
+			CUST.DENOM.DenomInd = BANCS.OUTPARAM.DenomInd
+			CUST.DENOM.DenomValue = BANCS.OUTPARAM.DenomValue
+			print(CUST.DENOM.DenomInd)
+			print(CUST.DENOM.DenomValue)
+			#--------- Following set of queries is to insert records from C_MDNM to C_DENM, C_DENM_CR and C_DENM_DR
+			#--------- to equivalize the same set of records across all four tables          --------------------
+			#--------- Forming dynamic queries for entires into C_DENM, C_DENM_CR, C_DENM_DR --------------------
+			
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.solId +"|"+ CUST.DENOM.crncyCode +"|"+ CUST.DENOM.DenomInd +"|"+ CUST.DENOM.DenomValue +"|"+ CUST.DENOM.tellerId +"|"+ BANCS.STDIN.userId +"|"+ BANCS.STDIN.userId +"|"+ CUST.DENOM.bank_id
+			
+			
+			sv_v = "INSERT INTO c_denm "
+			sv_q = " (sol_id,crncy_code,denom_ind,denom_value,denom_count,teller_id,"
+			sv_q = sv_q + " rcre_user_id,rcre_time,lchg_user_id,lchg_time,del_flg,bank_id) "
+			sv_q = sv_q + " VALUES (?SVAR,"
+			sv_q = sv_q + "?SVAR,?SVAR,"
+			sv_q = sv_q + "?SVAR,0,?SVAR,"
+			sv_q = sv_q + "?SVAR,sysdate,?SVAR,sysdate,'N',?SVAR)"
+			
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_v = "INSERT INTO c_denm_cr "
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_v = "INSERT INTO c_denm_dr "
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_j = urhk_dbCursorFetch(sv_m)
+		#}
+		DO
+		sv_j = urhk_dbCursorClose(sv_m)
+		print(sv_j)
+		IF(sv_j!=0)THEN
+		#{
+			sv_u = urhk_setOrbOut("Message|N")
+			print(sv_u)
+			sv_u = urhk_setOrbOut("Details|DataBase Error")
+			print(sv_u)
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_s=urhk_dbSQLWithBind("commit")
+		print(sv_s)
+	#}
+	ENDIF
+	
+	
+	#------- Checking if new denomiantions are deleted in C_MDNM and then going on to delete
+	#------- those records in C_DENM, C_DENM_CR and C_DENM_DR tables to keep them in sync.
+	
+	#sv_u=("CUST").("DENOM").("tellerId"+ FORMAT$(sv_p,"%d"))
+	#sv_b=("CUST").("DENOM").("solId"+ FORMAT$(sv_p,"%d"))
+	print(sv_u)
+	print(CUST.DENOM.solId)
+	print(CUST.DENOM.tellerId)
+	print(CUST.DENOM.crncyCode)
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.solId +"|"+ CUST.DENOM.tellerId +"|"+ CUST.DENOM.crncyCode +"|"+ CUST.DENOM.crncyCode
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" +BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_s = "DenomInd,DenomValue|SELECT denom_ind,denom_value "
+	sv_s = sv_s + "FROM c_denm "
+	sv_s = sv_s + "WHERE sol_id   = ?SVAR "
+	sv_s = sv_s + "AND teller_id  = ?SVAR "
+	sv_s = sv_s + "AND crncy_code = ?SVAR "
+	sv_s = sv_s + "AND del_flg='N' "
+	sv_s = sv_s + "AND (denom_ind,denom_value) NOT IN "
+	sv_s = sv_s + "(SELECT denom_ind,denom_value "
+	sv_s = sv_s + "FROM c_mdnm "
+	sv_s = sv_s + "WHERE del_flg='N' "
+	sv_s = sv_s + "AND crncy_code= ?SVAR "
+	sv_s = sv_s + "AND BANK_ID = ?SVAR ) "
+	sv_s = sv_s + "AND BANK_ID = ?SVAR "
+	
+	print(sv_s)
+	sv_j = urhk_dbCursorOpenWithBind(sv_s)
+	IF(sv_j!=0)THEN
+	#{
+		sv_u = urhk_setOrbOut("Message|N")
+		print(sv_u)
+		sv_u = urhk_setOrbOut("Details|DataBase Error")
+		print(sv_u)
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(sv_m)
+		sv_j = urhk_dbCursorFetch(sv_m)
+		print(sv_j)
+		WHILE(sv_j == 0)
+		#{
+			CUST.DENOM.DenomInd = BANCS.OUTPARAM.DenomInd
+			CUST.DENOM.DenomValue = BANCS.OUTPARAM.DenomValue
+			print(CUST.DENOM.DenomInd)
+			print(CUST.DENOM.DenomValue)
+			#--------- Following set of queries is to insert records from C_MDNM to C_DENM, C_DENM_CR and C_DENM_DR
+			#--------- to equivalize the same set of records across all four tables          --------------------
+			#--------- Forming dynamic queries for entires into C_DENM, C_DENM_CR, C_DENM_DR --------------------
+			
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.solId +"|"+ CUST.DENOM.crncyCode+"|"+ CUST.DENOM.DenomValue +"|"+ CUST.DENOM.DenomInd +"|"+ CUST.DENOM.tellerId + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_v = "DELETE FROM c_denm "
+			sv_q = "WHERE sol_id    = ?SVAR "
+			sv_q = sv_q + "AND crncy_code  = ?SVAR "
+			sv_q = sv_q + "AND denom_value = ?SVAR "
+			sv_q = sv_q + "AND denom_ind   = ?SVAR "
+			sv_q = sv_q + "AND teller_id   = ?SVAR AND bank_id = ?SVAR "
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_v = "DELETE FROM c_denm_cr "
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_v = "DELETE FROM c_denm_dr "
+			sv_r = sv_v + sv_q
+			print(sv_r)
+			sv_x=urhk_dbsqlWithBind(sv_r)
+			print(sv_x)
+			sv_j = urhk_dbCursorFetch(sv_m)
+		#}
+		DO
+		sv_j = urhk_dbCursorClose(sv_m)
+		IF(sv_j!=0)THEN
+		#{
+			sv_u = urhk_setOrbOut("Message|N")
+			print(sv_u)
+			sv_u = urhk_setOrbOut("Details|DataBase Error")
+			print(sv_u)
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_s=urhk_dbSqlWithBind("commit")
+		print(sv_s)
+	#}
+	ENDIF
+	
+	FINISH:
+END-->

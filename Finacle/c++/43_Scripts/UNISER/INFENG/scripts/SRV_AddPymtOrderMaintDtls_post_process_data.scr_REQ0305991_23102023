@@ -1,0 +1,201 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : SRV_AddPymtOrderMaintDtls_post_process_data.scr
+#   Description     : This script is called from SRV_AddPymtOrderMaintDtls_post_process_data.scr.
+#   Date            : 28-05-2013
+#   Author          : jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : SRV_AddPymtOrderMaintDtls_post_process_data.scr
+#   Calling Script  : NA
+#   Menu Option     : HPORDM
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             28-05-2013      Richard     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="dd8d8a06d960fe41842828cffec2c69729e09f0781dcced728f644c1b2a20240"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF(REPEXISTS("CUSTS") == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUSTS","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUSTS","DATA",5)
+	#}
+	ENDIF
+	
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	
+	
+	IF  (BANCS.STDIN.moduleIdentity== "FI") THEN 
+		sv_o = urhk_GetChannelInfo("")
+		print(sv_o)
+		IF (FIELDEXISTS(BANCS.OUTPARAM.DccId)) THEN
+			print(BANCS.OUTPARAM.DccId)
+			IF (BANCS.OUTPARAM.DccId != "") THEN
+				CUST.DATA.DccId = BANCS.OUTPARAM.DccId
+			ELSE
+				CUST.DATA.DccId = ""
+			ENDIF
+		ELSE
+			CUST.DATA.DccId = ""		
+		ENDIF
+	ENDIF
+	
+	
+	
+	sv_a = urhk_SRV_GetVal("pordHeaderDtls.drAcct.foracid")
+	CUSTS.DATA.foracid=BANCS.OUTPARAM.srvValue
+	print(CUSTS.DATA.foracid)
+
+	sv_a = urhk_SRV_GetVal("pordPaymentDtls.routedPaysysId.refCode")
+	CUSTS.DATA.refCode=BANCS.OUTPARAM.srvValue
+	print(CUSTS.DATA.refCode)
+
+	sv_a = urhk_SRV_GetVal("pordPaymentDtls.benefPartyNameAdd.address1|")
+	CUSTS.DATA.BENADD=BANCS.OUTPARAM.srvValue
+	print(CUSTS.DATA.BENADD)
+
+
+	sv_d = "Cnt| select  (LENGTH(?SVAR) - LENGTH(replace(?SVAR, ' ', '')))  from dual "
+	print(sv_d)
+	BANCS.INPARAM.BINDVARS = CUSTS.DATA.BENADD + "|" + CUSTS.DATA.BENADD
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	if(sv_u==0)then
+		CUSTS.DATA.CNT = BANCS.OUTPARAM.Cnt
+		Print (CUSTS.DATA.CNT)
+		IF (CUSTS.DATA.CNT== "0") then
+			sv_c = urhk_SRV_SetErr("Benef Party Address not complete")
+			print(sv_c)
+			exitscript
+		ENDIF
+	ENDIF
+
+	sv_u = urhk_getAcctDetailsInRepository(CUSTS.DATA.foracid)
+	print(sv_u)
+	IF (sv_u==0) THEN
+	#{
+		
+		print(BANCS.OUTPARAM.acctOwnerShip)
+		
+		CUSTS.DATA.ownership=BANCS.OUTPARAM.acctOwnerShip
+		print(CUSTS.DATA.ownership)
+			CUSTS.DATA.cifId=BANCS.OUTPARAM.cifId
+			print(CUSTS.DATA.cifId)
+
+		
+		
+		IF (CUSTS.DATA.ownership=="O")  THEN
+		#{
+			####
+			CUSTS.DATA.exemptflg = "N"
+			sv_s = "COUNT|SELECT COUNT(1) FROM CUSTOM.ACCT_EXEMPTION_TABLE "
+			sv_s = sv_s + " WHERE FORACID = ?SVAR"
+			sv_s = sv_s + " AND bank_id = ?SVAR and EXEMPT_CODE ='RTGS_SWIFT' "
+			PRINT(sv_s)
+			BANCS.INPARAM.BINDVARS = CUSTS.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_u =  urhk_dbSelectWithBind(sv_s)
+			IF(sv_u == 0) THEN
+				PRINT(BANCS.OUTPARAM.COUNT)
+				IF (CINT(BANCS.OUTPARAM.COUNT) > 0) THEN
+					CUSTS.DATA.exemptflg = "Y"
+					print(CUSTS.DATA.exemptflg)
+				ELSE
+					CUSTS.DATA.exemptflg = "N"
+					print(CUSTS.DATA.exemptflg)
+				ENDIF
+			ENDIF
+			####
+
+			sv_n = mid$(CUSTS.DATA.foracid,5,9)
+			print(sv_n)
+			print(CUSTS.DATA.foracid)
+
+			#IF  ((CUSTS.DATA.foracid != "15051317030116") and (CUSTS.DATA.foracid != "15051317030064") and (CUSTS.DATA.foracid != "15051317010299")) THEN		
+	
+			IF  ((sv_n != "317030116") and (sv_n != "317030064") and (sv_n != "317030436") and  (CUSTS.DATA.foracid != "15051307010037") and (CUSTS.DATA.foracid != "15051307010038") and (CUSTS.DATA.foracid != "15051307010039") and (CUSTS.DATA.foracid != "15051307010209") and (CUSTS.DATA.foracid != "15051307010040")) THEN
+			#{	
+				IF (CUSTS.DATA.exemptflg =="N") THEN
+					sv_c = urhk_SRV_SetErr("Cannot debit GL")
+					print(sv_c)
+					exitscript
+				ENDIF
+			#}
+			ENDIF
+		ELSE
+			IF (BANCS.STDIN.moduleIdentity != "FI") THEN 
+				IF (CUSTS.DATA.refCode=="SWIFT") THEN
+					sv_s ="Countaddress|select count(1) from  crmuser.address ad where bank_id=?SVAR and orgkey=?SVAR and PREFERREDADDRESS='Y' and  ( ADDRESS_LINE1 is null  "
+					sv_s = sv_s + " or ADDRESS_LINE1 ='.'  or ADDRESS_LINE1 =' '  ) " 
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.DATA.cifId
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					if(sv_d == 0)then
+						CUSTS.DATA.Countaddress = BANCS.OUTPARAM.Countaddress
+						print(CUSTS.DATA.Countaddress)
+
+						if (cint(CUSTS.DATA.Countaddress) !=0) then
+							sv_c = urhk_SRV_SetErr("Please check customer Address")
+							print(sv_c)
+							exitscript
+						else
+							print("ok address ")
+						endif
+					else
+						CUSTS.DATA.Countaddress = 0
+					endif
+					sv_s ="Countcity|select count(1) key from  crmuser.address ad where bank_id=?SVAR and orgkey=?SVAR  and PREFERREDADDRESS='Y' and  ( CITY is null or CITY ='.' or CITY =' ' ) "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.DATA.cifId
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					if(sv_d == 0)then
+						CUSTS.DATA.Countcity = BANCS.OUTPARAM.Countcity
+						print(CUSTS.DATA.Countcity)
+
+						if (cint(CUSTS.DATA.Countcity) !=0) then
+							sv_c = urhk_SRV_SetErr("Please check customer City")
+							print(sv_c)
+							exitscript
+						else
+							print("ok City ")
+						endif
+					else
+						CUSTS.DATA.Countcity = 0
+					endif
+					sv_s ="Countcountry|select count(1) key from  crmuser.address ad where bank_id=?SVAR and orgkey=?SVAR  and PREFERREDADDRESS='Y' and  ( COUNTRY is null or COUNTRY ='.' or COUNTRY =' ' ) "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.DATA.cifId
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					print(sv_d)
+					if(sv_d == 0)then
+						CUSTS.DATA.Countcountry = BANCS.OUTPARAM.Countcountry
+						print(CUSTS.DATA.Countcountry)
+
+						if (cint(CUSTS.DATA.Countcountry) !=0) then
+							sv_c = urhk_SRV_SetErr("Please check customer Country")
+							print(sv_c)
+							exitscript
+						else
+							print("ok Country ")
+						endif
+					else
+						CUSTS.DATA.Countcountry = 0
+					endif
+				ENDIF
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	exitscript
+	TRACE OFF
+END-->

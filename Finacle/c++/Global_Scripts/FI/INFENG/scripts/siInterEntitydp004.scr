@@ -1,0 +1,212 @@
+##########################################################################################
+# Source Name           : siInterEntitydp004.scr
+# Date                  : 29-Apr-2013
+# Description           : This script is called from SRV's to insert data in custom table in Add mode.
+# Author                : Priyanka T02
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        29-Apr-2013    Priyanka T02               Base Version
+###########################################################################################
+<--START
+	#trace on
+	# Script body goes here
+	#---------------------------------------------------------------------
+	#Check whether CUST Repository exists else create it
+	#---------------------------------------------------------------------
+	
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#Check whether CSIIET Class exists else create it
+	#---------------------------------------------------------------------
+	
+	IF(CLASSEXISTS("CUST","CSIIET") == 0) THEN
+	#{
+		CREATECLASS ("CUST","CSIIET",5)
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------
+	#Initialize the variables
+	#---------------------------------------------------------------------
+	CUST.CSIIET.siSrlNum = ""
+	CUST.CSIIET.siInterEntityFlg = ""
+	CUST.CSIIET.targerEntity = ""
+	CUST.CSIIET.targetEntityAcctId = ""
+	CUST.CSIIET.bankId = BANCS.STDIN.contextBankId
+	
+	#---------------------------------------------------------------------
+	#Obtaining the value of si srl num
+	#---------------------------------------------------------------------
+	sv_u = urhk_SRV_GetVal("siHeader.siSrlNum")
+	PRINT(sv_u)
+	IF(sv_u != 0)THEN
+	#{
+		CUST.CSIIET.successOrFailure = "F"
+		print("Couldn fetch siSrlNum")
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		CUST.CSIIET.siSrlNum = BANCS.OUTPARAM.srvValue
+		print(CUST.CSIIET.siSrlNum)
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------------
+	# Reading Custom Field Values from frontend
+	#---------------------------------------------------------------------------------
+
+
+	
+	IF(FIELDEXISTS(ONS.CUSTOM.custDataIn))THEN
+	#{
+		PRINT(ONS.CUSTOM.custDataIn)
+		PRINT(STRLEN(ONS.CUSTOM.custDataIn))
+		
+		IF(BANCS.STDIN.moduleIdentity=="FI")THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		###############service hub############
+		sv_x = STRLEN(ONS.CUSTOM.custDataIn)
+		IF(sv_x<2)THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		###############service hub############
+
+
+		sv_u = urhk_ParseONSCustData(ONS.CUSTOM.custDataIn)
+		#sv_a = urhk_B2k_PrintRepos("BANCS")
+		
+		IF(sv_u == 0)THEN
+		#{
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_1))THEN
+			#{
+				CUST.CSIIET.siInterEntityFlg = BANCS.INPUT.issimdtl_FIELD_1
+				PRINT(CUST.CSIIET.siInterEntityFlg)
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_2))THEN
+			#{
+				CUST.CSIIET.targerEntity= BANCS.INPUT.issimdtl_FIELD_2
+				PRINT(CUST.CSIIET.targerEntity)
+			#}
+			ENDIF
+			
+			IF(FIELDEXISTS(BANCS.INPUT.issimdtl_FIELD_3))THEN
+			#{
+				CUST.CSIIET.targetEntityAcctId  = BANCS.INPUT.issimdtl_FIELD_3
+				PRINT(CUST.CSIIET.targetEntityAcctId )
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			PRINT("Custom Field values not available")
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		PRINT("Custom Field values not available")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF(CUST.CSIIET.siInterEntityFlg == "Y")THEN
+        #{
+                IF((CUST.CSIIET.targerEntity == "") OR (CUST.CSIIET.targetEntityAcctId == ""))THEN
+                #{
+                        sv_u = urhk_SRV_SetErr("Target Entity and Target Entity Customer A/c. ID are mandatory for Inter Entity SI")
+                #}
+                ENDIF
+
+		#------------------------------------------------------------------------
+		#Validate if entered target entity is same as bank id,if yes throw error
+		#------------------------------------------------------------------------
+		IF(CUST.CSIIET.targerEntity == CUST.CSIIET.bankId)THEN
+		#{
+			CUST.CSIIET.errorMsg = "The entered Target Entity is same as Bank Id."
+			sv_r = urhk_SRV_SetErr(CUST.CSIIET.errorMsg)
+		#}
+		ENDIF
+		
+		#---------------------------------------------------
+		#Validate if entered acct id belongs to target entity
+		#---------------------------------------------------
+		BANCS.INPARAM.BINDVARS =  CUST.CSIIET.targetEntityAcctId 
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "targetBankId|SELECT BANK_ID "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE FORACID = ?SVAR "
+		
+		print(sv_s)
+		
+		sv_d =urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d == 0)THEN
+		#{
+			CUST.CSIIET.targetBankId = BANCS.OUTPARAM.targetBankId
+			print(CUST.CSIIET.targetBankId)
+			
+			IF(CUST.CSIIET.targetBankId != CUST.CSIIET.targerEntity)THEN
+			#{
+				
+				CUST.CSIIET.errorMsg = "The entered Target Entity Acct Id does not match for Target Entity."
+				sv_r = urhk_SRV_SetErr(CUST.CSIIET.errorMsg)
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			print("Could not fetch record from gam table")
+			GOTO ENDOFSCRIPT	
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+		
+	#----------------------------------
+	#Insert custom data in table
+	#----------------------------------
+	BANCS.INPARAM.BINDVARS = CUST.CSIIET.siSrlNum + "|" + CUST.CSIIET.targerEntity + "|" + CUST.CSIIET.targetEntityAcctId
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CSIIET.siInterEntityFlg + "|N" + "|N" +  "|" + CUST.CSIIET.bankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_s = "INSERT INTO CUSTOM.IESID("
+	sv_s = sv_s + "SI_SRL_NUM,TARGET_ENTITY,TARGET_ENTITY_ACCOUNT_ID,INTER_ENTITY_SI_FLG,"
+	sv_s = sv_s + "ENTITY_CRE_FLG,DEL_FLG,BANK_ID)"
+	sv_s = sv_s + "VALUES(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR)"
+	print(sv_s)
+	
+	sv_d = urhk_dbSQLWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		print("Could not insert data in custom table")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+
+	
+	ENDOFSCRIPT:
+	
+		EXITSCRIPT
+		#trace off
+END-->

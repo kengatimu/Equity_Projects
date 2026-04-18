@@ -1,0 +1,299 @@
+<--start
+trace on
+IF(REPEXISTS("CUST") == 0) THEN
+	CREATEREP("CUST")
+ENDIF
+
+IF(CLASSEXISTS("CUST", "DATA") == 0) THEN
+	CREATECLASS("CUST","DATA",5)
+ENDIF
+
+CUST.DATA.count="0"
+CUST.DATA.reccount="0"
+#--------------------------------------------------------------
+# Selecting list of accounts
+#--------------------------------------------------------------
+sv_s = "foracid,tran_id,tran_date,flow_id,value_date,flow_amt,shdl_num,psrlnum|select foracid,trim(tran_id),to_char(tran_date,'dd-mm-yyyy'),flow_id,to_char(value_date,'dd-mm-yyyy'),flow_amt,trim(shdl_num),trim(part_tran_srl_num) from migadm.ltd_rev where reversal_flg='N'"
+PRINT(sv_s)
+
+BANCS.INPARAM.BINDVARS = ""
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_u = urhk_dbCursorOpenWithBind(sv_s)
+PRINT(sv_u)
+
+IF (sv_u == 0) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(sv_m)
+	sv_u = urhk_dbCursorFetch(sv_m)
+	PRINT(sv_u)
+
+	WHILE (sv_u == 0)
+	#{
+		CUST.DATA.FLAG="N"
+		CUST.DATA.reccount=CINT(CUST.DATA.reccount)+1
+		PRINT(CUST.DATA.reccount)
+
+		CUST.DATA.foracid=BANCS.OUTPARAM.foracid
+		CUST.DATA.tran_id=BANCS.OUTPARAM.tran_id
+		CUST.DATA.flow_id=BANCS.OUTPARAM.flow_id
+		CUST.DATA.value_date=BANCS.OUTPARAM.value_date+ " 00:00:00"
+		CUST.DATA.tran_date=BANCS.OUTPARAM.tran_date+ " 00:00:00"
+		CUST.DATA.flow_amt=BANCS.OUTPARAM.flow_amt
+		CUST.DATA.shdl_num=BANCS.OUTPARAM.shdl_num
+		CUST.DATA.psrlnum=BANCS.OUTPARAM.psrlnum
+		PRINT(CUST.DATA.value_date)
+		PRINT(CUST.DATA.tran_date)
+		PRINT(CUST.DATA.foracid)
+
+		sv_r = "acid,loccrncycode,locsolid,locacctname,locacct_short_name,clr_bal_amt|"
+		sv_r = sv_r + " select acid,acct_crncy_code,sol_id,acct_name,acct_short_name,clr_bal_amt "
+		sv_r = sv_r + " from tbaadm.gam where foracid=?SVAR"
+		print(sv_r)
+		BANCS.INPARAM.BINDVARS=CUST.DATA.foracid
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_u= urhk_dbSelectWithBind(sv_r)
+		PRINT(sv_u)
+		IF(sv_u != 0)THEN
+		#{
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+		CUST.DATA.LOC_acid=BANCS.OUTPARAM.acid
+		CUST.DATA.loccrncycode=BANCS.OUTPARAM.loccrncycode
+		CUST.DATA.locsolid=BANCS.OUTPARAM.locsolid
+		CUST.DATA.locacctname=BANCS.OUTPARAM.locacctname
+		CUST.DATA.locacct_short_name=BANCS.OUTPARAM.locacct_short_name
+		CUST.DATA.locclr_bal_amt=BANCS.OUTPARAM.clr_bal_amt
+
+		PRINT(CUST.DATA.foracid)
+		PRINT(CUST.DATA.loccrncycode)
+		PRINT(CUST.DATA.locsolid)
+		PRINT(CUST.DATA.locacctname)
+		PRINT(CUST.DATA.locacct_short_name)
+		PRINT(CUST.DATA.locclr_bal_amt)
+
+sv_s = "oAcct|select c.foracid from tbaadm.gam a,tbaadm.lam b,tbaadm.gam c where a.acid=b.acid and b.op_acid=c.acid and a.foracid=?SVAR and a.bank_id=b.bank_id and b.bank_id=c.bank_id and c.bank_id=?SVAR "
+PRINT(sv_s)
+
+BANCS.INPARAM.BINDVARS = CUST.DATA.foracid + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_d = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_d)
+
+IF(sv_d == 0) THEN
+#{	
+	CUST.DATA.oAcct=BANCS.OUTPARAM.oAcct
+	PRINT(CUST.DATA.oAcct)	
+#}
+ENDIF
+
+		sv_a = urhk_SetUrhkInp("laPayCrit.tranType|T")
+		sv_a = urhk_SetUrhkInp("laPayCrit.drFromOperAcctFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayCrit.crExcessAcctFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayCrit.cmnDrAcct.foracid|"+CUST.DATA.oAcct)
+		sv_u = urhk_ExecSrv("SRV_validateLaSchdUnSchdPmntCrit|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+		print(sv_u)
+		IF(sv_u != 0)THEN
+		#{
+			call("trapSRVError.scr")
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+
+		sv_u = urhk_CopyOutToIn("")
+		PRINT(sv_u)
+
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.laAcct.foracid|"+CUST.DATA.foracid)
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.laPayValueDate|"+CUST.DATA.value_date)
+		#sv_a = urhk_SetUrhkInp("laPayDtlRec.glDate|"+BANCS.STDIN.BODDate)
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.selFlg|Y")
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.todFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.enteredCrAmt|"+CUST.DATA.flow_amt+"|"+CUST.DATA.loccrncycode)
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.rvrslTranIdentifier.tranId|"+CUST.DATA.tran_id)
+		sv_a = urhk_SetUrhkInp("laPayDtlRec.rvrslTranIdentifier.tranDate|"+CUST.DATA.tran_date)
+
+		sv_u = urhk_ExecSrv("SRV_FetchLaSchedulePmtForRvrsl|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+		print(sv_u)
+		IF(sv_u != 0)THEN
+		#{
+			call("trapSRVError.scr")
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+
+	#GOTO UPDATE
+		######################  FOR CAPTURING VALUES FOR ADJUSTMENT ##################################
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.adjDtl.principal")
+		CUST.DATA.ADJ_PRINCIPAL = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.ADJ_PRINCIPAL)
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.adjDtl.interest")
+		CUST.DATA.ADJ_INTEREST = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.ADJ_INTEREST)
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.adjDtl.total")
+		CUST.DATA.ADJ_TOTAL = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.ADJ_TOTAL)
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.excessCrAmt")
+		CUST.DATA.OFLOW_AMT = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.OFLOW_AMT)
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.adjDtl.liability")
+		CUST.DATA.ADJ_LIABILITY = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.ADJ_LIABILITY)
+
+		sv_a = urhk_GetUrhkOut("laPayDtlRec.prevFlowAmt")
+		CUST.DATA.PREV_AMT = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.DATA.PREV_AMT)
+
+		##############################################################################################
+
+		sv_a = urhk_SetUrhkInp("laPayCrit.tranType|T")
+		sv_a = urhk_SetUrhkInp("laPayCrit.drFromOperAcctFlg|Y")
+
+		sv_a = urhk_SetUrhkInp("laPayCrit.crExcessAcctFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.key.serial_num|0")
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laAcct.foracid|"+CUST.DATA.foracid)
+
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.selFlg|Y")
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.todFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laPayValueDate|"+CUST.DATA.value_date)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.srcAcct.foracid|"+CUST.DATA.oAcct)
+
+
+		sv_a = urhk_SetUrhkInp("laPayCrit.cmnDrAcct.foracid|"+CUST.DATA.oAcct)
+
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.enteredCrAmt|"+CUST.DATA.flow_amt+"|"+CUST.DATA.loccrncycode)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranDate|"+CUST.DATA.tran_date)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranId|"+CUST.DATA.tran_id)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.partTranSrlNum|"+CUST.DATA.psrlnum)
+
+		sv_r = "out_prin,out_interest|select prin_dmd_os,int_dmd_os from tbaadm.lam where acid=(select acid from tbaadm.gam where foracid=?SVAR)"
+		print(sv_r)
+		BANCS.INPARAM.BINDVARS=CUST.DATA.foracid
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_u= urhk_dbSelectWithBind(sv_r)
+		PRINT(sv_u)
+		IF(sv_u!=0)THEN
+		#{
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+		CUST.DATA.out_prin=BANCS.OUTPARAM.out_prin
+		CUST.DATA.out_interest=BANCS.OUTPARAM.out_interest
+		
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.liability|"+CUST.DATA.locclr_bal_amt+"|"+CUST.DATA.loccrncycode)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.principal|"+CUST.DATA.out_prin+"|"+CUST.DATA.loccrncycode)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.interest|"+CUST.DATA.out_interest+"|"+CUST.DATA.loccrncycode)
+
+
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.liability|"+CUST.DATA.ADJ_LIABILITY)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.principal|"+CUST.DATA.ADJ_PRINCIPAL)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.interest|"+CUST.DATA.ADJ_INTEREST)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.prevFlowAmt|"+CUST.DATA.PREV_AMT)
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.paymtTowrdsDefIntFlg|N")
+		sv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.shdlNo|"+CUST.DATA.shdl_num)
+
+
+		sv_u = urhk_ExecSrvNoCommit("SRV_ReverseScheduleLaPmt|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		IF(sv_u != 0)THEN
+		#{
+			call("trapSRVError.scr")
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+		
+		sv_a = urhk_CopyOutToIn("")
+		print(sv_a)
+		
+		sv_a="tranid|select tran_id from tbaadm.cltt where acid=(select acid from tbaadm.gam where foracid=?SVAR)"
+		print(sv_a)
+		
+		BANCS.INPARAM.BINDVARS=CUST.DATA.foracid
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_l = urhk_dbSelectWithBind(sv_a)
+		print(sv_l)
+
+		if(sv_l != 0) then
+		#{
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+		#}
+		ENDIF
+		sv_a=BANCS.OUTPARAM.tranid
+		print(sv_a)
+		
+		sv_a = urhk_SetUrhkInp("laPayCrit.tranId|"+sv_a)
+		print(sv_a)
+
+		sv_u = urhk_ExecSrvNoCommit("SRV_LASPAYDtlsVerify|same_user_verify = Y|retain_all_output = Y")
+		print(sv_u)
+		
+		IF(sv_u != 0)THEN
+		#{
+			sv_a = urhk_CopyOutToIn("")
+			print(sv_a)
+			
+			sv_u = urhk_ExecSrvNoCommit("SRV_LASPAYDtlsVerify|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			
+			IF(sv_u != 0)THEN
+			#{
+			
+			call("trapSRVError.scr")
+			CUST.DATA.FLAG="Y"
+			CUST.DATA.count=CINT(CUST.DATA.count)+1
+			GOTO NEXTREC
+			#}
+			ENDIF
+		#}
+		ENDIF
+		UPDATE:
+		IF(CUST.DATA.FLAG=="N")THEN
+		#{
+			sv_s="update migadm.ltd_rev set reversal_flg='Y' where trim(tran_id)=?SVAR and tran_date=to_date(?SVAR,'dd-mm-yyyy') and trim(part_tran_srl_num)=?SVAR and shdl_num=?SVAR"
+			PRINT(sv_s)
+
+			BANCS.INPARAM.BINDVARS=CUST.DATA.tran_id+"|"+MID$(CUST.DATA.tran_date,0,10)+"|"+CUST.DATA.psrlnum+"|"+CUST.DATA.shdl_num
+			PRINT(BANCS.INPARAM.BINDVARS)
+
+			sv_e = urhk_dbSqlWithBind(sv_s)
+			print(sv_e)
+
+			sv_e=urhk_dbSqlWithBind("commit")
+			PRINT(sv_e)
+
+		#}
+		ENDIF
+		NEXTREC:
+		sv_u = urhk_dbCursorFetch(sv_m)
+		PRINT(sv_u)
+	#}
+	DO
+	sv_u = urhk_dbCursorClose(sv_m)
+	PRINT(sv_u)
+#}
+ENDIF
+PRINT(CUST.DATA.reccount)
+PRINT(CUST.DATA.count)
+
+end-->

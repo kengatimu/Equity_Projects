@@ -1,0 +1,977 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: cucsmn02.scr
+# Type: NA|default
+# Description: SUBMIT script for CUCS
+# Author: Sridevi
+# Date: 6/10/19 16:27 PM
+# Modification Log:
+#============================================================
+
+<--START
+
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether CUCS Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","CUCS")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","CUCS",5)
+	#}
+	ENDIF
+	
+	#==========================================================*
+	# Intilializing the Variables
+	#==========================================================*
+	
+	CUST.CUCS.funcCode = ""
+	CUST.CUCS.status = ""
+	CUST.CUCS.acctNo = ""
+	CUST.CUCS.chqAmt = ""
+	CUST.CUCS.chqNo = ""
+	CUST.CUCS.paidAmt = ""
+	CUST.CUCS.remark = ""
+	CUST.CUCS.reasonCode="CUCSL"
+	CUST.CUCS.lienRemarks="Certified Cheque Lien"
+	CUST.CUCS.CHARG_AMT = ""
+	CUST.CUCS.CHARGE_TYPE = ""
+	CUST.CUCS.TRAN_ID = ""
+	IF(FIELDEXISTS(BANCS.INPUT.funcCode))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.funcCode) != "")THEN
+		#{
+			CUST.CUCS.funcCode = TOUPPER(TRIM(BANCS.INPUT.funcCode))
+			PRINT(CUST.CUCS.funcCode)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(FIELDEXISTS(BANCS.INPUT.acctNo))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.acctNo) != "")THEN
+		#{
+			CUST.CUCS.acctNo = TOUPPER(TRIM(BANCS.INPUT.acctNo))
+			PRINT(CUST.CUCS.acctNo)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(FIELDEXISTS(BANCS.INPUT.chqNo))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.chqNo) != "")THEN
+		#{
+			CUST.CUCS.chqNo = TOUPPER(TRIM(BANCS.INPUT.chqNo))
+			PRINT(CUST.CUCS.chqNo)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.INPUT.status))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.status) != "")THEN
+		#{
+			CUST.CUCS.status = TOUPPER(TRIM(BANCS.INPUT.status))
+			PRINT(CUST.CUCS.status)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(FIELDEXISTS(BANCS.INPUT.chqAmt))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.chqAmt) != "")THEN
+		#{
+			CUST.CUCS.chqAmt = TOUPPER(TRIM(BANCS.INPUT.chqAmt))
+			PRINT(CUST.CUCS.chqAmt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	IF(FIELDEXISTS(BANCS.INPUT.paidAmt))THEN
+	#{
+		IF(TRIM(BANCS.INPUT.paidAmt) != "")THEN
+		#{
+			CUST.CUCS.paidAmt = TOUPPER(TRIM(BANCS.INPUT.paidAmt))
+			PRINT(CUST.CUCS.paidAmt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_s= "acid,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id|SELECT ACID,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+	BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|"+ BANCS.STDIN.contextBankId
+	sv_q = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_q)
+	IF(sv_q == 0)THEN
+	#{
+		CUST.CUCS.acid = BANCS.OUTPARAM.acid
+		CUST.CUCS.acctCrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+		CUST.CUCS.CLR_BAL_AMT = BANCS.OUTPARAM.CLR_BAL_AMT
+		CUST.CUCS.sol_id = BANCS.OUTPARAM.sol_id
+		PRINT(CUST.CUCS.acid)
+	#}
+	ELSE
+	#{
+		CUST.CUCS.remark = "Couldn't Fetch Credit Account details"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		PRINT(sv_u)
+		sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Account details^status")
+		PRINT(sv_u)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+	
+	#----------------------------------------------------------------------------
+	# FUNCTION ADDITION
+	#----------------------------------------------------------------------------
+	IF (CUST.CUCS.funcCode == "A") THEN
+	#{
+		#########################################################
+		#CHARGE_COLLECTED -  calculation and collection
+		#########################################################
+		CUST.CUCS.collection = "Failure"
+		CUST.CUCS.CHARGE_COLLECTED = ""
+		CUST.CUCS.CHARGE_TRAN_ID = ""
+		CUST.CUCS.CHARGE_TRAN_DATE = ""
+		CUST.CUCS.PAID_AMT = "0"
+		CUST.CUCS.remark =""
+		#removed mark lien 
+
+		
+		sv_s = "INSERT INTO CUSTOM.C_CUCS(ACCT_NUMBER,CHEQUE_NUM,CHEQUE_AMT,STATUS,DEL_FLG,ENTITY_CRE_FLG,CHARGE_COLLECTED,CHARGE_TRAN_ID,"
+		sv_s = sv_s + "CHARGE_TRAN_DATE,PAID_AMT,LIEN_FLG,TRAN_ID,TRAN_DATE,BANK_ID,RCRE_TIME,RCRE_USER_ID,LCHG_TIME,LCHG_USER_ID,REMARKS) "
+		sv_s = sv_s + " VALUES(?SVAR,?SVAR,?SVAR,?SVAR,'N','N',?SVAR,?SVAR,"
+		sv_s = sv_s + "'',?SVAR,'N','','',?SVAR,SYSDATE,?SVAR,SYSDATE,?SVAR,?SVAR)"
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo  + "|" + CUST.CUCS.chqNo + "|" + CUST.CUCS.chqAmt + "|" + CUST.CUCS.status
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CUCS.CHARGE_COLLECTED  + "|" + CUST.CUCS.CHARGE_TRAN_ID
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CUCS.PAID_AMT + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + CUST.CUCS.remark
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		PRINT(sv_s)
+		
+		sv_d = urhk_dbSqlWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d != 0)THEN
+		#{
+			#ERROR
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			PRINT(sv_u)
+			sv_u = urhk_SetOrbOut("Error_1|Error^Database Updation Failed^status")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#CUST.CUCS.resultMsg = "Cheque is Certified successfully. Charge collected - " +  CUST.CUCS.CHARGE_COLLECTED + CUST.CUCS.acctCrncy + " TranId:"+ CUST.CUCS.CHARGE_TRAN_ID
+		CUST.CUCS.resultMsg = "Cheque is Certified successfully. Verification pending"
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+		PRINT(sv_u)
+		GOTO SUCCESS
+	#}
+	ENDIF
+	
+	#==========================================================*
+	#For R-Release Certified Cheque
+	#==========================================================*
+	IF(CUST.CUCS.funcCode == "R") THEN
+	#{
+		
+		sv_s = "recCount|SELECT COUNT(1) FROM CUSTOM.C_CUCS WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND STATUS = 'Y' AND BANK_ID = ?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_b)
+		
+		IF(sv_b == 0)THEN
+		#{
+			CUST.CUCS.recCount = BANCS.OUTPARAM.recCount
+			PRINT(CUST.CUCS.recCount)
+			IF(CUST.CUCS.recCount == "1")THEN
+			#{
+			
+			
+				sv_s = "recCount1|SELECT COUNT(1) FROM CUSTOM.C_CUCS_MOD WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+				sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' AND BANK_ID = ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_b = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_b)
+				IF(sv_b == 0)THEN
+				#{
+					CUST.CUCS.recCount1 = BANCS.OUTPARAM.recCount1
+					PRINT(CUST.CUCS.recCount1)
+					IF(CUST.CUCS.recCount1 == "1")THEN
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Pending for verification^status")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				######################################################
+				#Unmark Lien
+				######################################################
+				#moved to verify
+				
+				sv_s = "insert into custom.C_CUCS_MOD select * from custom.C_CUCS where ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N'  AND ENTITY_CRE_FLG = 'Y' AND BANK_ID = ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_b = urhk_dbSqlWithBind(sv_s)
+				
+				IF(sv_b == 0)THEN
+				#{
+					CUST.CUCS.remark = "Certified Cheque Released. Verification pending"
+					sv_s = "UPDATE CUSTOM.C_CUCS_MOD SET STATUS = 'Z',LCHG_TIME=SYSDATE,LCHG_USER_ID=?SVAR,REMARKS =?SVAR,ENTITY_CRE_FLG = 'N'  WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+					sv_s = sv_s + " AND STATUS = 'Y' AND BANK_ID = ?SVAR"
+					
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId + "|" + CUST.CUCS.remark + "|" + CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+					sv_b = urhk_dbSqlWithBind(sv_s)
+					
+					IF(sv_b == 0)THEN
+					#{
+						CUST.CUCS.resultMsg = "Released Certified Cheque successfully. Verification pending"
+						sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+						PRINT(sv_u)
+						sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+						PRINT(sv_z)	
+
+						GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Failed to Release Certified Cheque^acctNo")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("Error_1|Error^Lien is unmarked and Failed to Release Certified Cheque^acctNo")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("Error_1|Error^Failed to fetch the record^acctNo")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			
+			#}
+			ENDIF
+			
+		#}
+		ELSE
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|Error^Failed to fetch the record^acctNo")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#==========================================================*
+	#For M-Charge Certified Cheque
+	#==========================================================*
+	IF(CUST.CUCS.funcCode == "M") THEN
+	#{
+
+		
+		sv_s = "recCount|SELECT COUNT(1) FROM CUSTOM.C_CUCS WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND STATUS = 'Y' AND BANK_ID = ?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_b = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_b)
+		
+		IF(sv_b == 0)THEN
+		#{
+			CUST.CUCS.recCount = BANCS.OUTPARAM.recCount
+			PRINT(CUST.CUCS.recCount)
+			IF(CUST.CUCS.recCount == "1")THEN
+			#{
+				sv_s = "amt|SELECT CHEQUE_AMT FROM CUSTOM.C_CUCS WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+				sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND BANK_ID = ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_b = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_b)
+				IF(sv_b == 0)THEN
+				#{
+					CUST.CUCS.amt = BANCS.OUTPARAM.amt
+					IF(cdouble(CUST.CUCS.paidAmt) > cdouble(CUST.CUCS.amt))THEN
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Paid Amount should be less than or equal to Cheque amount^status")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					
+					#}
+					ENDIF
+				
+				#}
+				ENDIF
+			
+				sv_s = "recCount1|SELECT COUNT(1) FROM CUSTOM.C_CUCS_MOD WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+				sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' AND BANK_ID = ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_b = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_b)
+				IF(sv_b == 0)THEN
+				#{
+					CUST.CUCS.recCount1 = BANCS.OUTPARAM.recCount1
+					PRINT(CUST.CUCS.recCount1)
+					IF(CUST.CUCS.recCount1 == "1")THEN
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Pending for verification^status")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				#################################################################
+				# cheque payoff
+				#################################################################
+				
+				sv_s= "acid,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id|SELECT ACID,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|"+ BANCS.STDIN.contextBankId
+				sv_q = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_q)
+				IF(sv_q == 0)THEN
+				#{
+					CUST.CUCS.acid = BANCS.OUTPARAM.acid
+					CUST.CUCS.acctCrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+					CUST.CUCS.CLR_BAL_AMT = BANCS.OUTPARAM.CLR_BAL_AMT
+					CUST.CUCS.sol_id = BANCS.OUTPARAM.sol_id
+					PRINT(CUST.CUCS.acid)
+				#}
+				ELSE
+				#{
+					
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					PRINT(sv_u)
+					sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Account details^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				
+				#unmark lien
+			#	CUST.CUCS.lienMark = "N"
+			#	CUST.CUCS.lienAmt = CUST.CUCS.chqAmt
+			#	CUST.CUCS.ACCT_NUMBER = CUST.CUCS.acctNo
+			#	CUST.CUCS.actcrncy = CUST.CUCS.acctCrncy
+			#	CALL("CUCS_LIEN.scr")
+			#	IF(CUST.CUCS.LienSuccessOrFailure == "S")THEN
+			#	#{
+			#		
+			#		CUST.CUCS.remark = " Lien removed on pending amount " + CUST.CUCS.lienAmt
+			#		CUST.CUCS.resultMsg = CUST.CUCS.remark
+			#		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+			#		PRINT(sv_u)
+			#		
+			#		
+			#	#}
+			#	ELSE
+			#	#{
+			#		PRINT("LIEN UPDATION FAILED")
+			#		CUST.CUCS.remark = CUST.CUCS.LienFailureReason
+			#		GOTO FAILURE 
+			#		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#		sv_u = urhk_SetOrbOut("Error_1|Error^"+CUST.CUCS.remark+"^status")
+			#		PRINT(sv_u)
+			#		GOTO ENDOFSCRIPT
+			#	#}
+			#	ENDIF
+			#	
+			#	
+			#	
+			#	CALL("cucsdp02.scr")
+				
+				sv_s = "insert into custom.C_CUCS_MOD select * from custom.C_CUCS where ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N'  AND ENTITY_CRE_FLG = 'Y' AND BANK_ID = ?SVAR"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_b = urhk_dbSqlWithBind(sv_s)
+				
+				IF(sv_b == 0)THEN
+				#{
+					CUST.CUCS.remark = "Pending for verification"
+					sv_s = "UPDATE CUSTOM.C_CUCS_MOD SET STATUS = 'P',PAID_AMT = ?SVAR,TRAN_ID=?SVAR,ENTITY_CRE_FLG='N',LCHG_TIME=SYSDATE,LCHG_USER_ID=?SVAR,REMARKS=?SVAR"
+					sv_s = sv_s + " WHERE  ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+					sv_s = sv_s + " AND STATUS = 'Y' AND BANK_ID = ?SVAR"
+					BANCS.INPARAM.BINDVARS = CUST.CUCS.paidAmt + "|" + CUST.CUCS.TRAN_ID + "|" + BANCS.STDIN.userId + "|" + CUST.CUCS.remark 
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+					sv_b = urhk_dbSqlWithBind(sv_s)
+					
+					IF(sv_b == 0)THEN
+					#{
+						CUST.CUCS.resultMsg = "Verification pending"
+						sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+						PRINT(sv_u)
+						sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+						PRINT(sv_z)	
+
+						GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Failed to Release Certified Cheque^acctNo")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("Error_1|Error^Failed to Release Certified Cheque^acctNo")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				sv_u = urhk_SetOrbOut("Error_1|Error^Failed to fetch the record^acctNo")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			
+			#}
+			ENDIF
+			
+		#}
+		ELSE
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			sv_u = urhk_SetOrbOut("Error_1|Error^Failed to fetch the record^acctNo")
+			PRINT(sv_u)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------------
+	# FUNCTION VERIFY
+	#----------------------------------------------------------------------------
+	
+	IF(CUST.CUCS.funcCode == "V") THEN
+	#{
+		
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "recCount|SELECT 1 FROM DUAL WHERE EXISTS("
+		sv_s = sv_s + " SELECT 1 FROM CUSTOM.C_CUCS_MOD"
+		sv_s = sv_s + " WHERE ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR)"
+		
+		PRINT(sv_s)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d == 0) THEN
+		#{
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+		
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "status|SELECT status FROM CUSTOM.C_CUCS_MOD"
+			sv_s = sv_s + " WHERE ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d == 0)THEN
+			#{
+				CUST.CUCS.status_mod = BANCS.OUTPARAM.status
+			#}
+			ELSE
+			#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Failed to fetch data^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			######################################################
+			#Unmark Lien
+			######################################################
+				
+				sv_s= "acid,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id|SELECT ACID,ACCT_CRNCY_CODE,CLR_BAL_AMT,sol_id FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|"+ BANCS.STDIN.contextBankId
+				sv_q = urhk_dbSelectWithBind(sv_s)
+				PRINT(sv_q)
+				IF(sv_q == 0)THEN
+				#{
+					CUST.CUCS.acid = BANCS.OUTPARAM.acid
+					CUST.CUCS.acctCrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+					CUST.CUCS.actcrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+					CUST.CUCS.CLR_BAL_AMT = BANCS.OUTPARAM.CLR_BAL_AMT
+					CUST.CUCS.sol_id = BANCS.OUTPARAM.sol_id
+					PRINT(CUST.CUCS.acid)
+				#}
+				ELSE
+				#{
+					
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					PRINT(sv_u)
+					sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Account details^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+				
+				CUST.CUCS.lienMark = "N"
+				CUST.CUCS.lienAmt = CUST.CUCS.chqAmt
+				CUST.CUCS.ACCT_NUMBER = CUST.CUCS.acctNo
+				CUST.CUCS.actcrncy = CUST.CUCS.acctCrncy
+				CALL("CUCS_LIEN.scr")
+				IF(CUST.CUCS.LienSuccessOrFailure == "S")THEN
+				#{
+					
+					CUST.CUCS.remark = " Lien removed on pending amount " + CUST.CUCS.lienAmt + CUST.CUCS.acctCrncy
+					CUST.CUCS.resultMsg = CUST.CUCS.remark
+					CUST.CUCS.ENTITY_CRE_FLG = 'Y'
+					CUST.CUCS.LIEN_FLG = 'N'
+					sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+					PRINT(sv_u)					
+				#}
+				ELSE
+				#{
+					PRINT("LIEN UPDATION FAILED")
+					CUST.CUCS.remark = "LIEN UPDATION FAILED-"+CUST.CUCS.LienFailureReason
+					CUST.CUCS.ENTITY_CRE_FLG = 'N'
+					CUST.CUCS.LIEN_FLG = 'Y'
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("Error_1|Error^"+CUST.CUCS.remark+"^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			IF(CUST.CUCS.status_mod == "P")THEN
+			#{
+				CUST.CUCS.chk_tran = ""
+				CALL("cucsdp02.scr")
+				IF(CUST.CUCS.chk_tran =="F")THEN
+				#{
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					sv_u = urhk_SetOrbOut("Error_1|Error^"+CUST.CUCS.remark+"^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+					sv_s = "UPDATE CUSTOM.C_CUCS_MOD SET STATUS = 'P',PAID_AMT = ?SVAR,TRAN_ID=?SVAR, TRAN_DATE = SYSDATE,LCHG_TIME=SYSDATE,LCHG_USER_ID=?SVAR,REMARKS=?SVAR"
+					sv_s = sv_s + " WHERE  ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+					sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' AND BANK_ID = ?SVAR"
+					BANCS.INPARAM.BINDVARS = CUST.CUCS.paidAmt + "|" + CUST.CUCS.TRAN_ID + "|" + BANCS.STDIN.userId + "|" + CUST.CUCS.remark 
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+					sv_b = urhk_dbSqlWithBind(sv_s)
+					
+					IF(sv_b == 0)THEN
+					#{
+						CUST.CUCS.resultMsg = "Certified cheque Paid Fully/Partially and lien removed successfully.TRAN_ID -"+ CUST.CUCS.TRAN_ID
+						sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+						PRINT(sv_u)
+						sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+						PRINT(sv_z)	
+
+						#GOTO ENDOFSCRIPT
+					#}
+					ELSE
+					#{
+						sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_u = urhk_SetOrbOut("Error_1|Error^Failed to Release Certified Cheque^acctNo")
+						PRINT(sv_u)
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				
+			#}
+			ENDIF
+			
+			##########################################################################################################################
+			##############################################
+			#uPDATE CHEQUE STATUS
+			##############################################
+			CUST.CUCS.update_stat = "Success"
+			#CALL("cucsdp03.scr")
+			#IF(CUST.CUCS.update_stat == "Failure")THEN
+			##{
+			#	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#	PRINT(sv_u)
+			#	sv_u = urhk_SetOrbOut("Error_1|Error^Failed to update the cheque status^status")
+			#	PRINT(sv_u)
+			#	GOTO ENDOFSCRIPT
+			#	
+			##}
+			#ENDIF
+			
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.ENTITY_CRE_FLG + "|" +CUST.CUCS.LIEN_FLG+ "|" + BANCS.STDIN.userId + "|" + CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "update custom.C_CUCS_MOD set"
+			sv_s = sv_s + " ENTITY_CRE_FLG =?SVAR,LIEN_FLG = ?SVAR,"
+			sv_s = sv_s + " LCHG_USER_ID=?SVAR,"
+			sv_s = sv_s + " LCHG_TIME = sysdate"
+			sv_s = sv_s + " where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			PRINT(sv_d)
+			IF(sv_d != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database Updation Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "delete from custom.C_CUCS where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			IF(sv_d != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database delete Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			
+			sv_s = "insert into custom.C_CUCS select * from custom.C_CUCS_MOD where  ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			IF(sv_d != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database insertion Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "delete from custom.C_CUCS_MOD where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			IF(sv_d != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database deletion Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			#}
+		ELSE
+			#{
+			
+			sv_s= "ACCT_CRNCY_CODE|SELECT ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|"+ BANCS.STDIN.contextBankId
+			sv_q = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_q)
+			IF(sv_q == 0)THEN
+			#{
+				CUST.CUCS.acctCrncy = BANCS.OUTPARAM.ACCT_CRNCY_CODE
+			#}
+			ELSE
+			#{
+				CUST.CUCS.remark = "Couldn't Fetch Credit Account details"
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Couldn't Fetch Account details^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			sv_s = "amt|SELECT CHEQUE_AMT FROM CUSTOM.C_CUCS WHERE ACCT_NUMBER = ?SVAR AND CHEQUE_NUM = ?SVAR AND DEL_FLG = 'N' "
+			sv_s = sv_s + " AND ENTITY_CRE_FLG = 'N' AND BANK_ID = ?SVAR"
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_b = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_b)
+			IF(sv_b == 0)THEN
+			#{
+				CUST.CUCS.chqAmt = BANCS.OUTPARAM.amt			
+			#}
+			ENDIF
+			
+			#########################################################
+			#CHARGE_COLLECTED -  calculation and collection
+			#########################################################
+			CUST.CUCS.collection = "Failure"
+			CALL("cucsdp01.scr")
+			
+			
+			IF(CUST.CUCS.collection == "Failure")THEN
+			#{
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Failed to collect the charge Amount^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+				
+			#}
+			ELSE
+			#{
+				CUST.CUCS.CHARGE_COLLECTED = CUST.CUCS.paidAmt
+				CUST.CUCS.CHARGE_TRAN_ID = CUST.CUCS.tranid
+				CUST.CUCS.CHARGE_TRAN_DATE = CUST.CUCS.trandate
+				CUST.CUCS.PAID_AMT = "0"
+				CUST.CUCS.remark ="Charge collected successfully"
+			#}
+			ENDIF
+		
+			
+			# Mark lien
+				CUST.CUCS.lienAmt = CUST.CUCS.chqAmt
+				CUST.CUCS.lienMark = "Y"
+				CUST.CUCS.ACCT_NUMBER = CUST.CUCS.acctNo
+				CUST.CUCS.actcrncy = CUST.CUCS.acctCrncy
+				CALL("CUCS_LIEN.scr")
+				IF(CUST.CUCS.LienSuccessOrFailure == "S")THEN
+				#{
+					CUST.CUCS.LIEN_FLG = "Y"
+					CUST.CUCS.LIEN_APPLIED_AMT = CUST.CUCS.chqAmt
+					CUST.CUCS.remark ="Marked lien and collected charge successfully Charge Amount:"+CUST.CUCS.CHARGE_COLLECTED+ CUST.CUCS.acctCrncy+" tranId : " + CUST.CUCS.CHARGE_TRAN_ID
+					CUST.CUCS.status = "Y"
+					CUST.CUCS.ENTITY_CRE_FLG = "Y"
+					#}
+				ELSE
+					#{
+					PRINT("LIEN UPDATION FAILED")
+					CUST.CUCS.ENTITY_CRE_FLG = "N"
+					CUST.CUCS.LIEN_FLG = "N"
+					CUST.CUCS.remark = CUST.CUCS.LienFailureReason
+					CUST.CUCS.remark ="Failed to Marked lien on cheque amt and collected charge successfully" 
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					PRINT(sv_u)
+					sv_u = urhk_SetOrbOut("Error_1|Error^"+CUST.CUCS.LienFailureReason+"^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			##############################################
+			#uPDATE CHEQUE STATUS
+			##############################################
+			#CUST.CUCS.update_stat = "Success"
+			#CALL("cucsdp03.scr")
+			#IF(CUST.CUCS.update_stat == "Failure")THEN
+			##{
+			#	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			#	PRINT(sv_u)
+			#	sv_u = urhk_SetOrbOut("Error_1|Error^Failed to update the cheque status^status")
+			#	PRINT(sv_u)
+			#	GOTO ENDOFSCRIPT
+				
+			##}
+			#ENDIF
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.ENTITY_CRE_FLG + "|" +CUST.CUCS.LIEN_FLG + "|" +CUST.CUCS.remark + "|" +CUST.CUCS.CHARGE_COLLECTED + "|" + CUST.CUCS.CHARGE_TRAN_ID 
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "update custom.C_CUCS set ENTITY_CRE_FLG=?SVAR,LIEN_FLG = ?SVAR,REMARKS = ?SVAR,CHARGE_COLLECTED = ?SVAR,CHARGE_TRAN_ID =?SVAR,CHARGE_TRAN_DATE=SYSDATE "
+			sv_s = sv_s + " where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+			
+			PRINT(sv_s)
+			sv_d = urhk_dbSqlWithBind(sv_s)
+			IF(sv_d != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database Updation Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		if(CUST.CUCS.remark == "")then
+		#{
+			CUST.CUCS.resultMsg = "Record has been Verified successfully"
+		#}
+		else
+		#{
+			CUST.CUCS.resultMsg = CUST.CUCS.remark
+		#}
+		endif
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+		PRINT(sv_u)
+		GOTO SUCCESS
+	#}
+	ENDIF
+	#----------------------------------------------------------------------------
+	# FUNCTION Delete
+	#----------------------------------------------------------------------------
+	IF(CUST.CUCS.funcCode == "X") THEN
+	#{
+		
+		BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+		
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "recCount|SELECT COUNT(1) FROM CUSTOM.C_CUCS_MOD"
+		sv_s = sv_s + " WHERE  ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+		
+		PRINT(sv_s)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+		IF(sv_d == 0) THEN
+		#{
+			 CUST.CUCS.recCount = BANCS.OUTPARAM.recCount
+			if(CUST.CUCS.recCount == "1")then
+			#{
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_s = "delete from custom.C_CUCS_MOD where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR"
+				
+				PRINT(sv_s)
+				
+				sv_m = urhk_dbSqlWithBind(sv_s)
+				IF(sv_m != 0) THEN
+				#{
+					#ERROR
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					PRINT(sv_u)
+					sv_u = urhk_SetOrbOut("Error_1|Error^Database deletion Failed^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			#}
+			else
+			#{
+				
+				BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+				
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				sv_s = "delete from custom.C_CUCS where  ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR AND ENTITY_CRE_FLG='N'"
+				
+				PRINT(sv_s)
+				
+				sv_m = urhk_dbSqlWithBind(sv_s)
+				IF(sv_m != 0) THEN
+				#{
+					#ERROR
+					sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+					PRINT(sv_u)
+					sv_u = urhk_SetOrbOut("Error_1|Error^Database deletion Failed^status")
+					PRINT(sv_u)
+					GOTO ENDOFSCRIPT
+				#}
+				ENDIF
+			
+			#}
+			endif
+		#}
+		ELSE
+		#{
+			
+			BANCS.INPARAM.BINDVARS = CUST.CUCS.acctNo + "|" + CUST.CUCS.chqNo + "|" + BANCS.STDIN.contextBankId
+			
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			sv_s = "delete from custom.C_CUCS where ACCT_NUMBER=?SVAR AND CHEQUE_NUM =?SVAR AND BANK_ID = ?SVAR AND ENTITY_CRE_FLG='N'"
+			
+			PRINT(sv_s)
+			
+			sv_m = urhk_dbSqlWithBind(sv_s)
+			IF(sv_m != 0) THEN
+			#{
+				#ERROR
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+				PRINT(sv_u)
+				sv_u = urhk_SetOrbOut("Error_1|Error^Database deletion Failed^status")
+				PRINT(sv_u)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+		CUST.CUCS.resultMsg = "Record has been cancelled successfully"
+		sv_u = urhk_SetOrbOut("RESULT_MSG|"+CUST.CUCS.resultMsg)
+		PRINT(sv_u)
+	#}
+	ENDIF
+	SUCCESS:
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	PRINT(sv_z)
+	ENDOFSCRIPT:
+		
+END-->

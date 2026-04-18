@@ -1,0 +1,127 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebOdaMfSweepReg.scr  
+#  Description     : Tran
+#  Date            : 10-05-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA MSWOP(daily job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-05-2021      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+	sv_p = urhk_B2k_PrintRepos("BANCS")
+	print(sv_p)
+	EBSRV.GLBDATA.crAcct = ""
+	EBSRV.GLBDATA.upDueAmt = "0"
+#fetch
+        sv_l = "drAcct,isSweepsYN,PoolId,poolCif,drSchmCode,drTranAmt,drCrncy,eodOverAmt| "
+	sv_l = sv_l + " select gam.foracid,gam.allow_sweeps,gam.pool_id,gam.cif_id, "
+	sv_l = sv_l + " gam.schm_code,gam.clr_bal_Amt,gam.acct_crncy_code, "
+ 	sv_l = sv_l + " (select sum(dmd_amt) from custom.mfddt where bank_id=?SVAR and dep_tran_id<>'BATCH' "
+	sv_l = sv_l + " and dep_command<>'CSWOP' and sol_id=gam.sol_id and entity_cre_flg='Y' and del_flg='N' " 
+ 	sv_l = sv_l + " and free_text1=gam.cif_id "
+	sv_l = sv_l + " and to_date(to_char(rcre_time,'DD-MM-RR'),'DD-MM-RR')<=to_date(?SVAR,'DD-MM-RR'))  as oveAmt "
+ 	sv_l = sv_l + " from tbaadm.gam " 
+ 	sv_l = sv_l + " where gam.bank_id=?SVAR "
+ 	sv_l = sv_l + " and exists (select 1 from custom.mfddt where bank_id=?SVAR and mfddt.foracid=gam.foracid "
+ 	sv_l = sv_l + " and dep_tran_id<>'BATCH' and dep_command<>'CSWOP'  and sol_id=gam.sol_id "
+ 	sv_l = sv_l + " and entity_cre_flg='Y'  and del_flg='N'  and free_text1=gam.cif_id  "
+ 	sv_l = sv_l + " and to_date(to_char(rcre_time,'DD-MM-RR'),'DD-MM-RR')<=to_date(?SVAR,'DD-MM-RR')) "
+ 	sv_l = sv_l + " and gam.entity_cre_flg='Y' " 
+ 	sv_l = sv_l + " and gam.del_flg='N' and gam.acct_cls_flg<>'Y' " 
+        sv_l = sv_l + " and gam.sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id =?SVAR ) "
+        sv_l = sv_l + " and gam.clr_bal_amt <0 "
+        ##sv_l = sv_l + " order by gam.foracid "
+        print(sv_l)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" +  mid$(BANCS.STDIN.BODDate,0,10) + "|" +  BANCS.STDIN.contextBankId + "|"+ BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+        ###BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_c = urhk_dbCursorOpenWithBind(sv_l)
+	print(sv_c)
+	if(sv_c != 0)then
+		print("fetching failed")
+		goto VAYU
+	endif
+	sv_p = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_p)
+	sv_r = urhk_dbCursorFetch(sv_p)
+	print(sv_r)
+	if(sv_r != 0)then
+	    goto VAYU
+	endif
+	EBSRV.GLBDATA.record_count = 0
+	while(sv_r == 0)
+		EBSRV.GLBDATA.drAcct	=	BANCS.OUTPARAM.drAcct
+		EBSRV.GLBDATA.isSweepsYN	=	BANCS.OUTPARAM.isSweepsYN		
+		EBSRV.GLBDATA.PoolId	=	BANCS.OUTPARAM.PoolId	
+		EBSRV.GLBDATA.poolCif	=	BANCS.OUTPARAM.poolCif	
+		EBSRV.GLBDATA.drSchmCode	=	BANCS.OUTPARAM.drSchmCode	
+		EBSRV.GLBDATA.drTranAmt	=	BANCS.OUTPARAM.drTranAmt	
+		EBSRV.GLBDATA.drCrncy	=	BANCS.OUTPARAM.drCrncy	
+		EBSRV.GLBDATA.eodOverAmt	= BANCS.OUTPARAM.eodOverAmt
+		######EBSRV.GLBDATA.crAcct	=	BANCS.OUTPARAM.crAcct	
+                sv_o = "crAcct | select od.foracid from tbaadm.gam od where od.bank_id =?SVAR "
+                sv_o = sv_o + " and od.schm_type='ODA' and od.schm_code='OD547' and od.cif_id=?SVAR "
+                sv_o = sv_o + " and sanct_lim > 0 "
+                sv_o = sv_o + " and od.acct_cls_flg='N' and od.del_flg='N' and od.entity_cre_flg='Y' and rownum<=1 "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.poolCif
+                print(sv_o)
+                print(BANCS.INPARAM.BINDVARS)
+                sv_u = urhk_dbSelectWithBind(sv_o)
+                if(sv_u==0)then
+                        EBSRV.GLBDATA.crAcct =  BANCS.OUTPARAM.crAcct
+                else
+                        EBSRV.GLBDATA.crAcct = ""
+                endif
+		if((EBSRV.GLBDATA.PoolId!="") and (EBSRV.GLBDATA.isSweepsYN=="Y") and (EBSRV.GLBDATA.crAcct!=""))then
+				print(EBSRV.GLBDATA.drTranAmt)
+				print(EBSRV.GLBDATA.eodOverAmt)
+			if(cdouble(EBSRV.GLBDATA.drTranAmt)<0)then
+			###if(cdouble(EBSRV.GLBDATA.eodOverAmt)>0)then
+				##EBSRV.GLBDATA.eodOverAmt = -1*cdouble(EBSRV.GLBDATA.eodOverAmt)
+				##EBSRV.GLBDATA.drTranAmt = cdouble(EBSRV.GLBDATA.eodOverAmt)
+				EBSRV.GLBDATA.eodOverAmt = cdouble(EBSRV.GLBDATA.drTranAmt)
+				EBSRV.GLBDATA.upDueAmt = -1 * cdouble(EBSRV.GLBDATA.drTranAmt)
+				EBSRV.GLBDATA.LiquidityModule = "MERNT-LM"
+				sv_e = "nohup babx4061 $B2K_SESSION_ID  ebAgentOverDrawDa.scr " + EBSRV.GLBDATA.drAcct + " " + EBSRV.GLBDATA.poolCif + " " + EBSRV.GLBDATA.upDueAmt + " " + EBSRV.GLBDATA.LiquidityModule + " @s &"
+				print(sv_e)
+                                sv_a = system(sv_e)
+				print(EBSRV.GLBDATA.drTranAmt)
+				callscriptifexist("ebOdaAgntSweepRegT.scr")
+				sv_d = " update custom.mfddt set del_flg='Y',FREE_TEXT5='SWEEP BOOKED' where bank_id=?SVAR "
+				sv_d = sv_d + " and sol_id=?SVAR "
+                                sv_d = sv_d + " and DEP_TRAN_ID<>'BATCH' "
+                                sv_d = sv_d + " and DEP_COMMAND<>'CSWOP' "
+                                sv_d = sv_d + " and entity_cre_flg='Y' "
+                                sv_d = sv_d + " and del_flg='N' "
+                                sv_d = sv_d + " and free_text1=?SVAR "
+                               sv_d = sv_d + " and to_date(to_char(rcre_time,'DD-MM-RR'),'DD-MM-RR')=to_date(?SVAR,'DD-MM-RR')"
+				print(sv_d)
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + EBSRV.GLBDATA.poolCif + "|" + mid$(BANCS.STDIN.BODDate,0,10)   
+				print(BANCS.INPARAM.BINDVARS)
+				sv_u = urhk_dbSqlWithBind(sv_d)
+				if(sv_u==0)then
+					sv_u = urhk_dbSqlWithBind("commit")
+				endif
+			else
+				goto NXTL
+			endif
+		else
+			goto NXTL
+		endif
+	NXTL:
+        sv_r = urhk_dbCursorFetch(sv_p)
+        do
+        sv_r = urhk_dbCursorClose(sv_p)	
+VAYU:
+	exitscript
+trace off
+end-->

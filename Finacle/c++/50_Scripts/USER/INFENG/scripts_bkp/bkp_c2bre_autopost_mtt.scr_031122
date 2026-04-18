@@ -1,0 +1,255 @@
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("CUST") == 0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","DATA") == 0)then
+                createclass("CUST","DATA",5)
+        endif
+
+	#-----------------------------
+        ## Variable Intialization
+        #-----------------------------
+	CUST.DATA.errMsg   = ""
+        CUST.DATA.credit1   = CUST.DATA.AccountNo
+	print(CUST.DATA.credit1)
+        #CUST.DATA.credit1   = "0113000504075"
+        CUST.DATA.debit1 = CUST.DATA.DrAccountNo
+	print(CUST.DATA.debit1)
+        #CUST.DATA.debit1 = "0116500204304"
+        CUST.DATA.creditAmt1 = CDOUBLE(CUST.DATA.Amount)
+	CUST.DATA.ref_tran_amt = CUST.DATA.creditAmt1
+        PRINT(CUST.DATA.creditAmt1)
+        CUST.DATA.debitAmt1 = CDOUBLE(CUST.DATA.Amount) * -1
+
+	print(CUST.DATA.MobileNo)
+	print(CUST.DATA.RECEIPTNO)
+	print(CUST.DATA.CName)
+	#CUST.DATA.Tranparticular = "MPS " + CUST.DATA.MobileNo  + " " + CUST.DATA.RECEIPTNO + " " + CUST.DATA.CName
+	CUST.DATA.Tranparticular = "MPS " + CUST.DATA.MobileNo  + " " + CUST.DATA.RECEIPTNO + " " + CUST.DATA.Sender
+
+	CUST.DATA.Tranparticular = mid$(CUST.DATA.Tranparticular,0,49)
+
+	CUST.DATA.tran_crncy_code = ""
+	sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.credit1)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.DATA.tran_crncy_code = BANCS.OUTPARAM.acctCrncyCode
+		CUST.DATA.ref_crncy_code = CUST.DATA.tran_crncy_code
+		PRINT(CUST.DATA.tran_crncy_code)
+	#}
+	ELSE
+	#{
+		CUST.DATA.Status = "Account Not Found for Transaction Initiate"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+
+	IF(TRIM(BANCS.STDIN.homeCrncyCode) != TRIM(CUST.DATA.tran_crncy_code))THEN
+	#{
+		CUST.DATA.ref_crncy_code = CUST.DATA.tran_crncy_code
+
+		#=======================================#
+		#      Conver amount to other currency  #
+		#=======================================#
+		BANCS.INPARAM.InputAmount       = CDOUBLE(CUST.DATA.creditAmt1)
+		BANCS.INPARAM.FromCurrency      = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.ToCurrency        = CUST.DATA.ref_crncy_code
+		BANCS.INPARAM.RateCode          = "NOR"
+		BANCS.INPARAM.Rate              = ""
+		sv_r = urhk_B2k_ConvertAmount("")
+		print(sv_r)
+		IF(sv_r == 0) THEN
+		#{
+			CUST.DATA.ref_tran_amt = BANCS.OUTPARAM.OutputAmount
+			print(CUST.DATA.ref_tran_amt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	
+        #---------------------------------
+        # Populate MTT details
+        #---------------------------------
+
+		sv_r = urhk_MTTS_PopulateInputDetails("")
+		Print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+        #---------------------------------
+        #  Closing of MTT if it is opened
+        #---------------------------------
+
+		sv_g = urhk_MTTS_Close("")
+		print(sv_g)
+
+		IF (sv_g != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#-----------------------------
+		#--- Initialize MTT details
+		#-----------------------------
+					
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.PartTranLUWFlg            = "Y"
+		BANCS.INPARAM.IgnoreExcp        = "I"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		sv_o = urhk_MTTS_Initialize("")
+		PRINT(sv_o)
+
+		IF(sv_o != 0)THEN
+		#{
+			sv_o = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#-------------------------------
+		# Define the transaction  #HEADER DETAILS
+		#-------------------------------
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+
+		sv_r = urhk_MTTS_DefineTransaction("AUTOPOST")
+		print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+		#----------------------------------------------
+		#Main Transaction-------------------------------
+		#----------------------------------------------
+print(CUST.DATA.ref_tran_amt)
+print(CUST.DATA.creditAmt1)
+		#--------------------------------------------------------------------------
+		#Credit to  account
+		#--------------------------------------------------------------------------
+		MTT.PartTranDetails.Account = CUST.DATA.credit1
+		MTT.PartTranDetails.RefAmount = cdouble(CUST.DATA.ref_tran_amt)
+		MTT.PartTranDetails.Amount              = cdouble(CUST.DATA.creditAmt1)
+		MTT.PartTranDetails.TranCurrency        = CUST.DATA.tran_crncy_code
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.ref_crncy_code
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.DATA.Tranparticular
+		MTT.PartTranDetails.Particulars2    = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.Remarks        = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.TranIdentifier = "AUTOPOST"
+		MTT.PartTranDetails.RateCode            = "NOR"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.DATA.RECEIPTNO
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("CR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+			
+		#Debit to Account 1
+		#-----------------------------------------------------------------------------
+		MTT.PartTranDetails.Account        = CUST.DATA.debit1
+                MTT.PartTranDetails.RefAmount = -(cdouble(CUST.DATA.ref_tran_amt))
+                MTT.PartTranDetails.Amount              = -(cdouble(CUST.DATA.creditAmt1))
+                MTT.PartTranDetails.TranCurrency        = CUST.DATA.tran_crncy_code
+                MTT.PartTranDetails.RefCurrency = CUST.DATA.ref_crncy_code
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = CUST.DATA.Tranparticular
+		MTT.PartTranDetails.Particulars2    = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.RateCode            = "NOR"
+		MTT.PartTranDetails.Remarks        = CUST.DATA.RECEIPTNO
+		MTT.PartTranDetails.TranIdentifier = "AUTOPOST"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = CUST.DATA.RECEIPTNO
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("DR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+
+
+		#--------------------------------------------------------------
+		# MTT ending definition to create transaction
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.DATA.tranId)
+
+			
+		#}
+		ENDIF
+
+		#--------------------------------------------------------------
+		# MTT Closing an initialized MTT
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+	 CUST.DATA.Status = CUST.DATA.errMsg
+
+ENDOFSCRIPT:
+trace off
+exitscript
+end-->

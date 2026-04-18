@@ -1,0 +1,446 @@
+#-------------------------------------------------------------------------------------
+#	NAME            : denomdp008.scr
+#	DATE            : 26-JUL-2010
+#	DESCRIPTION     : This script performs the cross currency exchange between the
+#			  two teller accounts
+#	MENU OPTION     : HCASHDX
+#	CALLING SCRIPT  : denomdp008.scr
+#	AUTHOR NAME     : Sandeep Patil
+#	MODULE CODE     : DENOM
+#	MODIFICATION
+#	HISTORY         :
+#	Serial.No	Date	AuthorName      Description
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="7a40f1e35d467b46fbe26a00ed07670c0ed770aebcc985a05046d06600d9df02"
+	TRACE ON
+	
+	sv_q = urhk_B2k_PrintRepos("BANCS")
+	print(sv_q)
+	IF(REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF(CLASSEXISTS("CUST", "DENOM") == 0) THEN
+	#{
+		CREATECLASS("CUST","DENOM",5)
+	#}
+	ENDIF
+	sv_k = 0
+	sv_l = 0
+	IF(REPEXISTS("MTT") == 0) THEN
+	#{
+		CREATEREP("MTT")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("MTT","InputDetails")
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS("MTT","InputDetails",5)
+	#}
+	ENDIF
+	
+	sv_d = CLASSEXISTS("MTT","TranDetails")
+	IF (sv_d == 0) THEN
+	#{
+		CREATECLASS("MTT","TranDetails",5)
+	#}
+	ENDIF
+	
+	CUST.DENOM.Details = "N"
+	
+	#-----------------------------------------------------------------------------------
+	# DEFINE TRANSACTION
+	#-----------------------------------------------------------------------------------
+	
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType="C"
+	MTT.TranDetails.TranSubType="CR"
+	
+	
+	BANCS.INPARAM.PostTranFlg               = "X"
+	BANCS.INPARAM.CommitFlg                 = "N"
+	BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+	#BANCS.INPARAM.ValidationFlag            = "Y"
+	BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw          = "N"
+	BANCS.INPARAM.CheckExceptions           = "Y"
+	#BANCS.INPARAM.proxyPostFlg              = "Y"
+	
+	sv_u = urhk_MTTS_Initialize("")
+	print(sv_u)
+	
+	CUST.DENOM.value_date = LEFT$(BANCS.STDIN.BODDate,10)
+	
+	#-----------PRINT OUT THE VALUES OBTAINED FROM FRONT END : START ---------------------
+	
+	print(CUST.DENOM.ph1)
+	print(CUST.DENOM.ph2)
+	print(CUST.DENOM.CrncyCode1)
+	print(CUST.DENOM.CrncyCode2)
+	print(CUST.DENOM.exchgamt)
+	print(CUST.DENOM.value_date)
+	print(CUST.DENOM.receivedamt)
+	#print(CUST.DENOM.paybackamt)
+	#print(CUST.DENOM.getbackamt)
+	print(CUST.DENOM.Rate_Code)
+	print(CUST.DENOM.rate)
+	
+	#-----------PRINT OUT THE VALUES OBTAINED FROM FRONT END : END ---------------------
+	
+	#----------------------------------------------------------------------------------------
+	#	MTT Main Tran Details - TRANSFER C-CR TYPE
+	#	ACCOUNT PLACEHOLDER 1 CR , ACCOUNT PLACEHOLDER 2 DR
+	#----------------------------------------------------------------------------------------
+	
+	MTT.TranDetails.TranDateDiff = "0"
+	MTT.TranDetails.IgnoreExcp = "I"
+	#MTT.TranDetails.Consolidate = "N"
+	#MTT.TranDetails.ReversalFlag = "N"
+	MTT.TranDetails.Remarks = "CURRENCY EXCHANGE - DX"
+	MTT.TranDetails.PostFlag = "X"
+	#MTT.TranDetails.ErrorCheckForLuw = "N"
+	
+	#MTT.TranDetails.IgnoreExcp="Y"
+	MTT.TranDetails.Consolidate="Y"
+	#MTT.TranDetails.ReversalFlag="Y"
+	
+	CUST.DENOM.tran_identifier = "TRANSFER"
+	
+	sv_r = urhk_MTTS_DefineTransaction(CUST.DENOM.tran_identifier)
+	print(sv_r)
+	
+	#-----------POPULATE INPUT DETAILS : START ----------------------------------------
+	
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	print(sv_r)
+	
+	IF (sv_r != "0") THEN
+	#{
+		sv_u = urhk_TBAF_DispMesg("Unable to Define MTT transaction")
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------POPULATE INPUT DETAILS : END ----------------------------------------
+	
+	sv_a = urhk_B2k_getDateDiffFromBODDate(CUST.DENOM.value_date)
+	print(sv_a)
+	
+	IF(sv_a == 0) THEN
+	#{
+		CUST.DENOM.DateDiff = BANCS.OUTPARAM.DateDiff
+		print(CUST.DENOM.DateDiff)
+	#}
+	ELSE
+	#{
+		CUST.DENOM.DateDiff = "0"
+	#}
+	ENDIF
+	
+	CUST.DENOM.MTTErrMsg = ""
+	
+	#-------------------------------------------------------------------------------------
+	# POPULATE THE DETAILS AND CREDIT THE FIRST PART TRAN
+	#-------------------------------------------------------------------------------------
+	
+	MTT.PartTranDetails.RefAmount		= -CDOUBLE(CUST.DENOM.receivedamt)
+	MTT.PartTranDetails.Amount		= -CDOUBLE(CUST.DENOM.receivedamt)
+	MTT.PartTranDetails.Account		= CUST.DENOM.ph1
+	MTT.PartTranDetails.RefCurrency		= CUST.DENOM.CrncyCode1
+	MTT.PartTranDetails.TranCurrency	= CUST.DENOM.CrncyCode1
+	IF(CUST.DENOM.CrncyCode1 != CUST.DENOM.CrncyCode2) THEN
+	#{
+		MTT.PartTranDetails.RateCode	= CUST.DENOM.Rate_Code
+		#	MTT.PartTranDetails.Rate	= CUST.DENOM.rate
+		MTT.PartTranDetails.Rate	= "0"
+	#}
+	ENDIF
+	MTT.PartTranDetails.CarveAmtFlg		= "Y"
+	MTT.PartTranDetails.Refnum		= ""
+	MTT.PartTranDetails.Remarks		= "DX"
+	MTT.PartTranDetails.Particulars		= "Dr"
+	MTT.PartTranDetails.ParticularsCode	= "CASHX"
+	MTT.PartTranDetails.TranIdentifier	= CUST.DENOM.tran_identifier
+	print(MTT.PartTranDetails.TranIdentifier)
+	MTT.PartTranDetails.Consolidate	= "Y"
+	MTT.PartTranDetails.TODRefType		= "IC"
+	MTT.PartTranDetails.ValueDateDiff	= "0"
+	MTT.PartTranDetails.ValueDate		= "0"
+	MTT.PartTranDetails.PTranBusinessType	= "CREDIT"
+	MTT.PartTranDetails.Consolidate = "N"
+	
+	sv_y = "C-CR"
+	sv_r = urhk_MTTS_DefinePartTran(sv_y)
+	print(sv_r)
+	
+	print(CUST.DENOM.receivedamt)
+	print(MTT.PartTranDetails.Amount)
+	IF(sv_r != 0) THEN
+	#{
+		IF (FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.DENOM.MTTErrMsg= MTT.Error.Description
+			#}
+		ELSE
+			#{
+			CUST.DENOM.MTTErrMsg= "Could not define part Transaction"
+			MTT.Error.Description = CUST.DENOM.MTTErrMsg
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------------
+	# POPULATE THE DETAILS AND DEBIT THE SECOND PART TRAN
+	#-------------------------------------------------------------------------------------
+	#IF((CUST.DENOM.paybackamt == 0) AND (CUST.DENOM.getbackamt == 0))THEN
+	#{
+	MTT.PartTranDetails.RefAmount		= CDOUBLE(CUST.DENOM.exchgamt)
+	MTT.PartTranDetails.Amount		= CDOUBLE(CUST.DENOM.exchgamt)
+	#}
+	#ELSE
+	##{
+	#	IF((CUST.DENOM.paybackamt != 0) AND (CUST.DENOM.getbackamt != 0))THEN
+	#	#{
+	#		CUST.DENOM.exchgamt = CDOUBLE(CUST.DENOM.receivedamt) - CDOUBLE(CUST.DENOM.paybackamt) + CDOUBLE(CUST.DENOM.getbackamt)
+	#		MTT.PartTranDetails.RefAmount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#		MTT.PartTranDetails.Amount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#		PRINT(CUST.DENOM.exchgamt)
+	#	#}
+	#	ENDIF
+	#	IF((CUST.DENOM.paybackamt != 0) AND (CUST.DENOM.getbackamt == 0))THEN
+	#	#{
+	#		CUST.DENOM.exchgamt = CDOUBLE(CUST.DENOM.receivedamt) - CDOUBLE(CUST.DENOM.paybackamt)
+	#		MTT.PartTranDetails.RefAmount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#		MTT.PartTranDetails.Amount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#		PRINT(CUST.DENOM.exchgamt)
+	#	#}
+	#	ELSE
+	#	#{
+	#		IF((CUST.DENOM.paybackamt == 0) AND (CUST.DENOM.getbackamt != 0))THEN
+	#		#{
+	#			CUST.DENOM.exchgamt = CDOUBLE(CUST.DENOM.receivedamt) + CDOUBLE(CUST.DENOM.getbackamt)
+	#			MTT.PartTranDetails.RefAmount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#			MTT.PartTranDetails.Amount	= CDOUBLE(CUST.DENOM.exchgamt)
+	#			PRINT(CUST.DENOM.exchgamt)
+	#		#}
+	#		ENDIF
+	#	#}
+	#	ENDIF
+	##}
+	#ENDIF
+	
+	MTT.PartTranDetails.Account		= CUST.DENOM.ph2
+	MTT.PartTranDetails.RefCurrency		= CUST.DENOM.CrncyCode1
+	MTT.PartTranDetails.TranCurrency	= CUST.DENOM.CrncyCode2
+	
+	IF(CUST.DENOM.CrncyCode1 != CUST.DENOM.CrncyCode2) THEN
+	#{
+		MTT.PartTranDetails.RateCode	= CUST.DENOM.Rate_Code
+		MTT.PartTranDetails.Rate	= CUST.DENOM.rate
+		
+		CUST.DENOM.BODDate1 =  LEFT$(BANCS.STDIN.BODDate,10)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.CrncyCode1 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode1 +"|"+CUST.DENOM.Rate_Code +"|"+ CUST.DENOM.BODDate1
+		PRINT(BANCS.INPARAM.BINDVARS)
+		
+		# Query to fetch max listdate and list num to get the treasury rate
+		sv_q = "mxRtListDate,mxRtListNum|SELECT MAX(rtlist_date),MAX(rtlist_num) "
+		sv_q = sv_q + "FROM rth "
+		sv_q = sv_q + "WHERE ((fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND var_crncy_code = ?SVAR )"
+		sv_q = sv_q + "OR (fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND var_crncy_code = ?SVAR ))"
+		sv_q = sv_q + "AND ratecode = ?SVAR "
+		sv_q = sv_q + "AND rtlist_date <= (TO_DATE(?SVAR,'DD-MM-YYYY')) "
+		sv_q = sv_q + "AND del_flg  != 'Y' "
+		PRINT(sv_q)
+		sv_r = urhk_DBSelectWithBind(sv_q)
+		
+		IF(sv_r != 0) THEN
+		#{
+			GOTO SKIPTREARATE
+		#}
+		ENDIF
+		
+		CUST.DENOM.mxRtListDate = BANCS.OUTPARAM.mxRtListDate
+		CUST.DENOM.mxRtListNum = BANCS.OUTPARAM.mxRtListNum
+		
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.CrncyCode1 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode1 +"|"+CUST.DENOM.Rate_Code +"|"+ CUST.DENOM.CrncyCode1 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode2 +"|"+ CUST.DENOM.CrncyCode1 +"|"+ CUST.DENOM.Rate_Code +"|"+ CUST.DENOM.BODDate1
+		
+		# Query to fetch treasury rate with inputs from prev query
+		sv_q = "treaRate|SELECT cust_var_crncy_units "
+		sv_q = sv_q + "FROM "
+		sv_q = sv_q + "(SELECT cust_var_crncy_units "
+		sv_q = sv_q + "FROM rth "
+		sv_q = sv_q + "WHERE ((fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND var_crncy_code = ?SVAR )"
+		sv_q = sv_q + "OR (fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND var_crncy_code = ?SVAR ))"
+		sv_q = sv_q + "AND del_flg  != 'Y' "
+		sv_q = sv_q + "AND ratecode = ?SVAR "
+		sv_q = sv_q + "AND rtlist_date = ( SELECT MAX(r2.rtlist_date) "
+		sv_q = sv_q + "FROM rth r2 "
+		sv_q = sv_q + "WHERE ((r2.fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND r2.var_crncy_code = ?SVAR )"
+		sv_q = sv_q + "OR (r2.fxd_crncy_code = ?SVAR "
+		sv_q = sv_q + "AND r2.var_crncy_code = ?SVAR ))"
+		sv_q = sv_q + "AND ratecode = ?SVAR "
+		sv_q = sv_q + "AND r2.rtlist_date <= (TO_DATE(?SVAR,'DD-MM-YYYY')) "
+		sv_q = sv_q + "AND r2.del_flg  != 'Y') "
+		sv_q = sv_q + "ORDER BY rtlist_num DESC) "
+		sv_q = sv_q + "WHERE rownum < 2 "
+		PRINT(sv_q)
+		sv_r = urhk_DBSelectWithBind(sv_q)
+		IF(sv_r != 0) THEN
+		#{
+			GOTO SKIPTREARATE
+		#}
+		ENDIF
+		MTT.PartTranDetails.TreaRate	= BANCS.OUTPARAM.treaRate
+		PRINT(MTT.PartTranDetails.TreaRate)
+		SKIPTREARATE:
+		#}
+		ENDIF
+		
+		MTT.PartTranDetails.CarveAmtFlg		= "Y"
+		MTT.PartTranDetails.Refnum		= ""
+		MTT.PartTranDetails.Remarks		= "DX"
+		MTT.PartTranDetails.Particulars		= "Cr/Dr"
+		MTT.PartTranDetails.ParticularsCode	= "CASHX"
+		MTT.PartTranDetails.TranIdentifier	= CUST.DENOM.tran_identifier
+		print(MTT.PartTranDetails.TranIdentifier)
+		#MTT.PartTranDetails.Consolidate	= "Y"
+		MTT.PartTranDetails.TODRefType		= "IC"
+		MTT.PartTranDetails.ValueDateDiff	= "0"
+		MTT.PartTranDetails.ValueDate		= "0"
+		MTT.PartTranDetails.PTranBusinessType	= "DEBIT"
+		MTT.PartTranDetails.Consolidate = "N"
+		
+		sv_y = "C-CP"
+		sv_r = urhk_MTTS_DefinePartTran(sv_y)
+		print(sv_r)
+		
+		print(MTT.PartTranDetails.Amount)
+		
+		IF(sv_r != 0) THEN
+		#{
+			# changed by karthik for NAJAH00007489 #
+			IF (FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.DENOM.MTTErrMsg= MTT.Error.Description
+				#}
+			ELSE
+				#{
+				CUST.DENOM.MTTErrMsg= "Could not define part Transaction"
+				MTT.Error.Description = CUST.DENOM.MTTErrMsg
+			#}
+			ENDIF
+			#IF(CUST.DENOM.MTTErrMsg == "") THEN
+			#	MTT.Error.Description = "Could not define part Transaction"
+			#	CUST.DENOM.MTTErrMsg = MTT.Error.Description
+			#ELSE
+			#	MTT.Error.Description =  CUST.DENOM.MTTErrMsg
+			#ENDIF
+			#print(MTT.Error.Description)
+		#}
+		ENDIF
+		
+		#-------------------------------------------------------------------------------------
+		# CLOSE THE TRANSACTION
+		#-------------------------------------------------------------------------------------
+		sv_r = urhk_MTTS_EndDefinition("")
+		print(sv_r)
+		
+		#print(sv_b)
+		sv_b = urhk_B2k_PrintRepos("MTT")
+		print(sv_b)
+		sv_b = urhk_B2k_PrintRepos("BANCS")
+		print(sv_b)
+		
+		IF(sv_r == 1) THEN
+		#{
+			IF (FIELDEXISTS(MTT.Error.Description)) THEN
+			#{
+				print(MTT.Error.Description)
+				CUST.DENOM.MTTErrMsg= MTT.Error.Description
+				#}
+			ELSE
+				#{
+				CUST.DENOM.MTTErrMsg="Could not create end definition"
+				MTT.Error.Description = CUST.DENOM.MTTErrMsg
+			#}
+			ENDIF
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			print(sv_r)
+			#CUST.DENOM.MTTErrMsg = MTT.Error.Description
+			CUST.DENOM.SuccessOrFailure = "Failure"
+			CUST.DENOM.Details = "Transaction generation failed"
+			CUST.DENOM.tranId = ""
+			#}
+		ELSE
+			#{
+			PRINT(MTT.XCPN.NumExceptions)
+			CUST.DENOM.NumExceptions = MTT.XCPN.NumExceptions
+			IF(CUST.DENOM.NumExceptions == "0") THEN
+			#{
+				sv_b = urhk_MTTS_HandleExceptions("POST")
+				CUST.DENOM.EVENT = "DX"
+				#}
+			ELSE
+				#{
+				sv_b = urhk_MTTS_HandleExceptions("ENTRY")
+				CUST.DENOM.EVENT = "E"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		sv_r = urhk_B2k_PrintRepos("MTT")
+		print(sv_r)
+		sv_u = urhk_MTTS_Close("")
+		print(sv_u)
+		IF (BANCS.OUTPARAM.MTTPostingStatus == "S") THEN
+		#{
+			PRINT(BANCS.OUTPARAM.MTTTranId)
+			CUST.DENOM.tranId = BANCS.OUTPARAM.MTTTranId
+			IF(CUST.DENOM.NumExceptions == "0") THEN
+			#{
+				CUST.DENOM.SuccessOrFailure = "Success"
+				CUST.DENOM.Details = "&nbsp;<B><font color=red>Transaction Posted:" + BANCS.OUTPARAM.MTTTranId + "<BR>&nbsp;" + BANCS.OUTPARAM.MTTPostingError + "</font></B><BR>"
+				#}
+			ELSE
+				#{
+				CUST.DENOM.SuccessOrFailure = "Failure"
+				CUST.DENOM.Details = "&nbsp;<B><font color=red>Exceptions encountered.<BR>&nbsp;Transaction in entered status:" + BANCS.OUTPARAM.MTTTranId + "<BR>&nbsp;" + BANCS.OUTPARAM.MTTPostingError + "</font></B><BR>"
+			#}
+			ENDIF
+			PRINT(CUST.DENOM.Details)
+			#}
+		ELSE
+			#{
+			CUST.DENOM.tranId = ""
+			CUST.DENOM.SuccessOrFailure = "Failure"
+			CUST.DENOM.Details = "Transaction Failed"
+		#}
+		ENDIF
+		
+		sv_r = urhk_B2k_PrintRepos("BANCS")
+		print(sv_r)
+		
+		#--------------------------------------------------------------------------------------
+		# SEND MESSAGE TO JSP
+		#--------------------------------------------------------------------------------------
+		
+		sv_u = urhk_setOrbOut("Message|"+ CUST.DENOM.SuccessOrFailure)
+		print(sv_u)
+		sv_u = urhk_setOrbOut("Details|"+ CUST.DENOM.Details)
+		print(sv_u)
+		
+	FINISH:
+		#trace off
+		exitscript
+END-->

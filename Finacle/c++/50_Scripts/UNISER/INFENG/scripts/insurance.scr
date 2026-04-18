@@ -1,0 +1,276 @@
+######################################################################################################################
+# Source Name				: insurance.scr
+# Menu						: HLADISB
+# Date						: 09-05-2013
+# Description				: This script is for slabwise insuarance fee amount calculation
+# Input Values				: None
+# Output Values				:
+# Called Scripts			:
+# Calling Script			:
+# Author     				: Shishira
+# Bank						: Equity Bank
+# Modification History		:
+#	< Version No.> 		<Date>		<Author Name> 		<Description>
+#	 0.1			09-05-2013 		Shishira			Original Version
+#	 0.2			06-08-2013 		Bharath				Modified for TOL 365825
+#	 0.3			20-12-2013		Sruthi				Modified for TOL 358704
+########################################################################################################################
+<--START
+CHECKSUM="8a3634a6e83a9baca32c34f987c1b6144d10e7fa956bf8773f0866fe6f7388ad"
+	TRACE ON
+	
+	#sv_r=urhk_B2k_PrintRepos("BANCS")
+	#print (sv_r)
+	
+	#--------------------------------------------------------------------------
+	#  Creation of CUST repository and INSU class
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("INSU")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("INSU")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("INSU", "LOAN")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("INSU", "LOAN", 5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------
+	#-Initializing required variables
+	#------------------------------------------------
+	INSU.LOAN.freeText1					= ""
+	INSU.LOAN.freeText2					= ""
+	INSU.LOAN.company					= ""
+	INSU.LOAN.Pattrns					= ""
+	INSU.LOAN.TTLFEE					= ""
+	INSU.LOAN.errMsg					= ""
+	BANCS.OUTPUT.collAmount 			= 0
+	BANCS.OUTPUT.AmountWithNoDiscount	= 0
+	BANCS.OUTPUT.collCrncy 				= BANCS.INPUT.inputCrncy
+	INSU.LOAN.Foracid					= BANCS.INPUT.Foracid
+	
+	#------------------------------------------------
+	#-Getting values from cparam setup
+	#------------------------------------------------
+	BANCS.INPUT.moduleName = "CHARGES"
+	BANCS.INPUT.parameterId = "AST164_INSPCNT1"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		INSU.LOAN.pINSpcnt1=BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		INSU.LOAN.errMsg = "Custom Parameter setup was not done for "+BANCS.INPUT.parameterId
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Selecting the Free TEXT 1  in table GAC
+	#--------------------------------------------------------------------------
+	sv_s = "Freetext1,Freetext2|"
+	sv_s = sv_s + " SELECT free_text_1,free_text_2"
+	sv_s = sv_s + " FROM TBAADM.GAC "
+	sv_s = sv_s + " WHERE acid = ("
+	sv_s = sv_s + "          SELECT acid "
+	sv_s = sv_s + "          FROM TBAADM.GAM "
+	sv_s = sv_s + "          WHERE foracid = ?SVAR "
+	sv_s = sv_s + "          AND del_flg = 'N' "
+	sv_s = sv_s + "          AND entity_cre_flg = 'Y' "
+	sv_s = sv_s + "          AND bank_id = ?SVAR )"
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = INSU.LOAN.Foracid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d =urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		INSU.LOAN.freeText1 = BANCS.OUTPARAM.Freetext1
+		print(INSU.LOAN.freeText1)
+		
+		INSU.LOAN.freeText2 = BANCS.OUTPARAM.Freetext2
+		print(INSU.LOAN.freeText2)
+		
+		IF (CINT(INSU.LOAN.freeText1) > 0 ) THEN
+		#{
+			INSU.LOAN.Pattrns = INSU.LOAN.freeText1
+			print(INSU.LOAN.Pattrns)
+			#}
+		ELSE
+			#{
+			INSU.LOAN.Pattrns = "0"
+			print(INSU.LOAN.Pattrns)
+		#}
+		ENDIF
+		
+		IF (INSU.LOAN.freeText2 !="" ) THEN
+		#{
+			INSU.LOAN.company = INSU.LOAN.freeText2
+			print(INSU.LOAN.company)
+			#}
+		ELSE
+			#{
+			INSU.LOAN.company = "N"
+			print(INSU.LOAN.company)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		INSU.LOAN.errMsg = "Error in finding freetext values from GAC table"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------
+	# Selecting the period in table lam
+	# if the period is 0 then exiting
+	#--------------------------------------------------------------------------
+	sv_s = "period,SchmCode,sanctLim|"
+	sv_s = sv_s + " SELECT rep_perd_mths,schm_code,GAM.sanct_lim"
+	sv_s = sv_s + " FROM TBAADM.LAM, TBAADM.GAM "
+	sv_s = sv_s + " WHERE LAM.acid = GAM.acid "
+	sv_s = sv_s + " AND LAM.bank_id = GAM.bank_id "
+	sv_s = sv_s + " AND GAM.foracid = ?SVAR "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + " AND LAM.del_flg = 'N' "
+	sv_s = sv_s + " AND LAM.entity_cre_flg = 'Y' "
+	sv_s = sv_s + " AND GAM.del_flg = 'N' "
+	sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = INSU.LOAN.Foracid + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	
+	IF (sv_d == 0) THEN
+	#{
+		INSU.LOAN.period = BANCS.OUTPARAM.period
+		print(INSU.LOAN.period)
+		INSU.LOAN.schmcode = BANCS.OUTPARAM.SchmCode
+		print(INSU.LOAN.schmcode)
+		#INSU.LOAN.amnt = BANCS.OUTPARAM.sanclimit
+		#Modified by Sruthi for TOL 358704 to consider topup amount as well while disbursing.
+		INSU.LOAN.amnt=BANCS.INPUT.eventAmt
+		print(INSU.LOAN.amnt)
+		#}
+	ELSE
+		#{
+		INSU.LOAN.errMsg = "Error in finding repayment period AND scheme code from from LAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	INSU.LOAN.INSpcnt=INSU.LOAN.pINSpcnt1
+	print(INSU.LOAN.INSpcnt)
+	INSU.LOAN.amnt=BANCS.INPUT.eventAmt
+	print(INSU.LOAN.amnt)
+	
+	IF (BANCS.INPUT.inputCrncy != BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		BANCS.INPARAM.InputAmount = INSU.LOAN.amnt
+		BANCS.INPARAM.FromCurrency =BANCS.INPUT.inputCrncy
+		BANCS.INPARAM.ToCurrency = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.RateCode = BANCS.INPUT.rateCode
+		BANCS.INPARAM.Rate = 0.00
+		BANCS.INPARAM.CustId = ""
+		
+		sv_u = urhk_B2k_ConvertAmount("")
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			INSU.LOAN.amnt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+			PRINT(INSU.LOAN.amnt)
+			#}
+		ELSE
+			#{
+			
+			print("Unable to derive charge amount in Ref Ccy;")
+			INSU.LOAN.TTLFEE=0
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF ((CINT(INSU.LOAN.amnt) >= 1) AND (CINT(INSU.LOAN.amnt) <= 69000000)) THEN
+	#{
+		IF (CINT(INSU.LOAN.period) <= 60) THEN
+		#{
+			INSU.LOAN.INSpcnt ="0.007"
+			print(INSU.LOAN.INSpcnt)
+			IF (CINT(INSU.LOAN.Pattrns) > 1 ) THEN
+			#{
+				INSU.LOAN.INSpcnt ="0.012"
+				print(INSU.LOAN.INSpcnt)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF ((CINT(INSU.LOAN.period) > 60) AND (CINT(INSU.LOAN.period) <= 120)) THEN
+		#{
+			INSU.LOAN.INSpcnt ="0.01"
+			print(INSU.LOAN.INSpcnt)
+			IF (CINT(INSU.LOAN.Pattrns) > 1 ) THEN
+			#{
+				INSU.LOAN.INSpcnt ="0.019"
+				print(INSU.LOAN.INSpcnt)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF ((CINT(INSU.LOAN.period) > 120) AND (CINT(INSU.LOAN.period) <= 240)) THEN
+		#{
+			INSU.LOAN.INSpcnt ="0.054"
+			print(INSU.LOAN.INSpcnt)
+			IF (CINT(INSU.LOAN.Pattrns) > 1 ) THEN
+			#{
+				INSU.LOAN.INSpcnt ="0.066"
+				print(INSU.LOAN.INSpcnt)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	print(INSU.LOAN.amnt)
+	print(INSU.LOAN.INSpcnt)
+	INSU.LOAN.GLFEE1=CDOUBLE(INSU.LOAN.amnt) *CDOUBLE(INSU.LOAN.INSpcnt)
+	print(INSU.LOAN.GLFEE1)
+	INSU.LOAN.GLFEE2=CDOUBLE(INSU.LOAN.GLFEE1)
+	print(INSU.LOAN.GLFEE2)
+	
+	
+	IF (INSU.LOAN.company=="Y") THEN
+	#{
+		INSU.LOAN.TTLFEE ="0"
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.collAmount = CDOUBLE(INSU.LOAN.GLFEE2)
+	print(BANCS.OUTPUT.collAmount)
+	BANCS.OUTPUT.AmountWithNoDiscount= CDOUBLE(INSU.LOAN.GLFEE2)
+	print(BANCS.OUTPUT.AmountWithNoDiscount)
+	BANCS.OUTPUT.collCrncy = BANCS.STDIN.homeCrncyCode
+	print(BANCS.OUTPUT.collCrncy)
+	
+	ENDOFSCRIPT:
+		IF ( INSU.LOAN.errMsg != "" ) THEN
+		#{
+			sv_u = system("echo '"+INSU.LOAN.errMsg+"' >insurance.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

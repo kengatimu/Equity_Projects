@@ -1,0 +1,81 @@
+--====================================================================================================
+-- Table Name                   : CUST_INT_TABLE_BACKUP
+-- Synonym Name                 : C_INT_BACKUP
+-- Index Name                   :
+-- Unique Index On              :
+-- Date                         :
+-- Description                  : This sql script is used to create a customized CUST_INT_TABLE_BACKUP table
+-- Author                       :
+-- Bank                         : EQUITY BANK
+-- Modification History :
+-- <Version No.>    <Date>        <Author Name>         <Description>
+--    0.1      21-10-2012       Maniraj Avayaraj
+--====================================================================================================
+
+Rem TABLE NAME: CUST_INT_TABLE_BACKUP
+
+DROP TABLE custom.CUST_INT_TABLE_BACKUP
+/
+
+CREATE TABLE custom.CUST_INT_TABLE_BACKUP
+(
+  TRAN_DATE             DATE,  
+  GL_ACCT_NO            VARCHAR2(16 CHAR),
+  TRAN_ID               VARCHAR2(9 CHAR),
+  TRAN_AMT              NUMBER(20,4),
+  TRAN_CRNCY            VARCHAR2(3 CHAR),
+  PART_TRAN_TYPE        CHAR(1 CHAR),  
+  CUSTOMER_ACCOUNT_NO   VARCHAR2(16 CHAR),  
+  BANK_ID               VARCHAR2(2 CHAR),
+  INT_BOOK_APP_FLG    CHAR(1 CHAR)
+)
+TABLESPACE CUSTOM_TBLS
+/
+
+DROP INDEX CUSTOM.IDX_CUST_INT_1
+/
+CREATE INDEX CUSTOM.IDX_CUST_INT_1 ON CUSTOM.CUST_INT_TABLE_BACKUP
+(TRAN_DATE)
+/
+
+DROP INDEX CUSTOM.IDX_CUST_INT_2
+/
+CREATE INDEX CUSTOM.IDX_CUST_INT_2 ON CUSTOM.CUST_INT_TABLE_BACKUP
+(CUSTOMER_ACCOUNT_NO)
+/
+
+DROP INDEX CUSTOM.IDX_CUST_INT_3
+/
+CREATE INDEX CUSTOM.IDX_CUST_INT_3 ON CUSTOM.CUST_INT_TABLE_BACKUP
+(GL_ACCT_NO)
+/
+
+
+DROP SYNONYM CUSTOM.C_INT_BACKUP
+/
+CREATE SYNONYM CUSTOM.C_INT_BACKUP FOR CUSTOM.CUST_INT_TABLE_BACKUP
+/
+
+DROP SYNONYM TBAADM.C_INT_BACKUP
+/
+CREATE SYNONYM TBAADM.C_INT_BACKUP FOR CUSTOM.CUST_INT_TABLE_BACKUP
+/
+
+DROP SYNONYM TBAGEN.C_INT_BACKUP
+/
+CREATE SYNONYM TBAGEN.C_INT_BACKUP FOR CUSTOM.CUST_INT_TABLE_BACKUP
+/
+
+DROP SYNONYM TBAUTIL.C_INT_BACKUP
+/
+CREATE SYNONYM TBAUTIL.C_INT_BACKUP FOR CUSTOM.CUST_INT_TABLE_BACKUP
+/
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.CUST_INT_TABLE_BACKUP TO TBAADM
+/
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.CUST_INT_TABLE_BACKUP TO TBAGEN
+/
+
+GRANT SELECT ON CUSTOM.CUST_INT_TABLE_BACKUP TO TBAUTIL
+/

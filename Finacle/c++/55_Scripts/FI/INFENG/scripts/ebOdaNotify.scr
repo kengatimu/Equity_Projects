@@ -1,0 +1,170 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebOdaNotify.scr 
+#  Description     :
+#  Date            : 27-07-2020
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             22-07-2020      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+#Rep/Class
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(classexists("CUST","ALERTS")==0)then
+                createclass("CUST","ALERTS",5)
+        endif
+        sv_p = urhk_B2k_PrintRepos("BANCS")
+        print(sv_p)
+#Sms
+	sv_d = "agntAcct,agntCif | select foracid,cif_id from tbaadm.gam "
+	sv_d = sv_d + " where bank_id=?SVAR and schm_code in ('SB126','CA207') "
+	sv_d = sv_d + " and entity_cre_flg='Y' and del_flg='N' "
+	sv_d = sv_d + " and allow_sweeps='Y' "
+	sv_d = sv_d + " and pool_id is not null "
+	sv_d = sv_d + " and exists ( select 1 from custom.agddt where bank_id=?SVAR and del_flg='N' and entity_cre_flg='Y' "
+	sv_d = sv_d + " and foracid=gam.foracid and sol_id=gam.sol_id) "
+	###sv_d = sv_d + " and sol_id = '002' " 
+	print(sv_d)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+        sv_c = urhk_dbCursorOpenWithBind(sv_d)
+        if(sv_c != 0)then
+                print("fetching failed")
+                goto VAYU
+        endif
+        EBSRV.GLBDATA.AgntCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        sv_r = urhk_dbCursorFetch(EBSRV.GLBDATA.AgntCurNum)
+        if(sv_r != 0)then
+            goto VAYU
+        endif
+        EBSRV.GLBDATA.record_count = 0
+        while(sv_r == 0)
+		EBSRV.GLBDATA.agntAcct = BANCS.OUTPARAM.agntAcct
+		EBSRV.GLBDATA.agntCif = BANCS.OUTPARAM.agntCif
+		if(EBSRV.GLBDATA.agntAcct!="")then
+		#{
+			####select custom.FN_OD541_SUM('54','0600295827551','11-may-2020')from dual;
+			sv_d = "summy | select custom.fn_od541_sum(?SVAR,?SVAR,to_char(to_date(?SVAR,'DD-MM-RR'),'dd-mon-yyyy'))from dual "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.agntAcct + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+			print(sv_d)
+			print(BANCS.INPARAM.BINDVARS)
+			sv_u = urhk_dbSelectWithBind(sv_d)
+			if(sv_u==0)then
+				##agentAccount,total Debit Amount(Sb126/ca207),total Credit Amount(Sb126/ca207),total commision amount,total overdraw Debit (Od541) ,total overdraw Credit (Od541) , demand amount , recovered amount ,outstanding amount , overduedate 
+				##TransactionCount , overdraw value,commision amount,due date
+				EBSRV.GLBDATA.summy = BANCS.OUTPARAM.summy
+			else
+				EBSRV.GLBDATA.summy = ""
+				goto NXTL
+			endif
+			print(EBSRV.GLBDATA.summy)
+			if(EBSRV.GLBDATA.summy!="")then
+			#{
+				sv_l = strlen(EBSRV.GLBDATA.summy)
+				sv_f = mid$(EBSRV.GLBDATA.summy,0,sv_l)
+				sv_p = getposition(sv_f,"|")
+				EBSRV.GLBDATA.TranTotCnt  = mid$(sv_f,0,(sv_p-1))
+				print(EBSRV.GLBDATA.TranTotCnt)
+				#
+				EBSRV.GLBDATA.summy = mid$(sv_f,sv_p,sv_l)
+				print(EBSRV.GLBDATA.summy)
+				sv_l = strlen(EBSRV.GLBDATA.summy)
+				sv_f = mid$(EBSRV.GLBDATA.summy,0,sv_l)
+				sv_p = getposition(sv_f,"|")
+				EBSRV.GLBDATA.totOverDrawValue  = mid$(sv_f,0,(sv_p-1))
+				print(EBSRV.GLBDATA.totOverDrawValue)
+				#
+				EBSRV.GLBDATA.summy = mid$(sv_f,sv_p,sv_l)
+				print(EBSRV.GLBDATA.summy)
+				sv_l = strlen(EBSRV.GLBDATA.summy)
+				sv_f = mid$(EBSRV.GLBDATA.summy,0,sv_l)
+				sv_p = getposition(sv_f,"|")
+				EBSRV.GLBDATA.totCommAmt  = mid$(sv_f,0,(sv_p-1))
+				print(EBSRV.GLBDATA.totCommAmt)
+				#
+				EBSRV.GLBDATA.dueDate = mid$(sv_f,sv_p,sv_l)
+				print(EBSRV.GLBDATA.dueDate)
+				###EBSRV.GLBDATA.TranTotCnt = "10"
+				###EBSRV.GLBDATA.totOverDrawValue ="176456.876"
+				###EBSRV.GLBDATA.totCommAmt="3453.45"
+				###EBSRV.GLBDATA.dueDate="22-07-2020"
+				if((cdouble(EBSRV.GLBDATA.TranTotCnt)>0) and (cdouble(EBSRV.GLBDATA.totOverDrawValue)>0) and (cdouble(EBSRV.GLBDATA.totCommAmt)>0) and (EBSRV.GLBDATA.dueDate!=""))then
+			#	if((cdouble(EBSRV.GLBDATA.TranTotCnt)>0) and (cdouble(EBSRV.GLBDATA.totOverDrawValue)>0) and (EBSRV.GLBDATA.dueDate!=""))then
+				#{
+				if(EBSRV.GLBDATA.agntCif!="")then
+				#{
+					sv_m = "smsNum,cntryCode,cityCode,localCode|"
+					sv_m = sv_m + " select phoneno,phonenocountrycode,phonenocitycode,phonenolocalcode"
+ 					sv_m = sv_m + " from crmuser.cphone "
+					sv_m = sv_m + " where bank_id=?SVAR "
+					sv_m = sv_m + " and phone_b2kid=?SVAR "
+					sv_m = sv_m + " and preferredflag='Y' "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.agntCif
+					print(sv_m)
+					print(BANCS.INPARAM.BINDVARS)
+					sv_u = urhk_dbSelectWithBind(sv_m)
+					if(sv_u==0)then
+						EBSRV.GLBDATA.smsNum = BANCS.OUTPARAM.smsNum	
+						EBSRV.GLBDATA.cntryCode = BANCS.OUTPARAM.cntryCode	
+						EBSRV.GLBDATA.cityCode = BANCS.OUTPARAM.cityCode	
+						EBSRV.GLBDATA.localCode = BANCS.OUTPARAM.localCode	
+					else
+						EBSRV.GLBDATA.smsNum = "" 
+						EBSRV.GLBDATA.cntryCode = "" 
+						EBSRV.GLBDATA.cityCode = "" 
+						EBSRV.GLBDATA.localCode = "" 
+						goto NXTL
+					endif
+				else
+					goto NXTL	
+				#}
+				endif
+				if(EBSRV.GLBDATA.smsNum!="")then
+				#{
+				print(strlen(EBSRV.GLBDATA.smsNum))
+				###Confirmed. Tran <Count> worth Kshs.<Value> were utilized from your Overdraft Account. <Comm.Charge>, was charged. Interest of 13%p.a. will apply (Charged Daily). Amt Date on <Due Date>.
+				EBSRV.GLBDATA.SmsVal = "Confirmed. Tran " +EBSRV.GLBDATA.TranTotCnt+ " worth Kshs. " +EBSRV.GLBDATA.totOverDrawValue+ " were utilized from your Overdraft Account. " + EBSRV.GLBDATA.totCommAmt + ",was charged. Interest of 13%p.a. will apply (Charged Daily). Amt Due on " + EBSRV.GLBDATA.dueDate + "."
+				print(EBSRV.GLBDATA.SmsVal)
+				CUST.ALERTS.massage = EBSRV.GLBDATA.SmsVal
+				CUST.ALERTS.phoneno = EBSRV.GLBDATA.smsNum
+				CUST.ALERTS.trandate = mid$(BANCS.STDIN.BODDate,0,10)
+				callscriptifexist("smspushothers.scr")
+				goto NXTL
+				else
+					goto NXTL
+				#}
+				endif
+				else
+					goto NXTL
+				#}
+				endif
+			else
+				goto NXTL
+			#}
+			endif
+		else
+			goto NXTL
+		#}
+		endif
+        NXTL:
+        sv_r = urhk_dbCursorFetch(EBSRV.GLBDATA.AgntCurNum)
+        if(sv_r!=0)then
+                print("fetch failed")
+                sv_u = urhk_dbCursorClose(EBSRV.GLBDATA.AgntCurNum)
+                print(sv_u)
+                goto VAYURUN
+        endif
+        do
+        sv_r = urhk_dbCursorClose(EBSRV.GLBDATA.AgntCurNum)
+
+trace off
+end-->

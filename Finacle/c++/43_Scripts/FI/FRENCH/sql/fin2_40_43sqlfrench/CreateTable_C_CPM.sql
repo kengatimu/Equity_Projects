@@ -1,0 +1,41 @@
+--====================================================================================================
+-- Table Name: CUST_COMMISSION_PAYMENT
+-- Synonym Name : C_CPM
+-- Date: 31-May-2018
+-- Description: This table is used for Maintaining Commissions 
+-- Author: Anshul_Singh04
+-- Modification History :
+--<Version No.> <Date> <Author Name> <Description>
+--====================================================================================================
+
+DROP TABLE CUSTOM.CUST_COMMISSION_PAYMENT CASCADE CONSTRAINTS;
+
+CREATE TABLE CUSTOM.CUST_COMMISSION_PAYMENT
+(
+  COMM_CODE          VARCHAR2(15 CHAR),
+  COMM_DESC   	 	 VARCHAR2(100 CHAR),
+  CRNCY_CODE     	 VARCHAR2(3 CHAR),
+  VAT_RATE			 NUMBER(20,4),
+  COMM_AMT			 NUMBER(20,4),
+  BACID		         VARCHAR2(16 CHAR),
+  DEL_FLG			 CHAR (1),
+  RCRE_USER_ID       VARCHAR2(15 CHAR),
+  RCRE_TIME          DATE,
+  LCHG_USER_ID       VARCHAR2(15 CHAR),
+  LCHG_TIME          DATE,
+  BANK_ID            VARCHAR2(8 CHAR)
+);
+
+CREATE UNIQUE INDEX CUSTOM.IDX_COMMISSION_CODE ON CUSTOM.CUST_COMMISSION_PAYMENT
+(COMM_CODE,BANK_ID);
+
+DROP SYNONYM CUSTOM.C_CPM;
+
+CREATE SYNONYM CUSTOM.C_CPM FOR CUSTOM.CUST_COMMISSION_PAYMENT;
+
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.CUST_COMMISSION_PAYMENT TO TBAADM;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.CUST_COMMISSION_PAYMENT TO TBAGEN;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.CUST_COMMISSION_PAYMENT TO TBAUTIL;

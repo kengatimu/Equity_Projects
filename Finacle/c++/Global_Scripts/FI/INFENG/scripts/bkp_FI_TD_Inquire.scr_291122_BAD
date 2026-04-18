@@ -1,0 +1,273 @@
+#########SCRIPT TO FETCH DETAILS OF TD ACCOUNT############
+#
+#
+#Date 10.4.2022
+# By Vincent 
+# Modified by: James
+# Modification desc: include bank id in select queries
+#Modified on: 28/11/2022
+#############################################################
+<--START
+TRACE ON 
+
+#CREATE REPOSITORY 
+ IF(REPEXISTS("CUST")==0) THEN
+ #{
+ CREATEREP("CUST")
+ #}
+ ENDIF
+ 
+ #CREATE CLASS
+ 
+ IF(CLASSEXISTS("CUST","TD")==0) THEN
+ #{
+ CREATECLASS("CUST","TD", 5)
+ #}
+ ENDIF
+  
+ #VALIDATE FIELDS  INPUT
+ 
+ IF(FIELDEXISTS(("BANCS").("INPUT").("ACCOUNT"))==0) THEN
+ #{
+  CUST.TD.errMsg="Please Enter account number to check details "
+  sv_t="executeFinacleScript_CustomData.ERROR |"+CUST.TD.errMsg
+  sv_u=urhk_SetOrbOut(sv_t)
+  GOTO ENDSCRIPT
+ #}
+ ENDIF
+ 
+ IF(FIELDEXISTS(("BANCS").("INPUT").("BANKID"))==0) THEN
+ #{
+   CUST.TD.errMsg="Enter BankID "
+  sv_t="executeFinacleScript_CustomData.ERROR |"+CUST.TD.errMsg
+  sv_u=urhk_SetOrbOut(sv_t)
+  GOTO ENDSCRIPT
+ #}
+ ENDIF
+ 
+ #ASSIGNING VARIABLES 
+
+CUST.TD.ACCOUNT=BANCS.INPUT.ACCOUNT
+print(CUST.TD.ACCOUNT)
+
+CUST.TD.renOption = ""
+
+#GET DETAILS FOR THE ACCOUNT
+sv_a= urhk_getAcctDetailsInRepository(CUST.TD.ACCOUNT)
+print(sv_a)
+IF(sv_a == 0) THEN
+#{
+CUST.TD.Accname=BANCS.OUTPARAM.acctName
+print(CUST.TD.Accname)
+CUST.TD.schmtype=BANCS.OUTPARAM.schmType
+print(CUST.TD.schmtype)
+CUST.TD.Solid=BANCS.OUTPARAM.acctSolId
+print(CUST.TD.Solid)
+CUST.TD.acctCrncycode=BANCS.OUTPARAM.acctCrncyCode
+print(CUST.TD.acctCrncycode)
+CUST.TD.schmCode=BANCS.OUTPARAM.schmCode
+print(CUST.TD.schmCode)
+CUST.TD.clrbal=BANCS.OUTPARAM.clearBalance
+print(CUST.TD.clrbal)
+CUST.TD.custId=BANCS.OUTPARAM.custId
+print(CUST.TD.custId)
+print("getting details from user_hook")
+sv_b = urhk_B2k_CustIdToCifId(CUST.TD.custId)
+IF(sv_b == 0) THEN 
+#{
+CUST.TD.CifId = BANCS.OUTPARAM.CifId
+print(CUST.TD.CifId)
+#}
+ENDIF
+
+sv_c = urhk_B2k_ForacidToAcid(CUST.TD.ACCOUNT)
+IF(sv_c == 0) THEN 
+#{
+CUST.TD.Acid = BANCS.OUTPARAM.Acid
+print(CUST.TD.Acid)
+#}
+ENDIF
+sv_k= "effective_opn_date, initdeposit , cumdep, matudate, depositperiod , renflg|SELECT"
+sv_k=sv_k+ " open_effective_date,original_deposit_amount,cumulative_principal, "
+sv_k=sv_k+ " maturity_date, deposit_period_mths, AUTO_RENEWAL_FLG "
+sv_k=sv_k+" from tbaadm.tam  WHERE acid=?SVAR and bank_id=?SVAR  "
+
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid  + "|"+BANCS.STDIN.contextBankId 
+print(BANCS.INPARAM.BINDVARS)
+
+sv_s= urhk_dbSelectWithBind(sv_k)
+print(sv_s)
+
+IF(sv_s == 0) THEN
+#{
+CUST.TD.opendate=BANCS.OUTPARAM.effective_opn_date
+CUST.TD.maturitydate=BANCS.OUTPARAM.matudate
+CUST.TD.initdp=BANCS.OUTPARAM.initdeposit
+CUST.TD.depositperiodmths=BANCS.OUTPARAM.depositperiod
+CUST.TD.renflg=BANCS.OUTPARAM.renflg
+CUST.TD.cumdep=BANCS.OUTPARAM.cumdep
+print(CUST.TD.cumdep)
+#}
+ENDIF
+
+#data from related tables
+sv_t="no_of_inst|select count(tsd_srl_num)no_of_inst from tbaadm.tdt where  flow_code='NI' and acid=?SVAR AND BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_t)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.nofdeps=BANCS.OUTPARAM.no_of_inst
+#}
+ENDIF
+
+sv_g="tot_cumulative_int|select  sum(flow_amt)tot_cumulative_int from tbaadm.tdt where  flow_code='NI'and  acid=?SVAR and BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_g)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.totdepost=BANCS.OUTPARAM.tot_cumulative_int
+#}
+ENDIF
+
+sv_i="monthlyinst|select  flow_amt  from tbaadm.tdt where  flow_code='NI'and  acid=?SVAR and rownum<2 AND BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_i)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.monthlyinst=BANCS.OUTPARAM.monthlyinst
+#}
+ELSE
+#{
+	CUST.TD.monthlyinst = ""
+#}
+ENDIF
+
+sv_l="rate|select INT_PCNT  from tbaadm.tdt where  flow_code='II' and acid=?SVAR AND BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_l)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.rate=BANCS.OUTPARAM.rate
+#}
+ENDIF
+
+BANCS.INPARAM.BINDVARS = CUST.TD.ACCOUNT + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_l="startDate,endDate,fixedAmt|select to_char(sih.si_start_date,'DD-MM-YYYY'),to_char(sih.si_end_date,'DD-MM-YYYY'),adm.fixed_amt "
+sv_l= sv_l + "FROM TBAADM.PYRH,TBAADM.PYRD,TBAADM.SIH,TBAADM.GAM,TBAADM.ADM "
+sv_l= sv_l + " WHERE PR_B2K_TYPE = 'SI' AND PR_B2K_ID = si_srl_num "
+sv_l= sv_l + " AND PART_TRAN_TYPE = 'C' AND GAM.ACID = PYRD.ACID AND PYRH.PR_SRL_NUM = PYRD.PR_SRL_NUM and PYRH.AMT_DRV_SRL_NUM = ADM.AMT_DRV_SRL_NUM"
+sv_l= sv_l + " and foracid = ?SVAR AND GAM.BANK_ID=?SVAR"
+print(sv_l)
+
+sv_d=urhk_dbSelectWithBind(sv_l)
+print(sv_d)
+
+IF(sv_d ==0 ) THEN
+#{
+	CUST.TD.startDate=BANCS.OUTPARAM.startDate
+	print(CUST.TD.startDate)
+
+	CUST.TD.endDate = BANCS.OUTPARAM.endDate
+	print(CUST.TD.endDate)
+
+	CUST.TD.fixedAmt = BANCS.OUTPARAM.fixedAmt
+	print(CUST.TD.fixedAmt)
+#}
+ELSE
+#{
+	CUST.TD.startDate = ""
+	CUST.TD.endDate = ""
+	CUST.TD.fixedAmt = ""
+#}
+ENDIF 
+
+IF((CUST.TD.startDate != "") and (CUST.TD.endDate != ""))THEN
+#{
+	BANCS.INPARAM.date1 = CUST.TD.endDate 
+	BANCS.INPARAM.date2 = CUST.TD.startDate 
+
+	sv_u = urhk_B2K_dateDiff("")
+	print(sv_u)
+
+	IF(sv_u == 0 ) THEN
+	#{
+		BANCS.INPUT.migdatediff = BANCS.OUTPARAM.dateDiff
+		print(BANCS.INPUT.migdatediff)
+	#}
+	ELSE
+	#{
+		BANCS.INPUT.migdatediff = 365
+	#}
+	ENDIF
+	print(BANCS.INPUT.migdatediff)
+
+	CUST.TD.numofMnths = cdouble(BANCS.INPUT.migdatediff) /30
+	print(CUST.TD.numofMnths)
+
+	CUST.TD.numofMnths = CINT(CUST.TD.numofMnths)
+	print(CUST.TD.numofMnths)
+
+	CUST.TD.totdepost = cdouble(CUST.TD.fixedAmt) * cdouble(CUST.TD.numofMnths)
+	print(CUST.TD.totdepost)
+
+	CUST.TD.totdepost = CDOUBLE(CUST.TD.totdepost) + CDOUBLE(CUST.TD.initdp)
+	print(CUST.TD.totdepost)
+	
+	CUST.TD.monthlyinst = CUST.TD.fixedAmt 
+	print(CUST.TD.monthlyinst)
+#}
+ENDIF
+
+#Added Renewal Option
+
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid  + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_a = "renOption|select renewal_option from tbaadm.reno where acid = ?SVAR and bank_id =?SVAR "
+print(sv_a)
+
+sv_s= urhk_dbSelectWithBind(sv_a)
+print(sv_s)
+
+IF(sv_s == 0) THEN
+#{
+	CUST.TD.renOption = BANCS.OUTPARAM.renOption
+	print(CUST.TD.renOption)
+#}
+ELSE
+#{
+	CUST.TD.renOption = ""
+#}
+ENDIF
+
+
+print("printing details")
+
+lv_b = urhk_SetOrbOut("CustomerID| " + CUST.TD.CifId)
+lv_b = urhk_SetOrbOut("ACCNAME| " + CUST.TD.Accname)
+lv_b = urhk_SetOrbOut("ACCOUNTNO| " + CUST.TD.ACCOUNT)
+lv_b = urhk_SetOrbOut("BRANCH| " + CUST.TD.Solid)
+lv_b = urhk_SetOrbOut("CURRENCY| " + CUST.TD.acctCrncycode)
+lv_b = urhk_SetOrbOut("DATEOPENED| " + CUST.TD.opendate)
+lv_b = urhk_SetOrbOut("INITIALDEPOSIT| " + CUST.TD.initdp)
+lv_b = urhk_SetOrbOut("TOTALINSTMNT| " + CUST.TD.totdepost)
+lv_b = urhk_SetOrbOut("MONTHLYINST| " + CUST.TD.monthlyinst)
+lv_b = urhk_SetOrbOut("TOTDEPOSITASTNOW| " + CUST.TD.cumdep)
+lv_b = urhk_SetOrbOut("NOOFINSTMT| " + CUST.TD.nofdeps)
+lv_b = urhk_SetOrbOut("RATE| " + CUST.TD.rate)
+lv_b = urhk_SetOrbOut("DEPOSITPERIOD| " + CUST.TD.depositperiodmths)
+lv_b = urhk_SetOrbOut("AUTORENEW| " + CUST.TD.renflg)
+lv_b = urhk_SetOrbOut("RENEWOPTION| " + CUST.TD.renOption)
+lv_b = urhk_SetOrbOut("MATURITYDARE| " + CUST.TD.maturitydate)
+#}
+ENDIF
+ 
+ENDSCRIPT:
+ TRACE OFF
+ END-->

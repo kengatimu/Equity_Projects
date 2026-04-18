@@ -1,0 +1,1716 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebodlarec.scr
+#  Description     : batch
+#  Date            : 23-04-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-04-2021      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Caution : Do not Change any variables and logics without proper change request and business rules
+#-------------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+        #{
+                createrep("EQSRV")
+        #}
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+        #{
+                createclass("EQSRV","GLBDATA",5)
+        #}
+        endif
+        EQSRV.GLBDATA.isLienAddModify = ""
+        EQSRV.GLBDATA.LidrAcid = ""
+        EQSRV.GLBDATA.overcrUpdYN = ""
+        EQSRV.GLBDATA.LidrAcctId = ""
+        EQSRV.GLBDATA.Lib2kid = ""
+        EQSRV.GLBDATA.isMultiSPay = ""
+        EQSRV.GLBDATA.TranId = ""
+        EQSRV.GLBDATA.lienAmt = ""
+        EQSRV.GLBDATA.isLienAddYN = ""
+        EQSRV.GLBDATA.acid = ""
+        EQSRV.GLBDATA.b2kid = ""
+        EQSRV.GLBDATA.ppRegulAmt = cdouble("0")
+        EQSRV.GLBDATA.tranAmt = cdouble("0")
+        EQSRV.GLBDATA.aftTranup = ""
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+        EQSRV.GLBDATA.isTranYN = "N"
+        EQSRV.GLBDATA.tmpResidualAmt = cdouble("0")
+        EQSRV.GLBDATA.uppResidualAmt = cdouble("0")
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.proxyPostFlg              = "P"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+        #{
+                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EQSRV.GLBDATA.srvErrCode = "MTT"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.machineId = ""
+        sv_u = urhk_getEnv("HOST_NAME")
+        print(BANCS.OUTPARAM.envValue)
+        EQSRV.GLBDATA.machineId = BANCS.OUTPARAM.envValue
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "OD Loan Recovery"
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        MTT.TranDetails.PrintAdviceInd  = "B"
+        MTT.TranDetails.ModuleId        = "HTM"
+        sv_u = urhk_MTTS_DefineTransaction("ODLoanRec")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                EQSRV.GLBDATA.srvErrCode = "MTT"
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        lv_q = " shdlNum,flowId,crAcid,drAcid,dmdAmt,totAdjAmt,outstanAmt,numOfInstall,dmdDate,numOfpay,monthofPay | "
+        lv_q = lv_q + " select a.shdl_num,a.flow_id,a.od_acid,a.op_acid,a.dmd_amt,a.tot_adj_amt,"
+        lv_q = lv_q + " a.dmd_amt-a.tot_adj_amt,b.number_of_payments,b.next_dmd_date,a.free_text_1,a.free_text_2 "
+        lv_q = lv_q + " from custom.odla_dmd_tbl a,custom.odla_schl_tbl b "
+        lv_q = lv_q + " where a.bank_id=?SVAR "
+        lv_q = lv_q + " and b.bank_id=?SVAR "
+        lv_q = lv_q + " and a.od_acid = b.od_acid "
+        lv_q = lv_q + " and a.op_acid = b.op_acid "
+        lv_q = lv_q + " and a.shdl_num= b.schl_number "
+        lv_q = lv_q + " and a.op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+        lv_q = lv_q + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) "
+        ###lv_q = lv_q + " and a.dmd_amt >= a.tot_adj_amt "
+        lv_q = lv_q + " and a.dmd_amt- a.tot_adj_amt <>0 and a.dmd_amt- a.tot_adj_amt > 0"
+        lv_q = lv_q + " and a.dmd_date <= to_date(?SVAR,'DD-MM-RR') "
+        lv_q = lv_q + " and a.entity_cre_flg='Y' "
+        lv_q = lv_q + " and a.del_flg='N' "
+        ##lv_q = lv_q + " and a.free_text_3 is null "
+        lv_q = lv_q + " and b.entity_cre_flg='Y' "
+        lv_q = lv_q + " and b.del_flg='Y' "
+        lv_q = lv_q + " order by a.dmd_date,a.flow_id "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" +  BANCS.STDIN.mySolId + "|" + mid$(BANCS.STDIN.BODDate,0,10)
+        print(lv_q)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                EQSRV.GLBDATA.shdlNum = BANCS.OUTPARAM.shdlNum
+                EQSRV.GLBDATA.flowId = BANCS.OUTPARAM.flowId
+                EQSRV.GLBDATA.crAcid = BANCS.OUTPARAM.crAcid
+                EQSRV.GLBDATA.drAcid = BANCS.OUTPARAM.drAcid
+                EQSRV.GLBDATA.dmdAmt = BANCS.OUTPARAM.dmdAmt
+                EQSRV.GLBDATA.totAdjAmt = BANCS.OUTPARAM.totAdjAmt
+                EQSRV.GLBDATA.outstanAmt = BANCS.OUTPARAM.outstanAmt
+                EQSRV.GLBDATA.numOfInstall = BANCS.OUTPARAM.numOfInstall
+                EQSRV.GLBDATA.dmdDate = BANCS.OUTPARAM.dmdDate
+                EQSRV.GLBDATA.numOfpay = BANCS.OUTPARAM.numOfpay
+                EQSRV.GLBDATA.monthofPay = BANCS.OUTPARAM.monthofPay
+                EQSRV.GLBDATA.LidrAcid = EQSRV.GLBDATA.drAcid
+#Dr/Cr Account Derivation Part Moved to call script ebodlarecPPayLienRec_Header.scr
+                if(cdouble(EQSRV.GLBDATA.outstanAmt)<=0)then
+                #{
+                                goto NXTREC
+                #}
+                endif
+                call("ebodlarecPPayLienRec_Header.scr")
+                if(fieldexists(EQSRV.GLBDATA.iscallscrSkip)==1)then
+                #{
+                        print(EQSRV.GLBDATA.iscallscrSkip)
+                        if(EQSRV.GLBDATA.iscallscrSkip=="Y")then
+                        #{
+                                        goto NXTREC
+                        #}
+                        endif
+                #}
+                endif
+                if(fieldexists(EQSRV.GLBDATA.drCrncyCode)==1)then
+                #{
+                        print(EQSRV.GLBDATA.drCrncyCode)
+                #}
+                endif
+                if(fieldexists(EQSRV.GLBDATA.icrCrncyCode)==1)then
+                #{
+                        print(EQSRV.GLBDATA.icrCrncyCode)
+                #}
+                endif
+#Ends
+#Operative Account With Dr Balance after lien lift
+                ###if(cdouble(EQSRV.GLBDATA.drclearBalance)<=0)then
+                if(cdouble(EQSRV.GLBDATA.drEffBal)<=0)then
+                #{
+                        ##MultiPay Starts 31/01/2022
+                        print(EQSRV.GLBDATA.drcifid)
+                        lv_m = " mcifId,mdrAcctId,mdrAmt|select cif_id,foracid,clr_bal_amt from tbaadm.gam where bank_id=?SVAR "
+                        lv_m = lv_m + " and acct_ownership<>'O' and cif_id =?SVAR and acid<>?SVAR "
+                        lv_m = lv_m + " and schm_type in ('SBA','CAA') and acct_crncy_code=?SVAR "
+                        lv_m = lv_m + " and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' "
+                        lv_m = lv_m + " and acct_cls_date is null and clr_bal_Amt >=1 and frez_code <>'D' "
+                        lv_m = lv_m + " and mode_of_oper_code='SELF' "
+                        lv_m = lv_m + " and schm_code not in ('SB102','SB103','SB114','SB121','SB122','SB123','SB124','SB133','SB150') "
+                        ##lv_m = lv_m + " and lien_amt<=0 "
+                        lv_m = lv_m + " and rownum<=1 order by cif_id,clr_bal_amt desc "
+                        ###BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drcifid + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.homeCrncyCode
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drcifid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.icrCrncyCode
+                        print(lv_m)
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_s = urhk_dbSelectWithBind(lv_m)
+                        if(lv_s==0)then
+                        #{
+                                EQSRV.GLBDATA.mcifId = BANCS.OUTPARAM.mcifId
+                                EQSRV.GLBDATA.mdrAcctId = BANCS.OUTPARAM.mdrAcctId
+                                EQSRV.GLBDATA.mdrAmt = BANCS.OUTPARAM.mdrAmt
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.mcifId = ""
+                                EQSRV.GLBDATA.mdrAcctId = ""
+                                EQSRV.GLBDATA.mdrAmt = ""
+                                EQSRV.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                        if(EQSRV.GLBDATA.mdrAcctId!="")then
+                        #{
+                                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.mdrAcctId)
+                                if(sv_u == 0)then
+                                #{
+                                        EQSRV.GLBDATA.mdrEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                        EQSRV.GLBDATA.mdrclearBalance = BANCS.OUTPARAM.clearBalance
+                                        EQSRV.GLBDATA.mdrsanLim = BANCS.OUTPARAM.sanctionLimit
+                                        EQSRV.GLBDATA.mdrdrawingPower = BANCS.OUTPARAM.drawingPower
+                                        EQSRV.GLBDATA.mdravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                        EQSRV.GLBDATA.mdrlienamt = BANCS.OUTPARAM.lienAmt
+                                        EQSRV.GLBDATA.mdrcifid = BANCS.OUTPARAM.cifId
+                                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.mdrdrawingPower = 0
+                                        EQSRV.GLBDATA.mdrEffBal = 0
+                                        EQSRV.GLBDATA.mdrclearBalance = 0
+                                        EQSRV.GLBDATA.mdrsanLim = 0
+                                        EQSRV.GLBDATA.mdravalAmt = 0
+                                        EQSRV.GLBDATA.mdrlienamt = 0
+                                        EQSRV.GLBDATA.mdrcifid = ""
+                                #}
+                                endif
+                                if(cdouble(EQSRV.GLBDATA.outstanAmt)< cdouble(EQSRV.GLBDATA.mdravalAmt))then
+                                #{
+                                        EQSRV.GLBDATA.drAcctId = EQSRV.GLBDATA.mdrAcctId
+                                        #######EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.mdravalAmt)
+                                        EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.outstanAmt)
+                                        EQSRV.GLBDATA.isLienAddYN = "N"
+                                        EQSRV.GLBDATA.isTranYN = "Y"
+                                        print("**************Recover from multisource account****************")
+                                        EQSRV.GLBDATA.isMultiSPay = "Y"
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.isMultiSPay = "N"
+                                        print("**************Recover from default account****************")
+                                #}
+                                endif
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                        ##MultiPay Ends 31/01/2022
+                        if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                goto MULTIPAYL
+                        endif
+                        EQSRV.GLBDATA.isTranYN = "N"
+                        print(EQSRV.GLBDATA.shdlNum)
+                        print(EQSRV.GLBDATA.flowId)
+                        print(EQSRV.GLBDATA.outstanAmt)
+                        print(EQSRV.GLBDATA.numOfInstall)
+                        print(EQSRV.GLBDATA.dmdDate)
+                        print(EQSRV.GLBDATA.numOfpay)
+                        print(EQSRV.GLBDATA.monthofPay)
+                        EQSRV.GLBDATA.LienAmt = cdouble(EQSRV.GLBDATA.outstanAmt)
+                        #Exiting Lien Rec
+                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                        sv_s = sv_s + " where acid =?SVAR "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                        sv_s = sv_s + " and b2k_id is not null "
+                        sv_s = sv_s + " and bank_id =?SVAR) "
+                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                        sv_s = sv_s + " and b2k_id is not null "
+                        sv_s = sv_s + " and acid =?SVAR "
+                        sv_s = sv_s + " and bank_id =?SVAR "
+                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                        PRINT(BANCS.INPARAM.BINDVARS)
+                        print(sv_s)
+                        sv_d = urhk_dbSelectWithBind(sv_s)
+                        print(sv_d)
+                        if(sv_d == 0)then
+                        #{
+                                EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                EQSRV.GLBDATA.Lib2kid = EQSRV.GLBDATA.b2kid
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.amount1 = "0"
+                                EQSRV.GLBDATA.acid = ""
+                                EQSRV.GLBDATA.b2kid = ""
+                                EQSRV.GLBDATA.Lib2kid = ""
+                        #}
+                        endif
+                        if(cdouble(EQSRV.GLBDATA.amount1)<=0)then
+                        #{
+                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                BANCS.INPARAM.blockMode = "A"
+                                BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.LienAmt)
+                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                BANCS.INPARAM.remarks = "Lien for loans on od"
+                                BANCS.INPARAM.reasonCode = "ODLA"
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                                if(sv_u != 0)then
+                                #{
+                                        EQSRV.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for loan recovery"
+                                        EQSRV.GLBDATA.srvErrCode = "Lien"
+                                        EQSRV.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                        EQSRV.GLBDATA.srvErrCode = "Lien"
+                                        EQSRV.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                #}
+                                endif
+                        #}
+                        else
+                        #{
+                                print(EQSRV.GLBDATA.LienAmt)
+                                print(EQSRV.GLBDATA.amount1)
+                                EQSRV.GLBDATA.LienAmt = cdouble(EQSRV.GLBDATA.LienAmt) + cdouble(EQSRV.GLBDATA.amount1)
+                                print(EQSRV.GLBDATA.LienAmt)
+                                if(EQSRV.GLBDATA.b2kid!="")then
+                                #{
+                                        BANCS.INPARAM.b2kId = EQSRV.GLBDATA.b2kid
+                                        BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                        BANCS.INPARAM.blockMode = "M"
+                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.LienAmt) * 1
+                                        BANCS.INPARAM.expiryDate = "31-12-2099"
+                                        BANCS.INPARAM.remarks = "Lien for loans on od"
+                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                        sv_u = urhk_updateLien("")
+                                        if(sv_u!=0)then
+                                        #{
+                                                EQSRV.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for loan recovery"
+                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                goto NXTREC
+                                        #}
+                                        else
+                                        #{
+                                                EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                goto NXTREC
+                                        #}
+                                        endif
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.srvErrMsg =  "Failed to Lien on operative account for loan recovery"
+                                        EQSRV.GLBDATA.srvErrCode = "Lien"
+                                        EQSRV.GLBDATA.srvSucFail = "S"
+                                        goto NXTREC
+                                #}
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+               MULTIPAYL:
+#Partial Pay Entry
+                lv_b = "ppCnt,pploanAmt,ppTotPayAmt,ppLastPayAmt,ppResidualAmt,ppRegulAmt | "
+                lv_b = lv_b + " select count(*),loan_amount,tot_pymt_amt,last_pymt_amt,residual_amt,regul_amt "
+                lv_b = lv_b + " from custom.odla_partial_pymt_tbl "
+                lv_b = lv_b + " where bank_id=?SVAR "
+                lv_b = lv_b + " and op_acid=?SVAR and od_acid=?SVAR "
+                lv_b = lv_b + " and tot_pymt_amt-regul_amt <>0 "
+                lv_b = lv_b + " and op_sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR "
+                lv_b = lv_b + " and entity_cre_flg='Y' and del_flg='N' and set_id=?SVAR) "
+                lv_b = lv_b + " and entity_cre_flg='Y' and del_flg='N' and rownum<=1"
+                lv_b = lv_b + " group by loan_amount,tot_pymt_amt,last_pymt_amt,residual_amt,regul_amt "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+                print(lv_b)
+                print(BANCS.INPARAM.BINDVARS)
+                lv_p = urhk_dbSelectWithBind(lv_b)
+                print(lv_p)
+                if(lv_p==0)then
+                #{
+                        EQSRV.GLBDATA.ppCnt = BANCS.OUTPARAM.ppCnt
+                        EQSRV.GLBDATA.pploanAmt = BANCS.OUTPARAM.pploanAmt
+                        EQSRV.GLBDATA.ppTotPayAmt = BANCS.OUTPARAM.ppTotPayAmt
+                        EQSRV.GLBDATA.ppLastPayAmt = BANCS.OUTPARAM.ppLastPayAmt
+                        EQSRV.GLBDATA.ppResidualAmt = BANCS.OUTPARAM.ppResidualAmt
+                        EQSRV.GLBDATA.ppRegulAmt = BANCS.OUTPARAM.ppRegulAmt
+                #}
+                else
+                #{
+                        EQSRV.GLBDATA.ppCnt = "0"
+                        EQSRV.GLBDATA.pploanAmt = "0"
+                        EQSRV.GLBDATA.ppTotPayAmt = "0"
+                        EQSRV.GLBDATA.ppLastPayAmt = "0"
+                        EQSRV.GLBDATA.ppResidualAmt = "0"
+                        EQSRV.GLBDATA.ppRegulAmt = "0"
+                #}
+                endif
+                if(cdouble(EQSRV.GLBDATA.ppCnt)>=1)then
+                #{
+                        EQSRV.GLBDATA.ppExistYN = "Y"
+                        print(EQSRV.GLBDATA.ppTotPayAmt)
+                        print(EQSRV.GLBDATA.ppLastPayAmt)
+                        print(EQSRV.GLBDATA.ppResidualAmt)
+                        print(EQSRV.GLBDATA.ppRegulAmt)
+                        print(EQSRV.GLBDATA.outstanAmt)
+                #}
+                else
+                #{
+                        EQSRV.GLBDATA.ppExistYN = "N"
+                #}
+                endif
+#Partial payment exists
+                if(EQSRV.GLBDATA.ppExistYN=="Y")then
+                #{
+                        print("in partial pay")
+                        print(EQSRV.GLBDATA.ppTotPayAmt)
+                        print(EQSRV.GLBDATA.ppLastPayAmt)
+                        print(EQSRV.GLBDATA.ppResidualAmt)
+                        print(EQSRV.GLBDATA.ppRegulAmt)
+                        if(cdouble(EQSRV.GLBDATA.ppResidualAmt)<=0)then
+                        #{
+                                EQSRV.GLBDATA.tmpResidualAmt = cdouble(EQSRV.GLBDATA.ppTotPayAmt)
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.tmpResidualAmt = EQSRV.GLBDATA.ppResidualAmt
+                        #}
+                        endif
+                        print(EQSRV.GLBDATA.tmpResidualAmt)
+                        print(EQSRV.GLBDATA.ppResidualAmt)
+                        print(EQSRV.GLBDATA.outstanAmt)
+                        if(cdouble(EQSRV.GLBDATA.tmpResidualAmt)>cdouble(EQSRV.GLBDATA.outstanAmt))then
+                        #{
+                                EQSRV.GLBDATA.isTranYN = "N"
+                                print("in partial pay exist and noo transaction ")
+                                ##monthly install = monthly install     (update dmd table )
+                                EQSRV.GLBDATA.uppResidualAmt = cdouble(EQSRV.GLBDATA.tmpResidualAmt) - cdouble(EQSRV.GLBDATA.outstanAmt)
+                                print(EQSRV.GLBDATA.uppResidualAmt)
+                                EQSRV.GLBDATA.ppRegulAmt = cdouble(EQSRV.GLBDATA.ppRegulAmt) + cdouble(EQSRV.GLBDATA.outstanAmt)
+                                print(EQSRV.GLBDATA.ppRegulAmt)
+                                print(EQSRV.GLBDATA.outstanAmt)
+                                EQSRV.GLBDATA.TranId = "PPPAY"
+                                ##frequency demand update
+                                lv_p = "update custom.odla_dmd_tbl set tot_adj_amt=dmd_amt,last_adj_date=to_date(?SVAR,'DD-MM-RR'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR,free_text_3='P',host_machine_id=?SVAR where bank_id=?SVAR and op_acid=?SVAR and od_acid=?SVAR and op_sol_id=?SVAR  and shdl_num=?NVAR and flow_id=?SVAR and free_text_1=?SVAR and free_text_2=?SVAR"
+                                BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.TranId + "|" + EQSRV.GLBDATA.machineId + "|" +  BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.shdlNum + "|" + EQSRV.GLBDATA.flowId + "|" + EQSRV.GLBDATA.numOfpay + "|" + EQSRV.GLBDATA.monthofPay
+                                print(lv_p)
+                                print(BANCS.INPARAM.BINDVARS)
+                                lv_h = urhk_dbSqlWithBind(lv_p)
+                                print(lv_h)
+                                if(lv_h==0)then
+                                #{
+                                        print("frequency demand consolidated")
+                                        lv_h = urhk_dbSqlWithBind("commit")
+                                        print(lv_h)
+                                #}
+                                else
+                                #{
+                                        print("frequency demand not consolidated")
+                                #}
+                                endif
+                                ##partial pay update
+                                #+++++++++++++++++++
+                                lv_i = "update custom.odla_partial_pymt_tbl "
+                                lv_i = lv_i + " set residual_amt=?NVAR,"
+                                lv_i = lv_i + " regul_amt=?NVAR, "
+                                lv_i = lv_i + " lchg_user_id=?SVAR, "
+                                lv_i = lv_i + " lchg_time=sysdate,host_machine_id=?SVAR "
+                                lv_i = lv_i + " where bank_id=?SVAR "
+                                lv_i = lv_i + " and od_acid=?SVAR "
+                                lv_i = lv_i + " and op_acid=?SVAR "
+                                lv_i = lv_i + " and entity_cre_flg='Y' "
+                                lv_i = lv_i + " and del_flg='N' "
+                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.uppResidualAmt + "|" + EQSRV.GLBDATA.ppRegulAmt + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid
+                                print(lv_i)
+                                print(BANCS.INPARAM.BINDVARS)
+                                lv_b = urhk_dbSqlWithBind(lv_i)
+                                print(lv_b)
+                                if(lv_b==0)then
+                                #{
+                                        print("partial pay consolidated")
+                                        lv_h = urhk_dbSqlWithBind("commit")
+                                        print(lv_h)
+                                        goto NXTREC
+                                #}
+                                else
+                                #{
+                                        print("partil pay not consolidated")
+                                        goto NXTREC
+                                #}
+                                endif
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.isTranYN = "Y"
+                                print("transaction exist with partial pay")
+                                print(EQSRV.GLBDATA.tmpResidualAmt)
+                                print(EQSRV.GLBDATA.ppResidualAmt)
+                                print(EQSRV.GLBDATA.outstanAmt)
+                                print(EQSRV.GLBDATA.ppRegulAmt)
+                                print(EQSRV.GLBDATA.drlienamt)
+                                if(cdouble(EQSRV.GLBDATA.tmpResidualAmt)>0)then
+                                #{
+                                        EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.outstanAmt) - cdouble(EQSRV.GLBDATA.tmpResidualAmt)
+                                        print(EQSRV.GLBDATA.tranAmt)
+                                        EQSRV.GLBDATA.uppResidualAmt = cdouble("0")
+                                        print(EQSRV.GLBDATA.uppResidualAmt)
+                                        EQSRV.GLBDATA.ppRegulAmt = cdouble(EQSRV.GLBDATA.ppRegulAmt) + cdouble(EQSRV.GLBDATA.tmpResidualAmt)
+                                        print(EQSRV.GLBDATA.ppRegulAmt)
+                                        print(EQSRV.GLBDATA.dmdAmt)
+                                        print(EQSRV.GLBDATA.totAdjAmt)
+                                        print(EQSRV.GLBDATA.outstanAmt)
+                                        print(EQSRV.GLBDATA.drEffBal)
+                                        print(EQSRV.GLBDATA.dravalAmt)
+                                        print(EQSRV.GLBDATA.drclearBalance)
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        if(cdouble(EQSRV.GLBDATA.drlienamt)!=cdouble("0"))then
+                                        #{
+                                                ######if(cdouble(EQSRV.GLBDATA.dravalAmt)>=0)then
+                                                #{
+                                                print("Lien Lift")
+                                                sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                                                sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                                                sv_s = sv_s + " where acid =?SVAR "
+                                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                sv_s = sv_s + " and b2k_id is not null "
+                                                sv_s = sv_s + " and bank_id =?SVAR) "
+                                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                sv_s = sv_s + " and b2k_id is not null "
+                                                sv_s = sv_s + " and acid =?SVAR "
+                                                sv_s = sv_s + " and bank_id =?SVAR "
+                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                                                PRINT(BANCS.INPARAM.BINDVARS)
+                                                print(sv_s)
+                                                sv_d = urhk_dbSelectWithBind(sv_s)
+                                                print(sv_d)
+                                                if(sv_d == 0)then
+                                                #{
+                                                        EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                                        EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                                        EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                                        EQSRV.GLBDATA.Lib2kid = EQSRV.GLBDATA.b2kid
+                                                #}
+                                                else
+                                                #{
+                                                        EQSRV.GLBDATA.amount1 = "0"
+                                                        EQSRV.GLBDATA.acid = ""
+                                                        EQSRV.GLBDATA.b2kid = ""
+                                                        EQSRV.GLBDATA.Lib2kid = ""
+                                                #}
+                                                endif
+                                                if(EQSRV.GLBDATA.b2kid!="")then
+                                                #{
+                                                        BANCS.INPARAM.b2kId = EQSRV.GLBDATA.b2kid
+                                                        BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                        BANCS.INPARAM.blockMode = "M"
+                                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.drlienamt) * -1
+                                                        BANCS.INPARAM.expiryDate = left$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.remarks = "Lien Lifted during OD Loan Payment"
+                                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        sv_u = urhk_updateLien("")
+                                                #}
+                                                else
+                                                #{
+                                                        sv_u = "1"
+                                                #}
+                                                endif
+                                                if( sv_u != 0 )then
+                                                #{
+                                                        print("od loans lien lift failed")
+                                                        sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+                                                        if(sv_u == 0)then
+                                                        #{
+                                                                EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                                                EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                                                EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                                                EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                                                EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                                                EQSRV.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                                                print(EQSRV.GLBDATA.drEffBal)
+                                                                print(EQSRV.GLBDATA.drclearBalance)
+                                                                print(BANCS.OUTPARAM.AvailableAmt)
+                                                                print(BANCS.OUTPARAM.lienAmt)
+                                                                print(BANCS.OUTPARAM.SystemReservedAmt)
+                                                        #}
+                                                        else
+                                                        #{
+                                                                EQSRV.GLBDATA.dravalAmt = 0
+                                                                EQSRV.GLBDATA.drclearBalance = 0
+                                                        #}
+                                                        endif
+                                                #}
+                                                else
+                                                #{
+                                                        print("od loand lien lift success")
+                                                        sv_y = urhk_dbSqlWithBind("Commit")
+                                                        print(sv_y)
+                                                        sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+                                                        if(sv_u == 0)then
+                                                        #{
+                                                                EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                                                EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                                                EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                                                EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                                                EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                                                EQSRV.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                                                print(EQSRV.GLBDATA.drEffBal)
+                                                                print(EQSRV.GLBDATA.drclearBalance)
+                                                                print(BANCS.OUTPARAM.AvailableAmt)
+                                                                print(BANCS.OUTPARAM.lienAmt)
+                                                                print(BANCS.OUTPARAM.SystemReservedAmt)
+                                                        #}
+                                                        else
+                                                        #{
+                                                                EQSRV.GLBDATA.dravalAmt = 0
+                                                                EQSRV.GLBDATA.drclearBalance = 0
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                                #}
+                                                #######endif
+                                        #}
+                                        endif
+                                        print(EQSRV.GLBDATA.dmdAmt)
+                                        print(EQSRV.GLBDATA.totAdjAmt)
+                                        print(EQSRV.GLBDATA.outstanAmt)
+                                        print(EQSRV.GLBDATA.drEffBal)
+                                        print(EQSRV.GLBDATA.dravalAmt)
+                                        print(EQSRV.GLBDATA.drclearBalance)
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        ###if(cdouble(EQSRV.GLBDATA.drclearBalance)>0)then
+                                        if(cdouble(EQSRV.GLBDATA.drEffBal)>0)then
+                                        #{
+                                                EQSRV.GLBDATA.isTranYN = "Y"
+                                                ###if(cdouble(EQSRV.GLBDATA.tranAmt)>cdouble(EQSRV.GLBDATA.drclearBalance))then
+                                                if(cdouble(EQSRV.GLBDATA.tranAmt)>cdouble(EQSRV.GLBDATA.drEffBal))then
+                                                #{
+                                                        print("lien & transaction")
+                                                        ####EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.tranAmt) - cdouble(EQSRV.GLBDATA.drclearBalance)
+                                                        EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.tranAmt) - cdouble(EQSRV.GLBDATA.drEffBal)
+                                                        print(EQSRV.GLBDATA.lienAmt)
+                                                        print(EQSRV.GLBDATA.drlienamt)
+                                                        EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.drEffBal)
+                                                        print(EQSRV.GLBDATA.tranAmt)
+                                                        if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                        #{
+                                                                sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                                                                sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                                                                sv_s = sv_s + " where acid =?SVAR "
+                                                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                                sv_s = sv_s + " and b2k_id is not null "
+                                                                sv_s = sv_s + " and bank_id =?SVAR) "
+                                                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                                sv_s = sv_s + " and b2k_id is not null "
+                                                                sv_s = sv_s + " and acid =?SVAR "
+                                                                sv_s = sv_s + " and bank_id =?SVAR "
+                                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                                                                PRINT(BANCS.INPARAM.BINDVARS)
+                                                                print(sv_s)
+                                                                sv_d = urhk_dbSelectWithBind(sv_s)
+                                                                print(sv_d)
+                                                                if(sv_d == 0)then
+                                                                #{
+                                                                        EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                                                        EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                                                        EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                                                #}
+                                                                else
+                                                                #{
+                                                                        EQSRV.GLBDATA.amount1 = "0"
+                                                                        EQSRV.GLBDATA.acid = ""
+                                                                        EQSRV.GLBDATA.b2kid = ""
+                                                                #}
+                                                                endif
+                                                                print(EQSRV.GLBDATA.amount1)
+                                                                if(cdouble(EQSRV.GLBDATA.amount1)<=0)then
+                                                                #{
+                                                                        print(EQSRV.GLBDATA.lienAmt)
+                                                                        print(EQSRV.GLBDATA.drlienamt)
+                                                                        EQSRV.GLBDATA.isLienAddYN = "Y"
+                                                                #}
+                                                                else
+                                                                #{
+                                                                        print(EQSRV.GLBDATA.amount1)
+                                                                        print(EQSRV.GLBDATA.lienAmt)
+                                                                        print(EQSRV.GLBDATA.drlienamt)
+                                                                        EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) + cdouble(EQSRV.GLBDATA.amount1)
+                                                                        print(EQSRV.GLBDATA.lienAmt)
+                                                                        EQSRV.GLBDATA.isLienAddYN = "N"
+                                                                #}
+                                                                endif
+                                                        #}
+                                                        endif
+                                                #}
+                                                else
+                                                #{
+                                                        EQSRV.GLBDATA.isTranYN = "Y"
+                                                        print(EQSRV.GLBDATA.tranAmt)
+                                                        print("only transaction")
+                                                        EQSRV.GLBDATA.aftTranup = "Y"
+
+                                                #}
+                                                endif
+                                        #}
+                                        else
+                                        #{
+                                                EQSRV.GLBDATA.isTranYN = "N"
+                                                print(EQSRV.GLBDATA.drlienamt)
+                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.tranAmt)
+                                                print("lien ")
+                                                if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                #{
+                                                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                                                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                                                        sv_s = sv_s + " where acid =?SVAR "
+                                                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                        sv_s = sv_s + " and b2k_id is not null "
+                                                        sv_s = sv_s + " and bank_id =?SVAR) "
+                                                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                                        sv_s = sv_s + " and b2k_id is not null "
+                                                        sv_s = sv_s + " and acid =?SVAR "
+                                                        sv_s = sv_s + " and bank_id =?SVAR "
+                                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                                                        PRINT(BANCS.INPARAM.BINDVARS)
+                                                        print(sv_s)
+                                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                                        print(sv_d)
+                                                        if(sv_d == 0)then
+                                                        #{
+                                                                EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                                                EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                                                EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                                                EQSRV.GLBDATA.Lib2kid = EQSRV.GLBDATA.b2kid
+                                                        #}
+                                                        else
+                                                        #{
+                                                                EQSRV.GLBDATA.amount1 = "0"
+                                                                EQSRV.GLBDATA.acid = ""
+                                                                EQSRV.GLBDATA.b2kid = ""
+                                                                EQSRV.GLBDATA.Lib2kid = ""
+                                                        #}
+                                                        endif
+                                                        print(EQSRV.GLBDATA.amount1)
+                                                        if(cdouble(EQSRV.GLBDATA.amount1)<=0)then
+                                                        #{
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                                print(EQSRV.GLBDATA.drlienamt)
+                                                                EQSRV.GLBDATA.isLienAddYN = "Y"
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print(EQSRV.GLBDATA.amount1)
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                                print(EQSRV.GLBDATA.drlienamt)
+                                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) + cdouble(EQSRV.GLBDATA.amount1)
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                                EQSRV.GLBDATA.isLienAddYN = "N"
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                #}
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+#No Partial Pay Exist
+                if(EQSRV.GLBDATA.ppExistYN=="N")then
+                #{
+                        print("no partial pay")
+                        print(EQSRV.GLBDATA.drEffBal)
+                        print(EQSRV.GLBDATA.dravalAmt)
+                        print(EQSRV.GLBDATA.drlienamt)
+                        print(EQSRV.GLBDATA.drclearBalance)
+                        if(cdouble(EQSRV.GLBDATA.drlienamt)!=cdouble("0"))then
+                        #{
+                                ####if(cdouble(EQSRV.GLBDATA.dravalAmt)>=0)then
+                                #{
+                                        print("Lien Lift")
+                                        sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                                        sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                                        sv_s = sv_s + " where acid =?SVAR "
+                                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                        sv_s = sv_s + " and b2k_id is not null "
+                                        sv_s = sv_s + " and bank_id =?SVAR) "
+                                        sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                        sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                        sv_s = sv_s + " and b2k_id is not null "
+                                        sv_s = sv_s + " and acid =?SVAR "
+                                        sv_s = sv_s + " and bank_id =?SVAR "
+                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                                        PRINT(BANCS.INPARAM.BINDVARS)
+                                        print(sv_s)
+                                        sv_d = urhk_dbSelectWithBind(sv_s)
+                                        print(sv_d)
+                                        if(sv_d == 0)then
+                                        #{
+                                                EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                                EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                                EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                                EQSRV.GLBDATA.Lib2kid = EQSRV.GLBDATA.b2kid
+                                        #}
+                                        else
+                                        #{
+                                                EQSRV.GLBDATA.amount1 = "0"
+                                                EQSRV.GLBDATA.acid = ""
+                                                EQSRV.GLBDATA.b2kid = ""
+                                                EQSRV.GLBDATA.Lib2kid = ""
+                                        #}
+                                        endif
+                                        if(EQSRV.GLBDATA.b2kid!="")then
+                                        #{
+                                                BANCS.INPARAM.b2kId = EQSRV.GLBDATA.b2kid
+                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                BANCS.INPARAM.blockMode = "M"
+                                                BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.drlienamt) * -1
+                                                BANCS.INPARAM.expiryDate = left$(BANCS.STDIN.BODDate,10)
+                                                BANCS.INPARAM.remarks = "Lien Lifted during OD Loan Payment"
+                                                BANCS.INPARAM.reasonCode = "ODLA"
+                                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                sv_u = urhk_updateLien("")
+                                        #}
+                                        else
+                                        #{
+                                                sv_u = "1"
+                                        #}
+                                        endif
+                                        if( sv_u != 0 )then
+                                        #{
+                                                print("od loans lien lift failed")
+                                                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+                                                if(sv_u == 0)then
+                                                #{
+                                                        EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                                        EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                                        EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                                        EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                                        EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                                        EQSRV.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                                        print(EQSRV.GLBDATA.drEffBal)
+                                                        print(EQSRV.GLBDATA.drclearBalance)
+                                                        print(BANCS.OUTPARAM.AvailableAmt)
+                                                        print(BANCS.OUTPARAM.lienAmt)
+                                                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                                                #}
+                                                else
+                                                #{
+                                                        EQSRV.GLBDATA.dravalAmt = 0
+                                                        EQSRV.GLBDATA.drclearBalance = 0
+                                                #}
+                                                endif
+                                        #}
+                                        else
+                                        #{
+                                                print("od loand lien lift success")
+                                                sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.drAcctId)
+                                                if(sv_u == 0)then
+                                                #{
+                                                        EQSRV.GLBDATA.drEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                                        EQSRV.GLBDATA.drclearBalance = BANCS.OUTPARAM.clearBalance
+                                                        EQSRV.GLBDATA.drsanLim = BANCS.OUTPARAM.sanctionLimit
+                                                        EQSRV.GLBDATA.drdrawingPower = BANCS.OUTPARAM.drawingPower
+                                                        EQSRV.GLBDATA.dravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                                        EQSRV.GLBDATA.drlienamt = BANCS.OUTPARAM.lienAmt
+                                                        print(EQSRV.GLBDATA.drEffBal)
+                                                        print(EQSRV.GLBDATA.drclearBalance)
+                                                        print(BANCS.OUTPARAM.AvailableAmt)
+                                                        print(BANCS.OUTPARAM.lienAmt)
+                                                        print(BANCS.OUTPARAM.SystemReservedAmt)
+                                                #}
+                                                else
+                                                #{
+                                                        EQSRV.GLBDATA.dravalAmt = 0
+                                                        EQSRV.GLBDATA.drclearBalance = 0
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                #}
+                                #######endif
+                        #}
+                        endif
+                        print(EQSRV.GLBDATA.drEffBal)
+                        print(EQSRV.GLBDATA.drclearBalance)
+                        print(EQSRV.GLBDATA.dravalAmt)
+                        print(EQSRV.GLBDATA.outstanAmt)
+                        ####if(cdouble(EQSRV.GLBDATA.drclearBalance)>cdouble(EQSRV.GLBDATA.outstanAmt))then
+                        if(cdouble(EQSRV.GLBDATA.drEffBal)>cdouble(EQSRV.GLBDATA.outstanAmt))then
+                        #{
+                                EQSRV.GLBDATA.isTranYN = "Y"
+                                print("no lien only tran")
+                                EQSRV.GLBDATA.tranAmt = EQSRV.GLBDATA.outstanAmt
+                                EQSRV.GLBDATA.lienAmt = "0"
+                                print(EQSRV.GLBDATA.lienAmt)
+                                print(EQSRV.GLBDATA.tranAmt)
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.isTranYN = "N"
+                                EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.drEffBal)
+                                if(cdouble(EQSRV.GLBDATA.tranAmt)>=0)then
+                                #{
+                                        print("transaction and lien add or modify")
+                                        print(EQSRV.GLBDATA.tranAmt)
+                                        EQSRV.GLBDATA.isTranYN = "Y"
+                                #}
+                                else
+                                #{
+                                        print("only lien add or modify!! no transactions")
+                                #}
+                                endif
+                                print(EQSRV.GLBDATA.drEffBal)
+                                print(EQSRV.GLBDATA.dravalAmt)
+                                print(EQSRV.GLBDATA.drclearBalance)
+                                print(EQSRV.GLBDATA.tranAmt)
+                                print(EQSRV.GLBDATA.outstanAmt)
+                                ###EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.outstanAmt) - cdouble(EQSRV.GLBDATA.drclearBalance)
+                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.outstanAmt) - cdouble(EQSRV.GLBDATA.drEffBal)
+                                print(EQSRV.GLBDATA.lienAmt)
+                                print(EQSRV.GLBDATA.drlienamt)
+                                #Exiting Lien Rec
+                                #+++++++++++++++++
+                                sv_s = "amount1,acid,b2kid|select trim (lien_amt),acid,b2k_id from tbaadm.alt "
+                                sv_s = sv_s + " where b2k_id in (select trim(max(b2k_id))  from tbaadm.alt "
+                                sv_s = sv_s + " where acid =?SVAR "
+                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                sv_s = sv_s + " and b2k_id is not null "
+                                sv_s = sv_s + " and bank_id =?SVAR) "
+                                sv_s = sv_s + " and b2k_type = 'ULIEN' "
+                                sv_s = sv_s + " and lien_reason_code='ODLA' "
+                                sv_s = sv_s + " and b2k_id is not null "
+                                sv_s = sv_s + " and acid =?SVAR "
+                                sv_s = sv_s + " and bank_id =?SVAR "
+                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.contextBankId
+                                PRINT(BANCS.INPARAM.BINDVARS)
+                                print(sv_s)
+                                sv_d = urhk_dbSelectWithBind(sv_s)
+                                print(sv_d)
+                                if(sv_d == 0)then
+                                #{
+                                        EQSRV.GLBDATA.amount1 = BANCS.OUTPARAM.amount1
+                                        EQSRV.GLBDATA.acid = BANCS.OUTPARAM.acid
+                                        EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.b2kid
+                                        EQSRV.GLBDATA.Lib2kid = EQSRV.GLBDATA.b2kid
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.amount1 = "0"
+                                        EQSRV.GLBDATA.acid = ""
+                                        EQSRV.GLBDATA.b2kid = ""
+                                        EQSRV.GLBDATA.Lib2kid = ""
+                                #}
+                                endif
+                                if(cdouble(EQSRV.GLBDATA.amount1)<=0)then
+                                #{
+                                        print(EQSRV.GLBDATA.lienAmt)
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        EQSRV.GLBDATA.isLienAddYN = "Y"
+                                #}
+                                else
+                                #{
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        print(EQSRV.GLBDATA.amount1)
+                                        print(EQSRV.GLBDATA.lienAmt)
+                                        EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) + cdouble(EQSRV.GLBDATA.amount1)
+                                        print(EQSRV.GLBDATA.lienAmt)
+                                        EQSRV.GLBDATA.isLienAddYN = "N"
+                                #}
+                                endif
+                        #}
+                        endif
+                #}
+                endif
+#Tran Entry
+                print(EQSRV.GLBDATA.drCrncyCode)
+                print(EQSRV.GLBDATA.icrCrncyCode)
+                print(EQSRV.GLBDATA.drAcctId)
+                print(EQSRV.GLBDATA.crAcctId)
+                print(EQSRV.GLBDATA.outstanAmt)
+                print(EQSRV.GLBDATA.tranAmt)
+                print(EQSRV.GLBDATA.drEffBal)
+                print(EQSRV.GLBDATA.drclearBalance)
+                print(EQSRV.GLBDATA.dravalAmt)
+                print(EQSRV.GLBDATA.isLienAddYN)
+                print(EQSRV.GLBDATA.lienAmt)
+                print(EQSRV.GLBDATA.drlienamt)
+                print(EQSRV.GLBDATA.tranAmt)
+                print(EQSRV.GLBDATA.isTranYN)
+                #Multi-Source Repayment (27/jan/2022)
+                if(EQSRV.GLBDATA.isLienAddYN=="Y")then
+                #{
+                        print(EQSRV.GLBDATA.drcifid)
+                        lv_m = " mcifId,mdrAcctId,mdrAmt|select cif_id,foracid,clr_bal_amt from tbaadm.gam where bank_id=?SVAR "
+                        lv_m = lv_m + " and acct_ownership<>'O' and cif_id =?SVAR and acid<>?SVAR "
+                        lv_m = lv_m + " and schm_type in ('SBA','CAA') and acct_crncy_code=?SVAR "
+                        lv_m = lv_m + " and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' "
+                        lv_m = lv_m + " and acct_cls_date is null and clr_bal_Amt >=1 and frez_code <>'D' "
+                        lv_m = lv_m + " and mode_of_oper_code='SELF' "
+                        lv_m = lv_m + " and schm_code not in ('SB102','SB103','SB114','SB121','SB122','SB123','SB124','SB133','SB150') "
+                        ###lv_m = lv_m + " and lien_amt<=0 "
+                        lv_m = lv_m + " and rownum<=1 order by cif_id,clr_bal_amt desc "
+                        ###BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drcifid + "|" + EQSRV.GLBDATA.drAcid + "|" + BANCS.STDIN.homeCrncyCode
+                        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drcifid + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.icrCrncyCode
+                        print(lv_m)
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_s = urhk_dbSelectWithBind(lv_m)
+                        if(lv_s==0)then
+                        #{
+                                EQSRV.GLBDATA.mcifId = BANCS.OUTPARAM.mcifId
+                                EQSRV.GLBDATA.mdrAcctId = BANCS.OUTPARAM.mdrAcctId
+                                EQSRV.GLBDATA.mdrAmt = BANCS.OUTPARAM.mdrAmt
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.mcifId = ""
+                                EQSRV.GLBDATA.mdrAcctId = ""
+                                EQSRV.GLBDATA.mdrAmt = ""
+                                EQSRV.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                        if(EQSRV.GLBDATA.mdrAcctId!="")then
+                        #{
+                        sv_u = urhk_getAcctDetailsInRepository(EQSRV.GLBDATA.mdrAcctId)
+                        if(sv_u == 0)then
+                        #{
+                                EQSRV.GLBDATA.mdrEffBal = BANCS.OUTPARAM.EffAvailableAmt
+                                EQSRV.GLBDATA.mdrclearBalance = BANCS.OUTPARAM.clearBalance
+                                EQSRV.GLBDATA.mdrsanLim = BANCS.OUTPARAM.sanctionLimit
+                                EQSRV.GLBDATA.mdrdrawingPower = BANCS.OUTPARAM.drawingPower
+                                EQSRV.GLBDATA.mdravalAmt = BANCS.OUTPARAM.AvailableAmt
+                                EQSRV.GLBDATA.mdrlienamt = BANCS.OUTPARAM.lienAmt
+                                EQSRV.GLBDATA.mdrcifid = BANCS.OUTPARAM.cifId
+                                print(BANCS.OUTPARAM.SystemReservedAmt)
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.mdrdrawingPower = 0
+                                EQSRV.GLBDATA.mdrEffBal = 0
+                                EQSRV.GLBDATA.mdrclearBalance = 0
+                                EQSRV.GLBDATA.mdrsanLim = 0
+                                EQSRV.GLBDATA.mdravalAmt = 0
+                                EQSRV.GLBDATA.mdrlienamt = 0
+                                EQSRV.GLBDATA.mdrcifid = ""
+                        #}
+                        endif
+                        if(cdouble(EQSRV.GLBDATA.outstanAmt)< cdouble(EQSRV.GLBDATA.mdravalAmt))then
+                        #{
+                                EQSRV.GLBDATA.drAcctId = EQSRV.GLBDATA.mdrAcctId
+                                ###EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.mdravalAmt)
+                                EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.outstanAmt)
+                                EQSRV.GLBDATA.isLienAddYN = "N"
+                                EQSRV.GLBDATA.isTranYN = "Y"
+                                EQSRV.GLBDATA.isLienAddModify = "NOLIENADDMODIFY"
+                                print("**************Recover from multisource account****************")
+                                EQSRV.GLBDATA.isMultiSPay = "Y"
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                        #}
+                        else
+                        #{
+                                EQSRV.GLBDATA.isMultiSPay = "N"
+                                print("**************Recover from default account****************")
+                        #}
+                        endif
+                #}
+                endif
+#pre-check for overcredit
+                print(EQSRV.GLBDATA.drAcctId)
+                print(EQSRV.GLBDATA.LidrAcctId)
+                print(EQSRV.GLBDATA.outstanAmt)
+                print(EQSRV.GLBDATA.tranAmt)
+                print(EQSRV.GLBDATA.drEffBal)
+                print(EQSRV.GLBDATA.drclearBalance)
+                print(EQSRV.GLBDATA.dravalAmt)
+                print(EQSRV.GLBDATA.icrclearBalance)
+                if(cdouble(EQSRV.GLBDATA.icrclearBalance)<0)then
+                #{
+                        EQSRV.GLBDATA.icrbal = -1 * cdouble(EQSRV.GLBDATA.icrclearBalance)
+                        print(EQSRV.GLBDATA.icrbal)
+                        if(cdouble(EQSRV.GLBDATA.tranAmt)>cdouble(EQSRV.GLBDATA.icrbal))then
+                        #{
+                                EQSRV.GLBDATA.tranAmt = cdouble(EQSRV.GLBDATA.icrbal)
+                                EQSRV.GLBDATA.overcrUpdYN = "Y"
+                        #}
+                        endif
+                #}
+                endif
+#Tran Entry Starts
+                if((EQSRV.GLBDATA.drAcctId!="")and(EQSRV.GLBDATA.crAcctId!="")and(cdouble(EQSRV.GLBDATA.tranAmt)>0)and(EQSRV.GLBDATA.isTranYN=="Y"))then
+                #{
+                                MTT.PartTranDetails.Account = EQSRV.GLBDATA.drAcctId
+                                ##MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.RefCurrency = EQSRV.GLBDATA.icrCrncyCode
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate   =  "0"
+                                if(EQSRV.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Particulars = "Int recovery for:" + EQSRV.GLBDATA.crAcctId
+                                endif
+                                if(EQSRV.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Particulars = "Prin recovery for:" + EQSRV.GLBDATA.crAcctId
+                                endif
+                                MTT.PartTranDetails.RefAmount = -1*cdouble(EQSRV.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+                                if(EQSRV.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Remarks = "Interest Recovery"
+                                endif
+                                if(EQSRV.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Remarks = "Principal Recovery"
+                                endif
+                                 if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                        MTT.PartTranDetails.RefNum = "By MultiPay"
+                                else
+                                        MTT.PartTranDetails.RefNum = "By DfltPay"
+                                endif
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.CarveAmtFlg = "Y"
+                                MTT.PartTranDetails.ProxyPstgInd= "P"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                print(MTT.PartTranDetails.TranIdentifier)
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                print(sv_r)
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Debit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        EQSRV.GLBDATA.srvErrCode = "MTT"
+                                        EQSRV.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                MTT.PartTranDetails.Account = EQSRV.GLBDATA.crAcctId
+                                ##MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                                MTT.PartTranDetails.RefCurrency = EQSRV.GLBDATA.icrCrncyCode
+                                MTT.PartTranDetails.ValueDateDiff = "0"
+                                MTT.PartTranDetails.ValueDate           =  "0"
+                                if(EQSRV.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Particulars = "Int recovery from:" + EQSRV.GLBDATA.drAcctId
+                                endif
+                                if(EQSRV.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Particulars = "Prin recovery from:" + EQSRV.GLBDATA.drAcctId
+                                endif
+                                MTT.PartTranDetails.RefAmount = 1 * cdouble(EQSRV.GLBDATA.tranAmt)
+                                print(MTT.PartTranDetails.RefAmount)
+                                if(EQSRV.GLBDATA.flowId=="INDEM")then
+                                        MTT.PartTranDetails.Remarks = "Interest Recovery"
+                                endif
+                                if(EQSRV.GLBDATA.flowId=="PRDEM")then
+                                        MTT.PartTranDetails.Remarks = "Principal Recovery"
+                                endif
+                               if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                        MTT.PartTranDetails.RefNum = "By MultiPay"
+                                else
+                                        MTT.PartTranDetails.RefNum = "By DfltPay"
+                                endif
+                                MTT.PartTranDetails.IgnoreExcp = "I"
+                                MTT.PartTranDetails.Consolidate = "N"
+                                MTT.PartTranDetails.TranIdentifier = "ODLoanRec"
+                                MTT.PartTranDetails.ReportCode   = "ODLoan"
+                                MTT.PartTranDetails.PstFlg = "Y"
+                                sv_r = urhk_MTTS_definePartTran("OdLoanRecov")
+                                if (sv_r != 0) then
+                                        BANCS.OUTPUT.successOrFailure = "F"
+                                        print(MTT.Error.Description)
+                                        MTT.Error.Description="Credit Part Tran Definition failed "
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                                        EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        EQSRV.GLBDATA.srvErrCode = "MTT"
+                                        EQSRV.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                endif
+                                sv_u = urhk_MTTS_EndDefinition("")
+                                print(sv_u)
+                                if (sv_u != 0) then
+                                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                                        print (MTT.Error.Description)
+                                        EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                        EQSRV.GLBDATA.srvErrCode = "MTT"
+                                        EQSRV.GLBDATA.srvSucFail = "F"
+                                        goto NXTREC
+                                        EQSRV.GLBDATA.TranId = ""
+                                else
+                                        EQSRV.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                                        print(EQSRV.GLBDATA.TranId)
+                                endif
+
+                                print(MTT.XCPN.NumExceptions)
+                                print(MTT.XCPN.NumWarnings)
+                                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                                #{
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                EQSRV.GLBDATA.srvErrCode = "MTT"
+                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                else
+                                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                                        if (sv_u != 0) then
+                                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                                print (MTT.Error.Description)
+                                                EQSRV.GLBDATA.srvErrMsg = MTT.Error.Description
+                                                EQSRV.GLBDATA.srvErrCode = "MTT"
+                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                goto NXTREC
+                                        endif
+                                #}
+                                endif
+##Frequency&Partial Demand Update
+                                if(((EQSRV.GLBDATA.ppExistYN=="N") or (EQSRV.GLBDATA.ppExistYN=="Y")) and (EQSRV.GLBDATA.TranId!=""))then
+                                #{
+                                        print(EQSRV.GLBDATA.ppRegulAmt)
+                                        print(EQSRV.GLBDATA.ppExistYN)
+                                        print(EQSRV.GLBDATA.totAdjAmt)
+                                        print(EQSRV.GLBDATA.tranAmt)
+                                        print(EQSRV.GLBDATA.tmpResidualAmt)
+                                        print(EQSRV.GLBDATA.uppResidualAmt)
+                                        if(cdouble(EQSRV.GLBDATA.uppResidualAmt)<=0)then
+                                        #{
+                                                EQSRV.GLBDATA.totrecamt = cdouble(EQSRV.GLBDATA.totAdjAmt) +  cdouble(EQSRV.GLBDATA.tranAmt) + cdouble(EQSRV.GLBDATA.tmpResidualAmt)
+                                                print(EQSRV.GLBDATA.totrecamt)
+                                        else
+                                                EQSRV.GLBDATA.totrecamt = cdouble(EQSRV.GLBDATA.totAdjAmt) +  cdouble(EQSRV.GLBDATA.tranAmt) + cdouble(EQSRV.GLBDATA.ppRegulAmt)
+                                                print(EQSRV.GLBDATA.totrecamt)
+                                        #}
+                                        endif
+                                        if(EQSRV.GLBDATA.aftTranup=="Y")then
+                                        #{
+                                                print(EQSRV.GLBDATA.totAdjAmt)
+                                                if(cdouble(EQSRV.GLBDATA.totAdjAmt)>0)then
+                                                #{
+                                                        EQSRV.GLBDATA.totrecamt = cdouble(EQSRV.GLBDATA.totAdjAmt) + cdouble(EQSRV.GLBDATA.tranAmt)
+                                                #}
+                                                else
+                                                #{
+                                                        EQSRV.GLBDATA.totrecamt = cdouble(EQSRV.GLBDATA.tranAmt)
+                                                #}
+                                                endif
+                                                  print(EQSRV.GLBDATA.totrecamt)
+                                        lv_p = "update custom.odla_dmd_tbl set tot_adj_amt=?NVAR ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR,free_text_3='P',host_machine_id=?SVAR where bank_id=?SVAR and op_acid=?SVAR and od_acid=?SVAR and op_sol_id=?SVAR  and shdl_num=?NVAR and flow_id=?SVAR and free_text_1=?SVAR and free_text_2=?SVAR"
+                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.totrecamt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.TranId + "|" + EQSRV.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.shdlNum + "|" + EQSRV.GLBDATA.flowId + "|" + EQSRV.GLBDATA.numOfpay + "|" + EQSRV.GLBDATA.monthofPay
+                                        #}
+                                        else
+                                        #{
+                                                print("else")
+                                        lv_p = "update custom.odla_dmd_tbl set tot_adj_amt=?NVAR ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR,free_text_3='P',host_machine_id=?SVAR where bank_id=?SVAR and op_acid=?SVAR and od_acid=?SVAR and op_sol_id=?SVAR  and shdl_num=?NVAR and flow_id=?SVAR and free_text_1=?SVAR and free_text_2=?SVAR"
+                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.totrecamt + "|" + mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.TranId + "|" + EQSRV.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.shdlNum + "|" + EQSRV.GLBDATA.flowId + "|" + EQSRV.GLBDATA.numOfpay + "|" + EQSRV.GLBDATA.monthofPay
+                                        #}
+                                        endif
+                                        print(lv_p)
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        lv_h = urhk_dbSqlWithBind(lv_p)
+                                        print(lv_h)
+                                        if(lv_h==0)then
+                                        #{
+                                                print("frequency and partial demand consolidated successfully")
+                                                lv_h = urhk_dbSqlWithBind("commit")
+                                                print(lv_h)
+                                        #}
+                                        else
+                                        #{
+                                                print("frequency and partial demand consolidation failed")
+                                        #}
+                                        endif
+                                #}
+                                endif
+##partial pay update
+                                if((EQSRV.GLBDATA.ppExistYN=="Y")and(EQSRV.GLBDATA.TranId!=""))then
+                                #{
+                                        print(EQSRV.GLBDATA.uppResidualAmt)
+                                        print(EQSRV.GLBDATA.ppRegulAmt)
+                                        lv_i = "update custom.odla_partial_pymt_tbl "
+                                        lv_i = lv_i + " set residual_amt=?NVAR,"
+                                        lv_i = lv_i + " regul_amt=?NVAR, "
+                                        lv_i = lv_i + " lchg_user_id=?SVAR, "
+                                        lv_i = lv_i + " lchg_time=sysdate,host_machine_id=?SVAR "
+                                        lv_i = lv_i + " where bank_id=?SVAR "
+                                        lv_i = lv_i + " and od_acid=?SVAR "
+                                        lv_i = lv_i + " and op_acid=?SVAR "
+                                        lv_i = lv_i + " and entity_cre_flg='Y' "
+                                        lv_i = lv_i + " and del_flg='N' "
+                                        BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.uppResidualAmt + "|" + EQSRV.GLBDATA.ppRegulAmt + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.crAcid + "|" + EQSRV.GLBDATA.drAcid
+                                        print(lv_i)
+                                        print(BANCS.INPARAM.BINDVARS)
+                                        lv_b = urhk_dbSqlWithBind(lv_i)
+                                        print(lv_b)
+                                        if(lv_b==0)then
+                                                print("partial pay consolidated")
+                                                lv_h = urhk_dbSqlWithBind("commit")
+                                                print(lv_h)
+                                        else
+                                                print("partial pay not consolidated")
+                                        endif
+                                #}
+                                endif
+##Lien on Operative Account for loan demand with Tran Creation
+                                if(((EQSRV.GLBDATA.ppExistYN=="N")or(EQSRV.GLBDATA.ppExistYN=="Y")) and(EQSRV.GLBDATA.TranId!=""))then
+                                #{
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        print(EQSRV.GLBDATA.lienAmt)
+                                        print(EQSRV.GLBDATA.isLienAddYN)
+                                        print(EQSRV.GLBDATA.acid)
+                                        print(EQSRV.GLBDATA.b2kid)
+                                        if(EQSRV.GLBDATA.isLienAddYN=="Y")then
+                                        #{
+                                                print(EQSRV.GLBDATA.isLienAddModify)
+                                                print(EQSRV.GLBDATA.isMultiSPay)
+                                                print("Lien Add")
+                                                if(EQSRV.GLBDATA.isLienAddModify=="")then
+                                                #{
+                                                if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                #{
+                                                        if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                                        #{
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.LidrAcctId
+                                                        #}
+                                                        else
+                                                        #{
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.blockMode = "A"
+                                                        if(cdouble(EQSRV.GLBDATA.lienAmt)<0)then
+                                                        #{
+                                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * -1
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt)
+                                                        BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                        BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        sv_u = urhk_updateLien("")
+                                                        if(sv_u != 0)then
+                                                        #{
+                                                                print("Unable to Mark the lien on operative account for loan recovery")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                                goto NXTREC
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print("Lien Success")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                                goto NXTREC
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                                #}
+                                                endif
+                                        #}
+                                        else
+                                        #{
+                                                print("Lien Modif")
+                                                print(EQSRV.GLBDATA.drlienamt)
+                                                print(EQSRV.GLBDATA.lienAmt)
+                                                print(EQSRV.GLBDATA.isMultiSPay)
+                                                print(EQSRV.GLBDATA.isLienAddModify)
+                                                if(EQSRV.GLBDATA.isLienAddModify=="")then
+                                                #{
+                                                if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                #{
+                                                        if((EQSRV.GLBDATA.isMultiSPay=="Y")and(EQSRV.GLBDATA.Lib2kid==""))then
+                                                        #{
+                                                                print(EQSRV.GLBDATA.LidrAcid)
+                                                                lv_f = "  Lib2kid|select distinct b2k_id from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null and srl_num in (select max(srl_num) from tbaadm.alh where acid=?SVAR and bank_id=?SVAR  and lien_reason_code='ODLA' and b2k_id is not null)union select distinct b2k_id from tbaadm.alt where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null "
+                                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" +  EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId
+                                                                print(BANCS.INPARAM.BINDVARS)
+                                                                print(lv_f)
+                                                                lv_f = urhk_dbselectWithBind(lv_f)
+                                                                if(lv_f==0)then
+                                                                #{
+                                                                        EQSRV.GLBDATA.Lib2kid = BANCS.OUTPARAM.Lib2kid
+                                                                #}
+                                                                endif
+                                                        #}
+                                                        endif
+                                                        if((EQSRV.GLBDATA.isMultiSPay!="Y")and(EQSRV.GLBDATA.b2kid==""))then
+                                                        #{
+                                                                print(EQSRV.GLBDATA.LidrAcid)
+                                                                lv_f = "  Lib2kid|select distinct b2k_id from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null and srl_num in (select max(srl_num) from tbaadm.alh where acid=?SVAR and bank_id=?SVAR  and lien_reason_code='ODLA' and b2k_id is not null)union select distinct b2k_id from tbaadm.alt where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null "
+                                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" +  EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId
+                                                                print(BANCS.INPARAM.BINDVARS)
+                                                                print(lv_f)
+                                                                lv_f = urhk_dbselectWithBind(lv_f)
+                                                                if(lv_f==0)then
+                                                                #{
+                                                                        EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.Lib2kid
+                                                                #}
+                                                                endif
+                                                        #}
+                                                        endif
+                                                        if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                                        #{
+                                                                BANCS.INPARAM.b2kId = EQSRV.GLBDATA.Lib2kid
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.LidrAcctId
+                                                        #}
+                                                        else
+                                                        #{
+                                                                BANCS.INPARAM.b2kId = EQSRV.GLBDATA.b2kid
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.blockMode = "M"
+                                                        if(cdouble(EQSRV.GLBDATA.lienAmt)<0)then
+                                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * -1
+                                                        else
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                        endif
+                                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * 1
+                                                        BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                        BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        sv_u = urhk_updateLien("")
+                                                        if(sv_u!=0)then
+                                                        #{
+                                                                print("Unable to Mark the lien on operative account for loan recovery")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                                goto NXTREC
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print("Lien Success")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                                goto NXTREC
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                #}
+                                endif
+                #}
+                else
+                #{
+##Lien on Operative Account for loan demand without Tran creation
+                                if((EQSRV.GLBDATA.ppExistYN=="N")or(EQSRV.GLBDATA.ppExistYN=="Y"))then
+                                #{
+                                        print(EQSRV.GLBDATA.drlienamt)
+                                        print(EQSRV.GLBDATA.lienAmt)
+                                        print(EQSRV.GLBDATA.isLienAddYN)
+                                        print(EQSRV.GLBDATA.acid)
+                                        print(EQSRV.GLBDATA.b2kid)
+                                        if(EQSRV.GLBDATA.isLienAddYN=="Y")then
+                                        #{
+                                                print(EQSRV.GLBDATA.isMultiSPay)
+                                                print(EQSRV.GLBDATA.isLienAddModify)
+                                                print("Lien Add")
+                                                if(EQSRV.GLBDATA.isLienAddModify=="")then
+                                                #{
+                                                if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                #{
+                                                        if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                                        #{
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.LidrAcctId
+                                                        #}
+                                                        else
+                                                        #{
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.blockMode = "A"
+                                                        if(cdouble(EQSRV.GLBDATA.lienAmt)<0)then
+                                                        #{
+                                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * -1
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt)
+                                                        BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                        BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        sv_u = urhk_updateLien("")
+                                                        if(sv_u != 0)then
+                                                        #{
+                                                                print("Unable to Mark the lien on operative account for loan recovery")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                                goto NXTREC
+                                                        else
+                                                                print("Lien Success")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                                goto NXTREC
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                                #}
+                                                endif
+                                        #}
+                                        else
+                                        #{
+                                                print("Lien Modif")
+                                                print(EQSRV.GLBDATA.drlienamt)
+                                                print(EQSRV.GLBDATA.lienAmt)
+                                                print(EQSRV.GLBDATA.isMultiSPay)
+                                                print(EQSRV.GLBDATA.isLienAddModify)
+                                                if(EQSRV.GLBDATA.isLienAddModify=="")then
+                                                #{
+                                                if(cdouble(EQSRV.GLBDATA.lienAmt)!=cdouble("0"))then
+                                                #{
+                                                        if((EQSRV.GLBDATA.isMultiSPay=="Y")and(EQSRV.GLBDATA.Lib2kid==""))then
+                                                        #{
+                                                                print(EQSRV.GLBDATA.LidrAcid)
+                                                                lv_f = "  Lib2kid|select distinct b2k_id from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null and srl_num in (select max(srl_num)  from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null) union select distinct b2k_id from tbaadm.alt where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null "
+                                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId
+                                                                print(BANCS.INPARAM.BINDVARS)
+                                                                print(lv_f)
+                                                                lv_f = urhk_dbselectWithBind(lv_f)
+                                                                if(lv_f==0)then
+                                                                #{
+                                                                        EQSRV.GLBDATA.Lib2kid = BANCS.OUTPARAM.Lib2kid
+                                                                #}
+                                                                endif
+                                                        #}
+                                                        endif
+                                                        if((EQSRV.GLBDATA.isMultiSPay!="Y")and(EQSRV.GLBDATA.b2kid==""))then
+                                                        #{
+                                                                print(EQSRV.GLBDATA.LidrAcid)
+                                                                lv_f = "  Lib2kid|select distinct b2k_id from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null and srl_num in (select max(srl_num)  from tbaadm.alh where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null) union select distinct b2k_id from tbaadm.alt where acid=?SVAR and bank_id=?SVAR and lien_reason_code='ODLA' and b2k_id is not null "
+                                                                BANCS.INPARAM.BINDVARS = EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.LidrAcid + "|" + BANCS.STDIN.contextBankId
+                                                                print(BANCS.INPARAM.BINDVARS)
+                                                                print(lv_f)
+                                                                lv_f = urhk_dbselectWithBind(lv_f)
+                                                                if(lv_f==0)then
+                                                                #{
+                                                                        EQSRV.GLBDATA.b2kid = BANCS.OUTPARAM.Lib2kid
+                                                                #}
+                                                                endif
+                                                        #}
+                                                        endif
+
+                                                        if(EQSRV.GLBDATA.isMultiSPay=="Y")then
+                                                        #{
+                                                                BANCS.INPARAM.b2kId = EQSRV.GLBDATA.Lib2kid
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.LidrAcctId
+                                                        #}
+                                                        else
+                                                        #{
+                                                                BANCS.INPARAM.b2kId = EQSRV.GLBDATA.b2kid
+                                                                BANCS.INPARAM.acctNum = EQSRV.GLBDATA.drAcctId
+                                                        #}
+                                                        endif
+                                                        BANCS.INPARAM.blockMode = "M"
+                                                        if(cdouble(EQSRV.GLBDATA.lienAmt)<0)then
+                                                                EQSRV.GLBDATA.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * -1
+                                                        else
+                                                                print(EQSRV.GLBDATA.lienAmt)
+                                                        endif
+                                                        BANCS.INPARAM.lienAmt = cdouble(EQSRV.GLBDATA.lienAmt) * 1
+                                                        BANCS.INPARAM.expiryDate = "31-12-2099"
+                                                        BANCS.INPARAM.remarks = "Lien for loans on od"
+                                                        BANCS.INPARAM.reasonCode = "ODLA"
+                                                        BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                                        sv_u = urhk_updateLien("")
+                                                        if(sv_u!=0)then
+                                                        #{
+                                                                print("Unable to Mark the lien on operative account for loan recovery")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Unable to Mark the lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "F"
+                                                                goto NXTREC
+                                                        #}
+                                                        else
+                                                        #{
+                                                                print("Lien Success")
+                                                                EQSRV.GLBDATA.srvErrMsg =  "Lien on operative account for loan recovery"
+                                                                EQSRV.GLBDATA.srvErrCode = "Lien"
+                                                                EQSRV.GLBDATA.srvSucFail = "S"
+                                                                goto NXTREC
+                                                        #}
+                                                        endif
+                                                #}
+                                                endif
+                                                #}
+                                                endif
+                                        #}
+                                        endif
+                                #}
+                                endif
+                #}
+                endif
+#incredit balance update
+                if((EQSRV.GLBDATA.overcrUpdYN=="Y") and (EQSRV.GLBDATA.TranId!=""))then
+                #{
+                        lv_p = "update custom.odla_dmd_tbl set tot_adj_amt=dmd_amt ,last_adj_date=to_date(?SVAR,'DD-MM-RR'),lchg_user_id=?SVAR,lchg_time=sysdate,free_text_4=?SVAR,free_text_3='F',host_machine_id=?SVAR where bank_id=?SVAR and op_acid=?SVAR and od_acid=?SVAR and op_sol_id=?SVAR  and shdl_num=?NVAR and flow_id=?SVAR and free_text_1=?SVAR and free_text_2=?SVAR"
+                        BANCS.INPARAM.BINDVARS = mid$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.userId + "|" + EQSRV.GLBDATA.TranId + "|" + EQSRV.GLBDATA.machineId + "|" + BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.drAcid + "|" + EQSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.mySolId + "|" + EQSRV.GLBDATA.shdlNum + "|" + EQSRV.GLBDATA.flowId + "|" + EQSRV.GLBDATA.numOfpay + "|" + EQSRV.GLBDATA.monthofPay
+                        print(lv_p)
+                        print(BANCS.INPARAM.BINDVARS)
+                        lv_h = urhk_dbSqlWithBind(lv_p)
+                        print(lv_h)
+                        if(lv_h==0)then
+                        #{
+                                print("overcredit is restricted")
+                                lv_h = urhk_dbSqlWithBind("commit")
+                                print(lv_h)
+                        #}
+                        endif
+                #}
+                endif
+
+                NXTREC:
+                        print(EQSRV.GLBDATA.srvErrMsg)
+                        print(EQSRV.GLBDATA.srvErrCode)
+                        print(EQSRV.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                        #{
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        #}
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        exitscript
+trace off
+end-->

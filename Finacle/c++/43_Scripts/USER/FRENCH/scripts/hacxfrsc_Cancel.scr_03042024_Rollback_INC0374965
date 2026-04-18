@@ -1,0 +1,148 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: b_sbaccttransfer.scr
+# Type: NA|default
+# Description: b_sbaccttransfer.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#------------------------------------------------------------------------------------------------
+#   Name            : b_sbaccttransfer.scr
+#   Description     : This script is called from job
+#   Date            : 04-04-2014
+#   Author          : jane
+#   Input           : NA
+#   Output          : NA
+#   Called Script   :
+#   Calling Script  : NA
+#   Menu Option     :
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             04-04-2014      jane     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="c1733418d30be39238db84775eda3d7c04433706749f41699c78a41ce71e76a4"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	sv_a=urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_a)
+	
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+		CREATEREP("CUSTS")
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	ENDIF
+	sv_r = CLASSEXISTS("STDWFS", "GLBDATA")
+	IF (sv_r == 0) THEN
+		CREATECLASS("STDWFS", "GLBDATA", 5)
+	ENDIF
+
+IF (FIELDEXISTS(STDWFS.GLBDATA.custId) == 1) THEN
+
+	print(STDWFS.GLBDATA.custId)
+	CUSTS.GLBDATA.foracid = STDWFS.GLBDATA.custId
+	print(CUSTS.GLBDATA.foracid)
+	sv_q="foracid, solid, SRL_NUM|"
+	sv_q = sv_q + " select  gam.foracid,gam.sol_id, SRL_NUM from tbaadm.sct, tbaadm.gam where sct.bank_id =?SVAR and VERIFY_STAT !='2'  "
+	sv_q = sv_q + " and gam.acid =sct.acid and schm_type in ('CAA','SBA') and gam.bank_id =sct.bank_id   and gam.foracid  =?SVAR "
+	PRINT(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUSTS.GLBDATA.foracid
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)	
+	IF(sv_e==0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		PRINT(sv_q)
+		
+		WHILE(sv_q==0)
+			CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+			PRINT(CUSTS.GLBDATA.foracid)
+			CUSTS.GLBDATA.serialNum =BANCS.OUTPARAM.SRL_NUM
+			PRINT(CUSTS.GLBDATA.serialNum)
+			CUSTS.GLBDATA.solid =BANCS.OUTPARAM.solid
+			PRINT(CUSTS.GLBDATA.solid)
+
+			IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+				sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+				PRINT(sv_u)
+				sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+				PRINT(sv_u)
+			ENDIF
+
+			sv_a=urhk_SetUrhkInp("serialNum|" + CUSTS.GLBDATA.serialNum) 
+			sv_d = urhk_ExecSrvNoCommit("SRV_FetchXferAcctBtwnSchmsDtlForCancel|same_user_verify = Y|retain_all_output = Y|call_mode = N")
+			
+			IF(sv_d != "0") THEN 			
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					PRINT(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				ELSE
+					sv_v = 0
+				ENDIF
+				IF (sv_v > 0) THEN
+					sv_u = SYSTEM("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>transfer.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_i = sv_i + 1
+						sv_u = SYSTEM("echo '"+sv_e+"' >>transfer.log")
+						PRINT(sv_u)
+					DO
+				ENDIF
+			ELSE
+				sv_a = urhk_CopyOutToIn("")				
+				sv_u = urhk_ExecSrv("SRV_CancelXferAcctBtwnSchms|retain_all_output = Y|same_user_verify = Y") 
+				PRINT(sv_u)
+				
+				IF(sv_u == 0) THEN
+					print ("OK")
+				ELSE
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+						PRINT(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					ELSE
+						sv_v = 0
+					ENDIF
+					IF (sv_v > 0) THEN
+						sv_u = SYSTEM("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>transfer.log")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							PRINT(sv_e)
+							sv_i = sv_i + 1
+							sv_u = SYSTEM("echo '"+sv_e+"' >>transfer.log")
+							PRINT(sv_u)
+						DO
+					ENDIF
+				ENDIF
+				
+			ENDIF			
+			sv_q = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_q)	
+		DO
+		sv_d = urhk_dbCursorClose(sv_m)
+		PRINT(sv_d)
+	ENDIF
+ENDIF
+	
+EXITSCRIPT
+END-->

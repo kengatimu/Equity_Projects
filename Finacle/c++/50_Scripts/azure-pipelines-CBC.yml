@@ -1,0 +1,119 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CBC/*  # Triggers The Pipeline Only When Files In CBC Are Changed
+
+variables:
+  tag: '$(Build.BuildId)'
+
+  # Agent VM image name - linux
+  vmImageName: 'devops-ubuntu'
+  azureSubscription: 'Enterprise Dev/Test'
+  azureSubscriptionProd: 'Enterprise Production'
+
+stages:
+  - stage: BuildHPPROD
+    condition: and(always(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    displayName: HP-PROD-CBC
+    jobs:
+      - job: Build
+        displayName: 'HP Prod Build Stage'
+        pool:
+          name: $(vmImageName)
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          - task: CmdLine@2
+            displayName: 'Run Script Create Tag FI-Tag'
+            inputs:
+              script: |
+                if [ "$(Build.SourceBranch)" == "refs/heads/main" ] && [ "$(Build.Reason)" == "IndividualCI" ] && [ "$(Build.SourceBranch)" == "$(Build.SourceBranch)" ]; then
+                    export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CBC-Tag
+                fi
+
+          - task: Bash@3
+            displayName: Checking For New/Modified Files
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files.sh
+
+          - task: CopyFiles@2
+            displayName: 'Copying Files To Stagging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/finacleFileType/*
+                **/modifiedFiles/*
+                **/deletedFiles/*
+                **/newFiles/*
+                !**/*.gitkeep
+                !**/*.git/**
+                !**/*.git
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(build.artifactstagingdirectory)'
+
+          - task: CmdLine@2
+            displayName: Archiving Finacle Files
+            inputs:
+              script: |
+                #This archiving includes empty directories, unlike azure ArchiveFiles@2
+                echo "Archiving CBC Files In The Staging Directory"
+                cd $(build.artifactstagingdirectory)
+
+                # Create the archive with compression and without paths
+                tar -vzcf $(Build.SourcesDirectory)/finacle-CBC-scripts.tar.gz .
+
+                # Copy the archive into staging directory
+                cp -r $(Build.SourcesDirectory)/finacle-CBC-scripts.tar.gz $(build.artifactstagingdirectory)/
+                
+          - task: CmdLine@2
+            displayName: List Items Of The Archive
+            inputs:
+              script: |
+                cd $(build.artifactstagingdirectory)
+                echo "Listing Items In The finacle-CBC-scripts.tar.gz Archive"
+                tar -ztvf finacle-CBC-scripts.tar.gz
+
+          - task: CmdLine@2
+            displayName: Creating Publishing Directories Dedicated Env
+            inputs:
+              script: |
+                echo "Creating Publishing Directory"
+                cd $(build.artifactstagingdirectory)
+
+                echo "Copying deploy scripts.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/New-Environment-Scripts/deploy-cbc-scripts-new.sh $(build.artifactstagingdirectory)/publishCBCScriptsDir
+
+                echo "Copying deploy suScript.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/New-Environment-Scripts/suScript-new.sh $(build.artifactstagingdirectory)/publishCBCScriptsDir
+
+          - task: CmdLine@2
+            displayName: Creating Publishing Directories
+            inputs:
+              script: |
+                echo "Creating Publishing Directory"
+                cd $(build.artifactstagingdirectory)
+                mkdir -v publishCBCScriptsDir
+
+                echo "Copying The Archive Into The Publishing Directory"
+                cp -vr finacle-CBC-scripts.tar.gz $(build.artifactstagingdirectory)/publishCBCScriptsDir
+
+                echo "Copying deploy scripts.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/deploy-cbc-scripts.sh $(build.artifactstagingdirectory)/publishCBCScriptsDir
+
+                echo "Copying deploy suScript.sh Into The Publishing Directory"
+                cp -vr $(Build.SourcesDirectory)/suScript.sh $(build.artifactstagingdirectory)/publishCBCScriptsDir
+
+          - task: PublishBuildArtifacts@1
+            displayName: Publish Build Artifacts On cbc_drop
+            inputs:
+              PathtoPublish: $(build.artifactstagingdirectory)/publishCBCScriptsDir
+              ArtifactName: cbc_drop
+              publishLocation: Container

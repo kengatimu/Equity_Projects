@@ -1,0 +1,348 @@
+#=======================================================================
+# Name                   : ODCA1_charge.scr
+# Date                   : 22-11-2020
+# Description            : To fetch the ODCA1 accounts for lace fee charge
+# MenuOption             : HTM
+# Author                 : Silvester M
+# Called Script          : NA
+# Calling Script         : NA
+# Reference Document     : NA
+# Modification History
+# S.No.  Date          Name                 Description
+# -----  ----------    ----------------     -----------------------------
+#  1.0   17-08-2021   Silvester      Original Version
+#========================================================================
+<--START
+TRACE ON
+
+        #------------------------------------#
+        #-- Repository And Class Creation  --#
+        #------------------------------------#
+
+		IF(REPEXISTS("CUST") == 0) THEN
+		#{
+			CREATEREP("CUST")
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+		#{
+			CREATECLASS("CUST", "DATA", 5)
+		#}
+		ENDIF
+		sv_q = urhk_B2k_PrintRepos("BANCS")
+		print(sv_q)
+		
+		sv_k = urhk_B2k_PrintRepos("CUST")
+		print(sv_k)
+
+	#-------------------------------------------------------------------------------------------
+        # Fetch A/c - foracid
+        #-------------------------------------------------------------------------------------------
+        sv_u = urhk_SRV_GetVal("tranDtl.partTranDetailLL." +sv_r+ ".acctId.foracid")
+        PRINT(sv_u)
+        IF (sv_u == 0) THEN
+        #{
+                CUST.DATA.drAcct1 = BANCS.OUTPARAM.srvValue
+                PRINT(CUST.DATA.drAcct1)
+        #}
+        ELSE
+        #{
+                COLL.GLBDATA.errMsg = "Error: urhk_SRV_GetVal failed for Account Number"
+                BANCS.OUTPUT.successOrFailure = "F"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+	#-----------------------------
+	## Variable Intialization
+	#-----------------------------
+		
+		CUST.DATA.errMsg   = ""
+		#CUST.DATA.crAcct   = "1000650020441"
+		#CUST.DATA.crAcctBacid = "PROSFEGL"
+		#CUST.DATA.crAcctBacid = "21800010"
+		CUST.DATA.LaceCharge = ""		
+		#CUST.DATA.schmCode = CASH.WITH.schmCode
+		#CUST.DATA.drAcct1 =  BANCS.INPUT.Foracid
+		CUST.DATA.TRAN_AMT =  BANCS.INPUT.TranAmt
+		
+		#---------------------------------
+        # Populate MTT details
+        #---------------------------------
+
+		sv_r = urhk_MTTS_PopulateInputDetails("")
+		Print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT      
+		#}
+		ENDIF
+
+	#---------------------------------
+        #  Closing of MTT if it is opened
+        #---------------------------------
+
+		sv_g = urhk_MTTS_Close("")
+		print(sv_g)
+	
+		IF (sv_g != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+        #-----------------------------
+        #--- Initialize MTT details
+        #-----------------------------
+
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		sv_o = urhk_MTTS_Initialize("")
+		PRINT(sv_o)
+		
+		IF(sv_o != 0)THEN
+		#{
+			sv_o = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+
+        #-------------------------------
+        # Define the transaction
+        #-------------------------------
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+
+		sv_r = urhk_MTTS_DefineTransaction("EOD_TranDetails")
+		print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+		
+	
+	#----------------------------Getting Charge Account start--------------------------------#
+	CUST.DATA.crAcctBacid = "PROSFEGL"
+	print(CUST.DATA.crAcctBacid)
+
+	sv_a = CUST.DATA.crAcctBacid+"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+	sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+	print(sv_k)
+				
+	IF(sv_k == 0)THEN
+	#{
+		CUST.DATA.crAcct = BANCS.OUTPARAM.AcctId
+		PRINT(CUST.DATA.crAcct)
+	#}
+	ENDIF
+	#----------------------	Getting Charge Account End-------------------------------------#
+
+	IF(BANCS.STDIN.menuId == "HTM") THEN
+	#{
+		sv_q = "drAcct,schmCode,acctCrncyCode|SELECT FORACID,SCHM_CODE,ACCT_CRNCY_CODE "
+		sv_q = sv_q + " FROM TBAADM.GAM "
+		sv_q = sv_q + " WHERE BANK_ID=?SVAR AND "
+		sv_q = sv_q + " SCHM_TYPE in ('ODA') AND SCHM_CODE in('ODCA1') "
+		sv_q = sv_q + " AND ACCT_CLS_FLG='N' "
+		sv_q = sv_q + " AND GAM.DEL_FLG='N' "
+		sv_q = sv_q + " AND GAM.ENTITY_CRE_FLG='Y' "
+		sv_q = sv_q + " AND FORACID = ?SVAR " 
+		
+
+		print(sv_q)
+		
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.drAcct1 
+
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		
+		print(sv_d)
+
+		IF(sv_d == 0) THEN
+		#{
+
+			#setting the account currency code
+			CUST.DATA.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+
+			CUST.DATA.parameterId="ODCA1_CHARGE"
+
+			sv_s = "LaceCharge|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+			sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+			sv_s = sv_s + " AND M.MODULE_NAME = 'CHARGE'"
+			sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+			sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+			sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+			sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+			sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+			sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+			sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+			sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+			PRINT(sv_s)
+		
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.parameterId
+			PRINT(BANCS.INPARAM.BINDVARS)
+		
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			PRINT(sv_d)
+
+			IF(sv_d == 0)THEN
+			#{
+				CUST.DATA.LaceCharge = BANCS.OUTPARAM.LaceCharge
+
+			#}
+			ENDIF
+
+
+			PRINT(CUST.DATA.TRAN_AMT)
+			print(CUST.DATA.LaceCharge)
+
+			#CUST.DATA.LaceCharge= "0.03"
+			sv_k = CDOUBLE(CUST.DATA.LaceCharge) * CDOUBLE(CUST.DATA.TRAN_AMT)
+			CUST.DATA.LaceCharge = sv_k * -1
+			PRINT(CUST.DATA.LaceCharge)
+			#CUST.DATA.drAcct1 = BANCS.OUTPARAM.drAcct
+			print(CUST.DATA.drAcct1)
+			print(CUST.DATA.crAcct)
+		#}
+		ENDIF
+
+		#Debit to charges account 
+
+		MTT.PartTranDetails.Account = CUST.DATA.drAcct1
+		MTT.PartTranDetails.RefAmount = CUST.DATA.LaceCharge
+		MTT.PartTranDetails.RefCurrency = CUST.DATA.acctCrncyCode
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = "ODCA1 Transfer charge ("+ CUST.DATA.drAcct1 + ")"
+		MTT.PartTranDetails.Remarks        = ""
+		MTT.PartTranDetails.TranIdentifier = "EOD_TranDetails"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = ""
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("DR_TEMP")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+		
+		#Credit to ODCA1 charge account 
+
+		MTT.PartTranDetails.Account        = CUST.DATA.crAcct
+		MTT.PartTranDetails.RefAmount      = sv_k
+		MTT.PartTranDetails.RefCurrency    = CUST.DATA.acctCrncyCode
+		MTT.PartTranDetails.ValueDate      = "0"
+		MTT.PartTranDetails.Particulars    = "ODCA1 Transfer charge ("+ CUST.DATA.crAcct + ")"
+		MTT.PartTranDetails.Remarks        = ""
+		MTT.PartTranDetails.TranIdentifier = "EOD_TranDetails"
+		MTT.PartTranDetails.Consolidate    = "N"
+		MTT.PartTranDetails.Refnum         = ""
+		MTT.TranDetails.PostFlag           = "Y"
+		MTT.TranDetails.IgnoreExcp         = "Y"
+		MTT.PartTranDetails.RateCode = "TTB"
+
+		IF (CUST.DATA.acctCrncyCode != BANCS.STDIN.homeCrncyCode) THEN
+		#{
+
+			sv_t = "rate|SELECT VAR_CRNCY_UNITS"
+			sv_t = sv_t + " FROM TBAADM.RTL"
+			sv_t = sv_t + " WHERE BANK_ID = ?SVAR"
+			sv_t = sv_t + " AND FXD_CRNCY_CODE = ?SVAR"
+			sv_t = sv_t + " AND VAR_CRNCY_CODE = ?SVAR"
+			sv_t = sv_t + " AND RATECODE = ?SVAR"
+			PRINT(sv_t)
+		
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.DATA.acctCrncyCode + "|" + BANCS.STDIN.homeCrncyCode + "|" + MTT.PartTranDetails.RateCode
+			PRINT(BANCS.INPARAM.BINDVARS)
+		
+			sv_d = urhk_dbSelectWithBind(sv_t)
+			PRINT(sv_d)
+
+			IF(sv_d == 0)THEN
+			#{
+				MTT.PartTranDetails.Rate = BANCS.OUTPARAM.rate
+			#}
+			ENDIF	
+			
+		#}
+		ELSE
+		#{
+			MTT.PartTranDetails.Rate = "1"
+		#}
+		ENDIF
+
+		sv_i = urhk_MTTS_DefinePartTran("CR_TEMP")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF		
+	#}
+	ENDIF		
+	#--------------------------------------------------------------
+        # MTT ending definition to create transaction
+        #--------------------------------------------------------------
+	
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.DATA.tranId)
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------
+        # MTT Closing an initialized MTT
+        #--------------------------------------------------------------
+	
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+		
+TRACE OFF
+END-->

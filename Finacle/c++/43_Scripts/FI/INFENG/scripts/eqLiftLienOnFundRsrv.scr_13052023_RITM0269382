@@ -1,0 +1,116 @@
+#======================================================#
+#Source Name                    :eqLiftLienOnFundRsrv.scr
+#Menu                           :HBJE
+#Batch Name                     :RSRVL
+#Date                           :05-04-2023
+#Description                    :Lift Marked Lien on loan Operatives.
+#Author                         :Ranjith Palani
+#======================================================#
+<--start
+#trace on
+	if(repexists("CUST") == 0)then
+		createrep("CUST")
+	endif
+	if(classexists("CUST","RSRVLIFT") == 0)then
+		createclass("CUST","RSRVLIFT",5)
+	endif
+
+	sv_b = urhk_B2k_PrintRepos("BANCS")
+	sv_s = "loanAcid,operAcid|"
+	sv_s = sv_s + " select gam.acid,lam.op_acid from tbaadm.gam,tbaadm.lam" 
+	sv_s = sv_s + " where gam.acid=lam.acid"
+	sv_s = sv_s + " and gam.bank_id=lam.bank_id"
+	sv_s = sv_s + " and gam.bank_id=?SVAR"
+	sv_s = sv_s + " and lam.bank_id=?SVAR"
+	sv_s = sv_s + " and gam.schm_type='LAA'"
+	sv_s = sv_s + " and gam.acct_ownership='C'"
+	sv_s = sv_s + " and gam.schm_code in(select regexp_substr((select listagg(parameter_value,'!') within group (order by parameter_value) from custom.c_cpvalue"
+	sv_s = sv_s + "                         where module_name='LARSRV' and parameter_id='LARSRV' and bank_id=?SVAR),'[^!]+',1,LEVEL) as schem_code_param from dual"
+	sv_s = sv_s + "                         connect by level < regexp_count((select listagg(parameter_value,'!') within group (order by parameter_value)"
+	sv_s = sv_s + "                                                         from custom.c_cpvalue where module_name='LARSRV' and parameter_id='LARSRV' and bank_id=?SVAR),'!')+0)"
+	sv_s = sv_s + " and gam.acct_ownership='C'"
+	sv_s = sv_s + " and gam.entity_cre_flg!='N'"
+	sv_s = sv_s + " and gam.del_flg!='Y'"
+	sv_s = sv_s + " and gam.acct_cls_flg!='Y'"
+	sv_s = sv_s + " and gam.acct_cls_date is null"
+	sv_s = sv_s + " and lam.op_acid is not null"
+	sv_s = sv_s + " and not exists(select 1 from tbaadm.cmg where cmg.bank_id=?SVAR and cmg.cif_id=gam.cif_id and cmg.bank_id=gam.bank_id and cmg.corp_id is not null)"
+	sv_s = sv_s + " and lam.payoff_flg!='Y'"
+	sv_s = sv_s + " and gam.sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id=?SVAR)"
+	sv_s = sv_s + " order by gam.schm_code,gam.acct_opn_date" 
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = urhk_dbCursorOpenWithBind(sv_s)
+	if(sv_s != 0)then
+			exitscript
+	endif
+
+	CUST.RSRVLIFT.curNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_f = urhk_dbCursorFetch(CUST.RSRVLIFT.curNum)
+	if(sv_f != 0)then
+		sv_c = urhk_dbCursorClose(CUST.RSRVLIFT.curNum)
+		exitscript
+	endif
+
+	while(sv_f == 0)
+	#{
+		CUST.RSRVLIFT.loanAcid = BANCS.OUTPARAM.loanAcid
+		print(CUST.RSRVLIFT.loanAcid)
+		CUST.RSRVLIFT.operAcid = BANCS.OUTPARAM.operAcid
+		print(CUST.RSRVLIFT.operAcid)
+
+		sv_f = urhk_B2k_AcidToForacid(CUST.RSRVLIFT.operAcid)
+		if(sv_f == 0)then
+			CUST.RSRVLIFT.operAcct = BANCS.OUTPARAM.Foracid
+		else
+			CUST.RSRVLIFT.operAcct = ""
+		endif
+
+			sv_s = "b2kId,lienAmt,lienExpDate|select b2k_id,lien_amt,to_date(lien_expiry_date,'dd-mm-yyyy') from tbaadm.alt"
+			sv_s = sv_s + " where entity_cre_flg='Y' and del_flg='N' and acid=?SVAR and lien_reason_code='RSRV' and b2k_type='ULIEN' and alt.bank_id=?SVAR"
+			sv_s = sv_s + " and lien_expiry_date <= (select db_stat_date from tbaadm.gct where bank_id=?SVAR)"
+			BANCS.INPARAM.BINDVARS = CUST.RSRVLIFT.operAcid +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId
+			sv_s = urhk_dbSelectWithBind(sv_s)
+			if(sv_s == 0)then
+				CUST.RSRVLIFT.b2kId = BANCS.OUTPARAM.b2kId
+				print(CUST.RSRVLIFT.b2kId)
+				CUST.RSRVLIFT.lienAmt = BANCS.OUTPARAM.lienAmt
+				print(CUST.RSRVLIFT.lienAmt)
+				CUST.RSRVLIFT.lienExpDate = BANCS.OUTPARAM.lienExpDate
+				print(CUST.RSRVLIFT.lienExpDate)
+
+				#-------------------------------#
+				#Lien Lift.
+				#-------------------------------#
+				BANCS.INPARAM.b2kId = CUST.RSRVLIFT.b2kId 
+				BANCS.INPARAM.acctNum = CUST.RSRVLIFT.operAcct
+				BANCS.INPARAM.blockMode = "M"
+				BANCS.INPARAM.lienAmt = cdouble(CUST.RSRVLIFT.lienAmt) * -1
+				BANCS.INPARAM.expiryDate = CUST.RSRVLIFT.lienExpDate
+				BANCS.INPARAM.remarks = "Lien Lift on Demand date before LADSP batch run"
+				BANCS.INPARAM.reasonCode = "RSRV"
+				BANCS.INPARAM.bodDate = left$(BANCS.STDIN.BODDate,10)
+				BANCS.INPARAM.lienValueDate = left$(BANCS.STDIN.BODDate,10)
+				sv_l = urhk_updateLien("")
+				if(sv_l == 0)then
+					sv_s = BANCS.OUTPARAM.successOrFailure
+					if(sv_s == "S")then
+						sv_c = urhk_dbSqlWithBind("commit")
+						print("Line Lifted Account Number is:" + CUST.RSRVLIFT.operAcct)
+					endif
+				else
+					goto nextrec
+				endif
+			else
+				goto nextrec
+			endif
+
+		nextrec:
+		sv_f = urhk_dbCursorFetch(CUST.RSRVLIFT.curNum)
+	#}
+	do
+	sv_c = urhk_dbCursorClose(CUST.RSRVLIFT.curNum)
+
+trace off
+end-->

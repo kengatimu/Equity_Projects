@@ -1,0 +1,136 @@
+#***********************************************************************************************************
+# Filename              : socialSchemeCharges.scr
+# Description           : This script is used to collect withdrawal fees for social scheme codes.
+# Modification History
+# Sl. #           Date             Author             	Modification           	Version
+# -----          -----            --------          	----------------        ---------
+#  1           25-05-2025         Dennis Chirchir 	Original Version          1.0
+#***********************************************************************************************************
+<--START
+CHECKSUM="f00102ef8a7b0e84f71f82b3f40dcefbfbf57b9135f4fa29c6adcf062078e268"
+TRACE ON
+
+	print(BANCS.INPUT.Foracid)
+	CUST.ATM.chrgeS = "N"
+	CUST.ATM.BODDate = mid$(BANCS.STDIN.BODDate,0,10)
+	lv_t = urhk_B2k_ForacidToAcid(BANCS.INPUT.Foracid)
+	print(lv_t)
+	if(lv_t == 0) then
+		print(BANCS.OUTPARAM.Acid)
+		CUST.ATM.acid = BANCS.OUTPARAM.Acid
+		print(CUST.ATM.acid)
+	else
+		CUST.ATM.acid = ""
+	endif
+	############get start and end date of the month
+	BANCS.INPARAM.BINDVARS = CUST.ATM.BODDate + "|" + CUST.ATM.BODDate
+	print(BANCS.INPARAM.BINDVARS)
+
+	lv_v = "SstartDate,SendDate|SELECT TRUNC(LAST_DAY(ADD_MONTHS(to_date(?SVAR,'DD-MM-YYYY'),-1)))+1, TRUNC(LAST_DAY(to_date(?SVAR,'DD-MM-YYYY'))) FROM DUAL "
+	print(lv_v)
+	lv_x = urhk_dbSelectWithBind(lv_v)
+	IF(lv_x == 0) THEN
+		CUST.ATM.SstartDate = BANCS.OUTPARAM.SstartDate
+		CUST.ATM.SendDate = BANCS.OUTPARAM.SendDate
+	ELSE
+		CUST.ATM.SstartDate = ""
+		CUST.ATM.SendDate = ""
+	ENDIF
+	print(CUST.ATM.SstartDate)
+	print(CUST.ATM.SendDate)
+
+	#####Get number of transaction records for transaction month
+	BANCS.INPARAM.BINDVARS = CUST.ATM.acid + "|" + CUST.ATM.SstartDate + "|" + CUST.ATM.SendDate + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+ 	lv_x = "countS|select count(*) from tbaadm.dctd_acli where acid=?SVAR and tran_date >= to_date(?SVAR) and tran_date <= to_date(?SVAR) and bank_id =?SVAR and PSTD_FLG ='Y' "
+	lv_x = lv_x + "  and PART_TRAN_TYPE ='D' and TRAN_SUB_TYPE in('NP','CI') "
+	print(lv_x)
+
+	lv_y = urhk_dbSelectWithBind(lv_x)
+	print(lv_y)
+
+	IF(lv_y == 0 ) THEN
+	#{
+		CUST.ATM.countS = BANCS.OUTPARAM.countS
+		print(CUST.ATM.countS)
+	#}
+	ELSE
+	#{
+		CUST.ATM.countS = 0	
+	#}
+	ENDIF
+	
+	IF(((CUST.ATM.schmCode == "SB130" ) OR (CUST.ATM.schmCode == "SB137") OR (CUST.ATM.schmCode == "SB145") OR (CUST.ATM.schmCode == "SB146")) AND (cdouble(CUST.ATM.countS)>0)) THEN
+	#{
+		CUST.ATM.chrgeS = "Y"		
+	#}
+	ENDIF
+
+	IF(((CUST.ATM.schmCode == "SB135") OR (CUST.ATM.schmCode == "SB136")) AND (cdouble(CUST.ATM.countS)>1)) THEN
+	#{
+		CUST.ATM.chrgeS = "Y"		
+	#}
+	ENDIF
+
+	IF(CUST.ATM.chrgeS == "Y") THEN
+	#{	
+		CUST.ATM.tableCode1="AGNWD"	
+		#---------------------------------------------------------
+		# getting amount to share 
+		#---------------------------------------------------------
+		CUST.ATM.AmountSF = cdouble(BANCS.INPUT.TranAmt)/100
+		print(CUST.ATM.AmountSF)
+		BANCS.INPARAM.InputAmount = CUST.ATM.AmountSF
+		BANCS.INPARAM.CurrencyCode = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.AmountTableCode = CUST.ATM.tableCode1
+		
+		sv_u = urhk_B2k_GetASTMAmount ("") 
+		print(sv_u)
+		
+		If (sv_u ==1)  then 
+		#{
+			sv_u = urhk_SRV_SetErr("Invalid Charge Code")
+			BANCS.OUTPUT.successOrFailure = "F" 
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			IF ((BANCS.INPUT.Command == "CWDR") OR (BANCS.INPUT.Command == "CWRR")) THEN 
+			#{
+				CUST.ATM.drCrAmount1 = cdouble(BANCS.OUTPARAM.OutputAmount)
+				CUST.ATM.drCrAmount1 = FORMAT$(cdouble(CUST.ATM.drCrAmount1),"%.2f")
+				print(CUST.ATM.drCrAmount1)
+				lv_o = "amtwithoutDec|select (replace ('"+CUST.ATM.drCrAmount1+"', '.','')) from dual "
+				lv_i = urhk_dbSelectWithBind(lv_o)
+				IF(lv_i == 0) THEN
+					CUST.ATM.drCrAmount1 = BANCS.OUTPARAM.amtwithoutDec
+				ENDIF
+				print(CUST.ATM.drCrAmount1)
+			#}
+			ELSE
+			#{
+				CUST.ATM.drCrAmount1=  0
+			#}
+			ENDIF			
+			print(CUST.ATM.drCrAmount1)
+			
+			IF (CDOUBLE(CUST.ATM.drCrAmount1) < CDOUBLE("0")) THEN
+			#{
+				print("fee amount is not matching ")
+				BANCS.OUTPUT.RespCode = "99"
+				BANCS.OUTPUT.successOrFailure = "F" 
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}	
+		ENDIF 
+	#}
+	ELSE
+	#{
+			CUST.ATM.drCrAmount1 =  0
+	#}
+	ENDIF
+
+EXITSCRIPT
+END-->

@@ -1,0 +1,360 @@
+##########################################################################################
+# Source Name           : BalEnq_STK.scr
+# Date                  : 19-01-2022
+# Description           : Balance inquiry charge SMS charge for STK 
+# Author                : Anand Pansare 
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        19-02-2023    Anand Pansare          Original file
+###########################################################################################
+<--START
+TRACE ON
+
+	IF ((REPEXISTS("CUST")) == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	IF((CLASSEXISTS("CUST","ATM")) == 0) THEN
+	#{
+		CREATECLASS("CUST","ATM",5)
+	#}
+	ENDIF
+
+	IF((CLASSEXISTS("CUST","DATA")) == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+
+	print(BANCS.OUTPUT.CrForacid)
+	print(BANCS.OUTPUT.Foracid)
+
+	CUST.ATM.DebitAccount 	= BANCS.OUTPUT.Foracid
+	CUST.ATM.ChrgCrncy    	= "KES"
+	CUST.ATM.chrgAmt	= CUST.ATM.ChargeAmount
+	CUST.ATM.CreditAccount	= BANCS.OUTPUT.CrForacid
+	CUST.ATM.DccId 		= BANCS.INPUT.DccId 
+
+
+	sv_u = urhk_getAcctDetailsInRepository(CUST.ATM.DebitAccount)
+	if(sv_u!=0)then
+	#{
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+		sv_u = urhk_SetOrbOut("Message|Invalid Account")
+		BANCS.OUTPUT.successOrFailure="F"
+		exitscript
+	else
+		CUST.ATM.schmCode = BANCS.OUTPARAM.schmCode
+		print(CUST.ATM.schmCode)
+		CUST.ATM.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+		print(CUST.ATM.acctCrncyCode)
+		CUST.ATM.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+		print(CUST.ATM.EffAvailableAmt)
+		CUST.ATM.acctSolId = BANCS.OUTPARAM.acctSolId
+		print(CUST.ATM.acctSolId)
+	#}
+	endif
+
+	IF(CUST.ATM.acctCrncyCode!= CUST.ATM.ChrgCrncy)THEN
+	#{
+		BANCS.INPARAM.InputAmount	= CUST.ATM.chrgAmt 
+		BANCS.INPARAM.FromCurrency	= CUST.ATM.ChrgCrncy
+		BANCS.INPARAM.ToCurrency	= CUST.ATM.acctCrncyCode
+		BANCS.INPARAM.RateCode		= "TTB"
+		BANCS.INPARAM.Rate		= CDOUBLE("0.00")
+
+		sv_b = urhk_B2k_ConvertAmount("")
+
+		sv_c = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+		sv_d = BANCS.OUTPARAM.Rate
+
+		if(sv_c > CDOUBLE(CUST.ATM.EffAvailableAmt))then
+		#{
+			CUST.ATM.ErrMsg = "Insufficient balance to collect charges"
+			CUST.ATM.Insufficient_flg = "Y" 
+			exitscript
+		#}
+		endif
+	ELSE
+		if(CDOUBLE(CUST.ATM.chrgAmt)> CDOUBLE(CUST.ATM.EffAvailableAmt))then
+                #{
+                        CUST.ATM.ErrMsg = "Insufficient balance to collect charges"
+			exitscript
+                #}
+                endif
+
+	#}
+	ENDIF
+
+        CUST.DATA.frez_code        = "N"
+        CUST.DATA.acct_status      = "A"
+        CUST.DATA.chrge_off_flg   = "N"
+
+
+        sv_a = ""
+        sv_a = sv_a + " frez_code,acct_status,chrge_off_flg|"
+        sv_a = sv_a + " select nvl(trim(gam.frez_code),'N'),smt.acct_status, chrge_off_flg "
+        sv_a = sv_a + " from tbaadm.gam,tbaadm.smt ,tbaadm.gac"
+        sv_a = sv_a + " where gam.bank_id = '"+BANCS.STDIN.contextBankId+"' "
+        sv_a = sv_a + " and gam.bank_id = smt.bank_id "
+        sv_a = sv_a + " and gam.bank_id = gac.bank_id "
+        sv_a = sv_a + " and gam.acid = gac.acid "
+        sv_a = sv_a + " and  gam.acid = smt.acid "
+        sv_a = sv_a + " and gam.foracid = '"+CUST.ATM.DebitAccount+"' "
+
+        print(sv_a)
+        lv_z = urhk_dbSelectWithBind(sv_a)
+        print(lv_z)
+        IF(lv_z==0) THEN
+        #{
+                CUST.DATA.frez_code   		= BANCS.OUTPARAM.frez_code
+                CUST.DATA.acct_status   	= BANCS.OUTPARAM.acct_status
+                CUST.DATA.chrge_off_flg   	= BANCS.OUTPARAM.chrge_off_flg
+                print(CUST.DATA.frez_code)
+                print(CUST.DATA.acct_status)
+                print(CUST.DATA.chrge_off_flg)
+        ELSE
+                CUST.DATA.frez_code     = "N"
+                CUST.DATA.acct_status   = "A"
+                CUST.DATA.chrge_off_flg   = "N"
+        #}
+        endif
+
+        IF((CUST.DATA.frez_code == "D") OR (CUST.DATA.frez_code == "T"))THEN
+        #{
+		CUST.ATM.ErrMsg = "Account is Frozen.Charges collection failed"
+		exitscript
+        #}
+        ENDIF
+
+        IF(CUST.DATA.acct_status != "A")THEN
+        #{
+		CUST.ATM.ErrMsg = "Account is Inactive.Charges collection failed"
+		exitscript
+        #}
+        ENDIF
+
+        IF(CUST.DATA.chrge_off_flg == "Y")THEN
+        #{
+		CUST.ATM.ErrMsg = "Account is Charged Off.Charges collection failed"
+		exitscript
+        #}
+        ENDIF
+
+
+	CUST.ATM.DccId =  BANCS.INPUT.DccId 
+	print(CUST.ATM.DccId)
+
+
+	CUST.ATM.Tran_type 		= "T/BI"
+	CUST.ATM.Context_Crncy 		= "KES"
+	CUST.ATM.tranId 		= ""
+	CUST.ATM.tranDate 		= ""
+	CUST.ATM.ErrMsg			= ""
+	CUST.ATM.Tag			= ""
+	CUST.ATM.ErrorCode		= ""
+	CUST.ATM.ErrMsg			= ""
+	CUST.ATM.successOrFailure	= "S"
+	CUST.ATM.Status 		= "Y"
+	CUST.ATM.srvcallmode 		= ""
+	CUST.ATM.Narration 		= "SMS CHARGE"
+
+   		sv_r = urhk_MTTS_Close("")
+                print(sv_r)
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+					CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+					CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+					CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+					CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+					CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+			CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+
+
+		#===================================
+		# STEP 1 : INITIALIZE THE MTT
+		#===================================
+
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.PartTranLUWFlg            = "Y"
+		BANCS.INPARAM.IgnoreExcp        	= "I"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		
+		sv_r = urhk_MTTS_Initialize("")
+		print(sv_r)
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+			
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+		print(sv_a)
+	
+
+		sv_r = urhk_MTTS_DefineTransaction("AUTOPOST")			
+
+	#----------------------------------------------
+	#Main Transaction-------------------------------
+	#----------------------------------------------
+	#--------------------------------------------------------------------------
+	#Credit to  account
+	#--------------------------------------------------------------------------
+		MTT.PartTranDetails.Account 		= CUST.ATM.CreditAccount
+		MTT.PartTranDetails.RefAmount 		= cdouble(CUST.ATM.chrgAmt)
+		#MTT.PartTranDetails.Amount      	= cdouble(CUST.ATM.chrgAmt)
+		MTT.PartTranDetails.TranCurrency	= CUST.ATM.ChrgCrncy 
+		MTT.PartTranDetails.RefCurrency 	= CUST.ATM.ChrgCrncy  
+		MTT.PartTranDetails.ValueDate      	= "0"
+		MTT.PartTranDetails.Particulars    	= CUST.ATM.Narration 
+		MTT.PartTranDetails.Particulars2    	= CUST.ATM.DccId 
+		MTT.PartTranDetails.Remarks        	= "SMS CHARGE" 
+		MTT.PartTranDetails.TranIdentifier 	= "AUTOPOST"
+		MTT.PartTranDetails.RateCode            = "MEAN"
+		MTT.PartTranDetails.Consolidate    	= "N"
+		IF(BANCS.INPUT.SerialNum!="")THEN
+		#{
+			MTT.PartTranDetails.Refnum              = BANCS.INPUT.SerialNum 
+		#}
+		ENDIF
+		MTT.TranDetails.PostFlag           	= "Y"
+		MTT.TranDetails.IgnoreExcp         	= "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("CR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+				sv_r = urhk_MTTS_ReportErrorCondition("")
+				CUST.ATM.errMsg = MTT.Error.Description
+				PRINT(CUST.ATM.errMsg)
+		#}
+		ENDIF
+
+	#Debit to Account
+	#-----------------------------------------------------------------------------
+                MTT.PartTranDetails.Account             = CUST.ATM.DebitAccount
+                MTT.PartTranDetails.RefAmount           = -cdouble(CUST.ATM.chrgAmt)
+                #MTT.PartTranDetails.Amount              = -cdouble(CUST.ATM.chrgAmt)
+                MTT.PartTranDetails.TranCurrency        = CUST.ATM.acctCrncyCode
+                MTT.PartTranDetails.RefCurrency         = CUST.ATM.ChrgCrncy 
+                MTT.PartTranDetails.ValueDate           = "0"
+                MTT.PartTranDetails.Particulars         = CUST.ATM.Narration
+                MTT.PartTranDetails.Particulars2        = CUST.ATM.DccId
+                MTT.PartTranDetails.Remarks             = "SMS CHARGE"
+                MTT.PartTranDetails.TranIdentifier      = "AUTOPOST"
+                MTT.PartTranDetails.RateCode            = "MEAN"
+                MTT.PartTranDetails.Consolidate         = "N"
+		IF(BANCS.INPUT.SerialNum!="")THEN
+		#{
+			MTT.PartTranDetails.Refnum              = BANCS.INPUT.SerialNum 
+		#}
+		ENDIF
+                MTT.TranDetails.PostFlag                = "Y"
+                MTT.TranDetails.IgnoreExcp              = "Y"
+
+		sv_i = urhk_MTTS_DefinePartTran("DR")
+		PRINT(sv_i)
+
+		IF (sv_i != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.ATM.errMsg = MTT.Error.Description
+			PRINT(CUST.ATM.errMsg)
+		#}
+		ENDIF
+		#--------------------------------------------------------------
+		# MTT ending definition to create transaction
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+			CUST.ATM.ErrMsg = MTT.Error.Description
+			sv_r = urhk_MTTS_Close("")
+			print(sv_r)
+			GOTO ERROR
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.ATM.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.ATM.tranId)
+			CUST.ATM.TranDate = MID$(BANCS.STDIN.BODDate,0,10)
+			print(CUST.ATM.TranDate)
+		#}
+		ENDIF
+
+		#--------------------------------------------------------------
+		# MTT Closing an initialized MTT
+		#--------------------------------------------------------------
+
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+
+		print(CUST.ATM.tranId)
+		CUST.ATM.TranDate = MID$(CUST.ATM.TranDate,0,10)
+		print(CUST.ATM.TranDate)
+		
+		GOTO SUCCESS
+#---------------------------------->
+# Error Setting
+#---------------------------------->
+ERROR:
+	BANCS.OUTPUT.RespCode = "99"
+	BANCS.OUTPUT.successOrFailure = "F"
+	BANCS.OUTPUT.ReservedField3 = CUST.ATM.errMsg 
+        GOTO ENDOFSCRIPT
+
+        #---------------------------------->
+        # Passing Output
+	#---------------------------------->
+SUCCESS:
+	BANCS.OUTPUT.successOrFailure = "S"
+	BANCS.OUTPUT.ReservedField3 = CUST.ATM.tranId
+        GOTO ENDOFSCRIPT
+
+ENDOFSCRIPT:
+EXITSCRIPT
+END-->
+
+

@@ -1,0 +1,176 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebebCamlAccVal.scr
+#  Description     : This script will be called to validate CIF,ID,PPT for blacklist/watchlist  
+#  Date            : 09-10-2020
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : urhk_SRV_GetVal
+#  Menu Option     : HCSE
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             09-10-2020      Edwin Zico           Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="79d88fe523681d9cabfe2a2abf55e24a9a318916800c44bfa85fd2e2bbc5df2b"
+TRACE ON
+
+sv_r=urhk_B2K_PrintRepos("BANCS")
+print(sv_r)
+
+IF(REPEXISTS("EBSRV")==0) THEN
+#{
+        CREATEREP("EBSRV")
+#}
+ENDIF
+
+IF(CLASSEXISTS("EBSRV","GLBDATA")==0) THEN
+#{
+        CREATECLASS("EBSRV","GLBDATA",5)
+#}
+ENDIF
+
+EBSRV.GLBDATA.amlYN="Z"
+print(EBSRV.GLBDATA.amlYN)
+if(fieldexists(BANCS.INPUT.acctNum)==1)then
+#{
+	if (BANCS.INPUT.acctNum !="") then
+	#{
+		print(BANCS.INPUT.acctNum)
+		BANCS.INPUT.acctNum = trim(BANCS.INPUT.acctNum)
+		print(BANCS.INPUT.acctNum)
+		sv_u = urhk_getAcctDetailsInRepository(BANCS.INPUT.acctNum) 
+                print(sv_u)
+                if (sv_u==0) then
+		#{
+			EBSRV.GLBDATA.cifId = BANCS.OUTPARAM.cifId 
+			print(EBSRV.GLBDATA.cifId)
+			EBSRV.GLBDATA.acctownership = BANCS.OUTPARAM.acctOwnerShip
+			print(EBSRV.GLBDATA.acctownership)
+		#}
+		else
+		#{
+			EBSRV.GLBDATA.cifId =""
+			EBSRV.GLBDATA.acctownership =""
+		#}
+		endif
+	#}
+	endif
+#}
+else
+#{
+	if((fieldexists(BANCS.STDIN.menuId)==1) and (BANCS.STDIN.menuId =="HACM"))then
+	#{
+		EBSRV.GLBDATA.cifId = BANCS.INPUT.cifId
+		print(EBSRV.GLBDATA.cifId)
+	#}
+	else
+	#{
+		sv_u = urhk_SRV_GetVal("acctCriteria.custId.cifId")
+		EBSRV.GLBDATA.cifId = BANCS.OUTPARAM.srvValue
+		print(EBSRV.GLBDATA.cifId)
+	#}
+	endif
+#}
+endif
+
+if (EBSRV.GLBDATA.cifId !="") then
+#{
+	sv_s = "uniqueID| select UNIQUEID from crmuser.accounts where orgkey =?SVAR and bank_id =?SVAR "
+	BANCS.INPARAM.BINDVARS = EBSRV.GLBDATA.cifId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	if(sv_u ==0)then
+	#{
+		EBSRV.GLBDATA.uniqueID = BANCS.OUTPARAM.uniqueID
+	#}
+	ENDIF
+#}
+endif
+
+if (EBSRV.GLBDATA.cifId !="") then
+#{
+	if ((BANCS.STDIN.contextBankId=="54") or (BANCS.STDIN.contextBankId=="43"))then
+	#{
+		sv_s = "amlYN|select substr(custom.fn_camlval_chk(?SVAR,?SVAR,null),1,1) from dual "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.cifId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		if(sv_u ==0)then
+		#{
+			EBSRV.GLBDATA.amlYN = BANCS.OUTPARAM.amlYN
+			print(EBSRV.GLBDATA.amlYN)
+
+			if (EBSRV.GLBDATA.amlYN =="Z") then
+			#{
+				print(EBSRV.GLBDATA.uniqueID)
+
+				sv_s = "amlYN|select substr(custom.fn_camlval_chk(?SVAR,null,?SVAR),1,1) from dual "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EBSRV.GLBDATA.uniqueID
+				print(BANCS.INPARAM.BINDVARS)
+				sv_u = urhk_dbSelectWithBind(sv_s)
+				if(sv_u ==0)then
+				#{
+					EBSRV.GLBDATA.amlYN = BANCS.OUTPARAM.amlYN
+					print(EBSRV.GLBDATA.amlYN)
+				#}
+				endif
+			#}
+			else
+			#{
+				print(EBSRV.GLBDATA.amlYN)
+			#}
+			endif
+		#}
+		endif	
+	#}
+	endif
+#}
+endif
+	
+if ((BANCS.STDIN.menuId!="HTM") and (BANCS.STDIN.menuId!="HACM") and (BANCS.STDIN.menuId!="HPORDM") and (BANCS.STDIN.menuId!="HOTCE")) then
+#{
+	if(EBSRV.GLBDATA.amlYN=="B")then
+	#{
+		sv_u = urhk_SRV_SetErr("Account open Not allowed for the CIF: BlackList check " + EBSRV.GLBDATA.cifId + "")
+		exitscript
+	#}
+	else
+	#{
+		if (EBSRV.GLBDATA.amlYN=="W") then
+		#{
+			sv_u = urhk_SRV_SetErr("Account open Not allowed for the CIF: WatchList check " + EBSRV.GLBDATA.cifId + "")
+			exitscript
+		#}
+		endif
+	#}
+	endif
+#}
+else	
+#{
+	if(EBSRV.GLBDATA.acctownership !="O") then
+	#{ 
+		if (EBSRV.GLBDATA.amlYN=="W") then
+		#{
+			EBSRV.GLBDATA.status="Y"
+			sv_z = urhk_SetOrbOut("output|"+ EBSRV.GLBDATA.status)
+			print(sv_z)
+		#}
+		else
+			if (EBSRV.GLBDATA.amlYN=="B")then
+			#}
+				EBSRV.GLBDATA.status="B"
+				sv_z = urhk_SetOrbOut("output|"+ EBSRV.GLBDATA.status)
+				print(sv_z)
+			#}
+			endif
+
+		#}
+		endif
+	#}
+	endif
+#}
+endif	
+TRACE OFF
+END-->

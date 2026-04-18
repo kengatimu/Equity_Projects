@@ -1,0 +1,343 @@
+#
+<--START
+TRACE ON
+	
+#--------------------------------------------------------------------
+#	Creating Repository and class
+#--------------------------------------------------------------------
+
+	IF(REPEXISTS("CUST") == "0") THEN
+	#{
+		CREATEREP("CUST")	
+	#}
+	ENDIF
+
+	IF(CLASSEXISTS("CUST","DATA") == "0") THEN
+	#{
+		CREATECLASS("CUST","DATA",5)	
+	#}
+	ENDIF
+
+	IF(CLASSEXISTS("CUST","CIETXN") == "0") THEN
+        #{
+                CREATECLASS("CUST","CIETXN",5)
+        #}
+        ENDIF
+	#-------------------------------------
+	#printing bank_repos
+	#-------------------------------------
+	sv_x= urhk_B2k_PrintRepos("BANCS")
+	print(sv_x)
+
+	CUST.DATA.modifyGl = "650050122"
+	CUST.DATA.balInq = "650013197"
+
+#--------------------------------------------------------------------
+#	Variable initialization
+#--------------------------------------------------------------------
+
+	IF((BANCS.STDIN.menuId == "HACM") OR (BANCS.STDIN.menuId == "HACMLA"))then
+	#{
+		CUST.DATA.drAcctNum   = BANCS.INPUT.uAccount	
+		CUST.DATA.crAcctNum   = BANCS.STDIN.homeSolId +""+ CUST.DATA.modifyGl 
+		PRINT(CUST.DATA.crAcctNum)
+	#}
+	ELSE
+	#{
+		CUST.DATA.drAcctNum   = BANCS.INPUT.acctNum
+		CUST.DATA.crAcctNum   = BANCS.STDIN.homeSolId +""+ CUST.DATA.balInq
+		PRINT(CUST.DATA.crAcctNum)
+	#}
+	ENDIF
+
+	IF((BANCS.STDIN.menuId == "HACM") OR (BANCS.STDIN.menuId == "HACMLA"))then
+	#{
+		lv_q = "count | SELECT COUNT(*) FROM TBAADM.GAM WHERE FORACID = ?SVAR AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N' "
+		PRINT(lv_q)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.drAcctNum
+		print(BANCS.INPARAM.BINDVARS)
+		sv_u = urhk_dbSelectWithBind(lv_q)
+		print(sv_u)
+		if(sv_u == 0) then
+		#{
+			CUST.DATA.count = BANCS.OUTPARAM.count
+			print(CUST.DATA.count)
+			IF(CUST.DATA.count == 0)THEN
+			#{
+				exitscript
+			#}
+			ENDIF
+		#}
+		endif
+	#}
+	ENDIF
+
+	CUST.DATA.drRefCrncy =""
+	sv_s= "crncy_code,clearBalance| select acct_crncy_code,clr_bal_amt from tbaadm.gam where foracid=?SVAR"
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS = CUST.DATA.drAcctNum
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbSelectWithBind(sv_s)
+	print(sv_u)
+	if(sv_u == 0) then
+	#{
+		CUST.DATA.drRefCrncy = BANCS.OUTPARAM.crncy_code
+		print(CUST.DATA.drRefCrncy)
+		CUST.DATA.acctBal = BANCS.OUTPARAM.clearBalance
+                print(CUST.DATA.acctBal)
+	#}
+	ENDIF
+
+	IF((BANCS.STDIN.menuId == "HACM") OR (BANCS.STDIN.menuId == "HACMLA"))then
+	#{
+		CUST.DATA.tranParticular = "Account Modification Fee"
+		CUST.DATA.drRefAmt    = "5000" 
+	#}
+	ELSE	
+	#{
+		CUST.DATA.tranParticular = "Account Balance Inquery Fee"
+		CUST.DATA.drRefAmt    = "1000"
+	#}
+	ENDIF
+	CUST.DATA.rate = "1"
+	CUST.DATA.crRefCrncy  = "RWF" 
+
+        CUST.DATA.tranParticular = "Charges on bal inq" 
+
+	sv_n = urhk_getAdvanceDetailsForAccount(CUST.DATA.drAcctNum)
+        IF (sv_n != 0)THEN
+                sv_e="Invalid Account"
+                sv_u = urhk_SetOrbErr(sv_e)
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                GOTO ENDOFSCRIPT
+
+        ELSE
+
+                CUST.DATA.bank = BANCS.OUTPARAM.FreeCode1
+
+                IF(CUST.DATA.bank == "COGE")THEN
+                #{
+			CUST.DATA.bank = "COGE"
+                #}
+                ELSE
+                #{
+			CUST.DATA.bank = "RAWANDA"
+                #}
+                endif
+        ENDIF
+
+IF(CUST.DATA.bank == "COGE")THEN
+#{
+
+IF(CUST.DATA.acctBal < CUST.DATA.drRefAmt)THEN
+#{
+	CUST.DATA.remarks = "Balance Inquery Charges"
+	CALLSCRIPTIFEXIST("markLienCoge.scr")	
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+IF(CUST.DATA.drRefCrncy != CUST.DATA.crRefCrncy)THEN
+#{
+	CUST.CIETXN.drAcctNumCcy = CUST.DATA.drRefCrncy
+	CUST.CIETXN.crAcctNumCcy = CUST.DATA.crRefCrncy
+	CALLSCRIPTIFEXIST("coge_fetchRateCode.scr")
+	PRINT(CUST.RATE.rate)
+	CUST.DATA.rate = CUST.RATE.rate
+#}
+endif 
+
+#--------------------------------------------------------------------
+#       MTT Close
+#--------------------------------------------------------------------
+
+        lv_u = urhk_MTTS_Close("")
+        print(lv_u)
+
+#--------------------------------------------------------------------
+#	MTT initialization
+#--------------------------------------------------------------------
+
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.CommitFlg   = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+	BANCS.INPARAM.RestrictModifyInd   = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw   = "Y"
+
+	BANCS.INPARAM.ValidationFlag            = "N"
+	BANCS.INPARAM.CheckExceptions           = "Y"
+
+	lv_u = urhk_MTTS_Initialize("")
+	print(lv_u)
+
+	IF(lv_u == "0") THEN
+	#{
+		print("Mtt initialized successfully")
+	#}
+	ELSE
+	#{
+		print("Mtt initialization failed")
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			PRINT(MTT.Error.Description)	
+		#}
+		ENDIF
+
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+
+#--------------------------------------------------------------------
+#	MTT Definition
+#--------------------------------------------------------------------
+
+	MTT.TranDetails.TranDate    = "0"
+	MTT.TranDetails.TranType    = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.PostFlag        = "Y"
+	MTT.TranDetails.CommitFlg       = "Y"
+	MTT.TranDetails.ValidationFlag  = "N"
+	MTT.TranDetails.IgnoreExcp      = "I"
+
+	lv_u = urhk_MTTS_DefineTransaction("TEST_TRAN")
+	print(lv_u)
+
+	IF(lv_u == "0") THEN
+	#{
+		print("Mtt defined successfully")
+	#}
+	ELSE
+	#{
+		print("Mtt definition failed")
+
+		lv_u = urhk_MTTS_ReportErrorCondition("")
+		print(lv_u)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			PRINT(MTT.Error.Description)
+		#}
+		ENDIF
+
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+#--------------------------------------------------------------------
+#	MTT Dr part tran Definition
+#--------------------------------------------------------------------
+
+	MTT.PartTranDetails.Account = CUST.DATA.drAcctNum
+	MTT.PartTranDetails.RefCurrency = CUST.DATA.crRefCrncy 
+	MTT.PartTranDetails.RefAmount   = -1 * CDOUBLE(CUST.DATA.drRefAmt)
+	MTT.PartTranDetails.ValueDate   = "0"
+	MTT.PartTranDetails.Particulars = CUST.DATA.tranParticular
+	MTT.PartTranDetails.TranIdentifier = "TEST_TRAN"
+	MTT.PartTranDetails.Consolidate    = "N"
+        #MTT.PartTranDetails.Remarks = CUST.DATA.refaNum  
+	MTT.PartTranDetails.PostFlag      = "Y"
+
+	MTT.PartTranDetails.RateCode = "TTB"
+
+	lv_u = urhk_MTTS_DefinePartTran("DR_TRAN1")
+	print(lv_u)
+
+	IF(lv_u == "0") THEN
+	#{
+		print("Mtt DR part tran defined successfully")
+	#}
+	ELSE
+	#{
+		print("Mtt DR part tran definition failed")
+
+		lv_u = urhk_MTTS_ReportErrorCondition("")
+		print(lv_u)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			PRINT(MTT.Error.Description)
+		#}
+		ENDIF
+
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+#--------------------------------------------------------------------
+#       MTT Cr part tran Definition
+#--------------------------------------------------------------------
+
+        MTT.PartTranDetails.Account = CUST.DATA.crAcctNum
+	MTT.PartTranDetails.RefCurrency = CUST.DATA.crRefCrncy
+        MTT.PartTranDetails.RefAmount   = CUST.DATA.drRefAmt 
+	MTT.PartTranDetails.ValueDate   = "0"
+	MTT.PartTranDetails.Particulars = CUST.DATA.tranParticular
+	MTT.PartTranDetails.TranIdentifier = "TEST_TRAN"
+	MTT.PartTranDetails.Consolidate    = "N"
+        #MTT.PartTranDetails.Remarks = CUST.DATA.refaNum
+
+	MTT.PartTranDetails.PostFlag      = "Y"
+	MTT.PartTranDetails.RateCode = "TTB"
+	MTT.PartTranDetails.Rate = CUST.DATA.rate 
+
+        lv_u = urhk_MTTS_DefinePartTran("CR_TRAN1")
+        print(lv_u)
+
+        IF(lv_u == "0") THEN
+        #{
+                print("Mtt CR part tran defined successfully")
+        #}
+        ELSE
+        #{
+                print("Mtt CR part tran definition failed")
+
+                lv_u = urhk_MTTS_ReportErrorCondition("")
+                print(lv_u)
+
+                IF(FIELDEXISTS(MTT.Error.Description)) THEN
+                #{
+                        PRINT(MTT.Error.Description)
+                #}
+                ENDIF
+
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+#--------------------------------------------------------------------
+#       MTT end definition
+#--------------------------------------------------------------------
+
+        lv_u = urhk_MTTS_EndDefinition("")
+        print(lv_u)
+
+	IF(FIELDEXISTS(MTT.Error.Description)) THEN
+	#{
+		print(MTT.Error.Description)
+		lv_u = urhk_MTTS_ReportErrorCondition("")
+		print(lv_u)
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+		PRINT(CUST.DATA.tranId)
+	#}
+	ENDIF
+
+#--------------------------------------------------------------------
+#       MTT Close
+#--------------------------------------------------------------------
+
+        lv_u = urhk_MTTS_Close("")
+        print(lv_u)
+#}
+ENDIF
+ENDOFSCRIPT:
+
+END-->
+

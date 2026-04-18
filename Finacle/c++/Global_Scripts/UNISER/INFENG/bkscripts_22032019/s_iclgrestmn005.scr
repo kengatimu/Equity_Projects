@@ -1,0 +1,191 @@
+########################################################################################################
+# Source Name                       : s_iclgrestmn005.scr
+# Menu                              : HICTM
+# Date                              : 27-03-2013
+# Description                       : DD status
+# Input Values                      : None
+# Output Values                     : None
+# Called Scripts                    : None
+# Calling Script                    : SRV_FetchIcZoneDtlWithLock_validate_data.scr
+# Author                            : Shishira
+# Bank                              : Equity Bank,KENYA
+# Modification History              :
+#       < Version No.>      <Date>          <Author Name>           <Description>
+#        0.1                27-03-2013      Shishira               Original Version
+##########################################################################################################
+
+<--START
+CHECKSUM="926ac2ddc5aba39097aef70f2912b5c30e3272d5159391bfc7df59d0761ebb43"
+	TRACE ON
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	CUST.DATA.funcCode = ""
+	
+	IF (FIELDEXISTS(CUST.DATA.functionCode) == 1) THEN
+	#{
+		CUST.DATA.funcCode = CUST.DATA.functionCode
+		print(CUST.DATA.funcCode)
+	#}
+	ENDIF
+	
+	sv_z = urhk_SRV_GetVal("instrmntDtl.instrmntNum")
+	print(sv_z)
+	print(BANCS.OUTPARAM.srvValue)
+	CUST.DATA.instNum=BANCS.OUTPARAM.srvValue
+	sv_b = LTRIM(CUST.DATA.instNum,' ')
+	CUST.DATA.instNum=sv_b
+	
+	sv_z = urhk_SRV_GetVal("instrmntDtl.instrmntAmt")
+	print(sv_z)
+	print(BANCS.OUTPARAM.srvValue)
+	CUST.DATA.insAmt=BANCS.OUTPARAM.srvValue
+	
+	#==========================================================
+	#extraction of InstAmt
+	#==========================================================
+	sv_b = "|"
+	sv_c = GETPOSITION(CUST.DATA.insAmt , sv_b)-1
+	sv_e = MID$(CUST.DATA.insAmt,0,sv_c)
+	print(sv_e)
+	CUST.DATA.insAmt = sv_e
+	
+	
+	sv_z = urhk_SRV_GetVal("instrmntDtl.acct.foracid")
+	print(sv_z)
+	print(BANCS.OUTPARAM.srvValue)
+	CUST.DATA.acctNo=BANCS.OUTPARAM.srvValue
+	
+	sv_z = urhk_SRV_GetVal("instrmntDtl.acct.solId")
+	print(sv_z)
+	print(BANCS.OUTPARAM.srvValue)
+	CUST.DATA.solID=BANCS.OUTPARAM.srvValue
+	
+	sv_z = urhk_SRV_GetVal("instrmntDtl.acct.crncyCode")
+	print(sv_z)
+	print(BANCS.OUTPARAM.srvValue)
+	CUST.DATA.acctCcy=BANCS.OUTPARAM.srvValue
+	
+	
+	IF (CUST.DATA.funcCode == "A") THEN
+	#{
+		#=====================================================================
+		# Instrument status validation
+		#=====================================================================
+		BANCS.INPUT.moduleName="CLEARING"
+		BANCS.INPUT.parameterId="BC_BACID"
+		call("getcparamvalue.scr")
+		
+		IF (BANCS.OUTPUT.parameterVal != "") THEN
+		#{
+			CUST.DATA.bacid = BANCS.OUTPUT.parameterVal
+			#}
+		ELSE
+			#{
+			CUST.ECS.errMsg = BANCS.INPUT.parameterId+" setup is not done in CPARAM"
+			sv_u = urhk_SRV_SetErr(CUST.ECS.errMsg)
+			GOTO ENDSCRIPT
+		#}
+		ENDIF
+		
+		sv_s = "foracid|"
+		sv_s = sv_s + " SELECT foracid "
+		sv_s = sv_s + " FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE sol_id = ?SVAR "
+		sv_s = sv_s + " AND acct_crncy_code = ?SVAR"
+		sv_s = sv_s + " AND bacid = ?SVAR "
+		sv_s = sv_s + " AND bank_id = ?SVAR "
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.solID + "|" + CUST.DATA.acctCcy + "|" + CUST.DATA.bacid + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d !=0) THEN
+		#{
+			GOTO FINISH
+			#}
+		ELSE
+			#{
+			CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+			print(CUST.DATA.foracid)
+		#}
+		ENDIF
+		
+		
+		IF (CUST.DATA.foracid == CUST.DATA.acctNo) THEN
+		#{
+			sv_s = "ddexists|"
+			sv_s = sv_s + " SELECT count(*) "
+			sv_s = sv_s + " FROM TBAADM.DST "
+			sv_s = sv_s + " WHERE issu_br_code = ?SVAR "
+			sv_s = sv_s + " AND LTRIM(dd_num) = ?SVAR "
+			sv_s = sv_s + " AND bank_id = ?SVAR "
+			sv_s = sv_s + " AND DD_AMT = ?SVAR "
+			print(sv_s)
+			
+			BANCS.INPARAM.BINDVARS = CUST.DATA.solID + "|" + CUST.DATA.instNum + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.insAmt
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbselectWithBind(sv_s)
+			print(sv_d)
+			
+			CUST.DATA.count = BANCS.OUTPARAM.ddexists
+			IF (CUST.DATA.count == 0) THEN
+			#{
+				print("The Instrument is not issued by this Branch")
+				sv_u = urhk_SRV_SetErr("instrmntDtl.instrmntNum|The Instrument is not issued by this Branch")
+				GOTO ENDSCRIPT
+				#}
+			ELSE
+				#{
+				sv_s = "status|"
+				sv_s = sv_s + " SELECT dd_status "
+				sv_s = sv_s + " FROM TBAADM.DST "
+				sv_s = sv_s + " WHERE issu_br_code = ?SVAR "
+				sv_s = sv_s + " AND dd_crncy_code = ?SVAR "
+				sv_s = sv_s + " AND LTRIM(dd_num) = ?SVAR "
+				sv_s = sv_s + " AND bank_id = ?SVAR "
+				sv_s = sv_s + " AND DD_AMT = ?SVAR "
+				print(sv_s)
+				
+				BANCS.INPARAM.BINDVARS = CUST.DATA.solID + "|" + CUST.DATA.acctCcy + "|" + CUST.DATA.instNum + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.insAmt
+				
+				sv_d = urhk_dbselectWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d != 0) THEN
+				#{
+					GOTO ENDSCRIPT
+					#}
+				ELSE
+					#{
+					sv_a = BANCS.OUTPARAM.status
+					print(sv_a)
+				#}
+				ENDIF
+				
+				IF (sv_a != "U") THEN
+				#{
+					print("The Instrument is not unpaid")
+					sv_u = urhk_SRV_SetErr("instrmntDtl.instrmntNum|The Instrument is not unpaid")
+					GOTO ENDSCRIPT
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	ENDSCRIPT :
+		TRACE OFF
+END-->

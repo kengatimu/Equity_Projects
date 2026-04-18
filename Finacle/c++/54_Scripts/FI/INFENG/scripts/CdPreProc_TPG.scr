@@ -1,0 +1,165 @@
+#===========================================================================================*
+# Name                         	:   CdPreProc_TPG.scr
+# Date                         	:   01-08-2023
+# Description                   :   Script for Connect24 customization
+# Input       			:   BANCS.INPUT Repository
+# output      			:   BANCS.OUTPUT Repositor
+# Called Scripts                :   <none>
+# Calling Script                :   <none>
+# Reference                    	:
+# Modification History  :
+#  <Serial No.>  <Date>         <AuthorName>   	<Description>
+#--------------------------------------------------------------------------
+#   	1     	01-08-2023    	Anand Pansare  	Modified according to 10x standards.
+#============================================================================================*
+
+<--start
+
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ATM") == 0) THEN
+#{
+	CREATECLASS("CUST","ATM",5)
+#}
+ENDIF
+
+        #==============================================================================================
+        # SMS Charges Reversal 
+	# Validation of Original tran and Assigning Domicile Income Account for 102 Field 
+        # Change done By - anand Date: 21-05-2023
+        #==============================================================================================
+        IF((BANCS.STDIN.contextBankId == "54") AND (BANCS.INPUT.DccId == "TPG")) THEN
+        #{
+                IF (fieldexists(BANCS.INPUT.ReservedField1)==1) THEN
+                #{
+                        IF (TRIM(BANCS.INPUT.ReservedField1) == "SMS_CHARGE_REV") THEN
+                        #{
+
+				IF((BANCS.INPUT.CrForacid != "") AND (BANCS.INPUT.ReservedField2!="")) THEN
+				#{
+					CUST.ATM.inputData_1 = ""
+					CUST.ATM.inputData_2 = ""
+					CUST.ATM.inputData_3 = ""
+					CUST.ATM.inputData_4 = ""
+
+					#===validationg main tran 
+					CUST.ATM.inputData = BANCS.INPUT.ReservedField2
+					sv_l	= CUST.ATM.inputData
+					sv_h 	= GETPOSITION(sv_l,"|")
+					sv_i=0
+					PRINT(sv_h)
+					WHILE(sv_h > 0)
+					#{
+						sv_i=sv_i+CINT("1")
+						sv_j = MID$(sv_l,0,sv_h-1)
+						PRINT(sv_j)
+
+						("CUST").("ATM").("inputData_" + FORMAT$(sv_i,"%d"))=sv_j
+						sv_y = STRLEN(sv_l)
+						PRINT(sv_y)
+
+						sv_l = MID$(sv_l,sv_h,sv_y)
+						PRINT(sv_l)
+						sv_h = GETPOSITION(sv_l,"|")
+						PRINT(sv_h)
+						if(sv_h == 0 )then
+							CUST.ATM.inputData_4 = sv_l
+						endif
+					#}
+					DO
+
+					CUST.ATM.OrgTranId	= CUST.ATM.inputData_1
+					CUST.ATM.OrgTranDate	= CUST.ATM.inputData_2
+					CUST.ATM.OrgTranAmt	= CUST.ATM.inputData_3
+					CUST.ATM.OrgTranRRN	= CUST.ATM.inputData_4
+					
+					sv_a = ""
+					sv_a = sv_a + " CrSolId,org_pstd_flg|"
+					sv_a = sv_a + " select gam.sol_id,pstd_flg " 
+					sv_a = sv_a + " from tbaadm.dctd_acli dtd ,tbaadm.gam  "
+					sv_a = sv_a + " where dtd.acid=gam.acid  "
+					sv_a = sv_a + " and gam.foracid = '"+BANCS.INPUT.CrForacid+"' " 
+					sv_a = sv_a + " and tran_date = to_date('"+CUST.ATM.OrgTranDate+"','DD-MM-YYYY') "
+					sv_a = sv_a + " and tran_amt = '"+CUST.ATM.OrgTranAmt+"' "
+					IF(TRIM(CUST.ATM.OrgTranId) != "" )THEN
+					#{
+						sv_a = sv_a + " and tran_id = '"+CUST.ATM.OrgTranId+"' " 
+					#}
+					ENDIF
+					IF(TRIM(CUST.ATM.OrgTranRRN) != "" )THEN
+					#{
+						sv_a = sv_a + " and dtd.ref_num= '"+CUST.ATM.OrgTranRRN+"' "
+					#}
+					ENDIF
+					sv_a = sv_a + " and rownum < 2 "
+									
+					print(sv_a)
+					sv_d = urhk_dbSelectWithBind(sv_a)
+					PRINT(sv_d)
+
+					IF (sv_d == 0) THEN
+					#{
+						CUST.ATM.CrSolId 	= BANCS.OUTPARAM.CrSolId
+						CUST.ATM.org_pstd_flg 	= BANCS.OUTPARAM.org_pstd_flg
+					ELSE
+						CUST.ATM.CrSolId 	= BANCS.INPUT.CrSolId  
+						CUST.ATM.org_pstd_flg 	= "N" 
+					#}
+					ENDIF
+						
+					IF(CUST.ATM.org_pstd_flg=="N")THEN
+					#{
+						BANCS.OUTPUT.RespCode 		= "99"
+						BANCS.OUTPUT.successOrFailure 	= "F"
+						BANCS.OUTPUT.ReservedField3	= "Main Charge Collection Transaction Not Found"
+						CUST.ATM.errMsg			= "Main Charge Collection Transaction Not Found"
+						exitscript
+					ELSE
+						BANCS.INPUT.CrSolId 	= CUST.ATM.CrSolId
+						BANCS.OUTPUT.CrSolId 	= CUST.ATM.CrSolId
+
+						BANCS.INPUT.InitSolId  = BANCS.INPUT.CrSolId
+						BANCS.OUTPUT.InitSolId = BANCS.OUTPUT.CrSolId 
+
+
+						print(BANCS.OUTPUT.CrSolId)
+						sv_w = TRIM("SMSNOTBRANCH") + "|KES|" + BANCS.OUTPUT.CrSolId 
+						print(sv_w)
+
+						sv_r = urhk_B2k_BacidToAcctId(sv_w)
+						print(sv_r)
+
+						IF (sv_r == "0") THEN
+						#{
+							BANCS.INPUT.Foracid = trim(BANCS.OUTPARAM.AcctId)
+							BANCS.OUTPUT.Foracid = trim(BANCS.OUTPARAM.AcctId)
+							print(BANCS.INPUT.Foracid)
+							print(BANCS.OUTPUT.Foracid)
+
+						ELSE
+							BANCS.OUTPUT.RespCode 		= "99"
+							BANCS.OUTPUT.successOrFailure 	= "F"
+							BANCS.OUTPUT.ReservedField3	= "Failed to get collection Account"
+							CUST.ATM.errMsg			= "Failed to get collection Account"
+							exitscript
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#==============================================================================================
+
+
+exitscript
+end-->

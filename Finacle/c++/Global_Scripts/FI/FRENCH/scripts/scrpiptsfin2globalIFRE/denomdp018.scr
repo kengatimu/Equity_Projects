@@ -1,0 +1,272 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: denomdp018.scr
+# Type: NA|default
+# Description: denomdp018.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+###############################################################################
+#   Source Name         :   denomdp018.scr
+#   Date                :   19-JAN-2008
+#   Description         :   This script is for reconciliation of DENM and DETD tables where
+#			    the saved transaction details are to be released
+#   Input               :
+#   Output              :
+#   Author              :   Sandeep Patil
+#   Called Script       :   NA
+#   Calling Script      :
+#   MODULE CODE         :  DENOM
+#   Modification History:
+#   <Serial No.>   <Date>   <Author Name>    <Description>
+#   0.2     04-MAY-2011 Arathilakshmi       Fixed for issue <234116>
+#   0.3		26-AUG-2011	Arathilakshmi		Edited to include HGCHRG/HTUTM menu
+#################################################################################
+<--START
+CHECKSUM="8eb1e6d532ce863dd239fa1c595a76371c83939523ff5a9df16a4ebe02510efd"
+	TRACE ON
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	IF ((BANCS.STDIN.serviceName == "SRV_ModifyAndPostCashTran") OR (BANCS.STDIN.serviceName == "SRV_ModifyCashTran") OR (BANCS.STDIN.serviceName == "SRV_ModifyGenChrgDtl")) THEN
+	#{
+		CUST.DENOM.func = "MAP"
+		#}
+	ELSE
+		#{
+		CUST.DENOM.func = "P"
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + CUST.DENOM.bank_id
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = "solId,tellerId|"
+	sv_l = sv_l + "SELECT DISTINCT sol_id,teller_id "
+	sv_l = sv_l + "FROM custom.c_detd "
+	sv_l = sv_l + "WHERE dxfer_id = ?SVAR "
+	sv_l = sv_l + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_l = sv_l + "AND bank_id = ?SVAR "
+	sv_l = sv_l + " AND ROWNUM < 2"
+	PRINT(sv_l)
+	#sv_a = urhk_dbSelectWithBind(sv_l)
+	#IF(sv_a != 0)THEN
+	#	goto FINISH1
+	#ELSE
+	#	CUST.DENOM.solId 	= BANCS.OUTPARAM.solId
+	#	CUST.DENOM.tellerId 	= BANCS.OUTPARAM.tellerId
+	#	CUST.DENOM.bankId 	= BANCS.STDIN.contextBankId
+	#	sv_y = " AND sol_id = '" + CUST.DENOM.solId + "' "
+	#	sv_y = sv_y + " AND teller_id = '" + CUST.DENOM.tellerId + "' "
+	##	sv_y = sv_y + " AND bank_id = '" + CUST.DENOM.bank_id + "' "
+	#	PRINT(sv_y)
+	#ENDIF
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" +  BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_l = "denomVal,denomCount,denomInd,crncyCode,denomPtype,denomType,solId,tellerId|"
+	sv_l = sv_l + "SELECT denom_value,denom_count,denom_ind,crncy_code,ptran_type,type,sol_id,teller_id "
+	sv_l = sv_l + "FROM custom.c_detd "
+	sv_l = sv_l + "WHERE dxfer_id = ?SVAR "
+	sv_l = sv_l + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') AND bank_id = ?SVAR "
+	IF ((BANCS.STDIN.menuId == "HGCHRG") OR (BANCS.STDIN.funcName == "SRV_VerifyGenChrgDtl")) THEN
+	#{
+		sv_p = sv_l + "AND dxfer_flg = 'C' "
+		#}
+	ELSE
+		#{
+		# added check for HLASPAY - Kalyana_Bommisetti
+		IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.serviceName == "SRV_ProcessUnscheduleLaPmtForVrfy") OR (BANCS.STDIN.menuId == "HLASPAY") OR (BANCS.STDIN.serviceName == "SRV_LASPAYDtlsVerify")) THEN
+		#{
+			sv_p = sv_l + "AND dxfer_flg = 'L' "
+			#}
+		ELSE
+			#{
+			sv_p = sv_l + "AND dxfer_flg = 'E' "
+		#}
+		ENDIF
+	#}
+	ENDIF
+	PRINT(sv_l)
+	PRINT(sv_p)
+	sv_a = urhk_DBCursorOpenWithBind(sv_p)
+	IF (sv_a != 0) THEN
+	#{
+		sv_p = sv_l + " AND dxfer_flg = 'E'"
+		sv_a = urhk_DBCursorOpen(sv_l)
+		IF (sv_a != 0) THEN
+		#{
+			GOTO FINISH1
+		#}
+		ENDIF
+	#}
+	ENDIF
+	sv_b = (BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+	sv_r = urhk_dbCursorFetch(sv_b)
+	IF (sv_r != 0) THEN
+	#{
+		GOTO DBERROR
+	#}
+	ENDIF
+	
+	WHILE(sv_r == 0)
+	#{
+		CUST.DENOM.finalDenomval = "0"
+		CUST.DENOM.pType = BANCS.OUTPARAM.denomPtype
+		CUST.DENOM.denomVal = BANCS.OUTPARAM.denomVal
+		CUST.DENOM.type = BANCS.OUTPARAM.denomType
+		CUST.DENOM.denomInd = BANCS.OUTPARAM.denomInd
+		CUST.DENOM.crncyCode = BANCS.OUTPARAM.crncyCode
+		CUST.DENOM.solId = BANCS.OUTPARAM.solId
+		CUST.DENOM.tellerId = BANCS.OUTPARAM.tellerId
+		
+		# Bind variables added by Arathi for issue <234116>
+		sv_y = " AND sol_id = ?SVAR "
+		sv_y = sv_y + " AND teller_id = ?SVAR "
+		PRINT(CUST.DENOM.denomVal)
+		sv_g = CUST.DENOM.denomVal
+		sv_o = BANCS.OUTPARAM.denomCount
+		PRINT(sv_o)
+		sv_m = 1
+		WHILE(sv_m != 0)
+		#{
+			sv_m = GETPOSITION(sv_g, "-")
+			sv_n = GETPOSITION(sv_o, "-")
+			PRINT(sv_m)
+			PRINT(sv_n)
+			IF (sv_m == 0) THEN
+			#{
+				sv_d = sv_g
+				sv_c = sv_o
+				PRINT(sv_d)
+				PRINT(sv_c)
+				#}
+			ELSE
+				#{
+				sv_d = LEFT$(sv_g, (sv_m - 1))
+				sv_c = LEFT$(sv_o, (sv_n - 1))
+				PRINT(sv_d)
+				PRINT(sv_c)
+			#}
+			ENDIF
+			sv_g = RIGHT$(sv_g, (STRLEN(sv_g) - (sv_m)))
+			sv_o = RIGHT$(sv_o, (STRLEN(sv_o) - (sv_n)))
+			PRINT(sv_g)
+			PRINT(sv_o)
+			IF (sv_m == 0) THEN
+			#{
+				sv_p = GETPOSITION(sv_c, "-")
+				IF (sv_p != 0) THEN
+				#{
+					sv_c = LEFT$(sv_c, (sv_p - 1))
+				#}
+				ENDIF
+				CUST.DENOM.finalDenomval = sv_g
+				PRINT(sv_g)
+				CUST.DENOM.finalDenomCnt = sv_o
+				PRINT(sv_o)
+			#}
+			ENDIF
+			PRINT(CUST.DENOM.type)
+			PRINT(CUST.DENOM.pType)
+			IF (sv_c != 0) THEN
+			#{
+				# Bind variables added by Arathi for issue <234116>
+				BANCS.INPARAM.BINDVARS = sv_c + "|" + BANCS.STDIN.userId
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + sv_d
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.denomInd
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.crncyCode
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.bank_id
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.solId
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.DENOM.tellerId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				
+				IF (((CUST.DENOM.pType == "C") AND (CUST.DENOM.type == "")) OR (CUST.DENOM.type == "GB")) THEN
+				#{
+					sv_q = "UPDATE CUSTOM.C_DENM_CR "
+					sv_q = sv_q + "SET DENOM_COUNT = denom_count - ?SVAR"
+					sv_q = sv_q + ",lchg_time=sysdate,lchg_user_id = ?SVAR "
+					sv_q = sv_q + "WHERE denom_value = ?SVAR "
+					sv_q = sv_q + "AND denom_ind = ?SVAR "
+					sv_q = sv_q + "AND crncy_code = ?SVAR "
+					sv_q = sv_q + "AND bank_id = ?SVAR "
+					
+					IF (CUST.DENOM.func != "MAP") THEN
+					#{
+						sv_x = "UPDATE CUSTOM.C_DENM "
+						sv_x = sv_x + "SET DENOM_COUNT = denom_count + ?SVAR"
+						sv_x = sv_x + ",lchg_time=sysdate,lchg_user_id = ?SVAR "
+						sv_x = sv_x + "WHERE denom_value = ?SVAR "
+						sv_x = sv_x + "AND denom_ind = ?SVAR "
+						sv_x = sv_x + "AND crncy_code = ?SVAR "
+						sv_x = sv_x + "AND bank_id = ?SVAR"
+					#}
+					ENDIF
+					#}
+				ELSE
+					#{
+					sv_q = "UPDATE CUSTOM.C_DENM_DR "
+					sv_q = sv_q + "SET DENOM_COUNT = denom_count - ?SVAR"
+					sv_q = sv_q + ",lchg_time=sysdate,lchg_user_id = ?SVAR "
+					sv_q = sv_q + "WHERE denom_value = ?SVAR "
+					sv_q = sv_q + "AND denom_ind = ?SVAR "
+					sv_q = sv_q + "AND crncy_code = ?SVAR "
+					sv_q = sv_q + "AND bank_id = ?SVAR"
+					
+					IF (CUST.DENOM.func != "MAP") THEN
+					#{
+						sv_x = "UPDATE CUSTOM.C_DENM "
+						sv_x = sv_x + "SET DENOM_COUNT = denom_count - ?SVAR "
+						sv_x = sv_x + ",lchg_time=sysdate,lchg_user_id = ?SVAR "
+						sv_x = sv_x + "WHERE denom_value = ?SVAR "
+						sv_x = sv_x + "AND denom_ind = ?SVAR "
+						sv_x = sv_x + "AND crncy_code = ?SVAR "
+						sv_x = sv_x + "AND bank_id = ?SVAR"
+					#}
+					ENDIF
+				#}
+				ENDIF
+				PRINT(sv_q + sv_y)
+				sv_p = urhk_dbSQLWithBind(sv_q + sv_y)
+				PRINT(sv_p)
+				IF (CUST.DENOM.func != "MAP") THEN
+				#{
+					PRINT(sv_x)
+					sv_p = urhk_dbSQLWithBind(sv_x + sv_y)
+					PRINT(sv_p)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		DO
+		sv_r = urhk_dbCursorFetch(sv_b)
+		PRINT(sv_r)
+	#}
+	DO
+	
+	DBERROR:
+		sv_r = urhk_dbCursorClose(sv_b)
+	FINISH1:
+		sv_s = urhk_setOrbOut("Message|N")
+		sv_s = urhk_setOrbOut("Details|DataBase Error")
+		GOTO FINISH
+		
+	FINISH:
+END-->

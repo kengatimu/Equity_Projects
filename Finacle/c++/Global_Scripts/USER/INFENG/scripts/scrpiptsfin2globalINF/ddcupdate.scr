@@ -1,0 +1,227 @@
+##########################################################################################
+# Source Name           : ddcupdate.scr
+# Date                  : 17-Sep-2013
+# Description           : For updating denom details for DDC transactions - POST MODE.
+# Author                : Suhasini
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+###########################################################################################
+
+<--START
+CHECKSUM="1af278a9d95d39b9b93aa0457ae4c448b3be94bfef2e1a26e3864720b2a3d698"
+	#trace on
+	
+	sv_r =  REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	#sv_p=urhk_B2k_printRepos("BANCS")
+	#print(sv_p)
+	
+	######################################################################################
+	#Query to select the transactions from DD table
+	######################################################################################
+	sv_a="tran_id,sol_id,dd_crncy_code|select tran_id,sol_id,dd_crncy_code  from tbaadm.ddd"
+	sv_a= sv_a + " where  tran_date=TO_DATE(?SVAR,'DD-MM-YYYY')  AND bank_id=?SVAR"
+	sv_a = sv_a + " AND  entity_cre_flg='Y' AND del_flg='N' AND  tran_id in "
+	sv_a = sv_a + " (select tran_id from tbaadm.dtd where tran_date=TO_DATE(?SVAR,'DD-MM-YYYY')  AND bank_id=?SVAR"
+	sv_a = sv_a + " AND pstd_flg='Y' AND  dtd.tran_type='C' AND del_flg='N')"
+	print(sv_a)
+	
+	BANCS.INPARAM.BINDVARS = MID$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId + "|" + MID$(BANCS.STDIN.BODDate,0,10) + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	#####################################
+	#Cursor open for DDD records
+	#####################################
+	sv_b = urhk_dbCursorOpenWithBind(sv_a)
+	print(sv_b)
+	
+	IF(sv_b == 0)THEN
+	#{
+		CUST.DENOM.DBCURSOR = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.DENOM.DBCURSOR)
+		#}
+	ELSE
+		#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		print("Failure")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_d = urhk_dbCursorFetch(CUST.DENOM.DBCURSOR)
+	print(sv_d)
+	
+	WHILE(sv_d == 0)
+	#{
+		#####################
+		#initiating variables
+		#####################
+		CUST.DENOM.CHECK = "0"
+		sv_f = ""
+		
+		print(BANCS.OUTPARAM.tran_id)
+		print(BANCS.OUTPARAM.sol_id)
+		print(BANCS.OUTPARAM.dd_crncy_code)
+		
+		CUST.DENOM.tranId = trim(BANCS.OUTPARAM.tran_id)
+		CUST.DENOM.tranDate = MID$(BANCS.STDIN.BODDate,0,10)
+		CUST.DENOM.bank_id = BANCS.STDIN.contextBankId
+		
+		
+		#########################################
+		#Query to fetch records from denom table
+		#########################################
+		sv_a="crncycode,denom_ind,denom_value,denom_count,teller_id|"
+		sv_a =sv_a + " select crncy_code,denom_ind, denom_value, replace(denom_count,'-','!'),teller_id from custom.c_detd"
+		sv_a = sv_a + " where dxfer_flg='E' AND trim(dxfer_id)=?SVAR AND BANK_ID=?SVAR"
+		print(sv_a)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_e = urhk_dbCursorOpenWithBind(sv_a)
+		print(sv_e)
+		
+		IF(sv_e == 0)THEN
+		#{
+			CUST.DENOM.CURSORNO = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			print(CUST.DENOM.CURSORNO)
+			#}
+		ELSE
+			#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			print(BANCS.OUTPUT.successOrFailure)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_c = urhk_dbCursorFetch(CUST.DENOM.CURSORNO)
+		print(sv_c)
+		
+		WHILE(sv_c == 0)
+		#{
+			print(BANCS.OUTPARAM.crncycode)
+			print(BANCS.OUTPARAM.denom_value)
+			print(BANCS.OUTPARAM.denom_count)
+			print(BANCS.OUTPARAM.teller_id)
+			
+			CUST.DENOM.teller = BANCS.OUTPARAM.teller_id
+			BANCS.INPUT.ddcdet_FIELD_1 = "Y"
+			BANCS.INPUT.ddcdet_FIELD_2 = "1"
+			BANCS.INPUT.ddcdet_FIELD_4= BANCS.OUTPARAM.crncycode
+			
+			IF(BANCS.OUTPARAM.denom_ind == "C")THEN
+			#{
+				print(BANCS.OUTPARAM.denom_value)
+				BANCS.INPUT.ddcdet_FIELD_5 = BANCS.OUTPARAM.denom_value
+			#}
+			ENDIF
+			
+			IF(BANCS.OUTPARAM.denom_ind == "N")THEN
+			#{
+				print(BANCS.OUTPARAM.denom_value)
+				BANCS.INPUT.ddcdet_FIELD_6=BANCS.OUTPARAM.denom_value
+			#}
+			ENDIF
+			
+			IF(sv_f == "")THEN
+			#{
+				sv_f = sv_f + BANCS.OUTPARAM.denom_count
+				#}
+			ELSE
+				#{
+				sv_f = sv_f + "!" + BANCS.OUTPARAM.denom_count
+			#}
+			ENDIF
+			print(sv_f)
+			
+			CUST.DENOM.CHECK = "1"
+			sv_c = urhk_dbCursorFetch(CUST.DENOM.CURSORNO)
+			print(sv_c)
+		#}
+		DO
+		
+		IF(CUST.DENOM.CHECK  == 1) THEN
+		#{
+			sv_a="ptran_type,roundoff_amt|"
+			sv_a=sv_a+"select ptran_type,roundoff_amt from custom.c_derd"
+			sv_a=sv_a+" where dxfer_flg='E' AND trim(dxfer_id)=?SVAR AND BANK_ID=?SVAR"
+			print(sv_a)
+			
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_c = urhk_dbSelectWithBind(sv_a)
+			print(sv_c)
+			
+			IF(sv_c == 0)THEN
+			#{
+				sv_f = sv_f + "!" + BANCS.OUTPARAM.ptran_type + "!" + BANCS.OUTPARAM.roundoff_amt
+				print(sv_f)
+			#}
+			ENDIF
+			
+			BANCS.INPUT.ddcdet_FIELD_7=sv_f
+			BANCS.INPUT.ddcdet_FIELD_8=""
+			BANCS.INPUT.ddcdet_FIELD_9=""
+			BANCS.INPUT.ddcdet_FIELD_10="P"
+			BANCS.STDIN.menuId = ""
+			BANCS.STDIN.funcName = ""
+			
+			########################################
+			#calling denom script for updating denom
+			########################################
+			CALL("denomdp018.scr")
+			
+			#-----Query to update Dxfer_id as 'P' in C_DETD and C_DERD table---------------
+			
+			sv_l = "UPDATE c_detd "
+			sv_m = "UPDATE c_derd "
+			sv_l = sv_l + "SET dxfer_flg = 'P',lchg_time=sysdate,lchg_user_id = ?SVAR "
+			sv_m = sv_m + "SET dxfer_flg = 'P' "
+			sv_n = "WHERE trim(dxfer_id) = ?SVAR AND dxfer_flg='E' "
+			sv_n = sv_n + "AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') AND bank_id = ?SVAR "
+			
+			sv_a = sv_l + sv_n
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.teller + "|" + CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId
+			sv_v = urhk_dbsqlWithBind(sv_a)
+			PRINT(sv_v)
+			
+			sv_b = sv_m + sv_n
+			BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId
+			sv_f = urhk_dbsqlWithBind(sv_b)
+			PRINT(sv_f)
+			
+			IF((sv_v == 0) AND (sv_f == 0))THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				print(sv_d)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		sv_n = urhk_dbCursorClose(CUST.DENOM.CURSORNO)
+		print(sv_n)
+		sv_d = urhk_dbCursorFetch(CUST.DENOM.DBCURSOR)
+		print(sv_d)
+	#}
+	DO
+	sv_n = urhk_dbCursorClose(CUST.DENOM.DBCURSOR)
+	print(sv_n)
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+		#trace off
+END-->

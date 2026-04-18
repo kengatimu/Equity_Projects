@@ -1,0 +1,211 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# product: Finacle Core
+# category: User Defined
+# script: TEST878.scr
+# type: NA|default
+# description: These types of scripts do not belong to any particular category and are standalone scripts with no script specific repositories or fields.
+#============================================================
+
+<--start
+	# Script body goes here
+	TRACE ON
+	##############################################
+	# Creation of Repository and Class and Initialization
+	##############################################
+	
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","FIINBOUND")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST","FIINBOUND",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","INTERFACE")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST","INTERFACE",5)
+	#}
+	ENDIF
+	
+	CUST.INTERFACE.successOrFailure="S"
+	CUST.INTERFACE.Message="Success"
+	CUST.INTERFACE.AcctInpInd="Y"
+	CUST.INTERFACE.CustInpInd="Y"
+	CUST.INTERFACE.CustValInd="N"
+	CUST.INTERFACE.AcctValInd="N"
+
+
+
+	IF((FIELDEXISTS(BANCS.INPUT.ACCOUNT_ID)) == 0)THEN
+	#{
+		CUST.INTERFACE.Message="AccountId not provided"
+		CUST.INTERFACE.AcctInpInd="N"
+		
+	#}
+	ELSE
+	#{
+		CUST.INTERFACE.AcctInpInd="Y"
+		#CUST.FIINBOUND.acctNum = sv_d
+		CUST.FIINBOUND.acctNum = BANCS.INPUT.ACCOUNT_ID
+	#}
+	ENDIF
+
+
+	#############################################
+	# If acctId is provided, validating it and comparing custId.
+	#############################################
+	IF(CUST.INTERFACE.AcctInpInd == "Y")THEN
+	#{
+		print(CUST.FIINBOUND.acctNum)
+		sv_b = urhk_getAcctDetailsInRepository(CUST.FIINBOUND.acctNum)
+		print(sv_b)
+		IF(sv_b == 1) THEN
+		#{
+			CUST.INTERFACE.AcctValInd="N"
+			CUST.INTERFACE.successOrFailure="F"
+			CUST.INTERFACE.Message="Invalid account Id"
+			GOTO END
+		ELSE
+			CUST.INTERFACE.successOrFailure="S"
+			CUST.INTERFACE.Message="Success - valid account"
+
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  CUST.FIINBOUND.acctNum
+			print(BANCS.INPARAM.BINDVARS)
+			sv_s = "acctclsflg,frezcode,acctname,schmtype,acctcrncycode|"
+			sv_s = sv_s + " SELECT ACCT_CLS_FLG,FREZ_CODE,ACCT_NAME,SCHM_TYPE,ACCT_CRNCY_CODE "
+			sv_s = sv_s + " FROM TBAADM.GAM"
+			sv_s = sv_s + " WHERE BANK_ID =?SVAR"
+			sv_s = sv_s + " AND FORACID =?SVAR"
+			print(sv_s)
+			
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d == 0 ) THEN
+			#{
+				CUST.FIINBOUND.acctclsflg = BANCS.OUTPARAM.acctclsflg
+				PRINT(CUST.FIINBOUND.acctclsflg)
+				CUST.FIINBOUND.frezcode = BANCS.OUTPARAM.frezcode
+				PRINT(CUST.FIINBOUND.frezcode)
+				CUST.FIINBOUND.schmtype = BANCS.OUTPARAM.schmtype
+				PRINT(CUST.FIINBOUND.schmtype)
+
+				IF ((CUST.FIINBOUND.schmtype!="SBA") AND (CUST.FIINBOUND.schmtype!="CAA")) THEN
+					CUST.INTERFACE.AcctValInd="N"
+					CUST.INTERFACE.successOrFailure="F"
+					CUST.INTERFACE.Message="Invalid account Id ... Check Scheme Code"
+					GOTO END
+				ENDIF
+
+				IF (CUST.FIINBOUND.acctclsflg=="Y") THEN
+					CUST.INTERFACE.AcctValInd="N"
+					CUST.INTERFACE.successOrFailure="F"
+					CUST.INTERFACE.Message="Invalid account Id ...Closed"
+					GOTO END
+				ENDIF
+				IF (CUST.FIINBOUND.frezcode=="T") THEN
+					CUST.INTERFACE.AcctValInd="N"
+					CUST.INTERFACE.successOrFailure="F"
+					CUST.INTERFACE.Message="Invalid account Id_Total freeze"
+					GOTO END
+				ENDIF
+				IF (CUST.FIINBOUND.frezcode=="C") THEN
+					CUST.INTERFACE.AcctValInd="N"
+					CUST.INTERFACE.successOrFailure="F"
+					CUST.INTERFACE.Message="Invalid account Id_Credit freeze"
+					GOTO END
+				ENDIF
+				CUST.FIINBOUND.acctname = BANCS.OUTPARAM.acctname
+				PRINT(CUST.FIINBOUND.acctname)
+				CUST.FIINBOUND.acctcrncycode = BANCS.OUTPARAM.acctcrncycode
+				PRINT(CUST.FIINBOUND.acctcrncycode)
+				
+				sv_u=urhk_SetOrbOut("ACCT_NAME|" + CUST.FIINBOUND.acctname)
+				sv_u=urhk_SetOrbOut("ACCT_CRNCY_CODE|" + CUST.FIINBOUND.acctcrncycode)
+
+				sv_k = "brgtCount| SELECT count(1) "
+				sv_k = sv_k + " from tbaadm.brgt "
+				sv_k = sv_k + " where BRGT.FREE_TEXT1 = ?SVAR "
+				sv_k = sv_k + " AND BRGT.BANK_ID = ?SVAR "
+				sv_k = sv_k + " AND BRGT.ENTITY_CRE_FLG = 'Y' "
+				sv_k = sv_k + " AND BRGT.DEL_FLG = 'N' and rownum<2 "	
+				BANCS.INPARAM.BINDVARS = CUST.FIINBOUND.acctNum  + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				PRINT(sv_k)
+				sv_h = urhk_dbselectWithBind(sv_k)
+				PRINT(sv_h)
+				IF (sv_h  == 0) THEN
+				#{		
+					CUST.FIINBOUND.billerCnt = BANCS.OUTPARAM.brgtCount
+					PRINT(CUST.FIINBOUND.billerCnt)
+				#}
+				ELSE
+				#{
+					CUST.FIINBOUND.billerCnt = "0"
+				#}
+				ENDIF
+				IF (CINT(CUST.FIINBOUND.billerCnt)>0 ) THEN
+				#{
+					sv_k = "brgtflag,billerid,billername,freetext5| SELECT trim(FREE_TEXT4),BILLER_ID,BILLER_NAME,FREE_TEXT5 "
+					sv_k = sv_k + " from tbaadm.brgt "
+					sv_k = sv_k + " where BRGT.FREE_TEXT1 = ?SVAR "
+					sv_k = sv_k + " AND BRGT.BANK_ID = ?SVAR "
+					sv_k = sv_k + " AND BRGT.ENTITY_CRE_FLG = 'Y' "
+					sv_k = sv_k + " AND BRGT.DEL_FLG = 'N' and rownum<2 "	
+					BANCS.INPARAM.BINDVARS = CUST.FIINBOUND.acctNum  + "|" + BANCS.STDIN.contextBankId
+					PRINT(BANCS.INPARAM.BINDVARS)
+					PRINT(sv_k)
+					sv_h = urhk_dbselectWithBind(sv_k)
+					PRINT(sv_h)
+					IF (sv_h  == 0) THEN
+					#{		
+						CUST.FIINBOUND.brgtflag01 = BANCS.OUTPARAM.brgtflag
+						PRINT(CUST.FIINBOUND.brgtflag01)
+						CUST.FIINBOUND.billerid = BANCS.OUTPARAM.billerid
+						PRINT(CUST.FIINBOUND.billerid)
+						CUST.FIINBOUND.billername = BANCS.OUTPARAM.billername
+						PRINT(CUST.FIINBOUND.billername)
+						CUST.FIINBOUND.freetext5 = BANCS.OUTPARAM.freetext5
+						PRINT(CUST.FIINBOUND.freetext5)
+						sv_u=urhk_SetOrbOut("BILLER_ID|" + CUST.FIINBOUND.billerid)
+						sv_u=urhk_SetOrbOut("BILLER_NAME|" + CUST.FIINBOUND.billername)
+						sv_u=urhk_SetOrbOut("BILLER_CODE|" + CUST.FIINBOUND.freetext5)
+						CUST.FIINBOUND.brgtflag = "Y"
+						sv_u=urhk_SetOrbOut("BILLER_FLG|" + CUST.FIINBOUND.brgtflag)
+					#}
+					ELSE
+					#{
+						CUST.FIINBOUND.brgtflag = "N"
+						sv_u=urhk_SetOrbOut("BILLER_FLG|" + CUST.FIINBOUND.brgtflag)
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					CUST.FIINBOUND.brgtflag = "N"
+					sv_u=urhk_SetOrbOut("BILLER_FLG|" + CUST.FIINBOUND.brgtflag)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	END:
+		print(CUST.INTERFACE.successOrFailure)
+		print(CUST.INTERFACE.Message)
+		
+		sv_u=urhk_SetOrbOut("RESPONSE|" + CUST.INTERFACE.successOrFailure)
+		sv_u=urhk_SetOrbOut("MESSAGE|" + CUST.INTERFACE.Message)
+TRACE OFF
+exitscript
+
+end-->

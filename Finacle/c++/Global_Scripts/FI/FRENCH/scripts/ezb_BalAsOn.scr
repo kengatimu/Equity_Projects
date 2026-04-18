@@ -1,0 +1,173 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ezb_BalAsOn.scr
+#  Description     : Fetch Balance As on Given Date
+#  Date            : 05-09-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             05-09-2023     Harrison Ruiru        Original Version
+#-----------------------------------------------------------------------------------------------
+##
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+    sv_u=REPEXISTS("CUST")
+    IF(sv_u==0) THEN
+    #{
+        CREATEREP("CUST")
+    #}
+    ENDIF
+
+    sv_u=CLASSEXISTS("CUST", "EZB")
+    IF(sv_u==0) THEN
+    #{
+        CREATECLASS("CUST", "EZB", 5)
+    #}
+    ENDIF
+
+    sv_t=urhk_b2k_printrepos("BANCS")
+    print(sv_t)
+
+    #----------------------------------------------------------------------------------------------
+    # validations
+    #----------------------------------------------------------------------------------------------
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNum"))== 0) ) THEN
+    #{
+        CUST.EZB.errMsg="please enter account Number"
+        sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+        sv_t = "MSG | " +CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+    ELSE
+        CUST.EZB.accountNum = trim(BANCS.INPUT.AccountNum)
+        print(CUST.EZB.accountNum)
+    #}
+    ENDIF
+
+    IF( (FIELDEXISTS(("BANCS").("INPUT").("ValueDate"))== 0) ) THEN
+    #{
+        CUST.EZB.errMsg="Please Enter Value Date in DD-MM-YYYY format"
+        sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+        sv_t = "MSG | " +CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+    ELSE
+        CUST.EZB.valueDate = BANCS.INPUT.ValueDate
+        print(CUST.EZB.valueDate)
+    #}
+    ENDIF
+
+    #---------------------------------------------------------------------------------------------------------------
+    # Variable Initialization
+    #---------------------------------------------------------------------------------------------------------------
+    lv_c = ""
+    CUST.EZB.errMsg = ""
+
+    #----------------------------------------------------------------------------------------------
+    # Process Flow
+    #----------------------------------------------------------------------------------------------
+
+    #sv_a = urhk_getAcctDetailsInRepository(CUST.EZB.accountNum)
+    #print(sv_a)
+
+    lv_q = "creationFlg,delFlg,acctOwnerShip,acctClsFlg,acctCrncyCode,acctSolId | select ENTITY_CRE_FLG,DEL_FLG,ACCT_OWNERSHIP,ACCT_CLS_FLG,ACCT_CRNCY_CODE,SOL_ID from tbaadm.gam where foracid=?SVAR and bank_id=?SVAR  "
+    print(lv_q)
+    BANCS.INPARAM.BINDVARS = CUST.EZB.accountNum +"|"+ BANCS.STDIN.contextBankId
+    print(BANCS.INPARAM.BINDVARS)
+    
+    sv_a = urhk_dbSelectWithBind(lv_q)
+    PRINT(sv_a)
+
+    IF(sv_a == 0)THEN
+    #{
+        CUST.EZB.creationFlg = trim(BANCS.OUTPARAM.creationFlg)
+        print(CUST.EZB.creationFlg)
+        CUST.EZB.delFlg = trim(BANCS.OUTPARAM.delFlg)
+        print(CUST.EZB.delFlg)
+        CUST.EZB.acctOwnerShip = trim(BANCS.OUTPARAM.acctOwnerShip)
+        print(CUST.EZB.acctOwnerShip)
+        CUST.EZB.acctClsFlg = trim(BANCS.OUTPARAM.acctClsFlg)
+        print(CUST.EZB.acctClsFlg)
+
+        IF((CUST.EZB.creationFlg=="Y") AND (CUST.EZB.delFlg=="N") AND (CUST.EZB.acctClsFlg=="N") )THEN
+        #{
+            CUST.EZB.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+            CUST.EZB.acctSolId = BANCS.OUTPARAM.acctSolId
+
+            BANCS.INPARAM.acctId = CUST.EZB.accountNum
+            BANCS.INPARAM.asOnDate = CUST.EZB.valueDate
+
+            sv_a = urhk_getAcctBalanceAsOnDate("")
+            print(sv_a)
+
+            IF(sv_a == 0)THEN
+            #{
+                CUST.EZB.valueDateBal = BANCS.OUTPARAM.acctBal
+                print(CUST.EZB.valueDateBal)
+            ELSE 
+                CUST.EZB.errMsg="Unable to fetch the balance. Try Again."
+                lv_a = "E9999"
+                sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+                sv_u = urhk_SetOrbErr(sv_c)
+                exitscript
+            #}
+            ENDIF
+
+            sv_q = " timestamp | select to_char(sysdate,'dd-mm-yyyy hh:mm:ss AM') from dual "
+            sv_c = urhk_dbSelectWithBind(sv_q)
+            PRINT(sv_c)
+
+            IF(sv_c == 0)THEN
+            #{
+                CUST.EZB.timestamp = BANCS.OUTPARAM.timestamp
+                print(CUST.EZB.timestamp)
+            ELSE 
+                CUST.EZB.timestamp = ""
+            #}
+            ENDIF
+
+            sv_t = "AccountBalance_RES.<rec_1>.AccountNumber| " + CUST.EZB.accountNum
+            sv_u = urhk_SetOrbOut(sv_t)
+            sv_t = "AccountBalance_RES.<rec_1>.Currency| " + CUST.EZB.acctCrncyCode
+            sv_u = urhk_SetOrbOut(sv_t)
+            sv_t = "AccountBalance_RES.<rec_1>.AccountBranch| " + CUST.EZB.acctSolId
+            sv_u = urhk_SetOrbOut(sv_t)
+            sv_t = "AccountBalance_RES.<rec_1>.ValueDate| " + CUST.EZB.valueDate
+            sv_u = urhk_SetOrbOut(sv_t)
+            sv_t = "AccountBalance_RES.<rec_1>.ValueDateBalance| " + CUST.EZB.valueDateBal
+            sv_u = urhk_SetOrbOut(sv_t)
+            sv_t = "AccountBalance_RES.<rec_1>.LastBalanceTimestamp| " + CUST.EZB.timestamp
+            sv_u = urhk_SetOrbOut(sv_t)
+        ELSE
+            IF(CUST.EZB.delFlg =="Y")THEN
+                CUST.EZB.errMsg="Record is deleted"
+            ENDIF
+            IF(CUST.EZB.creationFlg =="N")THEN
+                CUST.EZB.errMsg="Account creation is yet authorised"
+            ENDIF
+            IF(CUST.EZB.acctClsFlg =="Y")THEN
+                CUST.EZB.errMsg="Account has been closed"
+            ENDIF
+            lv_a = "E9999"
+            sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+            sv_u = urhk_SetOrbErr(sv_c)
+            exitscript
+        #}
+        ENDIF 
+    ELSE 
+        CUST.EZB.errMsg="Could not get details of account number [^"+CUST.EZB.accountNum+"^]"
+        lv_a = "E9999"
+        sv_c = lv_a + "^"+ CUST.EZB.errMsg + "^BE"
+        sv_u = urhk_SetOrbErr(sv_c)
+        exitscript
+    #}
+    ENDIF
+ENDSCRIPT:
+trace off
+END-->

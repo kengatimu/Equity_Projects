@@ -1,0 +1,222 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : MTNSweep772.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 13-03-2020
+#  Author          : Edwin Zico
+#  Job             : MTN72
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             13-03-2020     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="2f2d9b88241d43c8b9e7a945546318e708c02810a81c95150a17656fe02280c1"
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","MTN") == 0) THEN
+#{
+	CREATECLASS("CUST","MTN",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.MTN.foracid = "4013212082082"
+CUST.MTN.refnum = "Irembo Sweep"
+CUST.MTN.errMsg = ""
+
+#sv_s = "TRAN_DATE_BAL|select TRAN_DATE_BAL  from tbaadm.eab where acid in (select acid from tbaadm.gam where foracid =?SVAR) and " 
+#sv_s = sv_s + "eod_date = (select to_char(db_stat_date ,'DD-MON-RRRR')  from tbaadm.gct where  Bank_id=?SVAR) " 
+#PRINT(sv_s)
+#BANCS.INPARAM.BINDVARS = CUST.MTN.foracid + "|" + BANCS.STDIN.contextBankId
+#print(BANCS.INPARAM.BINDVARS)
+#sv_u= urhk_dbSelectWithBind(sv_s)
+#PRINT(sv_u)
+
+sv_u = urhk_getAcctDetailsInRepository(CUST.MTN.foracid)
+IF(sv_u==0)THEN
+#{
+
+	CUST.MTN.Tranbal = BANCS.OUTPARAM.ClearBalance
+	print(CUST.MTN.Tranbal)
+	CUST.MTN.CrncyCode = BANCS.OUTPARAM.acctCrncyCode
+        PRINT(CUST.MTN.CrncyCode)
+#}
+ELSE
+#{
+
+	CUST.MTN.errMsg ="No Data."
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.MTN.errMsg )
+	EXITSCRIPT
+#}
+ENDIF
+	
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+sv_r = REPEXISTS("MTT")
+IF (sv_r == 0) THEN
+	CREATEREP("MTT")
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","TranDetails")
+IF (sv_r == 0) THEN
+	CREATECLASS("MTT","TranDetails",5)
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","PartTranDetails")
+IF (sv_r == 0) THEN
+	CREATECLASS("MTT","PartTranDetails",5)
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","InputDetails")
+IF (sv_r == 0) THEN
+	CREATECLASS("MTT","InputDetails",5)
+ENDIF
+
+sv_r = CLASSEXISTS("MTT","Error")
+IF (sv_r == 0) THEN
+	CREATECLASS("MTT","Error",5)
+ENDIF
+sv_r = CLASSEXISTS("BANCS","INPARAM")
+IF (sv_r == 0) THEN
+CREATECLASS("BANCS","INPARAM",5)
+ENDIF
+
+#===================================
+# STEP 1 : INITIALIZE THE MTT
+#===================================
+
+BANCS.INPARAM.PostTranFlg 		= "Y"
+BANCS.INPARAM.CommitFlg 		= "Y"
+BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+BANCS.INPARAM.ValidationFlag 		= "Y"
+BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+BANCS.INPARAM.CheckExceptions 		= "N"
+
+sv_a = urhk_MTTS_PopulateInputDetails("")
+print(sv_a)
+MTT.TranDetails.TranDate="0"
+MTT.TranDetails.TranType = "T"
+MTT.TranDetails.TranSubType = "BI"
+MTT.TranDetails.IgnoreExcp = "I"
+MTT.TranDetails.Consolidate = "N"
+MTT.TranDetails.Remarks = "IREMBO Sweep"
+
+PRINT(CUST.MTN.Tranbal)
+CUST.MTN.GL = "4013211981482"
+print(CUST.MTN.GL)
+
+sv_v = "MTNTran"
+print(sv_v)
+
+sv_r = urhk_MTTS_DefineTransaction("MTNTran")
+
+IF((CUST.MTN.Tranbal > 0)  and (CUST.MTN.GL!=""))THEN
+#{		
+			
+#CustomerDebit
+	MTT.PartTranDetails.Account 	= CUST.MTN.foracid 
+	MTT.PartTranDetails.RefCurrency = CUST.MTN.CrncyCode
+	MTT.PartTranDetails.RateCode 	="MEAN"
+	MTT.PartTranDetails.Rate 	= "0"
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Particulars = "IREMBO Sweep " + CUST.MTN.GL 
+	MTT.PartTranDetails.RefAmount = -(cdouble(CUST.MTN.Tranbal))
+	print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.Remarks = "Dr.IREMBO Sweep" 
+	MTT.PartTranDetails.Refnum = CUST.MTN.refnum
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = sv_v
+	sv_e = "CustDr"
+	print(sv_e)
+	sv_r = urhk_MTTS_definePartTran(sv_e)
+	print(sv_r)
+
+	IF(fieldexists(MTT.Error.Description)) THEN
+	#{
+		print(MTT.Error.Description)
+		CUST.MTN.MTTErrDesc = MTT.Error.Description
+	#}
+	ENDIF
+
+#MTN Credit
+	MTT.PartTranDetails.Account 	= CUST.MTN.GL
+	MTT.PartTranDetails.RefCurrency = CUST.MTN.CrncyCode
+	MTT.PartTranDetails.RateCode 	="MEAN"
+	MTT.PartTranDetails.Rate 	= "0"
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Particulars = "Cr from IREMBO Sweep" + CUST.MTN.foracid 
+	MTT.PartTranDetails.RefAmount = (cdouble(CUST.MTN.Tranbal))
+	print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.Remarks = "Cr from:" + CUST.MTN.foracid
+	MTT.PartTranDetails.Refnum = CUST.MTN.refnum
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = sv_v
+	sv_e = "MTNIncome"
+	print(sv_e)
+	sv_r = urhk_MTTS_definePartTran(sv_e)
+	print(sv_r)
+	
+	IF(fieldexists(MTT.Error.Description)) THEN
+	#{
+		print(MTT.Error.Description)
+		CUST.MTN.MTTErrDesc = MTT.Error.Description
+	#}
+	ENDIF
+#}
+ENDIF
+
+		
+	sv_r = urhk_MTTS_EndDefinition("")
+	print(sv_r)
+
+	IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+	
+		print(BANCS.OUTPARAM.MTTTranId)
+		CUST.MTN.tranid = BANCS.OUTPARAM.MTTTranId
+		print(CUST.MTN.tranid)
+	#}
+	ENDIF
+
+	sv_r = urhk_MTTS_Close("")
+	print(sv_r)
+	IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+	
+		print(BANCS.OUTPARAM.MTTTranId)
+		CUST.MTN.tranid = BANCS.OUTPARAM.MTTTranId
+		print(CUST.MTN.tranid)
+
+
+	ENDIF
+
+EXITSCRIPT
+
+trace off
+end-->
+
+

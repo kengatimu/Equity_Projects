@@ -1,0 +1,168 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : FI_UPDA_SVS.scr
+#  Description     : This script Will Expire the signature
+#  Date            : 10-01-2022
+#  Author          : SUNDAR
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  Channel
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             12-01-2022      SUNDAR           Original Version
+#-----------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+
+ if (REPEXISTS("CUST")==0)THEN
+ #{
+ CREATEREP("CUST")
+ #}
+ endif
+
+ if (CLASSEXISTS("CUST","DATA")==0)THEN
+ #{
+ CREATECLASS("CUST","DATA",5)
+ #}
+ endif
+
+sv_u = urhk_B2k_PrintRepos("BANCS")
+PRINT(sv_u)
+#updated to only require signid
+#CUST.DATA.custid = BANCS.INPUT.custid
+#print(CUST.DATA.custid)
+CUST.DATA.signid = BANCS.INPUT.signid
+print(CUST.DATA.signid)
+CUST.DATA.expdate = BANCS.INPUT.expdate
+print(CUST.DATA.expdate)
+CUST.DATA.bankid = BANCS.STDIN.contextBankId
+print(CUST.DATA.bankid)
+CUST.DATA.messageField = " Signature ID not Found"
+CUST.DATA.userId = BANCS.STDIN.userId
+
+#################change to capture logged in branch servicehub user starts( CHG0031140) - James###########################
+IF(FIELDEXISTS(BANCS.INPUT.userId))THEN
+#{
+
+	CUST.DATA.userId = BANCS.INPUT.userId
+
+#}
+ENDIF
+#################change to capture logged in branch servicehub user end - James###########################
+
+
+	#####################user validation starts( CHG0031140) - james########################
+	sv_s="USERID|"
+	sv_s = sv_s + " SELECT USER_ID FROM TBAADM.UPR WHERE  "
+	sv_s = sv_s + " USER_ID=?SVAR "
+	print(sv_s)
+
+	BANCS.INPARAM.BINDVARS =  CUST.DATA.userId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_d = urhk_dbSelectWithBind(sv_s)
+
+	IF(sv_d==0)THEN
+	#{
+		PRINT("valid user")
+	#}
+	ELSE
+	#{
+		CUST.DATA.errMsg="INVALID USERID " + CUST.DATA.userId
+		sv_t = "ERROR| " +CUST.DATA.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDOFSCRIPT
+
+	#}
+	ENDIF
+
+	#####################user validation ends - james########################
+
+        sv_s = "expirydate|select i.expirydate from SVSUSER.SIGNMAINTENANCE m , SVSUSER.SIGNCUSTINFO i,SVSUSER.SIGNOTHERINFO o where m.active ='Y'  and m.deleted ='N' and m.verified = 'Y' and i.verified ='Y' and m.signid =i.signid and m.signid =o.signid and o.signid =i.signid  and m.SIGNID = ?SVAR  and  o.ENTITYID = ?SVAR"
+
+        BANCS.INPARAM.BINDVARS = CUST.DATA.signid + "|" + CUST.DATA.bankid
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d =  urhk_dbSelectWithBind(sv_s)
+        IF (sv_d == 0 ) THEN
+        #{
+
+		CUST.DATA.expirydate= BANCS.OUTPARAM.expirydate
+
+                sv_a = " update SVSUSER.signcustinfo set EXPIRYDATE = to_date(?SVAR,'DD-MM-YYYY') ,LASTACTIVITY=?SVAR,MODIFIEDBY=?SVAR,MODIFIEDDATE=to_timestamp(?SVAR,'DD-MM-RR HH24:MI:SS'),VERIFIEDBY=?SVAR,VERIFIEDDATE=to_timestamp(?SVAR,'DD-MM-RR HH24:MI:SS') where  SIGNID  ='"+CUST.DATA.signid+"' "
+
+                BANCS.INPARAM.BINDVARS = CUST.DATA.expdate+"|UPDATE|"+CUST.DATA.userId+"|"+BANCS.STDIN.sysDate+"|"+CUST.DATA.userId+"|"+BANCS.STDIN.sysDate
+                sv_v = urhk_dbSQLWithBind(sv_a)
+                IF(sv_v == 0)then
+                #{
+                sv_x = urhk_dbSQLWithBind("COMMIT")
+                #}
+                endif
+
+                sv_a = " update SVSUSER.signmaintenance set EXPIRYDATE = to_date(?SVAR,'DD-MM-YYYY') ,LASTACTIVITY=?SVAR,MODIFIEDBY=?SVAR,MODIFIEDDATE=to_timestamp(?SVAR,'DD-MM-RR HH24:MI:SS'),VERIFIEDBY=?SVAR,VERIFIEDDATE=to_timestamp(?SVAR,'DD-MM-RR HH24:MI:SS')  where  SIGNID  ='"+CUST.DATA.signid+"' "
+
+                BANCS.INPARAM.BINDVARS = CUST.DATA.expdate+"|UPDATE|"+CUST.DATA.userId+"|"+BANCS.STDIN.sysDate+"|"+CUST.DATA.userId+"|"+BANCS.STDIN.sysDate
+                sv_v = urhk_dbSQLWithBind(sv_a)
+                IF(sv_v == 0)then
+                #{
+                sv_x = urhk_dbSQLWithBind("COMMIT")
+                #}
+                endif
+
+
+        IF(sv_v == 0)then
+        #{
+
+		CUST.DATA.Timestamp = BANCS.STDIN.sysDate
+		CUST.DATA.OldVal = "Signature id= "+CUST.DATA.signid+", Keyword= , Group Id= null, Active= true, Expiry date= "+CUST.DATA.expirydate
+		CUST.DATA.NewVal = "Signature id= "+CUST.DATA.signid+", Keyword= , Group Id= null, Active= true, Expiry date= "+CUST.DATA.expdate+" 00:00:00.0"
+		CUST.DATA.LogMessage = " Update Signature Details Successfully with Id "+CUST.DATA.signid
+                sv_a = "Insert into SVSUSER.AUDITINFO(ID,SIGNPOWERNO,SIGNID,MENUITEM,ACTIVITY,USERNAME,ISMASTER,OCCUREDAT,OLDVAL,NEWVAL,LOGMSG,ERRWARNING,ENTITYID) "
+                sv_a = sv_a+" values (concat(?SVAR,svsuser.auditidsequence.nextval),0,?SVAR,'Signature','UPDATE',?SVAR,'N',to_timestamp(?SVAR,'DD-MM-RR HH24:MI:SS'),?SVAR,?SVAR,?SVAR,'SUCCESS',?SVAR) "
+
+                BANCS.INPARAM.BINDVARS = CUST.DATA.signid+"|"+CUST.DATA.signid+"|"+CUST.DATA.userId+"|"+CUST.DATA.Timestamp+"|"+CUST.DATA.OldVal+"|"+CUST.DATA.NewVal+"|"+CUST.DATA.LogMessage+"|"+BANCS.STDIN.contextBankId
+                sv_v = urhk_dbSQLWithBind(sv_a)
+                IF(sv_v == 0)then
+                #{
+					sv_x = urhk_dbSQLWithBind("COMMIT")
+                #}
+                endif
+
+                CUST.DATA.errMsg                = ""
+                CUST.DATA.resMsg                = "Sign Id "+CUST.DATA.signid+" is  Successfully updated."
+                IF(CUST.DATA.errMsg =="")then
+                #{
+                lv_a = urhk_SetOrbOut("SuccessOrFailure|Y")
+                lv_b = urhk_SetOrbOut("RESULT_MSG|" +CUST.DATA.resMsg)
+                #}
+                ENDIF
+        #}
+        ELSE
+        #{
+                PRINT("Service Failure")
+                CUST.DATA.messageField = CUST.DATA.messageField
+                sv_z = urhk_SetOrbOut("Error_1|ERROR^"+CUST.DATA.messageField )
+                PRINT(sv_z)
+                sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+#}
+ELSE
+#{
+	PRINT("Service Failure")
+	CUST.DATA.messageField = CUST.DATA.messageField
+	sv_z = urhk_SetOrbOut("Error_1|ERROR^"+CUST.DATA.messageField )
+	PRINT(sv_z)
+	sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+ENDOFSCRIPT:
+exitscript
+TRACE OFF
+END-->
+
+

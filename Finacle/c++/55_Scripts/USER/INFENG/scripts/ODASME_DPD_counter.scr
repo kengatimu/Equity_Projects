@@ -1,0 +1,131 @@
+<--START
+CHECKSUM="dca0fdaab5635dc52a10718f92efd0797dee4d9f892a5547a2b1856f0e2ca5ee"
+	TRACE ON
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+	
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	###########################################################################################
+	# Check whether HTM Class exists else create it
+	###########################################################################################
+	
+	sv_r = CLASSEXISTS("CUST","HTM")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","HTM",5)
+	#}
+	ENDIF
+	sv_u = urhk_b2k_printrepos("BANCS")
+	PRINT(sv_u)
+
+
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+					sv_s = "tranid,acctId,AccontName,clr_bal_amt1,SchmCode,cifid,rcretime,dbstatdate|"
+					sv_s = sv_s + "select DISTINCT( A.TRAN_ID),g.foracid,g.acct_name,clr_bal_amt, schm_code,cif_id,TO_CHAR(a.rcre_time,'DD-MM-YYYY'),TO_CHAR(DB_STAT_DATE,'DD-MM-YYYY') from "
+					sv_s = sv_s + "tbaadm.gam g,CUSTOM.ODSME_BOOK a,tbaadm.gct t where schm_code='OD548' and g.bank_id=?SVAR and g.bank_id=t.bank_id "
+					sv_s = sv_s + "and a.bank_id=g.bank_id and a.bank_id=t.bank_id and g.entity_cre_flg='Y' and g.del_flg='N' "
+					sv_s = sv_s + "and g.acid=a.acid and  tot_amount<>adj_amount and g.sol_id=?SVAR "
+					 print(sv_s)
+					BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.mySolId
+					print(BANCS.INPARAM.BINDVARS)
+	
+					sv_e = urhk_dbcursorOpenWithBind(sv_s)
+					IF(sv_e == 0) THEN
+					#{	
+						CUST.HTM.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+						print(CUST.HTM.CURSOR_NUMBER)
+					sv_c = urhk_dbCursorFetch(CUST.HTM.CURSOR_NUMBER)
+					print(sv_c)
+					BANCS.INPUT.RECCOUNT=cint("1")
+					print(BANCS.INPUT.RECCOUNT)
+
+		WHILE(sv_c == "0")
+		#{
+					CUST.HTM.acctId = BANCS.OUTPARAM.acctId
+					print(CUST.HTM.acctId)
+					CUST.HTM.tranid= TRIM(BANCS.OUTPARAM.tranid)
+					print(CUST.HTM.tranid)
+
+
+					BANCS.INPARAM.date1 = BANCS.OUTPARAM.rcretime
+					PRINT(BANCS.INPARAM.date1)
+					BANCS.INPARAM.date2 = BANCS.OUTPARAM.dbstatdate
+					#BANCS.INPARAM.date2 = "14-08-2022"
+					PRINT(BANCS.INPARAM.date2)
+					sv_i = urhk_B2k_dateDiff("")
+					print(sv_i)
+					PRINT(BANCS.OUTPARAM.dateDiff)
+					CUST.HTM.DATEDIFF = BANCS.OUTPARAM.dateDiff
+					
+						if(CUST.HTM.DATEDIFF <0) then
+						sv_a=CUST.HTM.DATEDIFF
+						sv_b=MID$(sv_a,1,4)
+						sv_k=TRIM(sv_b)
+						print(sv_k)
+						CUST.HTM.DATEDIFF = sv_k
+						print(CUST.HTM.DATEDIFF)
+						###########Updating dpd in ODSME_BOOK if count is more than 30 days start
+						IF(CUST.HTM.DATEDIFF>30) THEN
+						#{
+											CUST.HTM.errorMsg = "Account is linked to a overdraft account with 30 days in arrears"
+											PRINT(CUST.HTM.errorMsg)
+											CUST.HTM.DATEDIFF1="30" 
+											CUST.HTM.DATEDIFF=(CINT(CUST.HTM.DATEDIFF)-CINT(CUST.HTM.DATEDIFF1))
+											print(CUST.HTM.DATEDIFF)
+
+												sv_s = "UPDATE CUSTOM.ODSME_BOOK SET DPD_COUNTER=?SVAR WHERE ACID IN(SELECT ACID FROM TBAADM.GAM WHERE TRIM(FORACID)=?SVAR) and TRIM(TRAN_ID)=?SVAR"
+												print(sv_s)
+
+												#BANCS.INPARAM.BINDVARS = CUST.HTM.DATEDIFF
+												BANCS.INPARAM.BINDVARS = CUST.HTM.DATEDIFF +"|"+ CUST.HTM.acctId +"|"+ CUST.HTM.tranid
+											Print(BANCS.INPARAM.BINDVARS)
+											sv_d = urhk_dbSQLWithBind(sv_s)
+												PRINT(sv_d)
+											IF(sv_d==0)THEN
+												#{
+												sv_d = urhk_dbSqlWithBind("COMMIT")
+													GOTO NEXTREC
+													#}
+											ENDIF
+
+						#}
+						ELSE
+						#{
+								CUST.HTM.DATEDIFF1="0"
+								sv_s = "UPDATE CUSTOM.ODSME_BOOK SET DPD_COUNTER=?SVAR WHERE ACID IN(SELECT ACID FROM TBAADM.GAM WHERE FORACID =?SVAR) and TRIM(TRAN_ID)=?SVAR"
+								print(sv_s)
+
+							BANCS.INPARAM.BINDVARS = CUST.HTM.DATEDIFF1 +"|"+ CUST.HTM.acctId +"|"+ CUST.HTM.tranid
+							Print(BANCS.INPARAM.BINDVARS)
+							sv_d = urhk_dbSQLWithBind(sv_s)
+							PRINT(sv_d)
+							IF(sv_d==0)THEN
+							#{
+							sv_d = urhk_dbSqlWithBind("COMMIT")
+							GOTO NEXTREC
+							#}
+							ENDIF
+
+							#}	
+						ENDIF	
+						###########Updating dpd in ODSME_BOOK if count is more than 30 days end
+ENDIF				
+#}
+	NEXTREC:
+		sv_c = urhk_dbCursorFetch(CUST.HTM.CURSOR_NUMBER)
+		print(sv_c)			
+#}
+DO
+	
+END-->

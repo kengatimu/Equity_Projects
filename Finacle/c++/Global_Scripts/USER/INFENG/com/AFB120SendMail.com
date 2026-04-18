@@ -1,0 +1,72 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : AFB120SendMail.com 
+#  Description     : AFB120 Alerts to OLA Energy
+#  Date            : 14-12-2023
+#  Author          : James Gichiri
+#  Menu Option     :  
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             14-12-2023      James Gichiri        Original Version
+#-----------------------------------------------------------------------------------------------
+. `execom commfunc.com`
+set -vx
+
+echo $FIN_BANK_ID
+filename="LOKE_EBK_LKE_"
+tomail="kelke.libyaoil@pathfinance.pro"
+echo ${tomail}
+
+fulladte=`date -d "yesterday" +%Y%m%d`
+echo ${fulladte}
+
+filename=${filename}${fulladte}".TXT"
+echo ${filename}
+
+ArchiveDir="/finreports/BCDC/AFB120/OLA_BKP/"
+echo $ArchiveDir
+test -d ${ArchiveDir}
+if [ $? -ne 0 ]
+then
+    mkdir ${ArchiveDir}
+fi
+
+wd="/finreports/BCDC/AFB120/"
+cd ${wd}
+
+#exit 0
+
+for fil in `ls ${wd}${filename}`
+do
+	
+	test -f ${fil}
+	
+	if [ $? -eq 0 ]
+	then
+		#echo "in loop" >> ${wd}${logfil}
+		frmmail="estatement@equitybank.co.ke"
+		bdAdr="kelke.libyaoil@pathfinance.pro"
+	    	#bdCc="bank@pathfinance.pro"
+
+		BdMsg="Attached is your AFB120 Statement."
+		subject="AFB120 Estatements Equity Bank"
+		(
+		 echo "From: ${frmmail}"
+		 echo "To: ${bdAdr}"
+		 echo "Subject: ${subject}"
+		 echo "MIME-Version: 1.0"
+		 echo "Dear Customer,"
+		 echo " "
+		 echo "${BdMsg}"
+		 echo " "
+		 echo "This is an auto generated email and is not monitored for incoming emails."
+		 echo "Please do not reply,Contact Your Equity Bank branch in case of any query"
+		 echo "Sincerely,"
+		 echo "Equity Bank(Kenya)Limited. email:info@equitybank.co.ke Tel:+254763063000"
+		 echo "www.facebook.com/KeEquityBank www.twitter.com/KeEquityBank www.ke.equitybankgroup.com"
+		uuencode ${wd}${filename} $(basename ${wd}${filename})
+		) | /sbin/sendmail  ${tomail}
+		
+		mv -f ${filename} ${ArchiveDir}
+	fi
+done
+exit 0

@@ -1,0 +1,205 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Name            : vpcodlpayOD553.scr 
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Description     :
+#  Date            : 02-04-2025
+#  Author          : DKC
+#  Menu Option     : NA
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        lv_b = urhk_B2K_PrintRepos("BANCS")
+        print(lv_b)
+        if(repexists("EQOD")==0)then
+                createrep("EQOD")
+        endif
+        if(classexists("EQOD","GLBDATA")==0)then
+                createclass("EQOD","GLBDATA",5)
+        endif
+	print(EQOD.GLBDATA.accNum)
+	print(EQOD.GLBDATA.OperaccNum)
+	print(EQOD.GLBDATA.refCrncy)
+	print(EQOD.GLBDATA.refAmt)
+	print(EQOD.GLBDATA.funcCode)
+	#cust due amt
+	lv_j = " custTotDueamt | select sum(dmd_amt)-sum(tot_adj_amt) from custom.odsme_new where bank_id=?SVAR and del_flg='N' and entity_cre_flg='Y' and foracid=?SVAR "
+	lv_j = lv_j + " and dep_command='CSWOP' "
+	lv_j = lv_j + " and dep_dccid='BATCH' "
+	lv_j = lv_j + " and dep_srl_num='NOSWEEPDIRECT_CREDIT' " 
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQOD.GLBDATA.OperaccNum
+	print(lv_j)
+	print(BANCS.INPARAM.BINDVARS)
+	lv_j = urhk_dbSelectWithBind(lv_j)
+	if(lv_j==0)then
+	#{
+		EQOD.GLBDATA.custTotDueamt = BANCS.OUTPARAM.custTotDueamt
+	else
+		EQOD.GLBDATA.custTotDueamt = ""
+	#}
+	endif
+	lv_j = " custTotDueDtAmt | select sum(dmd_amt)-sum(tot_adj_amt) from custom.odsme_new where bank_id=?SVAR and del_flg='N' and entity_cre_flg='Y' and foracid=?SVAR and dmd_date<=to_date(?SVAR,'DD-MM-YYYY') "
+	lv_j = lv_j + " and dep_command='CSWOP' "
+	lv_j = lv_j + " and dep_dccid='BATCH' "
+	lv_j = lv_j + " and dep_srl_num='NOSWEEPDIRECT_CREDIT' " 
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQOD.GLBDATA.OperaccNum + "|" + left$(BANCS.STDIN.BODDate,10)
+	print(lv_j)
+	print(BANCS.INPARAM.BINDVARS)
+	lv_j = urhk_dbSelectWithBind(lv_j)
+	if(lv_j==0)then
+	#{
+		EQOD.GLBDATA.custTotDueDtAmt = BANCS.OUTPARAM.custTotDueDtAmt
+	else
+		EQOD.GLBDATA.custTotDueDtAmt = ""
+	#}
+	endif
+	#Fetch only allowed recovery accounts for agent float financing
+	sv_d = "ldrAcct,ldrBalance | select gam.foracid,gam.clr_bal_amt from tbaadm.gam,tbaadm.fcftt where gam.bank_id=?SVAR and fcftt.bank_id=?SVAR"
+	sv_d = sv_d + " and gam.acct_ownership<>'O' "
+	sv_d = sv_d + " and gam.cif_id = ?SVAR "
+	sv_d = sv_d + " and gam.acid = fcftt.acid "
+	#sv_d = sv_d + " and gam.schm_code in ('SB100','SB126','CA207') "
+	sv_d = sv_d + " and gam.schm_type in ('SBA','CAA') "
+	sv_d = sv_d + " and gam.entity_cre_flg='Y' and gam.del_flg='N' "
+	sv_d = sv_d + " and fcftt.entity_cre_flg='Y' and fcftt.del_flg='N' "
+	sv_d = sv_d + " and fcftt.free_code_19='SMEODA-ACCESS' "
+	sv_d = sv_d + " and gam.acct_cls_flg<>'Y' "
+	sv_d = sv_d + " and gam.acct_cls_date is null "
+	sv_d = sv_d + " and gam.clr_bal_Amt >=1 "
+	sv_d = sv_d + " and gam.frez_code <>'D' "
+	sv_d = sv_d + " and rownum<=1 "
+	sv_d = sv_d + " order by schm_type desc "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + EQOD.GLBDATA.lacustid 
+	lv_d = urhk_dbSelectWithBind(sv_d)
+	if(lv_d==0)then
+	#{
+		EQOD.GLBDATA.ldrAcct = BANCS.OUTPARAM.ldrAcct
+		EQOD.GLBDATA.ldrBalance = BANCS.OUTPARAM.ldrBalance
+	else
+		EQOD.GLBDATA.ldrAcct = ""
+		EQOD.GLBDATA.ldrBalance = ""
+	#}
+	endif
+	if(EQOD.GLBDATA.ldrAcct=="")then
+	#{
+                ##BANCS.STDIN.msg = "Error_1|Error.1 ^Inappropriate operative account^OperaccNum"
+                ##sv_u = urhk_SetOrbOut(BANCS.STDIN.msg)
+                ##sv_z = "SuccessOrFailure|N"
+                ##sv_u = urhk_SetOrbOut(sv_z)
+                ##exitscript
+	#}
+	endif
+	print(EQOD.GLBDATA.OperaccNum)
+        sv_u = urhk_getAcctDetailsInRepository(EQOD.GLBDATA.OperaccNum)
+        if(sv_u == 0)then
+        #{
+		EQOD.GLBDATA.opEffAmt = BANCS.OUTPARAM.EffAvailableAmt
+		print(EQOD.GLBDATA.opEffAmt)
+	#}
+	endif
+
+	EQOD.GLBDATA.ldrAcct = EQOD.GLBDATA.OperaccNum
+	print(EQOD.GLBDATA.custTotDueamt)
+	print(EQOD.GLBDATA.custTotDueDtAmt)
+	print(EQOD.GLBDATA.laclearBalance)
+	print(EQOD.GLBDATA.opEffAmt)
+	print(EQOD.GLBDATA.laEffAmt)
+	#R partial pay P payoff
+	if(cdouble(EQOD.GLBDATA.laEffAmt)  < 0 )then
+	#{
+		EQOD.GLBDATA.laEffAmt = -1 * cdouble(EQOD.GLBDATA.laEffAmt)
+	#}
+	endif
+	if(cdouble(EQOD.GLBDATA.laclearBalance)  < 0 )then
+	#{
+		EQOD.GLBDATA.laclearBalance = -1 * cdouble(EQOD.GLBDATA.laclearBalance)
+	#}
+	endif
+	if(EQOD.GLBDATA.funcCode=="P")then
+	##if(cdouble(EQOD.GLBDATA.laEffAmt) > cdouble(EQOD.GLBDATA.opEffAmt))then
+	if(cdouble(EQOD.GLBDATA.laclearBalance) > cdouble(EQOD.GLBDATA.opEffAmt))then
+	#{
+                BANCS.STDIN.msg = "Error_1|Error.1 ^Insufficient Fund in operative account^refAmt"
+                sv_u = urhk_SetOrbOut(BANCS.STDIN.msg)
+                sv_z = "SuccessOrFailure|N"
+                sv_u = urhk_SetOrbOut(sv_z)
+                exitscript
+	#}
+	endif
+	endif
+	if(EQOD.GLBDATA.funcCode=="R")then
+	if(cdouble(EQOD.GLBDATA.refAmt) > cdouble(EQOD.GLBDATA.opEffAmt))then
+	#{
+                BANCS.STDIN.msg = "Error_1|Error.1 ^Entered Amount is greater than account balance^refAmt"
+                sv_u = urhk_SetOrbOut(BANCS.STDIN.msg)
+                sv_z = "SuccessOrFailure|N"
+                sv_u = urhk_SetOrbOut(sv_z)
+                exitscript
+	#}
+	endif
+	endif
+                sv_a=urhk_getEnv("B2K_SESSION_ID")
+                IF(sv_a== 0)THEN
+                #{
+                        EQOD.GLBDATA.session_id = BANCS.OUTPARAM.envValue
+                        print(EQOD.GLBDATA.session_id)
+
+                #}
+                ELSE
+                #{
+                        EQOD.GLBDATA.errorMsg = "No sesion available"
+                        EXITSCRIPT
+                #}
+        	ENDIF
+	sv_u = urhk_getFileLocation("COM|vpcodlpayOD553.com")
+	print(sv_u)
+	print(BANCS.OUTPARAM.fileLocation)
+	if(sv_u == 0)then
+	#{
+		sv_a = "LoanAcctId|" + EQOD.GLBDATA.accNum
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		##sv_a = "OperAcctNum|" + EQOD.GLBDATA.OperaccNum
+		sv_a = "OperAcctNum|" + EQOD.GLBDATA.ldrAcct 
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "RecoverAmt|" + EQOD.GLBDATA.refAmt
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "FunctionC|" + EQOD.GLBDATA.funcCode
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "stuserId|" + BANCS.STDIN.userId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "bankId|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "EventType|ONSPAY"
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		sv_a = "sessionid|" + EQOD.GLBDATA.session_id
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		print(sv_u)
+		BANCS.INPARAM.scriptName = "vpcodlpayOD553.com"
+		BANCS.INPARAM.arguments = ""
+		sv_u = urhk_CallShellScript("b")
+		print(sv_u)
+		if(sv_u != 0)then
+		#{
+			print("failed")
+		#}
+		else
+		#{
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+			EQOD.GLBDATA.msg = "ODSME Payment Initiated Successfully. Please Visit HPR Menu in While"
+			sv_c = urhk_SetOrbOut("RESULT_MSG|" + EQOD.GLBDATA.msg )
+			print(sv_c)
+			exitscript
+		#}
+		endif
+	#}
+	endif
+
+
+trace off
+end-->

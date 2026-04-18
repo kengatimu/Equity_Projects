@@ -1,0 +1,272 @@
+##########################
+#Custom menu for chargeoff processing
+#Date Created: 17-Jan-2023
+#Author: EMTECH CHG0037806/02032026INFENGUSER2  Batch Charge Off For Overdrafts
+#ModIFication Date:
+#########################
+
+<--START
+	TRACE ON
+
+		IF(REPEXISTS("CUST") == 0)THEN
+			CREATEREP("CUST")
+		ENDIF
+
+		IF(CLASSEXISTS("CUST","DATA") == 0)THEN
+			CREATECLASS("CUST","DATA",5)
+		ENDIF
+
+		CUST.DATA.sysDate = mid$(BANCS.STDIN.sysDate,0,2) + mid$(BANCS.STDIN.sysDate,3,2) + mid$(BANCS.STDIN.sysDate,6,4)
+		CUST.DATA.sysDate = CUST.DATA.sysDate + mid$(BANCS.STDIN.sysDate,11,2) + mid$(BANCS.STDIN.sysDate,14,2)+mid$(BANCS.STDIN.sysDate,17,2)
+		PRINT(CUST.DATA.sysDate)
+
+		sv_s = "chrgOffAcctNum|SELECT ORIGINAL_PROD_NUM FROM CUSTOM.HCOLA_LOANS_DRC WHERE POSTED_MAKER = 'A'"
+		#BANCS.INPARAM.BINDVARS =BANCS.STDIN.contextBankId + "|" + CUST.DATA.chrgOffAcctNum
+		#PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_e = urhk_dbCursorOpenWithBind(sv_s)
+
+		IF(sv_e == 0) THEN
+		#{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			sv_q = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_q)
+
+			BANCS.INPUT.RECOUNT = cint("1")
+			PRINT(BANCS.INPUT.RECOUNT)
+
+			IF(sv_q == 1) THEN
+			#{
+				sv_x = urhk_dbCursorClose(sv_m)
+				PRINT(sv_x)
+				exitscript
+			#}
+			ENDIF
+			PRINT(sv_q)
+
+			WHILE(sv_q==0)
+			#{
+				CUST.DATA.chrgOffAcctNum = BANCS.OUTPARAM.chrgOffAcctNum
+				PRINT(CUST.DATA.chrgOffAcctNum)
+				
+				sv_b = urhk_getAcctDetailsInRepository(CUST.DATA.chrgOffAcctNum)
+				IF (sv_b == 0) THEN
+					CUST.DATA.acctSchmType = BANCS.OUTPARAM.schmType
+					PRINT (CUST.DATA.acctSchmType)
+				ELSE
+					CUST.DATA.acctSchmType = ""
+					
+					sv_s = "UPDATE CUSTOM.HCOLA_LOANS_DRC set POSTED_MAKER = 'E', ERROR_MSG = 'ACCOUNT NOT FOUND' WHERE ORIGINAL_PROD_NUM = ?SVAR  and POSTED_MAKER = 'A'"
+					BANCS.INPARAM.BINDVARS = CUST.DATA.chrgOffAcctNum
+					PRINT(BANCS.INPARAM.BINDVARS)
+					PRINT(sv_s)
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					PRINT(sv_d)
+
+					IF(sv_d == 0)THEN
+					#{
+						sv_r = urhk_dbSQLWithBind("COMMIT")
+						PRINT(sv_r)
+					#}
+					ELSE
+					#{
+						sv_r  = urhk_dbSQLWithBind("ROLLBACK")
+						PRINT(sv_r)
+					#}
+					ENDIF
+							
+					GOTO NEXTREC
+				ENDIF
+				
+				IF ((CUST.DATA.acctSchmType != "LAA") AND (CUST.DATA.acctSchmType != "SBA") AND (CUST.DATA.acctSchmType != "CAA") AND (CUST.DATA.acctSchmType != "ODA") AND (CUST.DATA.acctSchmType != "CCA")) THEN
+					sv_s = "UPDATE CUSTOM.HCOLA_LOANS_DRC set POSTED_MAKER = 'E', ERROR_MSG = 'The entered account must be of LAA, SB, CA, CC or OD type' WHERE ORIGINAL_PROD_NUM = ?SVAR  and POSTED_MAKER = 'A'"
+					BANCS.INPARAM.BINDVARS = CUST.DATA.chrgOffAcctNum
+					PRINT(BANCS.INPARAM.BINDVARS)
+					PRINT(sv_s)
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					PRINT(sv_d)
+
+					IF(sv_d == 0)THEN
+					#{
+						sv_r = urhk_dbSQLWithBind("COMMIT")
+						PRINT(sv_r)
+					#}
+					ELSE
+					#{
+						sv_r  = urhk_dbSQLWithBind("ROLLBACK")
+						PRINT(sv_r)
+					#}
+					ENDIF
+							
+					GOTO NEXTREC
+				ENDIF
+				
+				IF(CUST.DATA.acctSchmType == "LAA")THEN
+					sv_i = urhk_SetUrhkInp("chrgOffCrit.laAcct.foracid|" + CUST.DATA.chrgOffAcctNum)
+					sv_i = urhk_SetUrhkInp("chrgOffCrit.chargeOffType|F")
+					sv_i = urhk_SetUrhkInp("chrgOffCrit.modeOfOper|C")
+				ELSE
+					sv_i = urhk_SetUrhkInp("taChrgOffCrit.Acct.foracid|" + CUST.DATA.chrgOffAcctNum)
+					sv_i = urhk_SetUrhkInp("taChrgOffCrit.chargeOffType|F")
+					sv_i = urhk_SetUrhkInp("taChrgOffCrit.modeOfOper|C")
+				ENDIF
+				
+				IF(CUST.DATA.acctSchmType == "LAA")THEN
+					sv_q = urhk_ExecSrv("SRV_FetchAcctDtlForChrgOff|retain_all_output = Y|ignore_excp_flg=Y")
+				ELSE
+					sv_q = urhk_ExecSrv("SRV_FetchAcctDtlForTaChrgOff|retain_all_output = Y|ignore_excp_flg=Y")
+				ENDIF
+				PRINT(sv_q)
+				
+				IF(sv_q == 1) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ELSE 
+				#{
+					sv_s = urhk_CopyOutToIn("")
+				#}
+				ENDIF
+					
+				IF(CUST.DATA.acctSchmType == "LAA")THEN
+					sv_q = urhk_ExecSrv("SRV_FetchChrgOffPartTranList|retain_all_output = Y|ignore_excp_flg=Y")
+				ELSE
+					sv_q = urhk_ExecSrv("SRV_FetchTaChrgOffPartTranList|retain_all_output = Y|ignore_excp_flg=Y")
+				ENDIF
+				PRINT(sv_q)
+				
+				IF(sv_q == 1) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ELSE
+				#{
+					sv_s = urhk_CopyOutToIn("")
+				#}
+				ENDIF
+					
+				#sv_q = urhk_ExecSrv("SRV_ChrgOffLoanAcct|retain_all_output = Y")
+				IF(CUST.DATA.acctSchmType == "LAA")THEN
+					sv_q = urhk_ExecSrv("SRV_ChrgOffLoanAcctAndVerify|retain_all_output = Y|same_user_verIFy = Y")
+				ELSE
+					sv_q = urhk_ExecSrv("SRV_ChrgOffTaAcctAndVerify|retain_all_output = Y|same_user_verIFy = Y")
+				ENDIF
+				PRINT(sv_q)
+
+				IF(sv_q == 1) THEN
+				#{
+					GOTO ERRORCHECK
+				#}
+				ELSE
+				#{
+					CUST.DATA.rptFileName	= "bcola"+ CUST.DATA.sysDate +".SUC"
+					PRINT(CUST.DATA.rptFileName)
+
+					BANCS.INPARAM.BINDVARS = CUST.DATA.chrgOffAcctNum
+					PRINT(BANCS.INPARAM.BINDVARS)
+
+					sv_s = "UPDATE CUSTOM.HCOLA_LOANS_DRC set POSTED_MAKER = 'V' WHERE ORIGINAL_PROD_NUM = ?SVAR  and POSTED_MAKER = 'A'"
+					PRINT(sv_s)
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					PRINT(sv_d)
+					
+					IF(sv_d == 0)THEN
+					#{
+						sv_r  = urhk_dbSQLWithBind("COMMIT")
+						PRINT(sv_r)
+					#}
+					ELSE
+					#{
+						sv_r  = urhk_dbSQLWithBind("ROLLBACK")
+						PRINT(sv_r)
+					#}
+					ENDIF
+				#}
+				ENDIF
+				
+				#----------------------------------------------------------------------------------------------------
+				# SRV Error check
+				#----------------------------------------------------------------------------------------------------
+				ERRORCHECK:
+					
+				IF (sv_q != 0) THEN
+				#{
+					IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					#{
+						print(BANCS.OUTPARAM.Error_num)
+						sv_v = BANCS.OUTPARAM.Error_num
+					#}									
+					ELSE
+					#{
+						sv_v = 0
+					#}
+					ENDIF
+					IF(sv_v > 0)THEN
+					#{
+						sv_u = system("echo 'Error'")
+						sv_i = 1
+						WHILE (sv_i <= sv_v)
+						#{
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+
+							sv_i = sv_i + 1
+							lv_e = CUST.DATA.chrgOffAcctNum + " ->" + sv_e
+							sv_u = system("echo '"+lv_e+"' >>XXXXXXXXXXXXXerror.log")
+							print(sv_u)
+							
+							#Error response
+							sv_t = "ERROR | " +lv_e
+							sv_u = urhk_SetOrbOut(sv_t)
+
+							sv_s = "UPDATE CUSTOM.HCOLA_LOANS_DRC set POSTED_MAKER = 'E', ERROR_MSG = '"+MID$(sv_e, 0, 200)+"' WHERE ORIGINAL_PROD_NUM = ?SVAR  and POSTED_MAKER = 'A'"
+							BANCS.INPARAM.BINDVARS = CUST.DATA.chrgOffAcctNum
+							PRINT(BANCS.INPARAM.BINDVARS)
+							PRINT(sv_s)
+							sv_d = urhk_dbSQLWithBind(sv_s)
+							PRINT(sv_d)
+
+							IF(sv_d == 0)THEN
+							#{
+								sv_r = urhk_dbSQLWithBind("COMMIT")
+								PRINT(sv_r)
+							#}
+							ELSE
+							#{
+								sv_r  = urhk_dbSQLWithBind("ROLLBACK")
+								PRINT(sv_r)
+							#}
+							ENDIF
+							 
+							GOTO NEXTREC
+						#}
+						DO
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+				GOTO NEXTREC
+
+				BANCS.INPUT.RECCOUNT = CINT(BANCS.INPUT.RECCOUNT) + 1
+				PRINT(BANCS.INPUT.RECCOUNT)
+
+				NEXTREC:
+
+				sv_q = urhk_dbCursorFetch(sv_m)
+				PRINT(sv_q)
+			#}
+			DO
+			sv_x = urhk_dbCursorClose(sv_m)
+			PRINT(sv_x)
+		#}
+		ENDIF
+		
+	EXITSCRIPT
+
+	TRACE OFF
+END-->
+

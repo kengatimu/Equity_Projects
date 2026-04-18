@@ -1,0 +1,318 @@
+#-----------------------------------------------------------------------------------------------
+# Name			: denomdp004.scr
+# Date			: 01-JUL-2010
+# Menu Option		: HDENOM
+# Description		: This script validates the currency code and sends back
+#			  the existing denomination details to the front end
+# Input			: FuncCode, Currency from JSP
+# Output		: Number of decimal points,Currency Name and Denomination details
+# Author		: Castro / Sandeep Patil
+# Called JSP		: -
+# Module Code		: DENOM
+# Bank			: STANDARD BANK
+# Modification History	:
+#	<Serial No.>	<Date>		<Author>		<Description>
+#	0.1		01-JUL-2010	Sandeep Patil		Draft Version
+#-----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="d383e950b31025c931eeba1e8be1696761049ff7f058d4c97cd9b16a7390df5e"
+	TRACE ON
+	#--------------------------------------------------------------------------------------
+	#		CREATE REPOSITORY AND CLASSES
+	#--------------------------------------------------------------------------------------
+	sv_r = 	REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	sv_r = CLASSEXISTS("CUST", "DENOM")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "DENOM", 5)
+	#}
+	ENDIF
+	
+	sv_u=urhk_b2k_PrintRepos("BANCS")
+	print (sv_u)
+	#--------------------------------------------------------------------------------------
+	#	Validate flag is set by denommn003.jsp as Y
+	#	This script is called by denommn003.jsp for only  validations
+	#	This script is called by denomdp004.jsp for the rest stated in the label
+	#--------------------------------------------------------------------------------------
+	IF(FIELDEXISTS(BANCS.INPUT.Validate)) THEN
+	#{
+		CUST.DENOM.Validate = BANCS.INPUT.Validate
+		#}
+	ELSE
+		#{
+		CUST.DENOM.Validate = "N"
+	#}
+	ENDIF
+	CUST.DENOM.Currency = TOUPPER(BANCS.INPUT.Currency)
+	CUST.DENOM.FuncCode = BANCS.INPUT.FuncCode
+	print (CUST.DENOM.FuncCode)
+	CUST.DENOM.bank_id=BANCS.STDIN.contextBankId
+	print(CUST.DENOM.bank_id)
+	
+	IF(CUST.DENOM.Validate == "Y") THEN
+	#{
+		#--------------------------------------------------------------------------------------
+		#		VALIDATE CURRENCY CODE
+		#--------------------------------------------------------------------------------------
+		print (CUST.DENOM.Currency)
+		sv_a = CUST.DENOM.Currency
+		sv_u = urhk_B2k_valCrncy(sv_a)
+		print(sv_u)
+		IF (sv_u == 1) THEN
+		#{
+			IF(CUST.DENOM.Validate == "N") THEN
+			#{
+				sv_u = urhk_setOrbOut("Message|N")
+			#}
+			ENDIF
+			sv_u = urhk_setOrbOut("Error|Invalid Currency Code")
+			GOTO FINISH
+		#}
+		ENDIF
+		
+		#--------------------------------------------------------------------------------------
+		#	CHECK FOR DUPLICATE CURRENCY  IN CASE OF ADD MODE
+		#	CHECK FOR CURRENCY DENOMINATION AVAILABILITY IN CASE OF NON-ADD MODE
+		#--------------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.Currency + "|" + CUST.DENOM.bank_id
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "Counter|SELECT count(*) "
+		sv_s = sv_s + "FROM C_MDNM WHERE "
+		sv_s = sv_s + "crncy_code = ?SVAR "
+		sv_s = sv_s + "AND bank_id = ?SVAR "
+		sv_t = " AND del_flg='N'"
+		#-------------------------------------------------------------------------------------------------
+		#------------ Counter to check if the currency denomination is maintained whether valid or invalid -----------#
+		#-------------------------------------------------------------------------------------------------
+		sv_q = sv_s
+		print(sv_q)
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		IF (sv_d == 1) THEN
+		#{
+			sv_u = urhk_setOrbOut("Error|Oracle Error - Try after sometime")
+			GOTO FINISH
+		#}
+		ENDIF
+		print(BANCS.OUTPARAM.Counter)
+		CUST.DENOM.Counter1 = BANCS.OUTPARAM.Counter
+		IF (CUST.DENOM.FuncCode != "A") THEN
+		#{
+			IF (BANCS.OUTPARAM.Counter == "0") THEN
+			#{
+				sv_u = urhk_setOrbOut("Error|Denomination details not maintained for this Currency")
+				GOTO FINISH
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#-------------------------------------------------------------------------------------------------
+		#----------- Counter to check if the currency denomination is maintained and is valid -----------#
+		#-------------------------------------------------------------------------------------------------
+		sv_q = sv_s + sv_t
+		print(sv_q)
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		IF (sv_d == 1) THEN
+		#{
+			sv_u = urhk_setOrbOut("Message|N")
+			GOTO FINISH
+		#}
+		ENDIF
+		print(BANCS.OUTPARAM.Counter)
+		CUST.DENOM.Counter2 = BANCS.OUTPARAM.Counter
+		
+		IF (CUST.DENOM.FuncCode == "A") THEN
+		#{
+			IF (CUST.DENOM.Counter2 != "0") THEN
+			#{
+				sv_u = urhk_setOrbOut("Error|Denomination details already exists for this Currency")
+				GOTO FINISH
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF((CUST.DENOM.FuncCode == "M") ) THEN
+		#{
+			IF(CUST.DENOM.Counter2 == "0") THEN
+			#{
+				sv_u = urhk_setOrbOut("Error|Record deleted. Denominations cant be modified/Inquired")
+				GOTO FINISH
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_q = sv_s + " AND del_flg='Y' "
+		print(sv_q)
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		print(sv_d)
+		print(BANCS.OUTPARAM.Counter)
+		CUST.DENOM.Counter3 = BANCS.OUTPARAM.Counter
+		IF (CUST.DENOM.FuncCode == "U") THEN
+		#{
+			IF(CUST.DENOM.Counter3 == "0") THEN
+			#{
+				sv_u = urhk_setOrbOut("Error|Nothing to undelete")
+				GOTO FINISH
+			#}
+			ENDIF
+		#}
+		ENDIF
+		sv_q = sv_s + " AND del_flg='N' "
+		print(sv_q)
+		sv_d = urhk_dbSelectWithBind(sv_q)
+		print(sv_d)
+		print(BANCS.OUTPARAM.Counter)
+		CUST.DENOM.Counter4 = BANCS.OUTPARAM.Counter
+		IF (CUST.DENOM.FuncCode == "D") THEN
+		#{
+			IF(CUST.DENOM.Counter4 == "0") THEN
+			#{
+				sv_u = urhk_setOrbOut("Error|Already deleted")
+				GOTO FINISH
+			#}
+			ENDIF
+		#}
+		ENDIF
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------------------
+	#		INITIALIZE VARIABLES
+	#--------------------------------------------------------------------------------------
+	CUST.DENOM.NoteDenom = "1"
+	CUST.DENOM.CoinDenom = "1"
+	
+	CUST.DENOM.tellerId	= BANCS.STDIN.EmployeeId
+	CUST.DENOM.solId	= BANCS.STDIN.mySolId
+	print(CUST.DENOM.tellerId)
+	print(CUST.DENOM.solId)
+	
+	#--------------------------------------------------------------------------------------
+	#	FETCH CURRENCY NAME AND DECIMAL POINTS
+	#--------------------------------------------------------------------------------------
+	
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.Currency + "|" + CUST.DENOM.bank_id
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_s = "CrncyName,NumOfDecPoints|select CRNCY_NAME, NUM_OF_DEC_POINTS from tbaadm.cnc "
+	sv_s = sv_s + "where crncy_code like ?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	CUST.DENOM.CrncyName = BANCS.OUTPARAM.CrncyName
+	print(CUST.DENOM.CrncyName)
+	
+	CUST.DENOM.NumOfDecPoints = BANCS.OUTPARAM.NumOfDecPoints
+	print(CUST.DENOM.NumOfDecPoints)
+	
+	#--------------------------------------------------------------------------------------
+	#	SEND EXISTING DENOMINATIONS TO FRONTEND
+	#--------------------------------------------------------------------------------------
+	IF (CUST.DENOM.FuncCode != "A") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.Currency + "|" + CUST.DENOM.bank_id
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_s = "DenomInd,DenomValue|SELECT denom_ind,denom_value "
+		sv_s = sv_s + "FROM C_MDNM "
+		sv_s = sv_s + " WHERE crncy_code=?SVAR "
+		sv_s = sv_s + "AND bank_id =?SVAR "
+		
+		IF(CUST.DENOM.FuncCode == "U") THEN
+		#{
+			sv_s = sv_s + " AND del_flg='Y' "
+			#}
+		ELSE
+			#{
+			IF(CUST.DENOM.FuncCode == "I")THEN
+			#{
+				sv_s = sv_s
+				#}
+			ELSE
+				#{
+				sv_s = sv_s + " AND del_flg='N' "
+			#}
+			ENDIF
+		#}
+		ENDIF
+		sv_s = sv_s + " ORDER BY Denom_Ind,Denom_Value DESC"
+		print(sv_s)
+		
+		sv_c = urhk_dbCursorOpenWithBind(sv_s)
+		IF (sv_c == 0) THEN
+		#{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			sv_c = urhk_dbCursorFetch(sv_m)
+			
+			CUST.DENOM.NoteDenom = " "
+			CUST.DENOM.CoinDenom = " "
+			
+			WHILE(sv_c == 0)
+			#{
+				IF (BANCS.OUTPARAM.DenomInd == "N") THEN
+				#{
+					CUST.DENOM.NoteDenom = CUST.DENOM.NoteDenom + "~" + BANCS.OUTPARAM.DenomValue
+					#}
+				ELSE
+					#{
+					CUST.DENOM.CoinDenom  = CUST.DENOM.CoinDenom + "~" + BANCS.OUTPARAM.DenomValue
+				#}
+				ENDIF
+				sv_c = urhk_dbCursorFetch(sv_m)
+			#}
+			DO
+			sv_c = urhk_dbCursorClose(sv_m)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------------------
+	#		     SUCCESS MESSAGE
+	#--------------------------------------------------------------------------------------
+	sv_u = urhk_setOrbOut("Message|Y")
+	sv_u = urhk_setOrbOut("Details|Success")
+	sv_u = urhk_setOrbOut("Currency|" + CUST.DENOM.Currency)
+	sv_u = urhk_setOrbOut("CrncyName|" + CUST.DENOM.CrncyName)
+	sv_u = urhk_setOrbOut("NumOfDecPoints|" + CUST.DENOM.NumOfDecPoints)
+	print(CUST.DENOM.NoteDenom)
+	print(CUST.DENOM.CoinDenom)
+	sv_u = urhk_setOrbOut("NoteDenom|" + CUST.DENOM.NoteDenom)
+	sv_u = urhk_setOrbOut("CoinDenom|" + CUST.DENOM.CoinDenom)
+	IF(CUST.DENOM.FuncCode == "I")THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DENOM.Currency + "|" + CUST.DENOM.bank_id
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_s="delFlg|select distinct del_flg "
+		sv_s = sv_s + "FROM C_MDNM "
+		sv_s = sv_s + " WHERE crncy_code= ?SVAR "
+		sv_s = sv_s + "AND bank_id = ?SVAR "
+		print(sv_s)
+		sv_v=urhk_dbselectWithBind(sv_s)
+		print(sv_v)
+		IF (sv_v == 1) THEN
+		#{
+			sv_u = urhk_setOrbOut("Message|N")
+			sv_u = urhk_setOrbOut("Details|Oracle Error - Try after sometime")
+			GOTO FINISH
+		#}
+		ENDIF
+		CUST.DENOM.delFlg=BANCS.OUTPARAM.delFlg
+		print(CUST.DENOM.delFlg)
+		sv_u = urhk_setOrbOut("disabled|" + CUST.DENOM.delFlg )
+	#}
+	ENDIF
+	
+	FINISH:
+		EXITSCRIPT
+		TRACE OFF
+END-->

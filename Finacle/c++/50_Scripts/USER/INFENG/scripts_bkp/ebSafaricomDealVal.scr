@@ -1,0 +1,208 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebSafaricomDealVal.scr 
+#  Description     :
+#  Date            : 16-01-2020
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-01-2020      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_a = urhk_B2k_PrintRepos("BANCS")
+        PRINT(sv_a)
+        sv_r = repexists("EQSRV")
+        if(sv_r == 0)then
+                createrep("EQSRV")
+        endif
+        sv_r = classexists("EQSRV", "GLBDATA")
+        if(sv_r == 0)then
+                createclass("EQSRV", "GLBDATA", 5)
+        endif
+	libname CUSTOMSO
+        EQSRV.GLBDATA.DealCode=BANCS.INPUT.DealCode
+        print(EQSRV.GLBDATA.DealCode)
+        EQSRV.GLBDATA.cifId=BANCS.INPUT.cifId
+        print(EQSRV.GLBDATA.cifId)
+#S
+        sv_d = "natIdNum | select nat_id_card_num from tbaadm.cmg where bank_id=?SVAR and cif_id=?SVAR "
+        sv_d = sv_d + " and entity_cre_flg='Y' and del_flg='N' "
+        print(sv_d)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.cifId 
+        sv_u = urhk_dbSelectWithBind(sv_d)
+        if(sv_u==0)then
+                EQSRV.GLBDATA.natIdNum = BANCS.OUTPARAM.natIdNum
+        else
+                EQSRV.GLBDATA.natIdNum = ""
+        endif
+        if((EQSRV.GLBDATA.cifId!="") and (EQSRV.GLBDATA.natIdNum!=""))then
+        ##{
+        sv_s = "refNum|SELECT CONCAT(CONCAT('EQSAFIVAL',TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS')),(DBMS_RANDOM.STRING('A',5)))"
+        sv_s = sv_s + " FROM DUAL"
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        if(sv_d == 0)then
+                EQSRV.GLBDATA.refNum = BANCS.OUTPARAM.refNum
+                print(EQSRV.GLBDATA.refNum)
+        endif
+#val
+        EQSRV.GLBDATA.edResp =  EQSRV.GLBDATA.refNum + ".dat"
+        EQSRV.GLBDATA.amount = "1000"
+        EQSRV.GLBDATA.dealerAccountNumber = "0810262907103"
+        ##EQSRV.GLBDATA.DealCode = "0785699353"
+        EQSRV.GLBDATA.DealCode = EQSRV.GLBDATA.DealCode
+        EQSRV.GLBDATA.finacleUserId = BANCS.STDIN.userId
+        EQSRV.GLBDATA.payMethod = "C"
+        EQSRV.GLBDATA.payRef = "4343"
+        EQSRV.GLBDATA.serviceId = "2223"
+        EQSRV.GLBDATA.NationalId = EQSRV.GLBDATA.natIdNum
+        EQSRV.GLBDATA.httpURL = "http://10.11.2.6:9000/SafDealerPortal/SafDealerImpService"
+        EQSRV.GLBDATA.jInp = EQSRV.GLBDATA.amount + " " + EQSRV.GLBDATA.dealerAccountNumber + " " + EQSRV.GLBDATA.DealCode + " " + EQSRV.GLBDATA.finacleUserId + " " + EQSRV.GLBDATA.payMethod + " " + EQSRV.GLBDATA.payRef + " " + EQSRV.GLBDATA.serviceId + " " + EQSRV.GLBDATA.NationalId + " " + EQSRV.GLBDATA.httpURL
+        ###print(EQSRV.GLBDATA.jInp)
+        sv_r=system("java -cp /finacle/EQPROD/BackEnd/Finacle/FC/app/cust/INFENG com.cubpEquityDirect.ebSafaricomMerchantVal.ebSafaricomMerchantVal "+ EQSRV.GLBDATA.jInp + " >> " +EQSRV.GLBDATA.edResp )
+        sv_a = urhk_getEnv("ONS_LOG_DIR")
+        print(BANCS.OUTPARAM.envValue)
+        print(sv_a)
+        if(sv_a == 1)then
+                print("Env variable ONS/log not found")
+		sv_u = urhk_SetOrbOut("SucYN|N")
+		sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+                print(sv_s)
+                goto VAYU
+        endif
+        EQSRV.GLBDATA.ONS_path = BANCS.OUTPARAM.envValue
+        print(EQSRV.GLBDATA.ONS_path)
+        EQSRV.GLBDATA.fileLoc = EQSRV.GLBDATA.ONS_path +"/"+BANCS.STDIN.userId + "/" + EQSRV.GLBDATA.edResp
+        ###print(EQSRV.GLBDATA.fileLoc)
+        sv_r = urtn_fileAccess(EQSRV.GLBDATA.fileLoc)
+        ###print(sv_r)
+        if(sv_r != 0)then
+		sv_u = urhk_SetOrbOut("SucYN|N")
+		sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+                print(sv_s)
+                goto VAYU
+        else
+                EQSRV.GLBDATA.fileopen = "Y"
+        endif
+        print(EQSRV.GLBDATA.fileopen)
+        sv_s = urtn_fileOpen(EQSRV.GLBDATA.fileLoc + "|r")
+        if(sv_s < 0)then
+		sv_u = urhk_SetOrbOut("SucYN|N")
+		sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+                print(sv_s)
+                goto VAYU
+        else
+        sv_k = urtn_fileRead(sv_s+"|EQSRV.GLBDATA.Record1")
+	if(sv_k!=0)then
+		sv_u = urhk_SetOrbOut("SucYN|N")
+		sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+                print(sv_s)
+                goto VAYU
+	endif
+        EQSRV.GLBDATA.recNum =1
+        while(sv_k == 0)
+        #{
+                if(EQSRV.GLBDATA.Record1 =="")then
+                        goto NEXTRECORD
+                else
+                        BANCS.INPUT.wkbAcct = ""
+                        ###print(EQSRV.GLBDATA.Record1)
+                        sv_l = strlen(EQSRV.GLBDATA.Record1)
+                        sv_f = mid$(EQSRV.GLBDATA.Record1,0,sv_l)
+                        ###print(sv_f)
+                        sv_p = getposition(sv_f,"|")
+                        BANCS.INPUT.wkbAcct  = mid$(sv_f,0,(sv_p-1))
+                        print(BANCS.INPUT.wkbAcct)
+                        if(BANCS.INPUT.wkbAcct!="00")then
+                                EQSRV.GLBDATA.errorFlg = "Y"
+                                EQSRV.GLBDATA.errorMsg = "Safaricom Merchant Not Exists"
+                                sv_u = urhk_SetOrbOut("errorFlg|"+EQSRV.GLBDATA.errorFlg)
+                                sv_u = urhk_SetOrbOut("errorMsg|"+EQSRV.GLBDATA.errorMsg)
+                                sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+                                sv_u = urhk_SRV_SetErr("Safaricom Agent Valiation Failed for  ["+ EQSRV.GLBDATA.cifId + "]")
+				sv_u = urhk_SetOrbOut("SucYN|N")
+				sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                                exitscript
+                        endif
+                        #+++++++++++++
+                        #CifId
+                        #+++++++++++++
+                        EQSRV.GLBDATA.Record1 = mid$(sv_f,sv_p,sv_l)
+                        sv_l = strlen(EQSRV.GLBDATA.Record1)
+                        sv_f = mid$(EQSRV.GLBDATA.Record1,0,sv_l)
+                        sv_p = getposition(sv_f,"|")
+                        EQSRV.GLBDATA.rnatId  = mid$(sv_f,0,(sv_p-1))
+                        #+++++++++++++
+                        #Account Number
+                        #+++++++++++++
+                        EQSRV.GLBDATA.Record1 = mid$(sv_f,sv_p,sv_l)
+                        sv_l = strlen(EQSRV.GLBDATA.Record1)
+                        sv_f = mid$(EQSRV.GLBDATA.Record1,0,sv_l)
+                        sv_p = getposition(sv_f,"|")
+                        EQSRV.GLBDATA.rlimit  = mid$(sv_f,0,(sv_p-1))
+                        #+++++++++++++
+                        #Acct Name
+                        #+++++++++++++
+                        EQSRV.GLBDATA.Record1 = mid$(sv_f,sv_p,sv_l)
+                        sv_l = strlen(EQSRV.GLBDATA.Record1)
+                        sv_f = mid$(EQSRV.GLBDATA.Record1,0,sv_l)
+                        sv_p = getposition(sv_f,"|")
+                        EQSRV.GLBDATA.rpayMethod  = mid$(sv_f,0,(sv_p-1))
+                        #+++++++++++++
+                        #Acct Name
+                        #+++++++++++++
+                        EQSRV.GLBDATA.Record1 = mid$(sv_f,sv_p,sv_l)
+                        sv_l = strlen(EQSRV.GLBDATA.Record1)
+                        sv_f = mid$(EQSRV.GLBDATA.Record1,0,sv_l)
+                        sv_p = getposition(sv_f,"|")
+                        EQSRV.GLBDATA.rdealerCode  = mid$(sv_f,0,(sv_p-1))
+                        #+++++++++++++
+                        #Phone Number
+                        #+++++++++++++
+                        EQSRV.GLBDATA.rdealerName = mid$(sv_f,sv_p,sv_l)
+                        print(EQSRV.GLBDATA.rnatId)
+                        print(EQSRV.GLBDATA.rlimit)
+                        print(EQSRV.GLBDATA.rpayMethod)
+                        print(EQSRV.GLBDATA.rdealerCode)
+                        print(EQSRV.GLBDATA.rdealerName)
+                        if(EQSRV.GLBDATA.natIdNum!=EQSRV.GLBDATA.rnatId)then
+                                sv_u = urhk_SRV_SetErr("Safaricom Agent Valiation Failed for  ["+ EQSRV.GLBDATA.cifId + "]")
+				sv_u = urhk_SetOrbOut("SucYN|N")
+				sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                                exitscript
+                        endif
+                        if(EQSRV.GLBDATA.DealCode != EQSRV.GLBDATA.rdealerCode)then
+                                sv_u = urhk_SRV_SetErr("Safaricom Agent Till Number Valiation Failed for  ["+ EQSRV.GLBDATA.cifId + "]")
+				sv_u = urhk_SetOrbOut("SucYN|N")
+				sv_u = urhk_SetOrbOut("DealerDetails|NA")
+                                exitscript
+			endif
+				sv_u = urhk_SetOrbOut("SucYN|Y")
+				sv_u = urhk_SetOrbOut("DealerDetails|" + EQSRV.GLBDATA.DealCode ) 
+				sv_u = urhk_SetOrbOut("DealerNAme|" + EQSRV.GLBDATA.rdealerName ) 
+				sv_u = urhk_SetOrbOut("DealerLimit|" + EQSRV.GLBDATA.rlimit ) 
+			
+               endif
+                NEXTRECORD:
+                sv_k = urtn_fileRead(sv_s+"|EQSRV.GLBDATA.Record1")
+                print(EQSRV.GLBDATA.recNum)
+                EQSRV.GLBDATA.recNum = CINT(EQSRV.GLBDATA.recNum) +1
+                print(EQSRV.GLBDATA.recNum)
+        #}
+        do
+        endif
+        sv_s = system("rm -f " + EQSRV.GLBDATA.fileLoc)
+        print(sv_s)
+        else
+                exitscript
+        ##}
+        endif
+
+VAYU:
+        exitscript
+trace off
+end-->

@@ -1,0 +1,217 @@
+#-------------------------------------------------------------------------------------
+#    Name               : fbillchrgmn004.scr
+#    Description        : This script is event based script for event type FBCH,event id EBCRET,EBCRETLO.
+#    Date               : 08-02-2013
+#    Author             : Chandrasekhar
+#    Input              : NA
+#    Output             : It calculates the minimum and maximum charge amount according to bill currency.
+#    Called Script      : NA
+#    Calling Script     : NA
+#    Menu Option        :
+#    Srl. No        Date            Author          Description.
+#    -------        ----            ------          ----------------
+#    1.0            08-02-2013      Chandrasekhar   Original Version
+#	 2.0			20-20-2013		Manoj			Context bank id added and cdouble("0") is changed
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="0ffc0e7cfa75c96ede889616c53a28765ed4986eea2f50c35b7e17478c9ebeb3"
+	#TRACE ON
+	
+	#sv_r = urhk_B2k_PrintRepos("BANCS")
+	
+	#--------------------------------------------------------------------------
+	# Initialise the CHRG repository
+	#--------------------------------------------------------------------------
+	
+	sv_r = REPEXISTS("CHRG")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CHRG")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CHRG","DATA")
+	
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CHRG","DATA",5)
+	#}
+	ENDIF
+	
+	CHRG.DATA.errMsg = ""
+	CHRG.DATA.chrg4	 = ""
+	
+	BANCS.INPUT.moduleName = "TRADE_FINANCE"
+	BANCS.INPUT.parameterId = "CHRG0.25"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CHRG.DATA.chrg4 = BANCS.OUTPUT.parameterVal
+		print(CHRG.DATA.chrg4)
+		#}
+	ELSE
+		#{
+		CHRG.DATA.errMsg = BANCS.INPUT.parameterId + "setup not done in CPARAM"
+		GOTO FINISH
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------
+	# Charge Calculation
+	#--------------------------------------------------------------------------
+	CHRG.DATA.billDate 				= ""
+	CHRG.DATA.dueDate 				= ""
+	CHRG.DATA.calcAmt 				= CDOUBLE("0")
+	
+	sv_s = "billdate,duedate|"
+	sv_s = sv_s + "SELECT TO_CHAR(bill_date,'DD-MM-YYYY'),TO_CHAR(due_date,'DD-MM-YYYY')"
+	sv_s = sv_s + " FROM TBAADM.FBM"
+	sv_s = sv_s + " WHERE sol_id = ?SVAR"
+	sv_s = sv_s + " AND bill_id = ?SVAR"
+	sv_s = sv_s + " AND bank_id = ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.INPUT.BillId + "|" + BANCS.STDIN.contextBankId
+	sv_d = urhk_dbselectWithBind(sv_s)
+	
+	IF (sv_d != 0 ) THEN
+	#{
+		CHRG.DATA.calcAmt = CDOUBLE("0")
+		GOTO Finish
+	#}
+	ENDIF
+	
+	CHRG.DATA.billDate = BANCS.OUTPARAM.billdate
+	CHRG.DATA.dueDate = BANCS.OUTPARAM.duedate
+	
+	print(CHRG.DATA.billDate)
+	print(CHRG.DATA.dueDate)
+	
+	#	sv_s = (CHRG.DATA.billDate + "|" + CHRG.DATA.dueDate + "|" + "NO")
+	
+	#	sv_u = urhk_B2k_getMonthDayDiff(sv_s)
+	
+	BANCS.INPARAM.date1 = CHRG.DATA.billDate
+	BANCS.INPARAM.date2 = CHRG.DATA.dueDate
+	
+	sv_e=urhk_B2k_dateDiff("")
+	
+	IF (sv_e != 0) THEN
+	#{
+		print(BANCS.OUTPARAM.errorMesg)
+		GOTO FINISH
+		#}
+	ELSE
+		#{
+		sv_d = CINT(BANCS.OUTPARAM.dateDiff)
+		
+		IF (sv_d < 0) THEN
+		#{
+			sv_d = sv_d * CINT("-1")
+		#}
+		ENDIF
+		
+		CHRG.DATA.numOfMonths 		= (sv_d)/CINT("30")
+		CHRG.DATA.numOfDays 		= (sv_d) - CINT(CHRG.DATA.numOfMonths)*CINT("30")
+		CHRG.DATA.per 				= CDOUBLE("1")
+		CHRG.DATA.numQrt 			= CDOUBLE("1")
+		
+		#---------------------------------------------------------------------------------
+		# Total Number of Days
+		#----------------------------------------------------------------------------------
+		CHRG.DATA.numQrt = (CINT(CHRG.DATA.numOfMonths) * CINT("30")) + CINT(CHRG.DATA.numOfDays)
+		print(CHRG.DATA.numQrt)
+		#-----------------------------------------------------------------------------------
+		# Total Number of Quarter
+		#----------------------------------------------------------------------------------
+		CHRG.DATA.numQrt = CDOUBLE(CHRG.DATA.numQrt) / CDOUBLE("90")
+		print(CHRG.DATA.numQrt)
+		sv_c = "."
+		sv_p = GETPOSITION(CHRG.DATA.numQrt,sv_c)
+		print(sv_p)
+		sv_o = MID$(CHRG.DATA.numQrt,sv_p,2)
+		
+		IF (sv_o != "00") THEN
+		#{
+			CHRG.DATA.numQrt = CINT(CHRG.DATA.numQrt) + CINT("1")
+			print(CHRG.DATA.numQrt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF (TRIM(BANCS.INPUT.BillCurrency) == BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		print(BANCS.INPUT.BillAmount)
+		CHRG.DATA.inputAmt = BANCS.INPUT.BillAmount
+		print(CHRG.DATA.inputAmt)
+		CHRG.DATA.numQrt = CDOUBLE(CHRG.DATA.numQrt) * CDOUBLE(CHRG.DATA.chrg4)
+		print(CHRG.DATA.numQrt)
+		CHRG.DATA.calcAmt = (CDOUBLE(CHRG.DATA.inputAmt) * CDOUBLE(CHRG.DATA.numQrt)) / CDOUBLE("100")
+		print(CHRG.DATA.calcAmt)
+		print(BANCS.INPUT.minimumChargeAmount)
+		
+		IF (CDOUBLE(CHRG.DATA.calcAmt) < CDOUBLE(BANCS.INPUT.minimumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = BANCS.INPUT.minimumChargeAmount
+			GOTO Finish
+		#}
+		ENDIF
+		
+		print(BANCS.INPUT.maximumChargeAmount)
+		
+		IF (CDOUBLE(CHRG.DATA.calcAmt) > CDOUBLE(BANCS.INPUT.maximumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = BANCS.INPUT.maximumChargeAmount
+			GOTO Finish
+		#}
+		ENDIF
+		GOTO Finish
+		#}
+	ELSE
+		#{
+		print(BANCS.INPUT.NotionalRate)
+		CHRG.DATA.rate = BANCS.INPUT.NotionalRate
+		CHRG.DATA.inputAmt = BANCS.INPUT.BillAmount
+		print(BANCS.INPUT.BillAmount)
+		CHRG.DATA.numQrt = CDOUBLE(CHRG.DATA.numQrt) * CDOUBLE(CHRG.DATA.chrg4)
+		print(CHRG.DATA.numQrt)
+		CHRG.DATA.convAmt =  CDOUBLE(CHRG.DATA.rate) * CDOUBLE(CHRG.DATA.inputAmt)
+		print(CHRG.DATA.convAmt)
+		CHRG.DATA.calcAmt = (CDOUBLE(CHRG.DATA.convAmt) * CDOUBLE(CHRG.DATA.numQrt)) / CDOUBLE("100")
+		print(CHRG.DATA.calcAmt)
+		print(BANCS.INPUT.minimumChargeAmount)
+		
+		IF (CDOUBLE(CHRG.DATA.calcAmt) < CDOUBLE(BANCS.INPUT.minimumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = BANCS.INPUT.minimumChargeAmount
+			GOTO Finish
+		#}
+		ENDIF
+		
+		print(CDOUBLE(BANCS.INPUT.maximumChargeAmount))
+		
+		IF (CDOUBLE(CHRG.DATA.calcAmt) > CDOUBLE(BANCS.INPUT.maximumChargeAmount)) THEN
+		#{
+			CHRG.DATA.calcAmt = CDOUBLE(BANCS.INPUT.maximumChargeAmount)
+			GOTO Finish
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	Finish:
+		
+		BANCS.OUTPUT.collAmount = CHRG.DATA.calcAmt
+		BANCS.OUTPUT.collCrncy = BANCS.STDIN.homeCrncyCode
+		print(BANCS.OUTPUT.collAmount)
+		print(BANCS.OUTPUT.collCrncy)
+		BANCS.OUTPUT.AmountWithNoDiscount = CDOUBLE(CHRG.DATA.calcAmt)
+		IF (CHRG.DATA.errMsg != "") THEN
+		#{
+			sv_a = urhk_SRV_SetErr(CHRG.DATA.errMsg)
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		#TRACE OFF
+		EXITSCRIPT
+END-->

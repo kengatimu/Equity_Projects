@@ -1,0 +1,145 @@
+##vpodlaLimRecT.scr
+<--start
+trace on
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+	sv_a = "rm -f GPLRECOVERY.list" 
+	sv_a = system(sv_a)
+	sv_a = "touch GPLRECOVERY.list" 
+	sv_a = system(sv_a)
+        lv_q = " lacid | select acid "
+        lv_q =lv_q + " from tbaadm.gam "
+        lv_q = lv_q + " where bank_id=?SVAR "
+        lv_q = lv_q + " and del_flg='N' "
+        lv_q = lv_q + " and sol_id=?SVAR "
+        lv_q = lv_q + " and entity_cre_flg='Y' "
+        lv_q = lv_q + " and acct_cls_flg<>'Y' "
+        lv_q = lv_q + " and acct_cls_date is null "
+        lv_q = lv_q + " and schm_type='ODA' "
+        lv_q = lv_q + " and schm_code in ('OD542','OD543','OD544','OD545','OD546') "
+        lv_q = lv_q + " and clr_bal_amt <> 0 "
+        ##lv_q = lv_q + " and foracid in  ('013OD40712201','013OD40752099','013OD00001371') "
+        lv_q = lv_q + " and exists (select 1 from tbaadm.lht where bank_id=?SVAR and acid=gam.acid "
+        lv_q = lv_q + " and lim_exp_date<=(select db_stat_date from tbaadm.gct where bank_id=?SVAR)) "
+        print(lv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	sv_u = urhk_dbCursorOpenWithBind(lv_q)
+	if(sv_u==0)then
+		EQSRV.GLBDATA.tracodCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+	endif
+        EQSRV.GLBDATA.tracodrec = 0
+	sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.tracodCurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+	##{
+		EQSRV.GLBDATA.laacid = BANCS.OUTPARAM.lacid 
+		lv_p = " lmCnt | select count(*) from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' "
+		lv_p = lv_p + " and lim_exp_date in (select max(lim_exp_date) from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' "
+		lv_p = lv_p + " and lim_exp_date<= to_date(?SVAR,'DD-MM-RRRR') and acid=?SVAR and SUPERCEDE_FLG<>'Y') "
+		lv_p = lv_p + " and acid=?SVAR and SUPERCEDE_FLG<>'Y' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + left$(BANCS.STDIN.BODDate,10) + "|" + BANCS.OUTPARAM.lacid + "|" + BANCS.OUTPARAM.lacid
+		print(lv_p)
+		print(BANCS.INPARAM.BINDVARS)
+		lv_p = urhk_dbSelectWithBind(lv_p)
+		if(lv_p==0)then
+			EQSRV.GLBDATA.lmCnt = BANCS.OUTPARAM.lmCnt
+		else
+			EQSRV.GLBDATA.lmCnt = "0"
+		endif
+		if(cdouble(EQSRV.GLBDATA.lmCnt)>=1)then
+			lv_p = "dmdCnt | select count(*) from custom.odla_dmd_tbl where bank_id=?SVAR and del_flg='N' and entity_cre_flg='Y' and od_acid=?SVAR and dmd_amt>0 "
+			lv_p = lv_p + " and dmd_date <= to_date(?SVAR,'DD-MM-RR') "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.laacid + "|" + left$(BANCS.STDIN.BODDate,10)
+			print(BANCS.INPARAM.BINDVARS)
+			print(lv_p)
+			lv_p = urhk_dbSelectWithBind(lv_p)
+			if(lv_p==0)then
+			#{
+				EQSRV.GLBDATA.dmdCnt = BANCS.OUTPARAM.dmdCnt
+			else
+				EQSRV.GLBDATA.dmdCnt = "0"
+			#}
+			endif
+			if(cdouble(EQSRV.GLBDATA.dmdCnt)>=1)then
+			#{
+				lv_p = "tplienAmt |  select sum(dmd_amt)-sum(tot_adj_amt) from custom.odla_dmd_tbl where bank_id=?SVAR and del_flg='N' and entity_cre_flg='Y' and od_acid=?SVAR and dmd_amt>0 "
+				lv_p = lv_p + " and dmd_date <= to_date(?SVAR,'DD-MM-RR') "
+				BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.laacid + "|" + left$(BANCS.STDIN.BODDate,10)
+				print(BANCS.INPARAM.BINDVARS)
+				print(lv_p)
+				lv_p = urhk_dbSelectWithBind(lv_p)
+				if(lv_p==0)then
+				#{
+					EQSRV.GLBDATA.tplienAmt = BANCS.OUTPARAM.tplienAmt
+				else
+					EQSRV.GLBDATA.tplienAmt = "0"
+				#}
+				endif
+				if(cdouble(EQSRV.GLBDATA.tplienAmt)>0)then
+				#{
+					sv_a = EQSRV.GLBDATA.laacid 
+					sv_q = "echo '" + sv_a + "' >> GPLRECOVERY.list"
+					print(sv_q)
+					sv_s = system(sv_q)
+					print(sv_s)
+					goto NXTREC
+				else
+					goto NXTREC
+				#}
+				endif
+			else
+				sv_a = EQSRV.GLBDATA.laacid 
+				sv_q = "echo '" + sv_a + "' >> GPLRECOVERY.list"
+				print(sv_q)
+				sv_s = system(sv_q)
+				print(sv_s)
+				goto NXTREC
+			#}
+			endif
+		else
+			goto NXTREC
+		endif
+		NXTREC:
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.tracodCurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.tracodCurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "Cota Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto VAYURUN
+                endif
+                EQSRV.GLBDATA.tracodrec = cint(EQSRV.GLBDATA.tracodrec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.tracodrec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.tracodCurNum)
+        print(sv_u)
+	VAYURUN:
+        sv_s = "echo $B2K_SESSION_ID"
+	sv_n = "8"
+        sv_a = "nohup exebatch -n "+sv_n+" -i GPLRECOVERY.list babx4061 $B2K_SESSION_ID vpodlaLimExpRecov_recT.scr @s"
+        sv_r = system(sv_a)
+        print(sv_r)	
+VAYU:	
+	exitscript
+trace off
+end-->

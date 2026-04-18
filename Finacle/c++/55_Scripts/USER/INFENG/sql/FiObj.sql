@@ -1,0 +1,17 @@
+REM INSERTING into fimaster.fi_custom_mapping
+SET DEFINE OFF;
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','ACCT_MGR','odAcctMsg.acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId','REQ','N','N','11','ALPHANUM',null,'processed',null);
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','INT_DR_ACCTID','odAcctMsg.acctCommonInfo.acctInterestTax.intDrAcctId.acid','REQ','N','N','11','ALPHANUM',null,'processed',null);
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','LoanAmount','odAcctMsg.acctCommonInfo.acctClassMISC.freeText3','REQ','N','N','11','ALPHANUM',null,'processed',null);
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','OPERATIVE_ACCTID','odAcctMsg.acctCommonInfo.acctClassMISC.freeText1','REQ','N','N','11','ALPHANUM',null,'processed',null);
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','REPAY_FREQ_WBMQY','odAcctMsg.acctCommonInfo.acctClassMISC.freeText2','REQ','N','N','11','ALPHANUM',null,'processed',null);
+Insert into fimaster.fi_custom_mapping (SERVICE_NAME,CHANNEL_KEY,BE_FIELD,PARAMTYPE,ISPRODUCTCUSTOM,ISMULTIREC,BANK_ID,BE_FIELDTYPE,MULTIREC_NAME,CUSTOM_MAPPING_STATUS,VERSION_NO) values ('ODACCTADD','SolId','odAcctMsg.acctCommonInfo.acctGeneralInfo.acctBasic.solId.solId','REQ','N','N','11','ALPHANUM',null,'processed',null);
+
+
+
+REM INSERTING into fimaster.FI_CUSTOMMAPPING_MASTER
+SET DEFINE OFF;
+Insert into fimaster.FI_CUSTOMMAPPING_MASTER (SERVICE_NAME,BANK_ID,CUSTOM_MASTER_STATUS,CUSTOM_LMU,CUSTOM_LMD,CUSTOM_VER_NO,VERSION_NO) values ('ODACCTADD','54','processed','JN05794',to_date('02-NOV-21','DD-MON-RR'),1,null);
+
+commit;
+/

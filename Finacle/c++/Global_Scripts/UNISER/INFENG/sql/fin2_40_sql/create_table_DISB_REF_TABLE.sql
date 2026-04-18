@@ -1,0 +1,62 @@
+--  -----------------------------------------------------------------------------------------------
+--   File Name               : create_table_DISB_REF_TABLE.sql
+--   Author                  : Nitin Prabhakar
+--   Date                    : 04-04-2013
+--   Bank                    : Equity Bank
+--   Description             : Creates Custom table CUSTOM.DISB_REF_TABLE.
+--   SYNONYM                 :DISRT
+--   INDEX                   : IDX_CUSTOM_DISB_REF_TBL
+--   Reviewed By             : 
+--     SLN       Date         Author             Changes Summary  
+--      1     24-09-2013   KALVIN		Original file
+--  -----------------------------------------------------------------------------------------------
+--DROP TABLE CUSTOM.DISB_REF_TABLE CASCADE CONSTRAINTS;
+
+CREATE TABLE CUSTOM.DISB_REF_TABLE
+(
+ACCT_ID           VARCHAR2(16 BYTE),
+  ACCT_NAME         VARCHAR2(80 BYTE),
+  TRAN_PARTICULARS  VARCHAR2(80 BYTE),
+  CCY               VARCHAR2(8 BYTE),
+  TRAN_AMT          NUMBER(20,2),
+  INDICATOR         VARCHAR2(8 BYTE),
+  SRL_NO            NUMBER(20,2),
+  EVENT_ID          VARCHAR2(80 BYTE),
+  EVENT_TYPE        VARCHAR2(80 BYTE),
+  BANK_ID           VARCHAR2(10 BYTE),
+  LOAN_ACCT_ID      VARCHAR2(16 BYTE)
+)
+TABLESPACE CUSTOM_TBLS ;
+
+DROP SYNONYM CUSTOM.DISRT;
+
+CREATE SYNONYM CUSTOM.DISRT FOR CUSTOM.DISB_REF_TABLE;
+
+
+DROP SYNONYM TBAADM.DISRT;
+
+CREATE SYNONYM TBAADM.DISRT FOR CUSTOM.DISB_REF_TABLE;
+
+
+DROP SYNONYM TBAGEN.DISRT;
+
+CREATE SYNONYM TBAGEN.DISRT FOR CUSTOM.DISB_REF_TABLE;
+
+
+DROP SYNONYM TBAUTIL.DISRT;
+
+CREATE SYNONYM TBAUTIL.DISRT FOR CUSTOM.DISB_REF_TABLE;
+
+CREATE UNIQUE INDEX CUSTOM.IDX_CUSTOM_DISB_REF_TBL ON CUSTOM.DISB_REF_TABLE
+(LOAN_ACCT_ID, SRL_NO)
+TABLESPACE CUSTOM_TBLS;
+ 
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.DISB_REF_TABLE TO SYSTEM;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.DISB_REF_TABLE TO TBAADM;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.DISB_REF_TABLE TO TBAGEN;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON CUSTOM.DISB_REF_TABLE TO TBAUTIL;
+
+

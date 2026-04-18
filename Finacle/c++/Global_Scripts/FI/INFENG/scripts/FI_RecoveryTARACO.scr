@@ -1,0 +1,337 @@
+#============================================================================================================
+# IMPORTANT: HTARACO FI Version.
+# category: Script Name Based
+# script: RecoveryTARACOFI.scr
+# Author : Dennis Chirchir
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             15-10-2024      Dennis Chirchir      Original Version
+#  2.0             24-10-2024      Dennis Chirchir      Repayment Fixes and Charge off autoclose - CHG0034700
+#=============================================================================================================
+<--START
+CHECKSUM="3db140f9b87703bd8fd7b1a2621962aeceb64d3cc76bf198abd494b5df851cda"
+	TRACE ON
+
+	#-------------------------------------------------------------------------------
+	# Calling create repository script
+	#-------------------------------------------------------------------------------
+	CALL("Common_Interface_CreateRepos.scr")
+	CUST.INTERFACE.successOrFailure = "S"
+	CUST.INTERFACE.srvErrFlg = "N"
+        if(repexists("EBSRV")==0)then
+                createrep("EBSRV")
+        endif
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("CUSTOM")==0)then
+                createrep("CUSTOM")
+        endif
+        if(classexists("EBSRV","GLBDATA")==0)then
+                createclass("EBSRV","GLBDATA",5)
+        endif
+        if(classexists("CUSTOM","GLBDATA")==0)then
+                createclass("CUSTOM","GLBDATA",5)
+        endif
+	CUST.INTERFACE.successOrFailure = ""
+	CUST.INTERFACE.accountID = EBSRV.GLBDATA.OdAcctId
+	CUST.INTERFACE.collAcctID = EBSRV.GLBDATA.OpAcctId
+	CUST.INTERFACE.RecovAmt=EBSRV.GLBDATA.RepayAmount
+	print(CUST.INTERFACE.accountID)
+	print(CUST.INTERFACE.collAcctID)
+	print(CUST.INTERFACE.RecovAmt)
+	EBSRV.GLBDATA.LIENLIFTED = ""
+	EQSRV.GLBDATA.sErrorMsg=""
+
+	IF(CUST.INTERFACE.accountID != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.accountID)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.acctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.INTERFACE.acctCrncyCode)
+			EBSRV.GLBDATA.crAcid = BANCS.OUTPARAM.acid
+			print(EBSRV.GLBDATA.crAcid)
+			EBSRV.GLBDATA.odschmCode = BANCS.OUTPARAM.schmCode
+			print(EBSRV.GLBDATA.odschmCode)
+			EBSRV.GLBDATA.odclearBalance = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.odclearBalance)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+
+	IF(CUST.INTERFACE.collAcctID != "") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.collAcctID)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.OpacctCrncyCode = BANCS.OUTPARAM.acctCrncyCode
+			print(CUST.INTERFACE.OpacctCrncyCode)
+			EBSRV.GLBDATA.lienamtB = BANCS.OUTPARAM.lienAmt
+			print(EBSRV.GLBDATA.lienamtB)
+			EBSRV.GLBDATA.opclearBalance = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.opclearBalance)
+			EBSRV.GLBDATA.drAcid = BANCS.OUTPARAM.acid
+			print(EBSRV.GLBDATA.drAcid)
+		#}
+		ENDIF	
+		#}
+	ELSE
+		#{
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR106"
+		GOTO ERROREXIT
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------
+	# STEP1.0: initial variable values
+	#----------------------------------------------------------------------
+	CUST.INTERFACE.laAcctforacid = ""
+	CUST.INTERFACE.tranSubType = ""
+	CUST.INTERFACE.tranType = ""
+	CUST.INTERFACE.collAcctforacid = ""
+	CUST.INTERFACE.ChrgValueDate = BANCS.STDIN.BODDate
+	CUST.INTERFACE.laAcctforacid = CUST.INTERFACE.accountID
+	CUST.INTERFACE.tranSubType = "BI"
+	CUST.INTERFACE.tranType = "T"
+	CUST.INTERFACE.collAcctforacid = CUST.INTERFACE.collAcctID
+	CUST.INTERFACE.payoffSol = ""
+	CUST.INTERFACE.payoffAcct = ""
+	CUST.INTERFACE.chrgCrncy = " "
+	CUST.INTERFACE.acctBal = ""
+
+	###pending recov
+        lv_a = "principal,interest|select (CHRGE_OFF_PRINCIPAL-PRINCIPAL_RECOVERY),(INT_SUSPENSE_AMT-INTEREST_RECOVERY) "
+        lv_a = lv_a + " from tbaadm.ta_cot WHERE  acid = ?SVAR  AND bank_id = ?SVAR "
+        print(lv_a)
+        BANCS.INPARAM.BINDVARS = EBSRV.GLBDATA.crAcid + "|" + BANCS.STDIN.contextBankId
+
+        lv_m = urhk_dbSelectWithBind(lv_a)
+        if(lv_m==0)then
+        #{
+                CUST.INTERFACE.principal = BANCS.OUTPARAM.principal
+                CUST.INTERFACE.interest = BANCS.OUTPARAM.interest
+        #}
+        else
+        #{
+                CUST.INTERFACE.principal = "0"
+                CUST.INTERFACE.interest = "0"
+                CUST.INTERFACE.errMsg="Error Fetching Charge off details"
+                sv_z = urhk_SetOrbOut("SuccessOrFailure|F")
+                sv_t = "Msg| " +CUST.INTERFACE.errMsg
+                sv_u = urhk_SetOrbOut(sv_t)
+                GOTO ENDSCRIPT
+        #}
+        endif
+
+	###########Lift Lien
+	if((cdouble(EBSRV.GLBDATA.lienamtB)>0) and (cdouble(EBSRV.GLBDATA.opclearBalance)>0))then
+		callscriptifexist("ebodlaRrecLienHeader.scr")
+	endif
+	###########Lift Lien end
+	CUST.INTERFACE.totalDue = cdouble(CUST.INTERFACE.principal) + cdouble(CUST.INTERFACE.interest)
+	print(CUST.INTERFACE.totalDue)
+
+	sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.collAcctforacid)
+	print(sv_u)
+	EBSRV.GLBDATA.EffBalAftLien = BANCS.OUTPARAM.EffAvailableAmt
+	print(EBSRV.GLBDATA.EffBalAftLien)
+
+	if(cdouble(CUST.INTERFACE.RecovAmt) > cdouble(CUST.INTERFACE.totalDue)) then
+		CUST.INTERFACE.RecovAmt=CUST.INTERFACE.totalDue
+	endif
+	print(CUST.INTERFACE.RecovAmt)
+	if(cdouble(CUST.INTERFACE.RecovAmt) > cdouble(EBSRV.GLBDATA.EffBalAftLien)) then
+	#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			EQSRV.GLBDATA.sErrorMsg = "Amount entered is greater than account effective balance"
+			GOTO LIENCHECK
+	#}
+	endif
+	#----------------------------------------------------------------------
+	# STEP2: invoke SRV_FetchTranAcctDtlForRecov service
+	#----------------------------------------------------------------------
+
+	sv_b = urhk_SetUrhkInp("recovCrit.tranAcct.foracid|"  + CUST.INTERFACE.laAcctforacid)
+	sv_b = urhk_SetUrhkInp("recovCrit.modeOfOper|C")
+	sv_b = urhk_SetUrhkInp("recovCrit.tranType.code|T")
+	sv_b = urhk_SetUrhkInp("recovCrit.valueDate|" + CUST.INTERFACE.ChrgValueDate)
+	sv_b = urhk_SetUrhkInp("recovCrit.netRecovAmt|" + CUST.INTERFACE.RecovAmt +"|"+ CUST.INTERFACE.acctCrncyCode)
+	sv_b = urhk_SetUrhkInp("recovCrit.srcAcct.foracid|" + CUST.INTERFACE.collAcctforacid)
+	sv_b = urhk_SetUrhkInp("recovCrit.oapRef.tranDate|" + BANCS.STDIN.BODDate) 
+	sv_b = urhk_SetUrhkInp("recovCrit.funcCode|C")
+
+	#----------------------------------------------------------------------
+	#invoke SRV
+	#----------------------------------------------------------------------
+	sv_u = urhk_ExecSrv("SRV_FetchTranAcctDtlForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_FetchTransForRecov service
+	#---------------------------------------------------------
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+	sv_u = urhk_ExecSrv("SRV_FetchTransForRecov|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+
+	#---------------------------------------------------------
+	# STEP3: Execute the SRV_RecovForTranAcctAndVerify service
+	#---------------------------------------------------------
+	sv_r = urhk_CopyOutToIn("")
+	PRINT(sv_r)
+
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranId|tranId")
+	sv_u = urhk_SetUrhkOut("tranObject.tranIdentifier.tranDate|tranDate")
+
+	sv_u = urhk_ExecSrv("SRV_RecovForTranAcctAndVerify|same_user_verify = Y|retain_all_output = Y")
+	IF (sv_u != 0) THEN
+	#{
+		callscriptifexist("ebsrvHandler.scr")
+		CUST.INTERFACE.srvErrFlg ="Y"
+		CUST.INTERFACE.successOrFailure = "F"
+		CUST.INTERFACE.errorCode = "ERR110"
+		GOTO LIENCHECK
+	#}
+	ENDIF
+	print(BANCS.OUTPARAM.tranId)
+	print(BANCS.OUTPARAM.tranDate)
+
+	CUST.INTERFACE.tranId=BANCS.OUTPARAM.tranId
+	print(BANCS.OUTPARAM.tranId)
+
+	IF(CUST.INTERFACE.tranId != "") THEN
+	#{
+                        sv_u = urhk_SetOrbOut("SuccessOrFailure|S")
+                        sv_u = urhk_SetOrbOut("Message|OD Loan Collected Successfully")
+                        sv_u = urhk_SetOrbOut("ODLoanAccount|" + EBSRV.GLBDATA.OdAcctId )
+                        sv_u = urhk_SetOrbOut("OperativeAcctId|" + EBSRV.GLBDATA.OpAcctId )
+                        sv_u = urhk_SetOrbOut("TranId|" + CUST.INTERFACE.tranId)
+                        sv_u = urhk_SetOrbOut("TranAmount|" + CUST.INTERFACE.RecovAmt)
+                        sv_u = urhk_SetOrbOut("TranDate|" + mid$(BANCS.STDIN.BODDate,0,10) )
+                        BANCS.OUTPUT.successOrFailure="S"
+	#}
+	ENDIF
+
+	###Lien Balance
+	LIENCHECK:
+	if(EBSRV.GLBDATA.LIENLIFTED == "Y") THEN
+	#{
+		sv_u = urhk_getAcctDetailsInRepository(CUST.INTERFACE.accountID)
+		print(sv_u)
+		IF(sv_u != 0) THEN
+		#{
+			CUST.INTERFACE.successOrFailure = "F"
+			CUST.INTERFACE.errorCode = "ERR110"
+			EQSRV.GLBDATA.sErrorMsg = "Account Does Not Exist"
+			GOTO ERROREXIT
+		#}
+		ELSE
+		#{
+			EBSRV.GLBDATA.tplienAmt = BANCS.OUTPARAM.clearBalance
+			print(EBSRV.GLBDATA.tplienAmt)
+		#}
+		ENDIF
+
+		if(cdouble(EBSRV.GLBDATA.tplienAmt)<0) then
+		#{
+                                EBSRV.GLBDATA.LienAmt = cdouble(EBSRV.GLBDATA.tplienAmt)  * -1
+                                print(EBSRV.GLBDATA.LienAmt)
+                                BANCS.INPARAM.acctNum = EBSRV.GLBDATA.drAcctId
+                                BANCS.INPARAM.blockMode = "A"
+                                BANCS.INPARAM.lienAmt = cdouble(EBSRV.GLBDATA.LienAmt)
+                                BANCS.INPARAM.expiryDate = "31-12-2099"
+                                BANCS.INPARAM.remarks = "Lien for loans on od"
+                      		if(EBSRV.GLBDATA.odschmCode=="DL002")then
+                        		BANCS.INPARAM.reasonCode = "DLLA"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="OD552")then
+                        		BANCS.INPARAM.reasonCode = "OD552"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="OD549")then
+                        		BANCS.INPARAM.reasonCode = "ECLA"
+                        	endif
+                        	if(EBSRV.GLBDATA.odschmCode=="ML001")then
+                        		BANCS.INPARAM.reasonCode = "DL1LI"
+                        	endif
+                        	if((EBSRV.GLBDATA.odschmCode=="OD542")or(EBSRV.GLBDATA.odschmCode=="OD543")or(EBSRV.GLBDATA.odschmCode=="OD544")or(EBSRV.GLBDATA.odschmCode=="OD545")or(EBSRV.GLBDATA.odschmCode=="OD546")or(EBSRV.GLBDATA.odschmCode=="OD112"))then
+                                	BANCS.INPARAM.reasonCode = "ODLA"
+                        	endif
+                                BANCS.INPARAM.bodDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+                                sv_u = urhk_updateLien("")
+                                if(sv_u != 0)then
+                                #{
+                                        EQSRV.GLBDATA.sErrorMsg =  "Failed to Lien on operative account for loan recovery"
+                                        EBSRV.GLBDATA.srvErrCode = "Lien"
+                                        EBSRV.GLBDATA.srvSucFail = "S"
+                                        goto ERROREXIT
+                                #}
+                                else
+                                #{
+                                        EQSRV.GLBDATA.sErrorMsg =  "Lien on operative account for loan recovery"
+                                        EBSRV.GLBDATA.srvErrCode = "Lien"
+                                        EBSRV.GLBDATA.srvSucFail = "S"
+                                        lv_i = urhk_dbSqlWithBind("commit")
+                                        goto ERROREXIT
+                                #}
+                                endif
+		#}
+		endif
+	#}
+	ENDIF
+	###Lien balance end
+	##Error correction
+	ERROREXIT:
+		IF(CUST.INTERFACE.successOrFailure == "F")THEN
+		#{
+                               EBSRV.GLBDATA.srvErrorCode = "E0012"
+                               EBSRV.GLBDATA.srvSF     = "F"
+                               sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+                               sv_u = urhk_SetOrbOut("Message|" + EQSRV.GLBDATA.sErrorMsg)
+                               BANCS.OUTPUT.successOrFailure="F"
+                               lv_j = urhk_dbSqlWithBind("rollback")
+		#}
+		ENDIF
+			
+trace off
+END-->

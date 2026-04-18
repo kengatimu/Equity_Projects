@@ -1,0 +1,217 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : inwardclearingCharge.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 08-08-2019
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : eventChargeCalc_1.scr
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             08-08-2019     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+sv_a = urhk_B2K_PrintRepos("BANCS")
+	print(sv_a)
+
+#--------------------------------------------------------------------------
+#  Creation of CUST repository and INWD class
+#--------------------------------------------------------------------------
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","INWD") == 0) THEN
+	#{
+		CREATECLASS("CUST","INWD",5)
+	#}
+	ENDIF	
+
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+	#{
+		CREATECLASS("CUST","GCHRG",5)
+	#}
+	ENDIF
+#--------------------------------------------------------------------------
+#  Selecting values
+#--------------------------------------------------------------------------
+
+CUST.INWD.errMsg = ""
+
+#--------------------------------------------------------------------------
+#  Selecting values
+#--------------------------------------------------------------------------
+
+	sv_u=urhk_SRV_GetVal("zone.zoneCode")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.INWD.zone=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.INWD.zone)
+	#}
+	ENDIF
+
+	sv_u=urhk_SRV_GetVal("zoneDate")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.INWD.zoneDate=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.INWD.zoneDate)
+
+		CUST.INWD.zoneDate= mid$(CUST.INWD.zoneDate,0,10)
+		print(CUST.INWD.zoneDate)
+	#}
+	ENDIF
+
+
+	sv_u=urhk_SRV_GetVal("sol.solId")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.INWD.solId=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.INWD.solId)
+	#}
+	ENDIF
+
+
+
+
+
+IF ((CUST.INWD.zoneDate !="") OR (CUST.INWD.zone !="")) THEN
+#{	
+	sv_q= "solid,zonecode,instamt,zonedate,acid,status,stlmntccy,foracid,schm,acctccy|"
+	sv_q = sv_q + " select a.sol_id, a.ZONE_CODE, a.INST_AMT,a.ZONE_DATE, a.ACID  ,a.STATUS_IND , a.STTLMNT_CRNCY_CODE, foracid , schm_code ,acct_crncy_code  "
+	sv_q = sv_q + " from tbaadm.ici a, tbaadm.gam b , tbaadm.izh c where a.bank_id =?SVAR and a.ZONE_CODE =?SVAR and a.bank_id = b.bank_id and a.acid =b.acid "
+	sv_q = sv_q + "	 and a.zone_date =to_date(?SVAR,'dd-mm-yyyy') and c.ZONE_CODE =a.ZONE_CODE and c.ZONE_STAT !='Z' and a.ZONE_DATE=c.ZONE_DATE and a.sol_id =c.sol_id  "
+	sv_q = sv_q + "	 and c.POSTING_STAT ='P' and c.VALIDATION_STAT ='V' and a.sol_id = ?SVAR  "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INWD.zone + "|" + CUST.INWD.zoneDate + "|" + CUST.INWD.solId
+
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbCursorOpenWithBind(sv_q)
+	PRINT(sv_e)
+
+	IF(sv_e == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			CUST.INWD.errMsg ="No Data."
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUST.INWD.errMsg )
+			EXITSCRIPT
+		#}
+		ENDIF
+		print(sv_q)
+
+		WHILE (sv_q==0)
+		#{
+
+			CUST.INWD.SolId=BANCS.OUTPARAM.solid
+			print(CUST.INWD.SolId)
+			CUST.INWD.Zonecode=BANCS.OUTPARAM.zonecode
+			print(CUST.INWD.Zonecode)
+			CUST.INWD.Foracid=BANCS.OUTPARAM.foracid
+			print(CUST.INWD.Foracid)
+			CUST.INWD.CCY=BANCS.OUTPARAM.acctccy
+			print(CUST.INWD.CCY)
+			CUST.INWD.Schm=BANCS.OUTPARAM.schm
+			print(CUST.INWD.Schm)
+			CUST.DATA.instamt=BANCS.OUTPARAM.instamt
+			print(CUST.DATA.instamt)
+			CUST.DATA.Dacid=BANCS.OUTPARAM.acid
+			print(CUST.DATA.Dacid)
+
+			CUST.INWD.Event="FCCHRG"
+
+			sv_q = "EVENT_TYPE,EVENT_ID,SCHM_CODE,CRNCY_CODE,SRL_NUM,CHARGE_TYPE,BACID|" 
+			sv_q = sv_q + " select c.EVENT_TYPE,c.EVENT_ID,c.SCHM_CODE,c.CRNCY_CODE,c.SRL_NUM,CHARGE_TYPE,p.BACID from custom.custom_ccprm c,tbaadm.ptt p  where c.bank_id =?SVAR and c.EVENT_ID =?SVAR  "
+			sv_q = sv_q + " and c.SCHM_CODE =?SVAR and  c.CRNCY_CODE =?SVAR and p.EVENT_ID=c.EVENT_ID and c.bank_id =p.bank_id "
+			print(sv_q)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.INWD.Event + "|" + CUST.INWD.Schm + "|" + CUST.INWD.CCY
+			print(BANCS.INPARAM.BINDVARS)			
+			sv_d = urhk_dbSelectWithBind(sv_q)
+			PRINT(sv_d)
+			IF (sv_d == 0) THEN
+			#{
+				CUST.DATA.eventType=BANCS.OUTPARAM.EVENT_TYPE
+				print(CUST.DATA.eventType)
+				CUST.DATA.eventId=BANCS.OUTPARAM.EVENT_ID
+				print(CUST.DATA.eventId)
+				CUST.DATA.schmCode=BANCS.OUTPARAM.SCHM_CODE
+				print(CUST.DATA.schmCode)
+				CUST.DATA.crncy=BANCS.OUTPARAM.CRNCY_CODE
+				print(CUST.DATA.crncy)
+				CUST.DATA.srlNum=BANCS.OUTPARAM.SRL_NUM
+				print(CUST.DATA.srlNum)
+				CUST.DATA.chrgType=BANCS.OUTPARAM.CHARGE_TYPE
+				print(CUST.DATA.chrgType)
+				CUST.DATA.bacid=BANCS.OUTPARAM.BACID
+				print(CUST.DATA.bacid)
+				BANCS.OUTPARAM.instamt=CUST.DATA.instamt
+				print(BANCS.OUTPARAM.instamt)
+				BANCS.OUTPARAM.Dacid=CUST.DATA.Dacid
+				print(BANCS.OUTPARAM.Dacid)
+
+				CUST.GCHRG.tranType = "T"
+				CUST.GCHRG.tranSubType = "BI"
+				CUST.GCHRG.drAcctId = CUST.INWD.Foracid
+				print(CUST.GCHRG.drAcctId)
+				CUST.GCHRG.acctCrncyCode = CUST.DATA.crncy
+				print(CUST.GCHRG.acctCrncyCode)
+				CUST.GCHRG.chrgAmt = CUST.DATA.instamt
+				print(CUST.GCHRG.chrgAmt)
+				CUST.GCHRG.chrgAmt =CUST.GCHRG.chrgAmt + "|" + CUST.GCHRG.acctCrncyCode
+				CUST.GCHRG.eventId = CUST.DATA.eventId			
+				PRINT(CUST.GCHRG.eventId)				
+			#}
+			ELSE
+			#{
+				GOTO NEXTREC
+			#}
+			ENDIF				
+				
+				CALL("gchrgcommon.scr")
+
+
+		NEXTREC:		
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		#}
+		DO
+	#}
+	ELSE
+	#{
+		CUST.INWD.errMsg ="Data Error"
+		sv_e=urhk_SetOrbOut("StattusCode|Error")
+		sv_e=urhk_SetOrbOut("Error|"+CUST.INWD.errMsg)
+	#}
+	ENDIF
+
+#}
+ENDIF
+EXITSCRIPT
+
+trace off
+end-->
+
+
+

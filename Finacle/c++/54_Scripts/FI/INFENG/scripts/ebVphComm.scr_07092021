@@ -1,0 +1,232 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#FileName       : ebVphComm.scr 
+#Desc           : ver
+#MenuId         : NA
+#CalledScript   :
+#Module         : cbc54
+#Date           : 02/03/2021
+#Author         : Vino Palani
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+#Rep/Class
+        if(repexists("MTT")==0)then
+                createrep("MTT")
+        endif
+        if(repexists("CUST")==0)then
+                createrep("CUST")
+        endif
+        if(repexists("BANCS")==0)then
+                createrep("BANCS")
+        endif
+        if(classexists("MTT","XCPN")==0)then
+                createclass("MTT","XCPN",5)
+        endif
+        if(classexists("MTT","Error")==0)then
+                createclass("MTT","Error",5)
+        endif
+        if(classexists("MTT","InputDetails")==0)then
+                createclass("MTT","InputDetails",5)
+        endif
+        if(classexists("MTT","TranDetails")==0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        if(classexists("MTT","PartTranDetails")==0)then
+                createclass("MTT","PartTranDetails",5)
+        endif
+        if(classexists("BANCS","INPARAM")==0)then
+                createclass("BANCS","INPARAM",5)
+        endif
+        if(classexists("CUST","ATM")==0)then
+                createclass("CUST","ATM",5)
+        endif
+#
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+	BANCS.INPARAM.CommitFlg="Y"
+	BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw="Y"
+	BANCS.INPARAM.CheckExceptions="N"
+	sv_u = urhk_MTTS_Initialize("")
+	print(sv_u)
+	if(sv_u != 0 ) then
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	endif
+	CUST.ATM.overDrawnAmt = BANCS.OUTPUT.antTrnAmt 
+	CUST.ATM.eventId = "VPHEFT"
+	CUST.ATM.eventType = "GCHRG"
+	MTT.ChargeDetails.EventId = "VPHEFT" 
+	MTT.ChargeDetails.EventType = "GCHRG" 
+	MTT.ChargeDetails.ChrgInpCrncy = BANCS.STDIN.homeCrncyCode
+
+	sv_y = "EFTCommision"
+	sv_u = urhk_MTTS_InitPtt(sv_y)
+	print(sv_u)
+	if(sv_u != 0 ) then
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	endif
+	sv_u = urhk_MTTS_GetPttRec(sv_y)
+	print(sv_u)
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	if(sv_u == 0 ) then
+	#{
+		CUST.DATA.drAcctId = MTT.PartTranDetails.Account
+		BANCS.STDIN.homeCrncyCode = MTT.ChargeDetails.CollectionCrncy
+		CUST.ATM.overDrawnAmt = CDOUBLE(MTT.PartTranDetails.RefAmount)
+		sv_d = "commPct,crBacid | select fixed_amt,ptt.bacid from tbaadm.ptt,tbaadm.adm"
+		sv_d = sv_d + " where adm.bank_id=?SVAR and ptt.bank_id=?SVAR and ptt.event_id='VPHEFT' "
+		sv_d = sv_d + " and ptt.event_type='GCHRG' "
+		sv_d = sv_d + " and ptt.amt_derv_srl_num =adm.amt_drv_srl_num "
+		sv_d = sv_d + " and adm.amt_ind='F' and adm.entity_cre_flg='Y' and adm.del_flg='N' " 
+		sv_d = sv_d + " and ptt.ENTITY_CRE_FLG='Y' and ptt.del_flg='N' and rownum <=1 "
+		print(sv_d)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+			CUST.ATM.commPct = BANCS.OUTPARAM.commPct
+			CUST.ATM.crBacid = BANCS.OUTPARAM.crBacid
+		else
+			CUST.ATM.commPct = 120 
+			CUST.ATM.crBacid = ""
+			###BANCS.INPUT.SolId
+		endif
+		sv_b = CUST.ATM.commPct
+	#}
+	endif
+	sv_a = urhk_MTTS_Close("")
+	print(sv_a)
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	if(CUST.ATM.crBacid!="")then
+		##sv_i = CUST.ATM.crBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ BANCS.STDIN.mySolId
+		if(BANCS.OUTPUT.Command=="TRRS")then
+			sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.drAcctId)
+		endif
+		if(BANCS.OUTPUT.Command=="TRTS")then
+			sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.crAcctId)
+		endif
+		if(sv_u == 0)then
+			CUST.ATM.oacctSolId = BANCS.OUTPARAM.acctSolId
+		else
+			CUST.ATM.oacctSolId = BANCS.INPUT.SolId
+		endif
+		sv_i = CUST.ATM.crBacid +"|"+ BANCS.STDIN.homeCrncyCode +"|"+ CUST.ATM.oacctSolId 
+		print(sv_i)
+		sv_u = urhk_B2k_BacidToAcctId(sv_i)
+		if(sv_u == 0 )then
+			CUST.ATM.CrAcctId=BANCS.OUTPARAM.AcctId
+			print(CUST.ATM.CrAcctId)
+		else
+			CUST.ATM.CrAcctId = "0006500300050" 	
+		endif
+	endif
+
+	BANCS.INPARAM.PostTranFlg = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg = "N"
+	BANCS.INPARAM.CommitFlg="Y"
+	BANCS.INPARAM.RestrictModifyInd="FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw="Y"
+	BANCS.INPARAM.CheckExceptions="N"
+
+	sv_u = urhk_MTTS_Initialize("")
+	print(sv_u)
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+        if(fieldexists(BANCS.OUTPUT.Command)==1)then
+                print(BANCS.OUTPUT.Command)
+                CUST.ATM.Command = BANCS.OUTPUT.Command
+        else
+                CUST.ATM.Command = ""
+        endif
+	if(CUST.ATM.Command=="TRRS")then
+		CUST.ATM.narr1 = "Rev:EFT Comm"
+	else
+		CUST.ATM.narr1 = "EFT Comm"
+	endif
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType = "T"
+	MTT.TranDetails.TranSubType = "BI"
+	MTT.TranDetails.IgnoreExcp = "I"
+	MTT.TranDetails.Consolidate = "N"
+	MTT.TranDetails.Remarks = CUST.ATM.narr1
+	sv_v = "PurchaseComm"
+	print(sv_v)
+	sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	sv_u = urhk_MTTS_PopulateInputDetails("")
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	print(CUST.DATA.crAcctId)
+	if(CUST.ATM.Command=="TRRS")then
+		MTT.PartTranDetails.Account = CUST.ATM.CrAcctId 
+	else
+		MTT.PartTranDetails.Account = CUST.DATA.crAcctId 
+	endif
+	MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+	MTT.PartTranDetails.RateCode ="TTS"
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+	MTT.PartTranDetails.RefAmount =  -1 * cdouble(CUST.ATM.commPct) 
+	print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.Remarks = ""
+	MTT.PartTranDetails.RefNum = ""
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = sv_v
+	MTT.ChargeDetails.EventType = CUST.ATM.eventType
+	MTT.ChargeDetails.EventId = CUST.ATM.eventId
+	sv_e = "PurchaseIncome"
+	sv_u = urhk_MTTS_DefineChargePartTran(sv_e)
+	print(sv_u)
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	print(CUST.ATM.CrAcctId)
+	if(CUST.ATM.Command=="TRRS")then
+		MTT.PartTranDetails.Account = CUST.DATA.crAcctId 
+	else
+		MTT.PartTranDetails.Account = CUST.ATM.CrAcctId 
+	endif
+	MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+	MTT.PartTranDetails.RateCode ="TTS"
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Particulars = CUST.ATM.narr1
+	MTT.PartTranDetails.RefAmount = cdouble(CUST.ATM.commPct) 
+	print(MTT.PartTranDetails.RefAmount)
+	MTT.PartTranDetails.Remarks = ""
+	MTT.PartTranDetails.RefNum = ""
+	MTT.PartTranDetails.IgnoreExcp = "I"
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.TranIdentifier = sv_v
+	sv_h = "D" + CUST.DATA.crAcctId 
+	sv_u = urhk_MTTS_definePartTran(sv_h)
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	sv_u = urhk_MTTS_EndDefinition("")
+	if(sv_u!=0)then
+		goto ENDOFSCRIPT
+	endif
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+	print(BANCS.OUTPARAM.MTTTranId)
+	if (BANCS.OUTPARAM.MTTTranId!="") then
+	#{
+		print(BANCS.OUTPARAM.MTTTranId)
+	#}
+	endif
+ENDOFSCRIPT:
+        exitscript
+###trace off
+end-->

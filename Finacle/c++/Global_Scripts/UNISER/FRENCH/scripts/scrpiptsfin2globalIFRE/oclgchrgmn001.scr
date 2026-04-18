@@ -1,0 +1,452 @@
+#-------------------------------------------------------------------------------------------------------
+# Source Name           :   oclgchrgmn001.scr
+# Date                  :   06-03-2013
+# Author                :   Shishira
+# Title                 :   OutwardClearingCharges
+# Description           :   Event based script for event type OCLG, event id OW-CLG-CHGS
+#					and bacid PNLCHUN for calculating inhouse cheque commission
+#
+# Sources called        :   NA
+# Sources called from   :
+# RS Approach Document  :
+# Modification History  :
+# <Serial No.>      <Date>          <Author Name>       <Description>
+# 0.00a             06-Mar-2013     Shishira        Original version
+# 0.00b             01-Oct-2013     Bharath				Modified as per porting3 scripts
+#
+#-------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="36c36f305efe946325198159cbf2b703bfbf7389d221ac148619e769519fdd0e"
+	TRACE ON
+	#-----------------------------------------------
+	# Creating Repository
+	#-----------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","OCI") == 0) THEN
+	#{
+		CREATECLASS("CUST","OCI",5)
+	#}
+	ENDIF
+	
+	#	sv_r = urhk_B2k_PrintRepos("BANCS")
+	CUST.OCI.totAmt			= CDOUBLE("0")
+	BANCS.INPUT.moduleName 	= "CLEARING"
+	CUST.OCI.acctOwnerShip	= ""
+	CUST.OCI.schemeCode = ""
+	CUST.OCI.type = ""
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of accounts from OCI
+	# if the count is 0 then exiting
+	#--------------------------------------------------------------------------
+	CUST.OCI.clgZoneSolId	=BANCS.INPUT.ClgZoneSolId
+	PRINT(CUST.OCI.clgZoneSolId)
+	CUST.OCI.clgZoneDate	=BANCS.INPUT.ClgZoneDate
+	CUST.OCI.clgZoneCode	=BANCS.INPUT.ClgZoneCode
+	CUST.OCI.setNum			=TRIM(BANCS.INPUT.SetNum)
+	CUST.OCI.clgZoneDate	=LEFT$(CUST.OCI.clgZoneDate,10)
+	print(CUST.OCI.clgZoneDate)
+	
+	sv_e = LEFT$(BANCS.INPUT.ClgZoneDate,10)
+	print(sv_e)
+	
+	sv_s = "zonedate|SELECT TO_CHAR((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') FROM DUAL"
+	BANCS.INPARAM.BINDVARS = sv_e
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	
+	IF (sv_d ==CINT("0")) THEN
+	#{
+		CUST.OCI.zoneDate = BANCS.OUTPARAM.zonedate
+	#}
+	ENDIF
+	
+	sv_s = "Count|SELECT count(1) "
+	sv_s = sv_s + "FROM TBAADM.OCI "
+	sv_s = sv_s + "WHERE sol_id= ?SVAR  "
+	sv_s = sv_s + "AND clg_zone_date= ?SVAR "
+	sv_s = sv_s + "AND clg_zone_code= ?SVAR "
+	sv_s = sv_s + "AND TRIM(set_num)= ?SVAR "
+	sv_s = sv_s + "AND del_flg= 'N' "
+	sv_s = sv_s + "AND bank_id = ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.OCI.clgZoneSolId+"|"+CUST.OCI.zoneDate +"|"+CUST.OCI.clgZoneCode+"|"+CUST.OCI.setNum+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	
+	print(sv_d)
+	
+	CUST.OCI.count = BANCS.OUTPARAM.Count
+	print(CUST.OCI.count)
+	
+	IF (CUST.OCI.count == CINT("0")) THEN
+	#{
+		GOTO Finish
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Avoiding Office accounts & staff accounts
+	#--------------------------------------------------------------------------
+	CUST.OCI.acctNo=BANCS.INPUT.AccountNum
+	print(CUST.OCI.acctNo)
+	
+	sv_s = "acctOwnerShip,schemeCode|"
+	sv_s = sv_s + " SELECT acct_ownership,schm_code "
+	sv_s = sv_s + " FROM TBAADM.GAM  "
+	sv_s = sv_s + " WHERE foracid=?SVAR "
+	sv_s = sv_s + " AND entity_cre_flg='Y' "
+	sv_s = sv_s + " AND del_flg='N' "
+	sv_s = sv_s + " AND bank_id=?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.OCI.acctNo+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.OCI.acctOwnerShip= BANCS.OUTPARAM.acctOwnerShip
+		CUST.OCI.schemeCode= BANCS.OUTPARAM.schemeCode
+		print(CUST.OCI.schemeCode)
+		print(CUST.OCI.acctOwnerShip)
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "OCLGCHRG_SCHM"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.setSchmCode=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.setSchmCode)
+		#}
+	ELSE
+		#{
+		sv_g = "Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	
+	IF ( (CUST.OCI.acctOwnerShip == "O") OR (CUST.OCI.schemeCode == CUST.OCI.setSchmCode) ) THEN
+	#{
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Cursor Opening
+	#--------------------------------------------------------------------------
+	
+	sv_s = "bankCode,brCode,sortCode,instAmt|SELECT bank_code,br_code,sort_code,instrmnt_amt "
+	sv_s = sv_s + "FROM TBAADM.OCI  "
+	sv_s = sv_s + " WHERE sol_id=?SVAR "
+	sv_s = sv_s + " AND clg_zone_date= TO_DATE(?SVAR,'DD-MM-YYYY') "
+	sv_s = sv_s + " AND clg_zone_code=?SVAR "
+	sv_s = sv_s + " AND TRIM(set_num)=?SVAR "
+	sv_s = sv_s + " AND bank_id=?SVAR "
+	sv_s = sv_s + " AND del_flg='N' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.OCI.clgZoneSolId+"|"+CUST.OCI.clgZoneDate+"|"+CUST.OCI.clgZoneCode+"|"+CUST.OCI.setNum+"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_o = urhk_dbCursorOpenWithBind(sv_s)
+	print(sv_o)
+	IF (sv_o == 0) THEN
+	#{
+		print(BANCS.OUTPARAM.DB_CURSOR_NUMBER)
+		CUST.OCI.mainCursor = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.OCI.mainCursor)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_TYPE1"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.setType1=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.setType1)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "OCLGCHRG_TYPE2"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.setType2=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.setType2)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "OCLGCHRG_TYPE3"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.setType3=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.setType3)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_AMT"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.amt=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.amt)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_AMT1"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.amt1=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.amt1)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_AMT2"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.amt2=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.amt2)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_AMT3"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.amt3=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.amt3)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-----------------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_SRV"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.srv=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.srv)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINSIH
+	#}
+	ENDIF
+	
+	#-----------------------------------------------
+	#Data from C_CPARAM
+	#-----------------------------------------------
+	BANCS.INPUT.parameterId = "OCLGCHRG_AMT4"
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		print(BANCS.OUTPUT.parameterVal)
+		CUST.OCI.amt4=BANCS.OUTPUT.parameterVal
+		print(CUST.OCI.srv)
+		#}
+	ELSE
+		#{
+		sv_g = "RESULT_MSG|Parameter value not set in C_CPARAM_VALUE_TABLE"
+		GOTO FINSIH
+	#}
+	ENDIF
+	
+	WHILE (sv_o == 0)
+	#{
+		sv_c = urhk_dbCursorFetch(CUST.OCI.mainCursor)
+		print(sv_c)
+		IF (sv_c != 0) THEN
+		#{
+			print("Ist Step  FINISHED")
+			sv_c = 1
+			sv_o = 1
+			#}
+		ELSE
+			#{
+			CUST.OCI.bankCode 	= BANCS.OUTPARAM.bankCode
+			CUST.OCI.brCode 	= BANCS.OUTPARAM.brCode
+			CUST.OCI.sortCode 	= BANCS.OUTPARAM.sortCode
+			CUST.OCI.instAmt 	= BANCS.OUTPARAM.instAmt
+			
+			print(CUST.OCI.bankCode)
+			print(CUST.OCI.brCode)
+			print(CUST.OCI.sortCode)
+			print(CUST.OCI.instAmt)
+			
+			sv_s = "type|SELECT free_code_1 "
+			sv_s = sv_s + "FROM TBAADM.BCT  "
+			sv_s = sv_s + "WHERE br_code=?SVAR "
+			sv_s = sv_s + "AND bank_Code=?SVAR "
+			sv_s = sv_s + "AND del_flg='N' "
+			sv_s = sv_s + "AND bank_id=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.OCI.brCode+"|"+CUST.OCI.bankCode+"|"+BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d == 0) THEN
+			#{
+				CUST.OCI.type = trim(BANCS.OUTPARAM.type)
+				print(CUST.OCI.type)
+			#}
+			ENDIF
+			
+			#======================================================================
+			#Type L
+			#======================================================================
+			
+			IF (CUST.OCI.type == CUST.OCI.setType1) THEN
+			#{
+				CUST.OCI.evtAmt = CDOUBLE("0")
+				CUST.OCI.totAmt = CDOUBLE(CUST.OCI.totAmt) + CDOUBLE(CUST.OCI.evtAmt)
+				print(CUST.OCI.totAmt)
+			#}
+			ENDIF
+			
+			IF (BANCS.STDIN.contextBankId!="54") THEN
+			#{
+				
+				#======================================================================
+				#Type U
+				#======================================================================
+				IF (CUST.OCI.type == CUST.OCI.setType2) THEN
+				#{
+					CUST.OCI.evtAmt = (CDOUBLE(CUST.OCI.instAmt) * CDOUBLE(CUST.OCI.amt4))
+					print(CUST.OCI.evtAmt)
+					
+					IF (CDOUBLE(CUST.OCI.evtAmt) < CDOUBLE(CUST.OCI.amt1)) THEN
+					#{
+						#CUST.OCI.evtAmt=CUST.OCI.amt1
+					#}
+					ENDIF
+					
+					IF (CDOUBLE(CUST.OCI.evtAmt) > CDOUBLE(CUST.OCI.amt2)) THEN
+					#{
+						CUST.OCI.evtAmt=CUST.OCI.amt2
+					#}
+					ENDIF
+					
+					CUST.OCI.evtAmt = (CDOUBLE(CUST.OCI.evtAmt) * CDOUBLE(CUST.OCI.amt3))
+					print(CUST.OCI.evtAmt)
+					
+					CUST.OCI.totAmt = CDOUBLE(CUST.OCI.totAmt) + CDOUBLE(CUST.OCI.evtAmt)
+					print(CUST.OCI.totAmt)
+				#}
+				ENDIF
+				
+				#======================================================================
+				#Type R
+				#======================================================================
+				
+				IF (CUST.OCI.type == CUST.OCI.setType3) THEN
+				#{
+					CUST.OCI.evtAmt = (CDOUBLE(CUST.OCI.instAmt) * CDOUBLE(CUST.OCI.amt))
+					print(CUST.OCI.evtAmt)
+					
+					
+					IF (CDOUBLE(CUST.OCI.evtAmt) < CDOUBLE(CUST.OCI.amt1)) THEN
+					#{
+						CUST.OCI.evtAmt=CUST.OCI.amt1
+					#}
+					ENDIF
+					
+					
+					IF (CDOUBLE(CUST.OCI.evtAmt) > CDOUBLE(CUST.OCI.amt2)) THEN
+					#{
+						CUST.OCI.evtAmt=CUST.OCI.amt2
+					#}
+					ENDIF
+					
+					CUST.OCI.evtAmt = (CDOUBLE(CUST.OCI.evtAmt) * CDOUBLE(CUST.OCI.amt4))
+					print(CUST.OCI.evtAmt)
+					
+					CUST.OCI.totAmt = CDOUBLE(CUST.OCI.totAmt) + CDOUBLE(CUST.OCI.evtAmt)
+					print(CUST.OCI.totAmt)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	DO
+	sv_c = urhk_dbCursorClose(CUST.OCI.mainCursor)
+	
+	FINISH:
+		print(CUST.OCI.totAmt)
+		BANCS.OUTPUT.collAmount 			= CDOUBLE(CUST.OCI.totAmt) + (CDOUBLE(CUST.OCI.totAmt) * CDOUBLE("0.1"))
+		print(BANCS.OUTPUT.collAmount)
+		BANCS.OUTPUT.AmountWithNoDiscount	= CDOUBLE(CUST.OCI.totAmt)
+		BANCS.OUTPUT.collCrncy 				= BANCS.STDIN.homeCrncyCode
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

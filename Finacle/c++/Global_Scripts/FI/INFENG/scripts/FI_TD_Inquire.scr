@@ -1,0 +1,375 @@
+#########SCRIPT TO FETCH DETAILS OF TD ACCOUNT##############
+#
+#
+#Date 10.4.2022
+# By Vincent 
+# Modified by: James
+# Modification desc: include bank id in select queries
+#Modified on: 28/11/2022
+###############################################################
+<--START
+TRACE ON 
+
+#CREATE REPOSITORY 
+ IF(REPEXISTS("CUST")==0) THEN
+ #{
+ CREATEREP("CUST")
+ #}
+ ENDIF
+ 
+ #CREATE CLASS
+ 
+ IF(CLASSEXISTS("CUST","TD")==0) THEN
+ #{
+ CREATECLASS("CUST","TD", 5)
+ #}
+ ENDIF
+  
+  sv_a = urhk_GetChannelInfo("")
+  print(sv_a)
+
+  CUST.TD.DccId =BANCS.OUTPARAM.DccId
+  print(CUST.TD.DccId)
+
+ 
+ IF(FIELDEXISTS(("BANCS").("INPUT").("ACCOUNT"))==0) THEN
+ #{
+  CUST.TD.errMsg="Please Enter account number to check details "
+  sv_t="executeFinacleScript_CustomData.ERROR |"+CUST.TD.errMsg
+  sv_u=urhk_SetOrbOut(sv_t)
+  GOTO ENDSCRIPT
+ #}
+ ENDIF
+ 
+ IF(FIELDEXISTS(("BANCS").("INPUT").("BANKID"))==0) THEN
+ #{
+   CUST.TD.errMsg="Enter BankID "
+  sv_t="executeFinacleScript_CustomData.ERROR |"+CUST.TD.errMsg
+  sv_u=urhk_SetOrbOut(sv_t)
+  GOTO ENDSCRIPT
+ #}
+ ENDIF
+ 
+ #ASSIGNING VARIABLES 
+
+CUST.TD.ACCOUNT=BANCS.INPUT.ACCOUNT
+print(CUST.TD.ACCOUNT)
+
+CUST.TD.renOption = ""
+CUST.TD.clsFlg = ""
+
+#GET DETAILS FOR THE ACCOUNT
+sv_a= urhk_getAcctDetailsInRepository(CUST.TD.ACCOUNT)
+print(sv_a)
+IF(sv_a == 0) THEN
+#{
+CUST.TD.Accname=BANCS.OUTPARAM.acctName
+print(CUST.TD.Accname)
+CUST.TD.schmtype=BANCS.OUTPARAM.schmType
+print(CUST.TD.schmtype)
+CUST.TD.Solid=BANCS.OUTPARAM.acctSolId
+print(CUST.TD.Solid)
+CUST.TD.acctCrncycode=BANCS.OUTPARAM.acctCrncyCode
+print(CUST.TD.acctCrncycode)
+CUST.TD.schmCode=BANCS.OUTPARAM.schmCode
+print(CUST.TD.schmCode)
+CUST.TD.clrbal=BANCS.OUTPARAM.clearBalance
+print(CUST.TD.clrbal)
+CUST.TD.custId=BANCS.OUTPARAM.custId
+print(CUST.TD.custId)
+print("getting details from user_hook")
+
+############################## restrict other accounts james 04/04/2023###################
+IF((CUST.TD.schmtype !="TDA") AND (CUST.TD.schmtype !="TUA"))THEN
+#{
+   	CUST.TD.errMsg="Account belongs to a different scheme type" + "{" +CUST.TD.schmtype+"} only TDA and TUA are allowed"
+	sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+	sv_t = "MSG | " +CUST.TD.errMsg
+	sv_u = urhk_SetOrbOut(sv_t)
+	GOTO ENDSCRIPT
+#}
+ENDIF
+
+#############################james 04/04/2023 #######################################
+
+
+sv_b = urhk_B2k_CustIdToCifId(CUST.TD.custId)
+IF(sv_b == 0) THEN 
+#{
+CUST.TD.CifId = BANCS.OUTPARAM.CifId
+print(CUST.TD.CifId)
+#}
+ENDIF
+
+sv_c = urhk_B2k_ForacidToAcid(CUST.TD.ACCOUNT)
+IF(sv_c == 0) THEN 
+#{
+CUST.TD.Acid = BANCS.OUTPARAM.Acid
+print(CUST.TD.Acid)
+#}
+ENDIF
+sv_k= "effective_opn_date, initdeposit , cumdep, matudate, depositperiod , renflg,clsFlg|SELECT"
+sv_k=sv_k+ " open_effective_date,original_deposit_amount,cumulative_principal, "
+sv_k=sv_k+ " maturity_date, deposit_period_mths, AUTO_RENEWAL_FLG,CLOSE_ON_MATURITY_FLG "
+sv_k=sv_k+" from tbaadm.tam  WHERE acid=?SVAR and bank_id=?SVAR  "
+
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid  + "|"+BANCS.STDIN.contextBankId 
+print(BANCS.INPARAM.BINDVARS)
+
+sv_s= urhk_dbSelectWithBind(sv_k)
+print(sv_s)
+
+IF(sv_s == 0) THEN
+#{
+CUST.TD.opendate=BANCS.OUTPARAM.effective_opn_date
+CUST.TD.maturitydate=BANCS.OUTPARAM.matudate
+CUST.TD.initdp=BANCS.OUTPARAM.initdeposit
+CUST.TD.depositperiodmths=BANCS.OUTPARAM.depositperiod
+CUST.TD.renflg=BANCS.OUTPARAM.renflg
+CUST.TD.cumdep=BANCS.OUTPARAM.cumdep
+CUST.TD.clsFlg=BANCS.OUTPARAM.clsFlg
+print(CUST.TD.cumdep)
+#}
+ENDIF
+IF(CUST.TD.clsFlg == "") then
+	CUST.TD.clsFlg = "N"
+ENDIF
+#data from related tables
+sv_t="no_of_inst|select count(tsd_srl_num)no_of_inst from tbaadm.tdt where  flow_code='NI' and acid=?SVAR AND BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_t)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.nofdeps=BANCS.OUTPARAM.no_of_inst
+#}
+ENDIF
+
+sv_g="tot_cumulative_int|select  sum(flow_amt)tot_cumulative_int from tbaadm.tdt where  flow_code='NI'and  acid=?SVAR and BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_g)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.totdepost=BANCS.OUTPARAM.tot_cumulative_int
+#}
+ENDIF
+
+sv_i="monthlyinst|select  flow_amt  from tbaadm.tdt where  flow_code='NI'and  acid=?SVAR and rownum<2 AND BANK_ID=?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_i)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.monthlyinst=BANCS.OUTPARAM.monthlyinst
+#}
+ELSE
+#{
+	CUST.TD.monthlyinst = ""
+#}
+ENDIF
+
+##################################### contracted rate fetch 25/04/2023 JAMES ######
+sv_l="rate|select NRML_PCNT_CR from tbaadm.itc where bank_id=?SVAR and del_flg='N' and entity_id =?SVAR"
+sv_l = sv_l + " and INT_TBL_CODE_SRL_NUM in(select max(INT_TBL_CODE_SRL_NUM) from tbaadm.itc where bank_id=?SVAR and del_flg='N' and entity_id =?SVAR) "
+BANCS.INPARAM.BINDVARS= BANCS.STDIN.contextBankId+ "|"+CUST.TD.Acid + "|" + BANCS.STDIN.contextBankId+ "|"+CUST.TD.Acid
+print(BANCS.INPARAM.BINDVARS)
+sv_d=urhk_dbSelectWithBind(sv_l)
+IF(sv_d ==0 ) THEN
+#{
+CUST.TD.rate=BANCS.OUTPARAM.rate
+#}
+ELSE
+#{
+CUST.TD.rate=""     
+#}
+ENDIF
+##################################### contracted rate fetch 25/04/2023 JAMES######
+
+
+BANCS.INPARAM.BINDVARS = CUST.TD.ACCOUNT + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_l="startDate,endDate,fixedAmt,lienAmt|select to_char(sih.si_start_date,'DD-MM-YYYY'),to_char(sih.si_end_date,'DD-MM-YYYY'),adm.fixed_amt,GAM.lien_amt "
+sv_l= sv_l + "FROM TBAADM.PYRH,TBAADM.PYRD,TBAADM.SIH,TBAADM.GAM,TBAADM.ADM "
+sv_l= sv_l + " WHERE PR_B2K_TYPE = 'SI' AND PR_B2K_ID = si_srl_num "
+sv_l= sv_l + " AND PART_TRAN_TYPE = 'C' AND GAM.ACID = PYRD.ACID AND PYRH.PR_SRL_NUM = PYRD.PR_SRL_NUM and PYRH.AMT_DRV_SRL_NUM = ADM.AMT_DRV_SRL_NUM"
+sv_l= sv_l + " and foracid = ?SVAR AND GAM.BANK_ID=?SVAR"
+print(sv_l)
+
+sv_d=urhk_dbSelectWithBind(sv_l)
+print(sv_d)
+
+IF(sv_d ==0 ) THEN
+#{
+	CUST.TD.startDate=BANCS.OUTPARAM.startDate
+	print(CUST.TD.startDate)
+
+	CUST.TD.endDate = BANCS.OUTPARAM.endDate
+	print(CUST.TD.endDate)
+
+	CUST.TD.fixedAmt = BANCS.OUTPARAM.fixedAmt
+	print(CUST.TD.fixedAmt)
+#}
+ELSE
+#{
+	CUST.TD.startDate = ""
+	CUST.TD.endDate = ""
+	CUST.TD.fixedAmt = ""
+#}
+ENDIF 
+
+IF((CUST.TD.startDate != "") and (CUST.TD.endDate != ""))THEN
+#{
+	BANCS.INPARAM.date1 = CUST.TD.endDate 
+	BANCS.INPARAM.date2 = CUST.TD.startDate 
+
+	sv_u = urhk_B2K_dateDiff("")
+	print(sv_u)
+
+	IF(sv_u == 0 ) THEN
+	#{
+		BANCS.INPUT.migdatediff = BANCS.OUTPARAM.dateDiff
+		print(BANCS.INPUT.migdatediff)
+	#}
+	ELSE
+	#{
+		BANCS.INPUT.migdatediff = 365
+	#}
+	ENDIF
+	print(BANCS.INPUT.migdatediff)
+
+	CUST.TD.numofMnths = cdouble(BANCS.INPUT.migdatediff) /30
+	print(CUST.TD.numofMnths)
+
+	CUST.TD.numofMnths = CINT(CUST.TD.numofMnths)
+	print(CUST.TD.numofMnths)
+
+	CUST.TD.totdepost = cdouble(CUST.TD.fixedAmt) * cdouble(CUST.TD.numofMnths)
+	print(CUST.TD.totdepost)
+
+	CUST.TD.totdepost = CDOUBLE(CUST.TD.totdepost) + CDOUBLE(CUST.TD.initdp)
+	print(CUST.TD.totdepost)
+	
+	CUST.TD.monthlyinst = CUST.TD.fixedAmt 
+	print(CUST.TD.monthlyinst)
+#}
+ENDIF
+
+lv_a = urhk_getAcctDetailsInRepository(CUST.TD.ACCOUNT)
+if(lv_a == 0) then
+	CUST.TD.lienAmt = cdouble(BANCS.OUTPARAM.lienAmt)
+	CUST.TD.EffAvailableAmt = cdouble(BANCS.OUTPARAM.EffAvailableAmt)
+	CUST.TD.AvailableAmt = cdouble(BANCS.OUTPARAM.AvailableAmt)
+else
+	CUST.TD.lienAmt= "0"
+	CUST.TD.EffAvailableAmt = "0"
+	CUST.TD.AvailableAmt = "0"
+endif
+
+#Added Renewal Option
+
+BANCS.INPARAM.BINDVARS=CUST.TD.Acid  + "|"+BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_a = "renOption|select renewal_option from tbaadm.reno where acid = ?SVAR and bank_id =?SVAR "
+print(sv_a)
+
+sv_s= urhk_dbSelectWithBind(sv_a)
+print(sv_s)
+
+IF(sv_s == 0) THEN
+#{
+	CUST.TD.renOption = BANCS.OUTPARAM.renOption
+	print(CUST.TD.renOption)
+#}
+ELSE
+#{
+	CUST.TD.renOption = ""
+#}
+ENDIF
+
+
+print("printing details")
+
+lv_b = urhk_SetOrbOut("CustomerID| " + CUST.TD.CifId)
+lv_b = urhk_SetOrbOut("ACCNAME| " + CUST.TD.Accname)
+lv_b = urhk_SetOrbOut("ACCOUNTNO| " + CUST.TD.ACCOUNT)
+lv_b = urhk_SetOrbOut("BRANCH| " + CUST.TD.Solid)
+lv_b = urhk_SetOrbOut("CURRENCY| " + CUST.TD.acctCrncycode)
+lv_b = urhk_SetOrbOut("DATEOPENED| " + CUST.TD.opendate)
+lv_b = urhk_SetOrbOut("INITIALDEPOSIT| " + CUST.TD.initdp)
+lv_b = urhk_SetOrbOut("TOTALINSTMNT| " + CUST.TD.totdepost)
+lv_b = urhk_SetOrbOut("MONTHLYINST| " + CUST.TD.monthlyinst)
+lv_b = urhk_SetOrbOut("TOTDEPOSITASTNOW| " + CUST.TD.cumdep)
+lv_b = urhk_SetOrbOut("NOOFINSTMT| " + CUST.TD.nofdeps)
+lv_b = urhk_SetOrbOut("RATE| " + CUST.TD.rate)
+lv_b = urhk_SetOrbOut("DEPOSITPERIOD| " + CUST.TD.depositperiodmths)
+lv_b = urhk_SetOrbOut("AUTORENEW| " + CUST.TD.renflg)
+lv_b = urhk_SetOrbOut("RENEWOPTION| " + CUST.TD.renOption)
+lv_b = urhk_SetOrbOut("MATURITYDARE| " + CUST.TD.maturitydate)
+
+IF(CUST.TD.DccId == "CRS")THEN
+#{
+	lv_b = urhk_SetOrbOut("LIENAMOUNT| " + CUST.TD.lienAmt)
+	lv_b = urhk_SetOrbOut("AVAILAMT| " + CUST.TD.AvailableAmt)
+	lv_b = urhk_SetOrbOut("EFFAVAILAMT| " + CUST.TD.EffAvailableAmt)
+	lv_b = urhk_SetOrbOut("AUTOCLOSE| " + CUST.TD.clsFlg)
+
+	########get linked ODA
+	sv_a = "odAcct|select foracid from tbaadm.sdr,tbaadm.gam where LIEN_ACID=?SVAR "
+	sv_a = sv_a + " and sdr.acid=gam.acid and sdr.bank_id= ?SVAR and gam.bank_id=sdr.bank_id and sdr.del_flg='N' "
+	BANCS.INPARAM.BINDVARS=CUST.TD.Acid  + "|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+
+        lv_u = urhk_dbCursorOpenWithBind(sv_a)
+        if(lv_u == 0)then
+                CUST.TD.gmainCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(CUST.TD.gmainCurNum)
+        else
+		CUST.TD.odAcct = " "
+ 		sv_u = urhk_SetOrbOut("ODALinkedRec.<rec_0>.AcctId|" + CUST.TD.odAcct) 
+                CUST.TD.isRecYN="N"
+		GOTO ENDSCRIPT
+        endif
+
+        CUST.TD.recNum = 0
+        lv_f = urhk_dbCursorFetch(CUST.TD.gmainCurNum)
+	print(lv_f)
+        if(lv_f !=0)then
+                lv_f = urhk_dbCursorClose(CUST.TD.gmainCurNum)
+                print(lv_f)
+		CUST.TD.odAcct = " "
+ 		sv_u = urhk_SetOrbOut("ODALinkedRec.<rec_0>.AcctId|" + CUST.TD.odAcct) 
+                CUST.TD.isRecYN="N"
+		GOTO ENDSCRIPT
+        else
+                CUST.TD.isRecYN="Y"
+        endif
+
+        while(lv_f ==0)
+	#{
+                CUST.TD.odAcct = BANCS.OUTPARAM.odAcct
+		print(CUST.TD.odAcct)
+                if(CUST.TD.odAcct !="")then
+                        sv_u = urhk_SetOrbOut("ODALinkedRec.<rec_" + CUST.TD.recNum + ">.AcctId|" + CUST.TD.odAcct)
+                endif
+
+                NXTREC:
+                lv_f = urhk_dbCursorFetch(CUST.TD.gmainCurNum)
+                CUST.TD.recNum = cint(CUST.TD.recNum) + 1
+		print(CUST.TD.recNum)
+	#}
+        do
+        lv_f = urhk_dbCursorClose(CUST.TD.gmainCurNum)
+        print(lv_f)
+	########End
+#}
+ENDIF
+
+#}
+ENDIF
+ 
+ENDSCRIPT:
+ TRACE OFF
+ END-->

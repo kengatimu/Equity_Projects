@@ -1,0 +1,81 @@
+CREATE OR REPLACE FUNCTION CUSTOM.CHK_CONTRACT(CATOD_ACCT_NUM IN VARCHAR2,CATOD_OPT IN VARCHAR2,v_bank_id IN VARCHAR2)
+    RETURN VARCHAR2
+IS
+    CATOD_OUT VARCHAR2(1000);
+    CATOD_DB_STAT_DATE TBAADM.GCT.DB_STAT_DATE%TYPE;
+    CATOD_SANC_ID CATOD_SANCTION_TABLE.REQUEST_ID%TYPE;
+    CATOD_MAX_AMT number(22,2);
+    CATOD_MAX_PERIOD CATOD_SANCTION_TABLE.REQ_PERIOD%TYPE;
+    CATOD_REQUEST_ID CATOD_AVAILMENT_TABLE.REQUEST_ID%TYPE;
+BEGIN
+    /* GET DB_STAT_DATE FROM GCT */
+    BEGIN
+        SELECT DB_STAT_DATE INTO CATOD_DB_STAT_DATE FROM TBAADM.GCT WHERE bank_id = v_bank_id;
+    END;
+
+    /* CHECKING ACCOUNT STATUS */
+    BEGIN
+        SELECT custom.GET_ACCT_STATUS(CATOD_ACCT_NUM,v_bank_id) INTO CATOD_OUT FROM DUAL;
+    END;
+
+    IF(CATOD_OUT = 'SUCCESS')THEN
+        /*CHECKING WHETHER THE CUSTOMER IS PRESCORED OR NOT*/
+        BEGIN
+            SELECT 'SUCCESS' INTO CATOD_OUT FROM custom.CATOD_MASTER_TABLE WHERE ACCT_NUM = CATOD_ACCT_NUM AND bank_id = v_bank_id;
+        EXCEPTION WHEN NO_DATA_FOUND THEN
+            IF (CATOD_OPT = '01') THEN
+                CATOD_OUT := '';
+            ELSE
+                CATOD_OUT:='NOT A PRE-SCORED CUSTOMER FOR TOD.';
+            END IF;
+        END;
+        IF(CATOD_OUT = 'SUCCESS') THEN
+            /* CHECK WHETHER ANY CONTRACT IS MADE OR NOT */
+            BEGIN
+                SELECT REQUEST_ID,SANCT_AMT,SANCT_PERIOD INTO CATOD_SANC_ID,CATOD_MAX_AMT,CATOD_MAX_PERIOD FROM custom.CATOD_SANCTION_TABLE
+                WHERE SANCT_DATE <= CATOD_DB_STAT_DATE AND EXPIRY_DATE >= CATOD_DB_STAT_DATE
+                AND ACCT_NUM = CATOD_ACCT_NUM AND STATUS_FLG = 'A' AND IS_DELETED = 'N' AND bank_id = v_bank_id;
+            EXCEPTION WHEN NO_DATA_FOUND THEN
+                CATOD_OUT:= 'FAIL';
+                WHEN TOO_MANY_ROWS THEN
+                CATOD_OUT:= 'FAIL';
+            END;
+
+            IF (CATOD_OUT = 'FAIL') THEN
+
+                IF (CATOD_OPT = '01') THEN
+                    CATOD_OUT := '';
+                ELSE
+                    CATOD_OUT := 'CONTRACT DOES NOT EXIST. CONTACT BRANCH';
+                END IF;
+            ELSE
+                /*CHECKING WHETHER EXISTING OVERDUE TOD IS THERE OR NOT*/
+                BEGIN
+                    SELECT COUNT(0) INTO CATOD_OUT FROM TBAADM.DAT,TBAADM.GAM WHERE DAT.ACID = GAM.ACID AND DAT.DISCRET_ADVN_REGLR_IND ='E'
+                    AND DAT.DEL_FLG='N' AND DAT.ENTITY_CRE_FLG='Y' AND GAM.FORACID = CATOD_ACCT_NUM AND GAM.bank_id = DAT.bank_id AND GAM.bank_id = v_bank_id;
+                END;
+
+                IF (CATOD_OUT > 0) THEN
+                    CATOD_OUT := 'YOU HAVE AN EXPIRED/OVERDUE TOD. NEW TOD ARE NOT ALLOWED';
+                ELSE
+
+                    IF (CATOD_OPT = '01') THEN
+                        /* GETTING MAX AMT AVAILABLE FOR AVAILMENT */
+                        BEGIN
+                            SELECT nvl(custom.GET_MAX_AVL_AMT(CATOD_SANC_ID,CATOD_ACCT_NUM,v_bank_id),0) INTO CATOD_MAX_AMT FROM DUAL;
+                        END;
+
+                        CATOD_OUT:= 'AMOUNT AVAILABLE FOR TOD IS KES.'||CATOD_MAX_AMT;
+                    ELSE
+                        CATOD_OUT:= 'SUCCESS';
+                    END IF;
+
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN CATOD_OUT;
+    
+END CHK_CONTRACT;
+/

@@ -1,0 +1,189 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Name            : chnTTum.com 
+#  Description     : 
+#  Date            : 03-03-2023
+#  Author          : Irungu James
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             03-03-2023      Irungu James          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+set -vx
+
+. `execom commfunc.com`
+
+input="$1"
+input2="$2"
+input3="$3"
+
+echo $input
+echo $input2 
+echo $input3
+
+if [ "$3" == "N" ]
+then
+
+bauu9151 RptGen.sql "$1" "$2"
+
+fi
+
+if [ "$3" == "Y" ]
+then
+
+wd="/finreports/CHNTTUM/"
+cd ${wd}
+CurrentPath=$(pwd)
+echo $CurrentPath
+	
+	usr="CDCI54"
+	echo "set head off;">Report_A.sql
+	echo "set trimspool on;">>Report_A.sql
+	echo "set trimout on;">>Report_A.sql
+	echo "set pages 0;">>Report_A.sql
+	echo "set feedback off;">>Report_A.sql
+	echo "set linesize 32767;">>Report_A.sql
+	echo "set echo off;">>Report_A.sql
+	echo "set long 90000;">>Report_A.sql
+	echo "spool Report_A.TXT;">>Report_A.sql
+	
+	echo " select sub || trim (to_char(Cumm_susp, '9,999,999,999,999.00')) Amts from (select  Sub, sum (CUMMCREDITKES)  Cumm_susp  from 
+		(select decode(subs,'43', 'Drc: ' ,'55' ,'Tz: ', '11','Su: ', '50','Rw: ','54','Ke: '
+		,'56','Ug: ') Sub, CUMMCREDITKES  from custom.wkbookedweekly) group  by  Sub union (select 'Weekly Booked Interest as on: ' 
+		|| '${input}' , null  FROM dual) union select 'Total KES: ' , sum(CUMMCREDITKES) from custom.wkbookedweekly a)  
+		order by case when AMTS like 'Week%' then 0 else Cumm_susp   end; " >> Report_A.sql
+	echo " ">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+
+	echo " select ' ' || chr(13)||chr(10) from  dual ; " >>Report_A.sql
+	echo " ">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+	
+
+	echo " select sub || trim (to_char(Cumm_susp, '9,999,999,999,999.00')) Amts from (select  Sub, sum (CUMMBOOKED)  Cumm_susp  from 
+		(select decode(subs,'43', 'Drc: ' ,'55' ,'Tz: ', '11','Su: ', '50','Rw: ','54','Ke: '
+		,'56','Ug: ') Sub, CUMMBOOKED  from custom.wkcummbooked) group  by  Sub union (select 'Cummulative Booked Interest as on: '
+		|| '${input}' , null  FROM dual) union select 'Total KES: ' , sum(cummbooked) from custom.wkcummbooked a) 
+		order by case when AMTS like 'Cumm%' then 0 else Cumm_susp  end; " >> Report_A.sql
+	echo " ">>Report_A.sql
+	##echo "spool off;">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+
+
+	echo " select chr(13)||chr(10) || 'Weekly Suspended Interest as on: '||'${input}' || chr(13)||chr(10) from  dual ; " >>Report_A.sql
+	echo " ">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+	
+	echo " select  Sub || chr(13)||chr(10)  || 'CR: '|| trim (to_char(SUM(CR_KES),'9,999,999,999,999.00')) || chr(13)||chr(10) || 'DR: '|| trim (to_char(SUM(DR_KES) ,'9,999,999,999,999.00')) || chr(13)||chr(10) ||  'NET: ' || trim (to_char(SUM(NET) ,'9,999,999,999,999.00')) || chr(13)||chr(10)  FROM
+		 (select  decode(subs,'43', 'Equity Drc: ' ,'55' ,'Equity Tz: ', '11','Equity Su: ', '50','Equity Rw: ','54','Equity Ke: ','56', 'Equity Ug: ') Sub , 
+		CR_KES,DR_KES,NET  from custom.wksuspendedweekly ) GROUP BY Sub; " >>Report_A.sql
+	echo " ">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+
+	echo " select   'Total CR: '||  trim (to_char(SUM(CR_KES),'9,999,999,999,999.00'))  || chr(13)||chr(10) ||  'Total DR: '||  trim (to_char(SUM(DR_KES),'9,999,999,999,999.00'))  || chr(13)||chr(10) ||  'Total NET: ' || trim (to_char(SUM(NET) ,'9,999,999,999,999.00'))  
+		from custom.wksuspendedweekly ; " >>Report_A.sql
+	echo " ">>Report_A.sql
+	##echo "spool off;">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+
+
+	echo " select ' ' || chr(13)||chr(10) from  dual ; " >>Report_A.sql
+	echo " ">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql
+
+
+	echo " select sub || trim (to_char(Cumm_susp, '9,999,999,999,999.00')) Amts from (select  Sub, sum (CUMMCREDITKES)  Cumm_susp  from 
+		(select decode(subs,'43', 'Drc: ' ,'55' ,'Tz: ', '11','Su: ', '50','Rw: ','54','Ke: '
+		,'56','Ug: ') Sub, CUMMCREDITKES  from custom.wkcummsusp)group  by  Sub union(select 'Cummulative Suspended Interest as on: ' 
+		||'${input}', null  FROM dual) union select 'Total KES: ' , sum(CUMMCREDITKES) from custom.wkcummsusp a)  
+		order by case when AMTS like 'Cumm%' then 0 else Cumm_susp end; " >>Report_A.sql
+
+	echo " ">>Report_A.sql
+	echo "spool off;">>Report_A.sql
+	sleep 1
+	exebatch bauu9151 Report_A.sql	
+
+
+
+	echo "set head off;">Report_B.sql
+	echo "set trimspool on;">>Report_B.sql
+	echo "set trimout on;">>Report_B.sql
+	echo "set pages 0;">>Report_B.sql
+	echo "set feedback off;">>Report_B.sql
+	echo "set linesize 32767;">>Report_B.sql
+	echo "set echo off;">>Report_B.sql
+	echo "set long 90000;">>Report_B.sql
+	echo "spool Report_B.TXT;">>Report_B.sql
+	echo " select chr(13)||chr(10) || '                                Highest Booked Weekly: '||'${input}' from  dual ; " >>Report_B.sql
+	echo " ">>Report_B.sql
+	sleep 1
+	exebatch bauu9151 Report_B.sql
+	
+	echo " select acct_number ||' ' || acct_name ||  chr(13) ||chr(10) ||  sub  ||  sol_id  || ' ' || sol_desc   ||  chr(13) ||chr(10)  || trim (to_char(total_booked, '9,999,999,999.00'))  ||  chr(13) ||chr(10) ||tran_particulars
+		||  chr(13) ||chr(10) ||tran_date   ||  chr(13) ||chr(10)  || main_class || ' ' || sub_class   from 
+		(select decode(sub,'43', 'Drc: ' ,'55' ,'Tz: ', '11','Su: ', '50','Rw: ','54','Ke: '
+		,'56','Ug: ') Sub , acct_number,acct_name,sol_id,(select sol_desc from tbaadm.sol where sol.sol_id=wkhighestbooked.sol_id) sol_desc,total_booked,tran_particulars,tran_date,main_class,sub_class 
+		from custom.wkhighestbooked where acct_number not in (select acct_number from custom.wkhighestsuspended
+		where wkhighestsuspended.acct_number= wkhighestbooked.acct_number and total_suspended=total_booked)   order by sub) ; " >>Report_B.sql
+	echo " ">>Report_B.sql
+	sleep 1
+	exebatch bauu9151 Report_B.sql	
+
+	echo " select chr(13)||chr(10) || '                                Highest Suspended : '||'${input}' || chr(13)||chr(10) from  dual ; " >>Report_B.sql
+	echo " ">>Report_B.sql
+	sleep 1
+	exebatch bauu9151 Report_B.sql
+	
+	echo "select acct_number ||' ' || acct_name ||  chr(13) ||chr(10) ||  sub  ||  sol_id  || ' ' || sol_desc   ||  chr(13) ||chr(10)  || trim (to_char(TOTAL_SUSPENDED, '9,999,999,999.00'))  ||  chr(13) ||chr(10) ||tran_particulars
+		||  chr(13) ||chr(10) ||tran_date   ||  chr(13) ||chr(10)  || main_class || ' ' || sub_class   from 
+		(select decode(sub,'43', 'Drc: ' ,'55' ,'Tz: ', '11','Su: ', '50','Rw: ','54','Ke: '
+		,'56','Ug: ') Sub , acct_number,acct_name,sol_id,(select sol_desc from tbaadm.sol where sol.sol_id=wkhighestsuspended.sol_id) sol_desc,TOTAL_SUSPENDED,tran_particulars,tran_date,main_class,sub_class 
+		from custom.wkhighestsuspended where acct_number not in (select acct_number from custom.highestbooked
+		where wkhighestsuspended.acct_number=highestbooked.acct_number and total_suspended=total_booked)   order by sub); " >>Report_B.sql
+	echo " ">>Report_B.sql
+	echo "spool off;">>Report_B.sql
+	sleep 1
+	exebatch bauu9151 Report_B.sql	
+
+	
+/etc/b2k/EQPROD/FINCORE/54/com/commonenv.com
+echo $FIN_BANK_ID
+frmmail="Info@equitybank.co.ke"
+tomail="john.wamai@equitybank.co.ke,irungu.james@equitybank.co.ke,peter.mwai@equitybank.co.ke"
+#tomail="petermwai@outlook.com,irungu.james@equitybank.co.ke,peter.mwai@equitybank.co.ke"
+#tomail="irungu.james@equitybank.co.ke"
+wd="/finreports/CHNTTUM/"
+cd ${wd}
+datr="Report_A.TXT"
+RptA=`cat Report_A.TXT`
+RptB=`cat Report_B.TXT`
+subject="Production Daily Report"
+(
+echo "From: ${frmmail}"
+echo "To: ${tomail}"
+echo "Subject: ${subject}"
+echo "MIME-Version: 1.0"
+echo "PFA PROD REPORT,"
+echo " "
+echo "${RptA}"
+echo "${RptB}"
+echo " "
+echo "This is a Production auto generated email."
+#echo "Please do not reply,Contact Your Equity Bank branch in case of any query"
+#echo "Sincerely,"
+#echo "Equity Bank(Kenya)Limited. email:info@equitybank.co.ke Tel:+254763063000"
+#echo "www.facebook.com/KeEquityBank www.twitter.com/KeEquityBank www.ke.equitybankgroup.com"
+##uuencode ${wd}${Report_A.TXT} $(basename ${wd}${Report_A.TXT})
+) | /usr/sbin/sendmail  ${tomail}
+
+
+fi
+
+exit 0
+

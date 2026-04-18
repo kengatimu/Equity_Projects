@@ -1,0 +1,190 @@
+#--------------------------------------------------------------------------------------
+#   Script for creation of Trade Finance Charge Collection Transaction.
+#--------------------------------------------------------------------------------------
+<--START
+CHECKSUM="d91c0393bb3bc968ff62428f602ff697b503c14972e084f025197eee862663ce"
+	TRACE ON
+	
+	BANCS.OUTPUT.scriptError = ""
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	IF(sv_r != 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.scriptError = "urhk_MTTS_PopulateInputDetails returns FAILURE"
+		exitscript
+	#}
+	ENDIF
+	
+	MTT.TranDetails.TranDate="0"
+	MTT.TranDetails.TranType=MTT.InputDetails.TranType
+	MTT.TranDetails.TranSubType=MTT.InputDetails.TranSubType
+	MTT.TranDetails.Remarks=MTT.InputDetails.Remarks
+	MTT.TranDetails.IgnoreExcp="I"
+	IF(MTT.InputDetails.isTodReq == "Y") THEN
+	#{
+		MTT.TranDetails.Consolidate="N"
+		#}
+	ELSE
+		#{
+		MTT.TranDetails.Consolidate="Y"
+	#}
+	ENDIF
+	MTT.TranDetails.PrintAdviceInd="B"
+	MTT.TranDetails.TranID = MTT.InputDetails.TranId
+	
+	
+	sv_s="bacid|SELECT cash_bacid FROM GCT where BANK_ID = ?SVAR "
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	sv_u=urhk_dbSelectWithBind(sv_s)
+	
+	sv_b=BANCS.OUTPARAM.bacid
+	sv_o = LTRIM(RTRIM(MTT.InputDetails.ChrgCreditAcct))
+	sv_u=urhk_getAcctDetailsInRepository(sv_o)
+	sv_k=BANCS.OUTPARAM.acctCrncyCode
+	
+	sv_o = LTRIM(RTRIM(MTT.InputDetails.ChrgDebitAcct))
+	sv_u=urhk_getAcctDetailsInRepository(sv_o)
+	sv_n=BANCS.OUTPARAM.acctCrncyCode
+	
+	IF ((BANCS.OUTPARAM.acctOwnerShip == "O") AND (BANCS.OUTPARAM.acctPlaceHolder == sv_b)) THEN
+	#{
+		IF(sv_k == sv_n) THEN
+		#{
+			MTT.TranDetails.TranType="C"
+			MTT.TranDetails.TranSubType="CT"
+			#}
+		ELSE
+			#{
+			MTT.TranDetails.TranType="C"
+			MTT.TranDetails.TranSubType="CR"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	sv_r = urhk_MTTS_DefineTransaction("ChrgCollTran")
+	IF(sv_r != 0) THEN
+	#{
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		exitscript
+	#}
+	ENDIF
+	WHILE( sv_r == 0)
+	#{
+		sv_t = CDOUBLE(MTT.InputDetails.CurrChrgAmtColl)
+PRINT(MTT.InputDetails.EventId)
+		# Creation of CR transaction
+		#{
+		MTT.PartTranDetails.Account = MTT.InputDetails.ChrgCreditAcct
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.CrncyCode
+		MTT.PartTranDetails.Particulars = MTT.InputDetails.EntityId + ":" + MTT.InputDetails.TranParticulars
+		MTT.PartTranDetails.ReportCode = MTT.InputDetails.ReportCode
+		MTT.PartTranDetails.RefAmount = sv_t
+		MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+		MTT.PartTranDetails.Rate = MTT.InputDetails.Rate
+		MTT.PartTranDetails.Consolidate = "N"
+		MTT.PartTranDetails.TranIdentifier = "ChrgCollTran"
+		MTT.PartTranDetails.Remarks = MTT.InputDetails.Remarks
+		MTT.PartTranDetails.PTranBusinessType = MTT.InputDetails.PTranBusType
+		IF(MTT.PartTranDetails.PTranBusinessType == "") THEN
+		#{
+			MTT.PartTranDetails.PTranBusinessType="CREDIT"
+		#}
+		ENDIF
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.AcPartB2kId
+		MTT.PartTranDetails.ACPARTB2kType=MTT.InputDetails.AcpartB2kType
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime
+		IF(MTT.InputDetails.DebitChrgRecvbleAcctFlg != "Y") THEN
+		#{
+			MTT.ChargeDetails.EventType = MTT.InputDetails.EventType
+			MTT.ChargeDetails.EventId = MTT.InputDetails.EventId
+			MTT.ChargeDetails.IsCxlEntryReqd = "N"
+			sv_a=CDOUBLE(MTT.InputDetails.SysCalcChrg)
+			sv_b=CDOUBLE(MTT.InputDetails.CurrChrgAmtColl)
+			MTT.ChargeDetails.CalculatedAmount =sv_a
+			MTT.ChargeDetails.ActualAmount = sv_b
+			MTT.ChargeDetails.CollectionCrncy = MTT.InputDetails.CrncyCode
+			MTT.ChargeDetails.ChargeCustId =  MTT.InputDetails.CustId
+			MTT.ChargeDetails.TargetAcctId = MTT.InputDetails.ChrgDebitAcct
+			MTT.ChargeDetails.ServiceSolId  = MTT.InputDetails.SolId
+			MTT.ChargeDetails.PtranBusType=MTT.InputDetails.PTranBusType
+			#            if( MTT.InputDetails.CompB2kIdType == "FWC") then
+			#                MTT.ChargeDetails.SrlNum = MTT.InputDetails.SrlNum
+			#            endif
+			sv_z = urhk_MTTS_DefineChargePartTran("CREDIT")
+			#}
+		ELSE
+			#{
+			sv_z = urhk_MTTS_DefinePartTran("CREDIT")
+		#}
+		ENDIF
+		print(sv_z)
+		IF (sv_z != 0) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+		
+		# Creation of DR transaction
+		#{
+		print(MTT.InputDetails.ChrgDebitAcct)
+		MTT.PartTranDetails.Account = MTT.InputDetails.ChrgDebitAcct
+		MTT.PartTranDetails.RefCurrency = MTT.InputDetails.CrncyCode
+		MTT.PartTranDetails.Particulars = MTT.InputDetails.EntityId + ":" +  MTT.InputDetails.TranParticulars
+		MTT.PartTranDetails.RefAmount = -sv_t
+		MTT.PartTranDetails.RateCode = MTT.InputDetails.RateCode
+		MTT.PartTranDetails.Rate = MTT.InputDetails.Rate
+		MTT.PartTranDetails.Consolidate = "Y"
+		MTT.PartTranDetails.TranIdentifier = "ChrgCollTran"
+		MTT.PartTranDetails.Remarks = MTT.InputDetails.Remarks
+		MTT.PartTranDetails.PTranBusinessType = MTT.InputDetails.PTranBusType
+		MTT.PartTranDetails.EntryUserId=MTT.InputDetails.EntryUserId
+		MTT.PartTranDetails.EntryTime=MTT.InputDetails.EntryTime
+		IF(MTT.PartTranDetails.PTranBusinessType == "") THEN
+		#{
+			MTT.PartTranDetails.PTranBusinessType="DEBIT"
+		#}
+		ENDIF
+		MTT.PartTranDetails.TODRefType   	= "IN"
+		MTT.PartTranDetails.TodEntityType  	= "TODIN"
+		MTT.PartTranDetails.TodEntityId    	= MTT.InputDetails.EntityId
+		MTT.PartTranDetails.TodLevIntFlg  	= "N"
+		MTT.PartTranDetails.TodExpiryDate 	= BANCS.STDIN.BODDate
+		MTT.PartTranDetails.TodPenalDate  	= BANCS.STDIN.BODDate
+		MTT.PartTranDetails.TodPermittedBy 	= "SYSTEM"
+		MTT.PartTranDetails.TodRemarks    	= "Auto Renewal Charges TOD"
+		MTT.PartTranDetails.Consolidate     = "N"
+		
+		MTT.PartTranDetails.ACPARTB2kId=MTT.InputDetails.AcPartB2kId
+		MTT.PartTranDetails.ACPARTB2kType=MTT.InputDetails.AcpartB2kType
+		sv_z = urhk_MTTS_DefinePartTran("DEBIT")
+		print(sv_z)
+		IF (sv_z != 0) THEN
+		#{
+			BANCS.OUTPUT.successOrFailure = "F"
+			BANCS.OUTPUT.scriptError = "urhk_MTTS_DefinePartTran returns FAILURE"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+		sv_r = urhk_MTTS_PopulateInputDetails("")
+	#}
+	DO
+	#}
+	sv_z = urhk_MTTS_EndDefinition("")
+	IF (sv_z != 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.scriptError = "urhk_MTTS_EndDefinition returns FAILURE"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	ENDOFSCRIPT:
+		exitscript
+		TRACE OFF
+END-->

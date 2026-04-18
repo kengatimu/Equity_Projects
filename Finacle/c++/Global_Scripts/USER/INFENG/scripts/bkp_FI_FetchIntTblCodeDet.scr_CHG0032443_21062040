@@ -1,0 +1,323 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : FI_TellerAccts.scr
+#  Description     : fetchs interest table code details(SB)
+#  Date            : 23-03-2023
+#  Author          : James Maina
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-03-2023      James Maina		Original Version
+#-----------------------------------------------------------------------------------------------
+
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "INT")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "INT", 5)
+	#}
+	ENDIF
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("CRNCYCODE"))== 0) ) THEN
+	#{
+   		CUST.INT.errMsg="please enter CRNCYCODE"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.INT.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("SCHMCODE"))== 0) ) THEN
+	#{
+   		CUST.INT.errMsg="please enter SCHMCODE"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.INT.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+	#---------------------------------------------------------------------------------------------------------------
+	# Variable Initialization
+	#---------------------------------------------------------------------------------------------------------------
+	CUST.INT.CRNCYCODE= BANCS.INPUT.CRNCYCODE
+	print(CUST.INT.CRNCYCODE)	
+	CUST.INT.SCHMCODE= BANCS.INPUT.SCHMCODE
+	print(CUST.INT.SCHMCODE)
+	#----------------------------------------------------------------------------------------------
+	# validating the scheme code 
+	#----------------------------------------------------------------------------------------------
+	sv_s="schmType|"
+	sv_s = sv_s + "SELECT SCHM_TYPE FROM TBAADM.GSP WHERE "
+	sv_s = sv_s + "BANK_ID=?SVAR AND SCHM_CODE=?SVAR"
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + CUST.INT.SCHMCODE
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+
+	IF(sv_d==0)THEN
+	#{
+		CUST.INT.schmType= BANCS.OUTPARAM.schmType
+		PRINT(CUST.INT.schmType)
+		IF(CUST.INT.schmType !="SBA")THEN
+		#{
+   			CUST.INT.errMsg="Only SBA scheme code allowed."
+			sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+			sv_t = "MSG | " +CUST.INT.errMsg
+			sv_u = urhk_SetOrbOut(sv_t)
+   			GOTO ENDSCRIPT
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+   		CUST.INT.errMsg="The scheme code is invalid."
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "MSG | " +CUST.INT.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF
+
+	#----------------------------------------------------------------------------------------------
+	# Get interest table code
+	#----------------------------------------------------------------------------------------------
+	sv_s="intTblCode|"
+	sv_s = sv_s + "select INT_TBL_CODE FROM TBAADM.CSP WHERE  "
+	sv_s = sv_s + "schm_code =?SVAR AND crncy_code =?SVAR AND bank_id=?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  CUST.INT.SCHMCODE+ "|" + CUST.INT.CRNCYCODE+ "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+
+	IF(sv_d==0)THEN
+	#{
+		CUST.INT.intTblCode= BANCS.OUTPARAM.intTblCode
+		PRINT(CUST.INT.intTblCode)
+		#----------------------------------------------------------------------------------------------
+		# fetching interest versions
+		#----------------------------------------------------------------------------------------------
+		sv_s="tblcode, intversion,crncycode,startdate,enddate,moduleid |"
+		sv_s=sv_s + "SELECT ICV.int_tbl_code,ICV.int_version,ICV.crncy_code,TO_CHAR(ICV.start_date,'DD-MM-YYYY'),TO_CHAR(ICV.end_date,'DD-MM-YYYY'),ICV.module_id "
+		sv_s=sv_s + "FROM TBAADM.ICV WHERE "
+		sv_s=sv_s + "1 = 1 AND del_flg != 'Y' "
+		sv_s=sv_s + "AND int_tbl_code=?SVAR AND module_id='I' "
+		sv_s=sv_s + "AND crncy_code =?SVAR AND ICV.entity_cre_flg='Y' "
+		sv_s=sv_s + "AND bank_id =?SVAR "
+		sv_s=sv_s + "ORDER BY int_version DESC OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY" 
+		print(sv_s)    
+
+		BANCS.INPARAM.BINDVARS = CUST.INT.intTblCode+ "|" + CUST.INT.CRNCYCODE+ "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_v = urhk_dbcursorOpenWithBind(sv_s)
+       		PRINT(sv_v)	
+		IF(sv_v == 0) THEN
+       	 	#{
+        		CUST.INT.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+       			print(CUST.INT.CURSOR_NUMBER)
+       			sv_b = urhk_dbCursorFetch(CUST.INT.CURSOR_NUMBER)
+        		print(sv_b)
+			sv_i=1
+			print(sv_i)
+
+			WHILE(sv_b == "0")
+        		#{
+				CUST.INT.tblcode= BANCS.OUTPARAM.tblcode
+				print(CUST.INT.tblcode)
+				CUST.INT.intversion= BANCS.OUTPARAM.intversion
+				print(CUST.INT.intversion)
+				CUST.INT.crncycode= BANCS.OUTPARAM.crncycode
+				print(CUST.INT.crncycode)
+				CUST.INT.startdate= BANCS.OUTPARAM.startdate
+				print(CUST.INT.startdate)
+				CUST.INT.enddate= BANCS.OUTPARAM.enddate
+				print(CUST.INT.enddate)
+				CUST.INT.moduleid = BANCS.OUTPARAM.moduleid
+				print(CUST.INT.moduleid)
+
+				#----------------------------------------------------------------------------------------------
+				# Sending response
+				#----------------------------------------------------------------------------------------------
+				sv_t = urhk_SetOrbOut("SuccessOrFailure|Success")
+				#sv_t = "IntVersion.<rec_1>.tblcode| " + CUST.INT.tblcode
+				sv_z = "IntVersionDetails_"+ FORMAT$(sv_i,"%d")
+				print(sv_z)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.IntTblCode| " + CUST.INT.tblcode
+				sv_u = urhk_SetOrbOut(sv_t)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.intversion| " + CUST.INT.intversion
+				sv_u = urhk_SetOrbOut(sv_t)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.crncycode| " + CUST.INT.crncycode
+				sv_u = urhk_SetOrbOut(sv_t)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.startdate| " + CUST.INT.startdate
+				sv_u = urhk_SetOrbOut(sv_t)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.enddate| " + CUST.INT.enddate
+				sv_u = urhk_SetOrbOut(sv_t)
+                      		sv_t = sv_z+".<rec_" + FORMAT$(sv_i,"%d") + ">.moduleid| " + CUST.INT.moduleid
+				sv_u = urhk_SetOrbOut(sv_t)
+
+				#----------------------------------------------------------------------------------------------
+				# Fetch credit details
+				#----------------------------------------------------------------------------------------------
+				sv_s = "delflg, beginslabamt,endslabamt,normalIndicator,normalpcnt|select del_flg, TO_CHAR(begin_slab_amt), "
+				sv_s = sv_s + "TO_CHAR(end_slab_amt), nrml_portion_ind, TO_CHAR(nrml_int_pcnt) "
+				sv_s = sv_s + "FROM tbaadm.IVS  WHERE "
+				sv_s = sv_s + "int_tbl_code=?SVAR AND crncy_code =?SVAR "
+				sv_s = sv_s + "AND int_tbl_ver_num=?SVAR AND int_slab_dr_cr_flg ='C' AND bank_id =?SVAR "
+		
+				BANCS.INPARAM.BINDVARS =  CUST.INT.tblcode + "|" + CUST.INT.crncycode + "|" + CUST.INT.intversion + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_v = urhk_dbcursorOpenWithBind(sv_s)
+       				PRINT(sv_v)     	
+
+				IF(sv_v == 0) THEN
+       	 			#{
+        				CUST.INT.C_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+       					print(CUST.INT.C_NUMBER)
+       					sv_y = urhk_dbCursorFetch(CUST.INT.C_NUMBER)
+        				print(sv_y)
+					sv_k=1
+					print(sv_k)
+					WHILE(sv_y == "0")
+        				#{
+						CUST.INT.delflg= BANCS.OUTPARAM.delflg
+						print(CUST.INT.delflg)
+						CUST.INT.beginslabamt= BANCS.OUTPARAM.beginslabamt
+						print(CUST.INT.beginslabamt)
+						CUST.INT.endslabamt= BANCS.OUTPARAM.endslabamt
+						print(CUST.INT.endslabamt)
+						CUST.INT.normalIndicator= BANCS.OUTPARAM.normalIndicator
+						print(CUST.INT.normalIndicator)
+						CUST.INT.normalpcnt= BANCS.OUTPARAM.normalpcnt
+						print(CUST.INT.normalpcnt)
+						
+						sv_q = FORMAT$(sv_k,"%d")
+
+                      				sv_t = sv_z+".CreditDetails.record_"+sv_q+".<rec_" + FORMAT$(sv_i,"%d") + ">.BeginSlabAmt| " + CUST.INT.beginslabamt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".CreditDetails.record_"+sv_q+".<rec_" + FORMAT$(sv_i,"%d") + ">.EndSlabAmt| " + CUST.INT.endslabamt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".CreditDetails.record_"+sv_q+".<rec_" + FORMAT$(sv_i,"%d") + ">.NormalInterest| " + CUST.INT.normalpcnt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".CreditDetails.record_"+sv_q+".<rec_" + FORMAT$(sv_i,"%d") + ">.Delflg| " + CUST.INT.delflg
+						sv_u = urhk_SetOrbOut(sv_t)
+
+						sv_k = sv_k + 1 
+       						sv_y = urhk_dbCursorFetch(CUST.INT.C_NUMBER)
+       						print(sv_y)
+					#}
+					DO
+					sv_x = urhk_dbCursorClose(CUST.INT.C_NUMBER)
+        				print(sv_x)
+				#}
+				ENDIF
+
+				#----------------------------------------------------------------------------------------------
+				# Fetch Debit details
+				#----------------------------------------------------------------------------------------------
+				sv_s = "ddelflg, dbeginslabamt,dendslabamt,dnormalIndicator,dnormalpcnt,dpenalInt,daddInt,dstockstInt,dQISint|select del_flg, TO_CHAR(begin_slab_amt), "
+				sv_s = sv_s + "TO_CHAR(end_slab_amt), nrml_portion_ind, TO_CHAR(nrml_int_pcnt), "
+				sv_s = sv_s + "TO_CHAR(penal_int_pcnt),TO_CHAR(clean_int_pcnt),TO_CHAR(chore_int_pcnt),TO_CHAR(qis_int_pcnt) "
+				sv_s = sv_s + "FROM tbaadm.IVS  WHERE "
+				sv_s = sv_s + "int_tbl_code=?SVAR AND crncy_code =?SVAR "
+				sv_s = sv_s + "AND int_tbl_ver_num=?SVAR AND int_slab_dr_cr_flg ='D' AND bank_id =?SVAR "
+		
+				BANCS.INPARAM.BINDVARS =  CUST.INT.tblcode + "|" + CUST.INT.crncycode + "|" + CUST.INT.intversion + "|" + BANCS.STDIN.contextBankId
+				PRINT(BANCS.INPARAM.BINDVARS)
+				sv_v = urhk_dbcursorOpenWithBind(sv_s)
+       				PRINT(sv_v)     	
+
+				IF(sv_v == 0) THEN
+       	 			#{
+        				CUST.INT.D_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+       					print(CUST.INT.D_NUMBER)
+       					sv_f = urhk_dbCursorFetch(CUST.INT.D_NUMBER)
+        				print(sv_f)
+					sv_e=1
+					print(sv_e)
+					WHILE(sv_f == "0")
+        				#{
+						CUST.INT.ddelflg= BANCS.OUTPARAM.ddelflg
+						print(CUST.INT.ddelflg)
+						CUST.INT.dbeginslabamt= BANCS.OUTPARAM.dbeginslabamt
+						print(CUST.INT.dbeginslabamt)
+						CUST.INT.dendslabamt= BANCS.OUTPARAM.dendslabamt
+						print(CUST.INT.dendslabamt)
+						CUST.INT.dnormalpcnt= BANCS.OUTPARAM.dnormalpcnt
+						print(CUST.INT.dnormalpcnt)
+						CUST.INT.dpenalInt= BANCS.OUTPARAM.dpenalInt
+						print(CUST.INT.dpenalInt)
+						CUST.INT.daddInt= BANCS.OUTPARAM.daddInt
+						print(CUST.INT.daddInt)
+						CUST.INT.dstockstInt= BANCS.OUTPARAM.dstockstInt
+						print(CUST.INT.dstockstInt)
+						CUST.INT.dQISint= BANCS.OUTPARAM.dQISint
+						print(CUST.INT.dQISint)
+
+						
+						sv_g = FORMAT$(sv_e,"%d")
+
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.BeginSlabAmt| " + CUST.INT.dbeginslabamt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.EndSlabAmt| " + CUST.INT.dendslabamt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.NormalInterest| " + CUST.INT.dnormalpcnt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.PenalInterest| " + CUST.INT.dpenalInt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.AddationalInterest| " + CUST.INT.daddInt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.StockStatementInterest| " + CUST.INT.dstockstInt
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".Debitdetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.QISInterest| " + CUST.INT.dQISint
+						sv_u = urhk_SetOrbOut(sv_t)
+                      				sv_t = sv_z+".CreditDetails.record_"+sv_g+".<rec_" + FORMAT$(sv_i,"%d") + ">.Delflg| " + CUST.INT.ddelflg
+						sv_u = urhk_SetOrbOut(sv_t)
+
+						sv_e = sv_e + 1 
+       						sv_f = urhk_dbCursorFetch(CUST.INT.D_NUMBER)
+       						print(sv_f)
+					#}
+					DO
+					sv_x = urhk_dbCursorClose(CUST.INT.D_NUMBER)
+        				print(sv_x)
+				#}
+				ENDIF
+
+				sv_i = sv_i + 1 
+       				sv_b = urhk_dbCursorFetch(CUST.INT.CURSOR_NUMBER)
+       				print(sv_b)
+			#}
+			DO
+			sv_x = urhk_dbCursorClose(CUST.INT.CURSOR_NUMBER)
+        		print(sv_x)
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+   		CUST.INT.errMsg="No interest table code found for this schmcode"
+		sv_t = urhk_SetOrbOut("SuccessOrFailure|Failed")
+		sv_t = "ERROR | " +CUST.INT.errMsg
+		sv_u = urhk_SetOrbOut(sv_t)
+   		GOTO ENDSCRIPT
+	#}
+	ENDIF 
+
+ENDSCRIPT:
+trace off
+END-->
+

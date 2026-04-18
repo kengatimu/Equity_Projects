@@ -1,0 +1,107 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Name                   : ebCola 
+#   Date                   : 29-Jul-2019
+#   Description            :
+#   JobId                  : ECOLA
+#   Input                  :
+#   Output                 :
+#   Author                 : Vino Palani
+#   Called Script          : 
+#   IM317477
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#   Modification History   :
+#
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+	sv_a = "rm -f ecola.list" 
+	sv_a = system(sv_a)
+	sv_a = "touch ecola.list" 
+	sv_a = system(sv_a)
+	sv_d = "acctNum | select gam.foracid "
+	sv_d = sv_d +  "from tbaadm.gam,tbaadm.cot " 
+	sv_d = sv_d +  "where gam.bank_id=?SVAR "
+	sv_d = sv_d +  "and gam.acid = cot.acid "
+	sv_d = sv_d +  "and cot.entity_cre_flg='Y' "
+	sv_d = sv_d +  "and cot.del_flg='N' "
+	sv_d = sv_d +  "and cot.chrge_off_date is null "
+	sv_d = sv_d +  "and cot.bank_id=?SVAR "
+	##sv_d = sv_d +  "and gam.sol_id in (select sol_id from tbaadm.sst where set_id=?SVAR and bank_id=?SVAR )"
+	sv_d = sv_d +  "and gam.sol_id in (select sol_id from tbaadm.sst where set_id='ALL' and bank_id=?SVAR )"
+	sv_d = sv_d +  "and gam.entity_cre_flg='Y' and gam.del_flg='N'  and gam.clr_bal_amt <=1 "
+	sv_d = sv_d +  "and gam.schm_type = 'LAA' "
+	sv_d = sv_d +  "and gam.acct_cls_flg <> 'Y' "
+	sv_d = sv_d +  "and gam.acct_cls_date is null "
+	#09/08/2019
+	sv_d = sv_d + "and exists ( select 1 from custom.int_change where CUST_PREF='COFF' "
+        sv_d = sv_d + "and foracid =gam.foracid and bank_id='"+BANCS.STDIN.contextBankId+"' "
+        sv_d = sv_d + "and ENTITY_CRE_FLG ='I') "
+#	sv_d = sv_d + "and exists ( select 1 from custom.eb_coff_recov where module_id='COFF' "
+#	sv_d = sv_d + "and foracid=gam.foracid and bank_id='"+BANCS.STDIN.contextBankId+"' "
+#	sv_d = sv_d + "and record_status='I' and del_flg<>'Y' and srv_msg is null) " 
+	#++++++++++
+	print(sv_d)
+	##BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId+"|"+BANCS.STDIN.mySolId+"|"+BANCS.STDIN.contextBankId
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+BANCS.STDIN.contextBankId+"|"+BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_u = urhk_dbCursorOpenWithBind(sv_d)
+	if(sv_u==0)then
+		EQSRV.GLBDATA.coladCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	else
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+	endif
+        EQSRV.GLBDATA.coladrec = 0
+	sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.coladCurNum)
+        if(sv_z!=0)then
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto VAYU
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+	##{
+		sv_a = BANCS.OUTPARAM.acctNum
+		sv_q = "echo '" + sv_a + "' >> ecola.list"
+                print(sv_q)
+                sv_s = system(sv_q)
+                print(sv_s)
+                sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.coladCurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.coladCurNum)
+                        print(sv_u)
+                        EQSRV.GLBDATA.srvErrMsg =  "Cota Cursor Fetch Failed"
+                        EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                        EQSRV.GLBDATA.srvSucFail = "F"
+                        goto VAYURUN
+                endif
+                EQSRV.GLBDATA.coladrec = cint(EQSRV.GLBDATA.coladrec) + 1
+                EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.coladrec
+                print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.coladCurNum)
+        print(sv_u)
+	VAYURUN:
+        sv_s = "echo $B2K_SESSION_ID"
+	sv_n = "8"
+        sv_a = "nohup exebatch -n "+sv_n+" -i ecola.list babx4061 $B2K_SESSION_ID b_hcolaVerify.scr @s"
+        sv_r = system(sv_a)
+        print(sv_r)	
+VAYU:	
+	exitscript
+trace off
+end-->

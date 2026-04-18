@@ -1,0 +1,167 @@
+#------------------------------------------------------------------------------------------------    
+#    Name		: b_usdVisaSweep.scr
+#    Description	: The script is used for zerorizing the Visa USD charges to SSP income GL. 
+#    Date		: 20-06-2017
+#    Author		: Timothy K
+#    Input		: NA
+#    Output		: NA
+#    Called Script	: NA
+#    Calling Script	: getcparamvalue.scr
+#    Menu Option	: HSCOD
+#    Srl. No		Date			Author			Description.   
+#    ------		----------		-------			---------------			
+#    1.0		20-06-2017		Timothy K			Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","SVISA") == 0) THEN
+#{
+	CREATECLASS("CUST","SVISA",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.SVISA.errMsg = ""
+CUST.SVISA.drAct = "" 
+CUST.SVISA.drAmt = "" 
+
+BANCS.INPUT.moduleName = "ZEROISTN"
+BANCS.INPUT.parameterId = "SVISA_DRACT"
+CALL("getcparamvalue.scr")
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+	CUST.SVISA.drAct = BANCS.STDIN.mySolId + BANCS.OUTPUT.parameterVal
+	print(CUST.SVISA.drAct)
+#}
+ELSE
+#{
+	CUST.SVISA.errMsg = "CPARAM setup not done for Debit account number"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SVISA_EVENT"
+CALL("getcparamvalue.scr")
+IF(BANCS.OUTPUT.parameterVal != "")THEN
+#{
+	CUST.SVISA.eventId =  BANCS.OUTPUT.parameterVal
+	print(CUST.SVISA.eventId)
+#}
+ELSE
+#{
+	CUST.SVISA.errMsg = "CPARAM setup not done for Credit account number"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#CUST.SVISA.drAct = "2011300151478"
+#CUST.SVISA.crAct = "2011650050152"
+
+print(CUST.SVISA.drAct)
+
+#------------------------------------------------------------------
+#  Getting account to debit amount in USD
+#------------------------------------------------------------------
+
+sv_s = "clearBalance |SELECT clr_bal_amt "
+sv_s = sv_s + "FROM TBAADM.GAM "
+sv_s = sv_s + "WHERE bank_id = ?SVAR "
+sv_s = sv_s + "AND  foracid = ?SVAR "
+sv_s = sv_s + "AND entity_cre_flg ='Y' "
+sv_s = sv_s + "AND acct_cls_flg ='N' "
+sv_s = sv_s + "AND del_flg ='N' "
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.SVISA.drAct
+
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+
+IF (sv_d == 0)THEN
+#{
+	CUST.SVISA.usddrAmt = BANCS.OUTPARAM.clearBalance
+	print(CUST.SVISA.usddrAmt)
+#}
+ELSE
+#{
+	CUST.SVISA.usddrAmt = "0" 
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#------------------------------------------------------------------
+#  Getting rate to convert amount from USD to SSP
+#------------------------------------------------------------------
+sv_s = "rateAmt|select VAR_CRNCY_UNITS "
+sv_s = sv_s + "FROM TBAADM.rtl "
+sv_s = sv_s + "WHERE bank_id = ?SVAR "
+sv_s = sv_s + "and FXD_CRNCY_CODE = 'USD' "
+sv_s = sv_s + "and VAR_CRNCY_CODE = ?SVAR "
+sv_s = sv_s + "and ratecode = 'TTB' "
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.homeCrncyCode
+
+sv_d = urhk_dbSelectWithBind(sv_s)
+print(sv_d)
+
+IF (sv_d == 0)THEN
+#{
+	CUST.SVISA.rateAmt = BANCS.OUTPARAM.rateAmt
+	print(CUST.SVISA.rateAmt)
+#}
+ELSE
+#{
+	CUST.SVISA.rateAmt = "1" 
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+	IF (CDOUBLE(CUST.SVISA.usddrAmt) != 0) THEN
+	#{
+		CUST.SVISA.drAmt = CDOUBLE(CUST.SVISA.usddrAmt) * cdouble(CUST.SVISA.rateAmt)
+		print(CUST.SVISA.drAmt)
+		#------------------------------------------------------------------
+		#  Calling gcharge common services for USD charges sweep
+		#------------------------------------------------------------------
+		CUST.GCHRG.drAcctId		= CUST.SVISA.drAct
+		CUST.GCHRG.acctCrncyCode	= BANCS.STDIN.homeCrncyCode
+		CUST.GCHRG.eventId		= CUST.SVISA.eventId
+		CUST.GCHRG.chrgAmt		= CUST.SVISA.drAmt + "|" + BANCS.STDIN.homeCrncyCode
+		CUST.GCHRG.tranType		= "T"
+		CUST.GCHRG.tranSubType		= "BI"
+
+		CALL("gchrgcommon.scr")
+
+		IF(CUST.GCHRG.successOrFailure == "S") THEN
+		#{
+			print(CUST.GCHRG.tranId)
+		#}
+		ELSE
+		#{
+			CUST.SVISA.errMsg = CUST.GCHRG.gchrgErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+		
+ENDOFSCRIPT:
+IF(CUST.SVISA.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUST.SVISA.errMsg+"' >>sweep.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

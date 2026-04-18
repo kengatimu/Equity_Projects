@@ -1,0 +1,348 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpAgentPoolSuspend.scr 
+#  Description     : Tbatch AGPS  
+#  Date            : 19-04-2022
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             19-04-2022      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GLBDATA")==0)then
+                createclass("EQSRV","GLBDATA",5)
+        endif
+        if(repexists("EQSRV")==0)then
+                createrep("EQSRV")
+        endif
+        if(classexists("EQSRV","GCHRG")==0)then
+                createclass("EQSRV","GCHRG",5)
+        endif
+        sv_a = "rm -f SuccessPoolSuspend.RPT"
+        sv_a = system(sv_a)
+        sv_a = "touch SuccessPoolSuspend.RPT" 
+        sv_a = system(sv_a)
+
+        sv_a = "rm -f FailurePoolSuspend.RPT" 
+        sv_a = system(sv_a)
+        sv_a = "touch FailurePoolSuspend.RPT" 
+        sv_a = system(sv_a)
+
+        sv_a = "rm -f SuccessSweepsSuspend.RPT" 
+        sv_a = system(sv_a)
+        sv_a = "touch SuccessSweepsSuspend.RPT" 
+        sv_a = system(sv_a)
+
+        sv_a = "rm -f FailureSweepsSuspend.RPT" 
+        sv_a = system(sv_a)
+        sv_a = "touch FailureSweepsSuspend.RPT" 
+        sv_a = system(sv_a)
+
+        EQSRV.GLBDATA.srvErrCode = ""
+        EQSRV.GLBDATA.srvSucFail = ""
+        EQSRV.GLBDATA.srvErrMsg = ""
+	lv_m = " acctId,solId,cifId,poolId,allowSweeps,schmCode,schmType | select foracid,sol_id,cif_id,pool_id,allow_sweeps,schm_code,schm_type from tbaadm.gam where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and schm_code in ('SB126','CA207','OD541') and sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id=?SVAR) "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+	print(lv_m)
+        sv_u = urhk_dbCursorOpenWithBind(lv_m)
+        if(sv_u==0)then
+        #{
+                EQSRV.GLBDATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        EQSRV.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                EQSRV.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EQSRV.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EQSRV.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		EQSRV.GLBDATA.acctId = BANCS.OUTPARAM.acctId
+		EQSRV.GLBDATA.solId = BANCS.OUTPARAM.solId
+		EQSRV.GLBDATA.poolId = BANCS.OUTPARAM.poolId
+		EQSRV.GLBDATA.cifId = BANCS.OUTPARAM.cifId
+		EQSRV.GLBDATA.allowSweeps = BANCS.OUTPARAM.allowSweeps
+		EQSRV.GLBDATA.schmCode = BANCS.OUTPARAM.schmCode
+		EQSRV.GLBDATA.schmType = BANCS.OUTPARAM.schmType
+
+		lv_k = " pftCnt | select count(*) from tbaadm.pft where bank_id=?SVAR and pool_id=?SVAR and suspend_flg<>'Y' and entity_cre_flg='Y' and del_flg='N' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.poolId
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_k)
+		lv_h = urhk_dbSelectWithBind(lv_k)
+		if(lv_h==0)then
+		#{
+			EQSRV.GLBDATA.pftCnt = BANCS.OUTPARAM.pftCnt
+		else
+			EQSRV.GLBDATA.pftCnt = "0"
+			if(EQSRV.GLBDATA.allowSweeps=="Y")then
+			#{
+				goto SWEEPN
+			#}
+			endif
+		#}
+		endif
+		if(cdouble(EQSRV.GLBDATA.pftCnt)>=1)then
+		#{
+			sv_a=urhk_SetUrhkInp("poolInfo.pool.ptype|S")
+			sv_a=urhk_SetUrhkInp("poolInfo.pool.reglflag|N")
+			##sv_a=urhk_SetUrhkInp("poolInfo.pool.id" + EQSRV.GLBDATA.poolId ) 
+			sv_a=urhk_SetUrhkInp("poolInfo.acct.foracid|" + EQSRV.GLBDATA.acctId )
+			sv_u = urhk_ExecSrvNoCommit("SRV_FetchPoolForSuspend|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+			#{
+				print(BANCS.OUTPARAM.successOrFailure)
+				sv_s = BANCS.OUTPARAM.successOrFailure
+			#}
+			else
+			#{
+				sv_s = "X"
+			#}
+			endif
+			if (( sv_u == 0 ) and ( sv_s=="S") ) then
+			#{
+				#loop
+				sv_u = urhk_GetUrhkNum("poolLL")
+				if(sv_u != 0)then
+					goto NXTREC
+				endif
+				sv_j = cint(BANCS.OUTPARAM.srvValue)
+				print(sv_j)
+				sv_b = 0
+				while(sv_b < sv_j)
+				#{
+					sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.acct.foracid"
+					sv_u = urhk_GetUrhkOut(sv_d)
+					EQSRV.GLBDATA.swpAcctO = BANCS.OUTPARAM.srvValue
+					sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.scheme.schmCode"
+					sv_u = urhk_GetUrhkOut(sv_d)
+					EQSRV.GLBDATA.swpAcctOSchm = BANCS.OUTPARAM.srvValue
+					print(sv_b)
+					sv_b = sv_b + 1
+				#}
+				do
+			else
+				EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.acctId 
+				callscriptifexist("ebsrvHandler.scr")
+				EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+				EQSRV.GLBDATA.srvErrCode = "SRV_FetchPoolForSuspend"
+				EQSRV.GLBDATA.srvSucFail = "F"
+				sv_a = EQSRV.GLBDATA.acctId + "|" + EQSRV.GLBDATA.poolId  + "|" + EQSRV.GLBDATA.srvErrMsg 
+                                sv_d = "echo '" + sv_a + "' >> FailurePoolSuspend.RPT"
+                                print(sv_d)
+                                sv_s = system(sv_d)
+                                print(sv_s)
+				goto NXTREC
+			#}
+			endif
+			sv_u = urhk_CopyOutToIn("")
+			###sv_a=urhk_SetUrhkInp("poolInfo.pool.id" + EQSRV.GLBDATA.poolId ) 
+			sv_a=urhk_SetUrhkInp("poolInfo.suspFlg|Y")
+			sv_a=urhk_SetUrhkInp("poolInfo.suspDate|" + BANCS.STDIN.BODDate )
+			sv_u = urhk_ExecSrvNoCommit("SRV_SuspendPoolAndVerify|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+			if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+			#{
+				print(BANCS.OUTPARAM.successOrFailure)
+				sv_s = BANCS.OUTPARAM.successOrFailure
+			#}
+			else
+			#{
+				sv_s = "X"
+			#}
+			endif
+			if (( sv_u == 0 ) and ( sv_s=="S") ) then
+			#{
+				EQSRV.GLBDATA.srvErrMsg = "ODA Agent Pool Suspended Successfully " 
+				EQSRV.GLBDATA.srvSucFail = "S"
+				sv_a = EQSRV.GLBDATA.acctId + "|" + EQSRV.GLBDATA.poolId  + "|" + EQSRV.GLBDATA.srvErrMsg
+                                sv_d = "echo '" + sv_a + "' >> SuccessPoolSuspend.RPT"
+                                print(sv_d)
+                                sv_s = system(sv_d)
+                                print(sv_s)
+				goto SWEEPN
+			#}
+			else
+			#{
+				EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.acctId 
+				callscriptifexist("ebsrvHandler.scr")
+				EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+				EQSRV.GLBDATA.srvErrCode = "SRV_SuspendPoolAndVerify"
+				EQSRV.GLBDATA.srvSucFail = "F"
+				sv_a = EQSRV.GLBDATA.acctId + "|" + EQSRV.GLBDATA.poolId  + "|" + EQSRV.GLBDATA.srvErrMsg 
+                                sv_d = "echo '" + sv_a + "' >> FailurePoolSuspend.RPT"
+                                print(sv_d)
+                                sv_s = system(sv_d)
+                                print(sv_s)
+				goto NXTREC
+			#}
+			endif
+		#}
+		else
+		#{
+			print(EQSRV.GLBDATA.allowSweeps)
+			if(EQSRV.GLBDATA.allowSweeps=="Y")then
+			#{
+				goto SWEEPN
+			#}
+			endif
+		#}
+		endif
+	
+		SWEEPN:	
+                        if(EQSRV.GLBDATA.solId != BANCS.STDIN.mySolId)then
+                        #{
+                                sv_u = urhk_SetUrhkInp("sol.solId|"+ EQSRV.GLBDATA.solId )
+                                print(sv_u)
+                                sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+                                print(sv_u)
+                        #}
+                        endif
+                        sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + EQSRV.GLBDATA.acctId ) 
+                        print(sv_u)
+                        sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.solId.solId|" + EQSRV.GLBDATA.solId ) 
+                        print(sv_u)
+			if(EQSRV.GLBDATA.schmType=="ODA")then
+			#{
+				sv_u = urhk_ExecSrv("SRV_FetchODAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+			#}
+			endif
+			if(EQSRV.GLBDATA.schmType=="SBA")then
+			#{
+				sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+			#}
+			endif
+			if(EQSRV.GLBDATA.schmType=="CAA")then
+			#{
+				sv_u = urhk_ExecSrv("SRV_FetchCAAcctMaintDtlForModify|retain_all_output = Y|same_user_verify = Y")
+			#}
+			endif
+                        print(sv_u)
+                        if(sv_u==0)then
+                        #{
+                                sv_u = urhk_CopyOutToIn("")
+                                print(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.allowSweeps|N")
+                                print(sv_u)
+				if(EQSRV.GLBDATA.schmType=="ODA")then
+				#{
+					sv_u = urhk_ExecSrv("SRV_ModifyODAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+					print(sv_u)
+				#}
+				endif
+				if(EQSRV.GLBDATA.schmType=="SBA")then
+				#{
+					sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+					print(sv_u)
+				#}
+				endif
+				if(EQSRV.GLBDATA.schmType=="CAA")then
+				#{
+					sv_u = urhk_ExecSrv("SRV_ModifyCAAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+					print(sv_u)
+				#}
+				endif
+				if(sv_u!=0)then
+				#{
+					EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.acctId 
+					callscriptifexist("ebsrvHandler.scr")
+					EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+					EQSRV.GLBDATA.srvErrCode = "SRV_ModifyODAcctAndVerify"
+					EQSRV.GLBDATA.srvSucFail = "F"
+					sv_a = EQSRV.GLBDATA.acctId + "|" + EQSRV.GLBDATA.srvErrMsg 
+					sv_d = "echo '" + sv_a + "' >> FailureSweepsSuspend.RPT " 
+					print(sv_d)
+					sv_s = system(sv_d)
+					print(sv_s)
+					print(EQSRV.GLBDATA.acctId)
+					lv_g = "update tbaadm.gam set allow_sweeps='N' where bank_id=?SVAR and foracid=?SVAR "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.acctId
+					lv_g = urhk_dbSqlWithBind(lv_g)
+					if(lv_g==0)then
+						lv_g = urhk_dbSqlWithBind("commit")
+					endif
+					goto NXTREC
+				#}
+				else
+				#{
+					sv_a = EQSRV.GLBDATA.acctId 
+					sv_d = "echo '" + sv_a + "' >> SuccessSweepsSuspend.RPT " 
+					print(sv_d)
+					sv_s = system(sv_d)
+					print(sv_s)
+					print(EQSRV.GLBDATA.acctId)
+					lv_g = "update tbaadm.gam set allow_sweeps='N' where bank_id=?SVAR and foracid=?SVAR "
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EQSRV.GLBDATA.acctId
+					lv_g = urhk_dbSqlWithBind(lv_g)
+					if(lv_g==0)then
+						lv_g = urhk_dbSqlWithBind("commit")
+					endif
+					goto NXTREC
+				#}
+				endif
+			#}
+			else
+			#{
+				EQSRV.GLBDATA.srvAcctId = EQSRV.GLBDATA.acctId 
+				callscriptifexist("ebsrvHandler.scr")
+				EQSRV.GLBDATA.srvErrMsg =  EQSRV.GLBDATA.SrvError
+				EQSRV.GLBDATA.srvErrCode = "SRV_ModifyODAcctAndVerify"
+				EQSRV.GLBDATA.srvSucFail = "F"
+				sv_a = EQSRV.GLBDATA.acctId + "|" + EQSRV.GLBDATA.srvErrMsg 
+				sv_d = "echo '" + sv_a + "' >> FailureSweepsSuspend.RPT " 
+				print(sv_d)
+				sv_s = system(sv_d)
+				print(sv_s)
+				goto NXTREC
+                        #}
+                        endif
+                NXTREC:
+                        print(EQSRV.GLBDATA.srvErrMsg)
+                        print(EQSRV.GLBDATA.srvErrCode)
+                        print(EQSRV.GLBDATA.srvSucFail)
+                        sv_u = urhk_dbCursorFetch(EQSRV.GLBDATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+                                print(sv_u)
+                                EQSRV.GLBDATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                EQSRV.GLBDATA.srvErrCode = "DBCursor"
+                                EQSRV.GLBDATA.srvSucFail = "F"
+                                goto Endofscript
+                        endif
+                        EQSRV.GLBDATA.ddaRec = cint(EQSRV.GLBDATA.ddaRec) + 1
+                        EQSRV.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EQSRV.GLBDATA.ddaRec
+                        print(EQSRV.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EQSRV.GLBDATA.schdlcurNum)
+        print(sv_u)
+Endofscript:
+        print(EQSRV.GLBDATA.srvErrCode)
+        print(EQSRV.GLBDATA.srvErrMsg)
+        print(EQSRV.GLBDATA.srvSucFail)
+        exitscript
+trace off
+end-->

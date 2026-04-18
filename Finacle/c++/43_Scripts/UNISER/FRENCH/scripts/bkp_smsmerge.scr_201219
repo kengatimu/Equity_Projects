@@ -1,0 +1,119 @@
+<--start	
+TRACE ON
+
+
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	IF (CLASSEXISTS("CUST","SMS") == 0) THEN
+	#{
+		CREATECLASS ("CUST","SMS",5)
+	#}
+	ENDIF
+
+
+	#sv_s = "msgTxt,mobileNum,tranDate,acctId|SELECT substr(LISTAGG(message_text,' ')  WITHIN GROUP (ORDER BY mobile_number,tran_date,parent_tran_acct_no),0,256),mobile_number,tran_date," 
+	#sv_s = sv_s +"parent_tran_acct_no FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND STATUS='A' and mobile_number not in ('243','0812253724','0811853278','0811907415')  GROUP BY mobile_number,tran_date,parent_tran_acct_no"
+
+	#sv_s = "msgTxt,mobileNum,tranDate,acctId| select substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),0,256) message_text, mobile_number,tran_date," 
+	#sv_s = sv_s +"parent_tran_acct_no FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND STATUS='A' and mobile_number <> '243' and mobile_number like '243%'  GROUP BY mobile_number,tran_date,parent_tran_acct_no"
+
+
+        sv_s="msgTxt1,msgTxt2,msgTxt3,msgTxt4,msgTxt5,mobileNum,tranDate,acctId|select substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),0,70) message_text1,"
+        sv_s = sv_s +" substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),71,140) message_text2, "
+        sv_s = sv_s +"substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),141,210) message_text3, "
+        sv_s = sv_s +"substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),211,280) message_text4, "
+        sv_s = sv_s +"substr(rtrim (xmlagg (xmlelement (e, concat(message_text , ' '))).extract ('//text()').GetClobVal(), ' '),281,350) message_text5, "
+        sv_s = sv_s +"mobile_number,tran_date,parent_tran_acct_no FROM CUSTOM.MOBEE_PUSH_SMS_DRC WHERE BANK_ID=?SVAR AND STATUS='A' and mobile_number <> '243' "
+        sv_s = sv_s +" and (mobile_number like '243%' OR mobile_number like '+243%') "
+	sv_s = sv_s +"AND TO_DATE(TRAN_DATE,'DD-MM-YY') = TO_DATE(?SVAR,'DD-MM-YY')  GROUP BY mobile_number,tran_date,parent_tran_acct_no"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ MID$(BANCS.STDIN.BODDate,0,10)
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+        sv_c = urhk_dbCursorOpenWithBind(sv_s)
+        PRINT(sv_c)
+        IF(sv_c!=0) THEN
+        #{
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+        sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        PRINT(sv_n)
+
+        sv_f = urhk_dbCursorFetch(sv_n)
+        PRINT(sv_f)
+        IF(sv_f!=0) THEN
+        #{
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+        WHILE(sv_f == 0)
+        #{
+	
+		CUST.SMS.msgTxt1 = BANCS.OUTPARAM.msgTxt1
+		CUST.SMS.msgTxt2 = BANCS.OUTPARAM.msgTxt2
+		CUST.SMS.msgTxt3 = BANCS.OUTPARAM.msgTxt3
+		CUST.SMS.msgTxt4 = BANCS.OUTPARAM.msgTxt4
+		CUST.SMS.msgTxt5 = BANCS.OUTPARAM.msgTxt5
+		CUST.SMS.mobileNum = BANCS.OUTPARAM.mobileNum
+		CUST.SMS.tranDate = BANCS.OUTPARAM.tranDate
+		CUST.SMS.acctId = BANCS.OUTPARAM.acctId
+		PRINT(CUST.SMS.msgTxt1)
+		PRINT(CUST.SMS.msgTxt2)
+		PRINT(CUST.SMS.msgTxt3)
+		PRINT(CUST.SMS.msgTxt4)
+		PRINT(CUST.SMS.msgTxt5)
+		PRINT(CUST.SMS.mobileNum)
+		PRINT(CUST.SMS.tranDate)
+		PRINT(CUST.SMS.acctId)
+
+		CUST.SMS.msgTxt = CUST.SMS.msgTxt1 + CUST.SMS.msgTxt2 + CUST.SMS.msgTxt3 + CUST.SMS.msgTxt4 + CUST.SMS.msgTxt5
+		PRINT(CUST.SMS.msgTxt)
+# 		IF((CUST.SMS.mobileNum == "243812084560")OR(CUST.SMS.mobileNum == "243990064263")OR(CUST.SMS.mobileNum == "243901162973") OR (CUST.SMS.mobileNum == "243824808964"))THEN
+		#{
+			BANCS.INPUT.smsMsg = CUST.SMS.msgTxt
+			BANCS.INPUT.mobileNum = CUST.SMS.mobileNum
+			CALL("Sms_DRC.scr")
+
+			CUST.SMS.status = BANCS.OUTPARAM.status	
+			PRINT(CUST.SMS.status)
+
+			IF(CUST.SMS.status == "S")THEN
+			#{
+				sv_s = "UPDATE CUSTOM.MOBEE_PUSH_SMS_DRC SET STATUS='C' WHERE mobile_number=?SVAR AND to_date(tran_date,'DD-MM-YY')=to_date(?SVAR,'DD-MM-YY')"
+				sv_s = sv_s + " AND parent_tran_acct_no = ?SVAR"
+
+				BANCS.INPARAM.BINDVARS = CUST.SMS.mobileNum +"|"+ CUST.SMS.tranDate +"|"+ CUST.SMS.acctId 
+
+                        	sv_r = urhk_dbSqlWithBind(sv_s)
+                        	PRINT(sv_r)
+
+				IF(sv_r != "0")THEN
+				#{
+					PRINT("Update is failed")
+				#}
+				ENDIF
+				sv_u = urhk_dbSqlWithBind("COMMIT")
+			#}
+			ENDIF
+		#}
+		#ENDIF
+#ENDIF
+
+                sv_f = urhk_dbCursorFetch(sv_n)
+                PRINT(sv_f)
+
+       #}
+       DO
+       sv_c = urhk_dbCursorClose(sv_n)
+       PRINT(sv_c)
+
+
+ENDOFSCRIPT:
+TRACE OFF
+END-->

@@ -1,0 +1,273 @@
+<--START
+	# Script body goes here
+	TRACE ON
+
+	IF (FIELDEXISTS(CUST.DATA.remitamt)) THEN
+	#{
+
+			BANCS.INPARAM.InputAmount =cdouble(CUST.DATA.remitamt) #cdouble(BANCS.INPUT.remitamt)
+			BANCS.INPARAM.FromCurrency =  CUST.DATA.tranccy # BANCS.INPUT.tranccy
+			BANCS.INPARAM.ToCurrency = "CDF"
+			BANCS.INPARAM.RateCode = CUST.DATA.treaRate # BANCS.INPUT.treaRate
+			BANCS.INPARAM.Rate = CDOUBLE("0.0")
+			sv_f = urhk_B2k_ConvertAmount("")	
+			sv_f = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+
+		if(sv_f >49500000) then
+	#{
+				print(sv_f)
+				CUST.DATA.errMsg = "Amount Exceeds Limit"
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+
+	#}
+		ENDIF
+
+	#}
+	ENDIF
+
+
+	IF (FIELDEXISTS(CUST.DATA.receiveracc)) THEN
+	#{
+
+		sv_a=strlen(CUST.DATA.receiveracc)
+		if(sv_a <13) then
+
+			CUST.DATA.errMsg = "receiver account lenght less than IBAN"
+			sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+
+		endif
+	#}
+	ENDIF
+
+
+
+#--calc charge/balance/Freeze/Dormant
+
+	IF (FIELDEXISTS(CUST.DATA.remitamt)) THEN
+	#{
+
+#	IF(BANCS.STDIN.userId == "FIVUSR43") THEN
+	#{
+		
+		sv_s=urhk_getAcctDetailsInRepository(CUST.DATA.custacc)
+		PRINT(sv_s)		
+		IF(sv_s == 0)THEN
+			CUST.DATA.frezCode = BANCS.OUTPARAM.freezeCode
+			
+			IF ((CUST.DATA.frezCode == "D") OR (CUST.DATA.frezCode == "T"))THEN
+				CUST.DATA.errMsg = "Acct Frozen"
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			ENDIF
+			
+			CUST.DATA.acctOwnerShip= BANCS.OUTPARAM.acctOwnerShip
+			CUST.DATA.acctCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+			CUST.DATA.EffAvailableAmt =CDOUBLE(BANCS.OUTPARAM.EffAvailableAmt)
+			print(CUST.DATA.EffAvailableAmt)		
+		ENDIF
+
+		IF (CUST.DATA.acctOwnerShip != "O") THEN
+			sv_z = urhk_B2k_ForacidToAcid(CUST.DATA.custacc)
+			print(sv_z)
+			IF(sv_z == 0)THEN
+				BANCS.INPARAM.acid = BANCS.OUTPARAM.Acid
+				sv_u = urhk_getAcctStatus("")
+				IF(sv_u == 0) THEN
+				CUST.DATA.acctStatus = BANCS.OUTPARAM.acctStatus
+				print (CUST.DATA.acctStatus)
+					IF  (CUST.DATA.acctStatus !="A") THEN                         
+						CUST.DATA.errMsg = "Dormant Account"
+						sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+						GOTO ENDOFSCRIPT
+					ENDIF
+				ELSE
+					CUST.DATA.errMsg = "Check validity of account"
+					sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+					GOTO ENDOFSCRIPT
+				ENDIF
+
+			ELSE
+				CUST.DATA.errMsg = "Check validity of account"
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			ENDIF
+		ENDIF
+
+	
+		BANCS.INPARAM.InputAmount =cdouble(CUST.DATA.remitamt) #cdouble(BANCS.INPUT.remitamt)
+		BANCS.INPARAM.FromCurrency =  CUST.DATA.tranccy # BANCS.INPUT.tranccy
+		BANCS.INPARAM.ToCurrency = CUST.DATA.acctCrncyCode
+		BANCS.INPARAM.RateCode = CUST.DATA.treaRate # BANCS.INPUT.treaRate
+		BANCS.INPARAM.Rate = CDOUBLE("0.0")
+		sv_f = urhk_B2k_ConvertAmount("")	
+		CUST.DATA.tranAmt = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+		print(CUST.DATA.tranAmt)
+
+		IF(CUST.DATA.chrgeventid != "" ) THEN
+	
+		call("paydet_calcChrgAndVAT.scr")
+
+		if(CUST.DATA.balcheck == "N") then
+			CUST.DATA.errMsg = "Transaction Amount plus charge Exceeds Available Balance"
+			sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+			GOTO ENDOFSCRIPT
+		endif
+
+
+		ELSE
+			CUST.DATA.totalAmt =CUST.DATA.tranAmt
+
+
+				IF(CDOUBLE(CUST.DATA.totalAmt) > CDOUBLE(CUST.DATA.EffAvailableAmt))THEN
+				#{
+				CUST.DATA.balcheck = "N"
+
+				CUST.DATA.errMsg = "Transaction Amount plus charge Exceeds Available Balance"
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+
+				#}	
+				ENDIF
+			
+
+		ENDIF
+
+
+		
+	#}
+#	ENDIF
+	
+	#}
+      ENDIF
+	
+
+
+#--
+
+
+	
+	IF (CUST.DATA.nostro != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DATA.nostro +"|"+ BANCS.STDIN.contextBankId
+		sv_a = "count|SELECT COUNT(*) FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR AND ACCT_CLS_FLG = 'N' AND FREZ_REASON_CODE IS NULL"
+		
+		sv_b = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF (sv_b == 0) THEN
+		#{
+			sv_c = BANCS.OUTPARAM.count
+			PRINT(sv_c)
+			IF (CINT(sv_c) == 0) THEN
+			#{
+				CUST.DATA.errMsg = "Invalid Nostro Account."
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF (CUST.DATA.susAcct != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DATA.susAcct +"|"+ BANCS.STDIN.contextBankId
+		sv_a = "count|SELECT COUNT(*) FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR AND ACCT_CLS_FLG = 'N' AND FREZ_REASON_CODE IS NULL"
+		
+		sv_b = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF (sv_b == 0) THEN
+		#{
+			sv_c = BANCS.OUTPARAM.count
+			PRINT(sv_c)
+			IF (CINT(sv_c) == 0) THEN
+			#{
+				CUST.DATA.errMsg = "Invalid Suspense Account."
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF (CUST.DATA.bic != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DATA.bic +"|"+ BANCS.STDIN.contextBankId
+		sv_a = "count|SELECT COUNT(*) FROM TBAADM.BRBIC WHERE BANK_IDENTIFIER = ?SVAR AND BANK_ID = ?SVAR"
+		
+		sv_b = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF (sv_b == 0) THEN
+		#{
+			sv_c = BANCS.OUTPARAM.count
+			PRINT(sv_c)
+			IF (CINT(sv_c) == 0) THEN
+			#{
+				CUST.DATA.errMsg = "Invalid Central Bank BIC."
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF (CUST.DATA.outEvntId != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DATA.outEvntId +"|"+ BANCS.STDIN.contextBankId
+		sv_a = "count|SELECT COUNT(*) FROM TBAADM.PTT WHERE EVENT_ID = ?SVAR AND BANK_ID = ?SVAR"
+		
+		sv_b = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF (sv_b == 0) THEN
+		#{
+			sv_c = BANCS.OUTPARAM.count
+			PRINT(sv_c)
+			IF (CINT(sv_c) == 0) THEN
+			#{
+				CUST.DATA.errMsg = "Invalid RTGS OUT Event ID."
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	IF (CUST.DATA.inEvntId != "") THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.DATA.inEvntId +"|"+ BANCS.STDIN.contextBankId
+		sv_a = "count|SELECT COUNT(*) FROM TBAADM.PTT WHERE EVENT_ID = ?SVAR AND BANK_ID = ?SVAR"
+		
+		sv_b = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_b)
+		IF (sv_b == 0) THEN
+		#{
+			sv_c = BANCS.OUTPARAM.count
+			PRINT(sv_c)
+			IF (CINT(sv_c) == 0) THEN
+			#{
+				CUST.DATA.errMsg = "Invalid RTGS IN Event ID."
+				sv_e = urhk_SetOrbErr(CUST.DATA.errMsg)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		
+		EXITSCRIPT
+END-->

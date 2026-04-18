@@ -1,0 +1,38 @@
+---------------------------------------------------------------------------------
+--    File Name                  : custid.sql
+--    Tables Used                : GAM
+--    Date                       : 22.02.2013
+--    Author                     : Gokulkrishna
+--    Assumptions                : NIL
+--    Modification History    :
+--    <Serial No.>    <Date>        <Author Name>                <Description>
+--       1.          22.02.2013     Gokulkrishna                  Original Version
+-----------------------------------------------------------------------------------
+set head off
+set verify off
+set feed off
+set term off
+set pages 0
+set linesize 250
+set TRIMs on
+set maxdata 60000
+set serveroutput on size 1000000
+spool custid2.lst
+(select b.bccode||'|'||orgkey||'|'||name||'|'||a.bodatecreated||'|'|| a.RECORDSTATUS||'|'||(SELECT LOGINID FROM CRMUSER.USERS WHERE PERSONID = MAKERID) LOGINID
+from crmuser.accounts_mod a,crmuser.bizcenter b 
+where  lastoperperformed = 'E'
+and  a.MAKERID  ='426250' 
+and nvl(a.editedlocationid,a.createdlocationid) = b.bcid
+and a.bank_id='&2'
+and b.bccode= '&1')
+UNION
+(select b.bccode||'|'||corp_key||'|'||corporate_name||'|'||a.bodatecreated||'|'||a.RECORD_STATUS||'|'||(SELECT LOGINID FROM CRMUSER.USERS WHERE PERSONID = a.BOCREATEDBY) LOGINID
+from crmuser.corporate_mod a,crmuser.bizcenter b  
+where lastoperperformed  ='E'  
+and  a.BOCREATEDBY  ='426250' 
+and nvl(a.editedlocationid,a.createdlocationid) = b.bcid
+and a.bank_id='&2'
+and b.bccode= '&1');
+spool off;
+exit;
+

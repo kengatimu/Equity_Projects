@@ -1,0 +1,42 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#  Name            : vpMerchantEft.com 
+#  Description     :
+#  Date            : 24-08-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             24-08-2021      Vino Palani          Original Version
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+cd /finacle/EQPROD/BackEnd/Finacle/FC/app/CDCI_LOGS/CDCI54
+echo $0
+echo $#
+echo $$
+batchId=${1}
+nopj="8"
+pidd=$B2K_SESSION_ID
+echo "update custom.cust_merchant_eft_tbl set free_text2='${pidd}' where bank_id='54' and entity_cre_flg='Y' and del_flg='N' and process_status='U' and upl_batch_id='${batchId}'; " > ${batchId}EFT_PID.sql
+echo "commit;" >> ${batchId}EFT_PID.sql
+exebatch bauu9151 ${batchId}EFT_PID.sql
+rm -f ${batchId}EFT_PID.sql
+echo "set head off;">${batchId}EFT.sql
+echo "set trimspool on;">>${batchId}EFT.sql
+echo "set trimout on;">>${batchId}EFT.sql
+echo "set pages 0;">>${batchId}EFT.sql
+echo "set feedback off;">>${batchId}EFT.sql
+echo "set linesize 32767;">>${batchId}EFT.sql
+echo "set echo off;">>${batchId}EFT.sql
+echo "set long 90000;">>${batchId}EFT.sql
+echo "spool ${batchId}EFT.DAT;">>${batchId}EFT.sql
+echo "select dr_acct_id||'|'||beneficiary_acct_num||'|'||beneficiary_bank_br_code||'|'||UPL_BATCH_ID " >> ${batchId}EFT.sql
+echo "from custom.cust_merchant_eft_tbl where bank_id='54' " >> ${batchId}EFT.sql
+echo "and entity_cre_flg='Y' and del_flg='N' and process_status='U' and upl_batch_id='${batchId}'; " >> ${batchId}EFT.sql
+echo "spool off;">>${batchId}EFT.sql
+exebatch bauu9151 ${batchId}EFT.sql
+rm -f ${batchId}EFT.sql
+sleep 1
+exebatch -i ${batchId}EFT.DAT -n ${nopj} babx4061 $B2K_SESSION_ID vpMerchantEft.scr @s &
+######rm -f ${batchId}EFT.DAT
+exit 0
+
+

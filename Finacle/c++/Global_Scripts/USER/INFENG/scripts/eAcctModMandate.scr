@@ -1,0 +1,332 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : eAcctModMandate.scr 
+#  Description     : This script will call HACM modifiation services to modify data present in CUSTSom table
+#  Date            : 15-01-2024
+#  Author          : Edwin Zico
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)<ACMOD>
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0              15-01-2024      Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="241077deeab9cbb9e4c1515546cbf9adfad83c186db837736eac8aa8569ed600"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#Creating repository and class
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUSTSS") == 0) THEN
+	#{
+		CREATEREP("CUSTSS")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUSTSS","CDAAA") == 0) THEN
+	#{
+		CREATECLASS("CUSTSS","CDAAA",5)
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUSTSS","CPARAM") == 0) THEN
+	#{
+		CREATECLASS("CUSTSS","CPARAM", 5)
+	#}
+	ENDIF
+	CUSTSS.CDAAA.count = ""
+	CUSTSS.CDAAA.ModeofOper =""
+	#CUSTSS.CDAAA.foracid = "4024200016107"
+	CUSTSS.CDAAA.FreeCode7 = "P0018"
+	CUSTSS.CDAAA.FreeCode8 = "I0035"	
+	CUSTSS.CDAAA.FreeCode3 = "E0076"
+	CUSTSS.CDAAA.FreeCode5 = "S0415"
+	#------------------------------------------------------------------------------
+	#Initialisig required repository variables
+	#------------------------------------------------------------------------------
+	CUSTSS.CDAAA.errMsg = ""
+	
+	#------------------------------------------------------------------------------
+	#Finding count of records that need to be processed
+	#------------------------------------------------------------------------------
+	sv_s="solid,foracid,acid,schmcode,schmtype,sweeps,mngruserid,ModeofOper|"
+	sv_s = sv_s + " select g.sol_id,g.foracid,g.acid,g.schm_code,g.schm_type,g.allow_sweeps, "
+	sv_s = sv_s + " (SELECT  Roleu.USER_ID FROM tbaadm.get EMPu, tbaadm.upr ROLEu WHERE EMPu.EMP_ID = ROLEu.USER_EMP_ID and roleu.del_flg='N' and empu.del_flg='N' and roleu.ROLE_ID!='DEL' "
+	sv_s = sv_s + " and  ROLEu.USER_WORK_CLASS ='200'  AND g.sol_id=Roleu.SOL_ID  and g.sol_id=Roleu.sol_id and rownum<2) as mngruser_id,d.CUST_PREF " 
+	sv_s = sv_s + " from CUSTOM.INT_CHANGE d,tbaadm.gam g where "
+	sv_s = sv_s + " g.bank_id = d.bank_id and d.foracid = g.foracid "
+	sv_s = sv_s + " and d.bank_id =?SVAR and g.acct_ownership ='C' and d.ENTITY_CRE_FLG='MAND' and d.sol_id =?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+
+	IF(sv_e == 0) THEN
+	#{
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			print(sv_x)
+			CUSTSS.CDAAA.errMsg ="No Data."
+			sv_e=urhk_SetOrbOut("StattusCode|Error")
+			sv_e=urhk_SetOrbOut("Error|"+CUSTSS.CDAAA.errMsg )
+			EXITSCRIPT
+		#}
+		ENDIF
+		print(sv_q)
+
+	WHILE (sv_q==0)
+
+		CUSTSS.CDAAA.foracid    = BANCS.OUTPARAM.foracid
+                PRINT(CUSTSS.CDAAA.foracid)
+		CUSTSS.CDAAA.acid	= BANCS.OUTPARAM.acid
+		PRINT(CUSTSS.CDAAA.acid)
+		CUSTSS.CDAAA.schmtype	= BANCS.OUTPARAM.schmtype
+		PRINT(CUSTSS.CDAAA.schmtype)
+		CUSTSS.CDAAA.schmcode	= BANCS.OUTPARAM.schmcode
+		PRINT(CUSTSS.CDAAA.schmcode)
+		CUSTSS.CDAAA.sweeps	= BANCS.OUTPARAM.sweeps
+		PRINT(CUSTSS.CDAAA.sweeps)
+		CUSTSS.CDAAA.solid	= BANCS.OUTPARAM.solid
+		PRINT(CUSTSS.CDAAA.solid)			
+		CUSTSS.CDAAA.mngruserid	 =   BANCS.OUTPARAM.mngruserid
+		PRINT(CUSTSS.CDAAA.mngruserid)
+		CUSTSS.CDAAA.ModeofOper = BANCS.OUTPARAM.ModeofOper
+		print(CUSTSS.CDAAA.ModeofOper)
+			
+		sv_s="count|select count(*) from tbaadm.gam g,crmuser.address a where foracid =?SVAR and a.orgkey =g.cif_id and g.bank_id =a.bank_id "
+		sv_s = sv_s + " and PREFERREDADDRESS ='Y' and START_DATE >sysdate "
+		BANCS.INPARAM.BINDVARS = CUSTSS.CDAAA.foracid
+		print(BANCS.INPARAM.BINDVARS)
+		sv_u = urhk_dbSelectWithBind(sv_s)
+		if(sv_u == 0)then
+			CUSTSS.CDAAA.count = BANCS.OUTPARAM.count
+			print(CUSTSS.CDAAA.count)
+		endif	
+		if(cdouble(CUSTSS.CDAAA.count)>0)then
+			sv_s = "UPDATE CUSTOM.INT_CHANGE "
+			sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'CRM',"
+			sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE"
+			sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+			sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+			sv_s = sv_s + " AND INT_CHANGE.entity_cre_flg = 'MAND' "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUSTSS.CDAAA.foracid + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+			#{
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+			#}
+			ENDIF
+
+			GOTO NEXT
+		endif
+		IF(CUSTSS.CDAAA.solid != BANCS.STDIN.mySolId)THEN
+		#{
+			sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTSS.CDAAA.solid)
+			print(sv_u)
+			sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+			print(sv_u)
+		#}
+		ENDIF
+			
+			#--------------------------------------------------------------------------------------------------------------
+			# Inputs for Account Modify services
+			# urhk_SetUrhkInp is used to set inputs
+			#--------------------------------------------------------------------------------------------------------------
+			
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTSS.CDAAA.foracid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTSS.CDAAA.acid)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTSS.CDAAA.schmtype)
+			PRINT(sv_u)
+			sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTSS.CDAAA.schmcode)
+			PRINT(sv_u)
+			if (CUSTSS.CDAAA.schmtype == "SBA") then
+			#{
+ 
+				sv_u = urhk_ExecSrv("SRV_FetchSBAcctMaintDtlForModify|retain_all_output = Y")
+				PRINT(sv_u)
+			#}
+			else
+			#{
+				sv_u = urhk_ExecSrv("SRV_FetchCAAcctMaintDtlForModify|retain_all_output = Y")
+				PRINT(sv_u)
+			#}
+			endif
+
+			IF (sv_u == 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|" + CUSTSS.CDAAA.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acctMgrAtAcct.userId|" + CUSTSS.CDAAA.mngruserid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.acid|" + CUSTSS.CDAAA.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmType|" + CUSTSS.CDAAA.schmtype)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|" + CUSTSS.CDAAA.schmcode)
+				PRINT(sv_u)			
+				#sv_u = urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.swiftStmtReqdFlg|N")	
+				#PRINT(sv_u)
+				sv_z ="19-01-2024"
+                                sv_u = urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.swiftNextDueDate|" + sv_z)
+                                print(sv_u)
+                                sv_b = "EQBLRWRWXXX"
+                                sv_u = urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.receivingBIC|" + sv_b)
+                                print(sv_u)
+                                sv_t = "SWIFT"
+                                sv_u = urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.paymentSysId.refCode|" + sv_t)
+                                print(sv_u)
+                                sv_d = "M"
+                                sv_u = urhk_SetUrhkInp("acctCommonInfo.acctSwiftStatement.messageType.code|"+ sv_d)
+                                print(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctCustInfo.modeOfOperCode.refCode|"+CUSTSS.CDAAA.ModeofOper)
+                                PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.freeCode7.refCode|"+ CUSTSS.CDAAA.FreeCode7)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.freeCode8.refCode|"+ CUSTSS.CDAAA.FreeCode8)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.freeCode3.refCode|"+ CUSTSS.CDAAA.FreeCode3)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.freeCode5.refCode|"+ CUSTSS.CDAAA.FreeCode5)
+				sv_u = urhk_SetUrhkInp("acctCommonInfo.acctClassMISC.schmType|" + CUSTSS.CDAAA.schmtype)
+				print(sv_u)
+				if (CUSTSS.CDAAA.schmtype == "SBA") then
+				#{
+					sv_u = urhk_ExecSrv("SRV_ModifySBAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_u)
+				#}
+				else
+				#{
+					sv_u = urhk_ExecSrv("SRV_ModifyCAAcctAndVerify|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_u)
+				#}
+				endif
+			#}
+			ENDIF
+			
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				IF (sv_v > 0) THEN
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUSTSS.CDAAA.foracid+" ' >>acctivated.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						print(sv_f)
+						IF (FIELDEXISTS(("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)) == 1) THEN
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							print(sv_e)
+							IF (FIELDEXISTS(("BANCS").("OUTPARAM").("Tag_"+sv_f)) == 1) THEN
+								sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+								print(sv_e)
+								sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+								print(sv_e)
+								sv_i = sv_i + 1
+								sv_u = system("echo '"+sv_e+"' >>acctivated.log")
+								print(sv_u)
+								#####
+								IF (FIELDEXISTS(sv_e) == 1) THEN
+									if (sv_e!="") Then
+										CUSTSS.CDAAA.errorsact = sv_e
+										print(CUSTSS.CDAAA.errorsact)
+										sv_s = " INSERT INTO "
+										sv_s = sv_s + " custom.all_activation_errors  "
+										sv_s = sv_s + " ( "
+										sv_s = sv_s + " FORACID, "
+										sv_s = sv_s + " SOL_ID, "
+										sv_s = sv_s + " BOD_DATE,ERRORS, "
+										sv_s = sv_s + " SYSDATE_TIME ) "
+										sv_s = sv_s + " values "
+										sv_s = sv_s + " ( "
+										sv_s = sv_s + " ?SVAR, "
+										sv_s = sv_s + " ?SVAR, "
+										sv_s = sv_s + " sysdate ,?SVAR , sysdate )"
+										print(sv_s)
+										BANCS.INPARAM.BINDVARS = CUSTSS.CDAAA.foracid +"|"+ CUSTSS.CDAAA.solid +"|"+ CUSTSS.CDAAA.errorsact 
+										print(BANCS.INPARAM.BINDVARS)
+										sv_d = urhk_dbSqlWithBind(sv_s)
+										If (sv_d == 0) then
+											print("Insert done")
+
+										ENDIF
+									endif
+								ENDIF
+							ELSE
+								sv_i = sv_i + 1
+								print(sv_i)
+							ENDIF
+						ELSE
+							sv_i = sv_i + 1
+							print(sv_i)
+						ENDIF
+						####
+					#}
+					DO
+				#}
+				ENDIF
+			else	
+				sv_s = "UPDATE CUSTOM.INT_CHANGE "
+				sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'X',"
+				sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE"
+				sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+				sv_s = sv_s + " AND INT_CHANGE.entity_cre_flg = 'MAND' "
+				print(sv_s)
+				BANCS.INPARAM.BINDVARS = CUSTSS.CDAAA.foracid + "|" + BANCS.STDIN.contextBankId
+				print(BANCS.INPARAM.BINDVARS)
+
+				sv_d = urhk_dbSQLWithBind(sv_s)
+				IF (sv_d == 0) THEN
+				#{
+					sv_c = urhk_dbSQLWithBind("commit")
+					print(sv_c)
+				#}
+				ENDIF
+			#}
+			ENDIF
+
+		NEXT:	
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)	
+	#}
+	DO
+		
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+	IF(CUSTSS.CDAAA.errMsg != "") THEN
+	#{
+		sv_u = system("echo '"+CUSTSS.CDAAA.errMsg+"' >>acctivated.log")
+	#}
+	ENDIF
+EXITSCRIPT
+END-->
+
+

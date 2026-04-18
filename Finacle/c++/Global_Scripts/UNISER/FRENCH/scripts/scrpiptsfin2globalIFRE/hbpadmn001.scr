@@ -1,0 +1,249 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: hbpadmn001.scr
+# Type: NA|default
+# Description: hbpadmn001.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#-------------------------------------------------------------------------------------------
+# Filename              :       hbpadmn001.scr
+# Author                :       Venki
+# Description           :       This script gets called from HBPAD for lodging Cheque
+#
+# Input                 :       NA
+# Output                :       NA
+# Called Script         :       None
+# Calling Script        :       None
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----        ----------         --------------    ----------------        ---------
+#  1           06-09-2013         Venkatesh          Original Version          1.0
+#--------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="01cb6d35a8c5518315efe1ba581f952ec15e1ba9a4c2845623998e51775b0689"
+	TRACE ON
+	
+	#----------------------------------------------------------------------
+	# Create the necessary repositories and Classes
+	#----------------------------------------------------------------------
+	IF(REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("CUST","HBPAD") == 0) THEN
+	#{
+		CREATECLASS("CUST","HBPAD",5)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------------------
+	# Fetching the value from SRV structure to do the lodging
+	#----------------------------------------------------------------------
+	sv_u = urhk_SRV_GetVal("onePayment.pymtMode.billAmtPymtMode")
+	CUST.HBPAD.pymtMode = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.HBPAD.pymtMode)
+	IF(CUST.HBPAD.pymtMode != "L") THEN
+	#{
+		PRINT("No Lodgment required")
+		GOTO ENDOFSCR
+	#}
+	ENDIF
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.bankCode")
+	CUST.HBPAD.bankCode = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.bankBranchCode")
+	CUST.HBPAD.branchCode = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.HBPAD.bankCode)
+	PRINT(CUST.HBPAD.branchCode)
+	#----------------------------------------------------------------------
+	# Finding whether lodgement has to be done in inhouse zone or not
+	# If record exist in SOL table for given combination of Bank/Branch
+	# then its lodged as Inhouse Cheque
+	#----------------------------------------------------------------------
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.HBPAD.bankCode
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.HBPAD.branchCode
+	sv_s = "recCount|SELECT COUNT(*) FROM TBAADM.SOL WHERE BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND BANK_CODE = ?SVAR AND BR_CODE = ?SVAR AND DEL_FLG = 'N'"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		PRINT(BANCS.OUTPARAM.recCount)
+		IF(CINT(BANCS.OUTPARAM.recCount) == 0) THEN
+		#{
+			CUST.HBPAD.zoneFlg = "O"
+			#}
+		ELSE
+			#{
+			CUST.HBPAD.zoneFlg = "I"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	PRINT(CUST.HBPAD.zoneFlg)
+	IF(CUST.HBPAD.zoneFlg == "I") THEN
+	#{
+		BANCS.INPUT.moduleName = "BPAY"
+		BANCS.INPUT.parameterId = "INHOUSE_ZONE"
+		CALL ("getcparamvalue.scr")
+		CUST.HBPAD.zoneCode = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.HBPAD.zoneCode)
+		BANCS.INPARAM.BINDVARS = CUST.HBPAD.zoneCode + "|" + BANCS.STDIN.contextBankId
+		sv_s = "zoneSolId,zoneDate|SELECT SOL_ID,TO_CHAR(CLG_ZONE_DATE,'DD-MM-YYYY') FROM TBAADM.OZH"
+		sv_s = sv_s + " WHERE CLG_ZONE_CODE = ?SVAR AND BANK_ID = ?SVAR AND DEL_FLG = 'N'"
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF(sv_d != 0) THEN
+		#{
+			CUST.HBPAD.errMsg = "Invalid Zone Code"
+			sv_u = urhk_SRV_SetErr(CUST.HBPAD.errMsg)
+			GOTO ENDOFSCR
+			#}
+		ELSE
+			#{
+			CUST.HBPAD.zoneDate = BANCS.OUTPARAM.zoneDate + " 00:00:00"
+			CUST.HBPAD.zoneSolId = BANCS.OUTPARAM.zoneSolId
+			PRINT(CUST.HBPAD.zoneDate)
+			PRINT(CUST.HBPAD.zoneSolId)
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_GetVal("onePayment.pymtDet.zoneCode")
+		CUST.HBPAD.zoneCode = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("onePayment.pymtDet.zoneDate")
+		CUST.HBPAD.zoneDate = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("onePayment.pymtDet.zoneSolId")
+		CUST.HBPAD.zoneSolId = BANCS.OUTPARAM.srvValue
+	#}
+	ENDIF
+	sv_u = urhk_SRV_GetVal("onePayment.genDet.paymentId")
+	CUST.HBPAD.pymtId = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.billDet.billCrncyCode")
+	CUST.HBPAD.billCrncyCode = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.billDet.billAmt")
+	CUST.HBPAD.billAmt = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtMode.pymtCrncyCode")
+	CUST.HBPAD.pymtCrncyCode = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.paymentAmt")
+	CUST.HBPAD.paymentAmt = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.instrNum")
+	CUST.HBPAD.instrNum = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.instrType")
+	CUST.HBPAD.instrType = BANCS.OUTPARAM.srvValue
+	
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.instrExpDate")
+	CUST.HBPAD.instrExpDate = BANCS.OUTPARAM.srvValue
+	sv_u = urhk_SRV_GetVal("onePayment.pymtDet.paymentCrAcid")
+	CUST.HBPAD.paymentCrAcid = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.HBPAD.bankCode)
+	PRINT(CUST.HBPAD.branchCode)
+	PRINT(CUST.HBPAD.instrNum)
+	PRINT(CUST.HBPAD.instrType)
+	PRINT(CUST.HBPAD.paymentAmt)
+	PRINT(CUST.HBPAD.pymtCrncyCode)
+	PRINT(CUST.HBPAD.zoneCode)
+	PRINT(CUST.HBPAD.zoneDate)
+	PRINT(CUST.HBPAD.zoneSolId)
+	PRINT(CUST.HBPAD.paymentCrAcid)
+	sv_u = urhk_B2k_AcidToForacid(CUST.HBPAD.paymentCrAcid)
+	CUST.HBPAD.paymentCrAcctID = BANCS.OUTPARAM.Foracid
+	PRINT(CUST.HBPAD.paymentCrAcctID)
+	#----------------------------------------------------------------------
+	# Calling Lodge SRV
+	#----------------------------------------------------------------------
+	sv_u = urhk_SetUrhkInp("zoneHeader.solId.solId|" + CUST.HBPAD.zoneSolId)
+	sv_u = urhk_SetUrhkInp("zoneHeader.zoneDate|" + CUST.HBPAD.zoneDate)
+	sv_u = urhk_SetUrhkInp("zoneHeader.zoneCode|" + CUST.HBPAD.zoneCode)
+	
+	#sv_u = urhk_SetUrhkInp("zoneHeader.zoneCrncyCode.crncyCode|" + CUST.HBPAD.pymtCrncyCode)
+	sv_u = urhk_SetUrhkInp("zoneHeader.crAcctId.foracid|" + CUST.HBPAD.paymentCrAcctID)
+	sv_u = urhk_SetUrhkInp("zoneHeader.totCrPartTranAmt|" + CUST.HBPAD.paymentAmt)
+	sv_u = urhk_SetUrhkInp("zoneHeader.totInstrmntAmt|" + CUST.HBPAD.paymentAmt)
+	
+	sv_u = urhk_SetUrhkInp("ptranLL.<rec_0>.key.serial_num|1")
+	sv_u = urhk_SetUrhkInp("ptranLL.<rec_0>.ptranAcctId.foracid|" + CUST.HBPAD.paymentCrAcctID)
+	sv_u = urhk_SetUrhkInp("ptranLL.<rec_0>.partTranAmtInInstCrncy|" + CUST.HBPAD.paymentAmt)
+	
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.key.serial_num|1")
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.bankBranchCode.bankCode|" + CUST.HBPAD.bankCode)
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.bankBranchCode.brCode|" + CUST.HBPAD.branchCode)
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.instrmntId|" + CUST.HBPAD.instrNum)
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.instrmntDate|" + CUST.HBPAD.instrExpDate)
+	sv_u = urhk_SetUrhkInp("instrLL.<rec_0>.instrmntAmt|" + CUST.HBPAD.paymentAmt)
+	
+	sv_u = urhk_SetUrhkOut("setInfo.setNum|setNum")
+	sv_u = urhk_ExecSrv("SRV_LodgeOcSetAndVerify|same_user_verify = Y|retain_all_output = Y")
+	PRINT(sv_u)
+	IF(sv_u != 0)THEN
+	#{
+		PRINT(BANCS.OUTPARAM.Error_num)
+		IF(CINT(BANCS.OUTPARAM.Error_num) > 0) THEN
+		#{
+			CUST.HBPAD.errorMsg = ("BANCS").("OUTPARAM").("ErrorMesg_" + FORMAT$(1,"%d"))
+			CUST.HBPAD.errorCode = ("BANCS").("OUTPARAM").("ErrorCode_" + FORMAT$(1,"%d"))
+			PRINT(CUST.HBPAD.errorMsg)
+			PRINT(CUST.HBPAD.errorCode)
+			PRINT(("BANCS").("OUTPARAM").("Tag_" + FORMAT$(1,"%d")))
+			CUST.HBPAD.errMsg = CUST.HBPAD.errorCode + " : " + CUST.HBPAD.errorMsg
+			sv_u = urhk_SRV_SetErr(CUST.HBPAD.errMsg)
+			PRINT(sv_u)
+			GOTO ENDOFSCR
+		#}
+		ENDIF
+		GOTO ENDOFSCR
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.setNum)
+	CUST.HBPAD.setNum = BANCS.OUTPARAM.setNum
+	
+	
+	BANCS.INPARAM.pymtid = CUST.HBPAD.pymtId
+	BANCS.INPARAM.bankid = BANCS.STDIN.contextBankId
+	BANCS.INPARAM.zonecode = CUST.HBPAD.zoneCode
+	BANCS.INPARAM.zonesol= CUST.HBPAD.zoneSolId
+	BANCS.INPARAM.zonedate= CUST.HBPAD.zoneDate
+	BANCS.INPARAM.pymtcracid= CUST.HBPAD.paymentCrAcctID
+	BANCS.INPARAM.pymtcrncy= CUST.HBPAD.pymtCrncyCode
+	BANCS.INPARAM.pymtamt= CUST.HBPAD.paymentAmt
+	BANCS.INPARAM.billcrncy = CUST.HBPAD.billCrncyCode
+	BANCS.INPARAM.billamt = CUST.HBPAD.billAmt
+	BANCS.INPARAM.freetext1 = TRIM(CUST.HBPAD.setNum)
+	BANCS.INPARAM.freetext2=""
+	BANCS.INPARAM.freecode1=""
+	BANCS.INPARAM.freecode2=""
+	BANCS.INPARAM.billdetails=""
+	
+	sv_u = urhk_updatePNPD("")
+	PRINT(sv_u)
+	PRINT(BANCS.OUTPARAM.successOrFailure)
+	IF(sv_u != 0) THEN
+	#{
+		CUST.HBPAD.errMsg = "PNPD updation failed"
+		sv_u = urhk_SRV_SetErr(CUST.HBPAD.errMsg)
+		GOTO ENDOFSCR
+		PRINT(BANCS.OUTPARAM.errorMesg)
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(BANCS.OUTPARAM.errorMesg)) THEN
+	#{
+		IF(BANCS.OUTPARAM.errorMesg != "") THEN
+		#{
+			CUST.HBPAD.errMsg = "PNPD updation failed. " + BANCS.OUTPARAM.errorMesg
+			sv_u = urhk_SRV_SetErr(CUST.HBPAD.errMsg)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	ENDOFSCR:
+		
+		#trace off
+END-->

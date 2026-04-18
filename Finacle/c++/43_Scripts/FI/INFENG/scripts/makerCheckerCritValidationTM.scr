@@ -1,0 +1,396 @@
+<--START
+TRACE ON
+
+	sv_r = urhk_B2k_PrintRepos("BANCS")
+	PRINT(sv_r)
+
+	###########################################################################################
+	# Check whether CUST Repository exists else create it
+	###########################################################################################
+
+	sv_r = REPEXISTS("CUST")
+	PRINT(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+
+	###########################################################################################
+	# Check whether HTM Class exists else create it
+	###########################################################################################
+
+	sv_r = CLASSEXISTS("CUST","HTM")
+	PRINT(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+			CREATECLASS ("CUST","HTM",5)
+	#}
+	ENDIF
+	
+	CUST.HTM.roleId=TRIM(BANCS.STDIN.roleId)
+	PRINT(CUST.HTM.roleId)
+	
+	CUST.HTM.userWorkClass=TRIM(BANCS.STDIN.userWorkClass)
+	PRINT(CUST.HTM.userWorkClass)
+	
+	CUST.HTM.mode=TRIM(BANCS.INPUT.funcCode)
+	PRINT(CUST.HTM.mode)
+	
+	CUST.HTM.tranSubType=TRIM(BANCS.INPUT.tranSubType)
+	PRINT(CUST.HTM.tranSubType)
+	
+	CUST.HTM.tranId=TRIM(BANCS.INPUT.tranId)
+	PRINT(CUST.HTM.tranId)
+	
+	CUST.HTM.tranDate=TRIM(BANCS.INPUT.tranDate)
+	PRINT(CUST.HTM.tranDate)
+	
+	CUST.HTM.mkr_same_flg="N"
+	CUST.HTM.mkr_diff_flg="N"
+	CUST.HTM.ckr_same_flg="N"
+	CUST.HTM.ckr_diff_flg="N"
+	
+	CUST.HTM.same_flg="N"
+	CUST.HTM.diff_flg="N"
+	
+	CUST.HTM.successFlg="Y"
+	CUST.HTM.errorMessage="NA"
+
+	IF (BANCS.STDIN.userId=="DD32140") THEN
+		CUST.HTM.successFlg="Y"
+		CUST.HTM.errorMessage="NA"
+		GOTO ENDOFSCRIPT
+	ENDIF
+
+	
+	sv_s="CNT|select count (1) from tbaadm.sst where SET_ID  ='BCDC' and bank_id =?SVAR and sol_id =?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId  + "|" + BANCS.STDIN.mySolId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF (sv_d != 0) THEN
+                #{
+                        CUST.HTM.errMsg = "DB ERROR!"
+                        GOTO ENDOFSCRIPT
+                #}
+                ELSE
+                #{	
+			PRINT (BANCS.OUTPARAM.CNT)
+			CUST.HTM.BCDC = BANCS.OUTPARAM.CNT
+
+                IF (BANCS.OUTPARAM.CNT > 0 ) THEN
+			CUST.HTM.BCDC ="Y" 
+			GOTO ENDOFSCRIPT
+		ELSE
+			CUST.HTM.BCDC ="N" 
+		ENDIF
+	ENDIF
+
+
+	
+	IF(CUST.HTM.mode != "A")THEN
+	#{
+		##################################
+		# Fetch Transaction sub type for other modes#
+		##################################
+		sv_s = "tsbtye|"
+		sv_s = sv_s + "select distinct tran_sub_type  from tbaadm.dctd_acli "
+		sv_s = sv_s + "where tran_id =lpad(?SVAR,9,' ') and tran_date=to_date(?SVAR,'dd-mm-yyyy') and bank_id=?SVAR" 
+		
+		BANCS.INPARAM.BINDVARS = CUST.HTM.tranId+"|"+CUST.HTM.tranDate+"|"+BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_r = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_r)
+
+		IF (sv_r == "0") THEN
+		#{
+			CUST.HTM.tranSubType=BANCS.OUTPARAM.tsbtye
+			PRINT(CUST.HTM.tranSubType)	
+		#}	
+		ENDIF
+	#}
+	ENDIF
+		IF((CUST.HTM.tranSubType != "BI") AND (CUST.HTM.tranSubType != "CI"))THEN
+		#{
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		
+ ##################################
+# Validatation to check whether maker/checker is applicable for BI/CI type#
+##################################
+sv_s = "count|"
+sv_s = sv_s + "select count(1) from custom.c_cpvalue "
+sv_s = sv_s + "where parameter_id='RESTRICT_TRSFER' and bank_id=?SVAR  and instr(parameter_value,?SVAR)!= 0"
+
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId+"|"+CUST.HTM.tranSubType
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_r = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_r)
+
+IF (sv_r == "0") THEN
+#{
+		IF(BANCS.OUTPARAM.count == 0)THEN
+		#{
+				GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+#}
+ENDIF
+	
+	IF((CUST.HTM.mode != "P") OR (CUST.HTM.mode != "V"))THEN
+	#{		
+		##################################
+		# Maker Validation - Same CIF TXN#
+		##################################
+		sv_s = "count|"
+		sv_s = sv_s + "SELECT count(1) from custom.c_cpvalue where exists "
+		#sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'RESTRICT_TRSFER' and instr(parameter_value,?SVAR)!= 0) and exists " 
+		sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'MKR_ROLE_SAME_CIF' and instr(parameter_value,?SVAR)!= 0) and "
+		sv_s = sv_s + "parameter_id = 'MKR_WCLASS_SAME_CIF' and instr(parameter_value,?SVAR) != 0"
+
+		#BANCS.INPARAM.BINDVARS = CUST.HTM.tranSubType+"|"+CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		BANCS.INPARAM.BINDVARS = CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_r = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_r)
+
+		IF (sv_r == "0") THEN
+		#{
+			IF(BANCS.OUTPARAM.count != 0)THEN
+			#{
+				CUST.HTM.mkr_same_flg = "Y"
+			#}
+			ENDIF
+		#}	
+		ENDIF
+		
+		##################################
+		# Maker Validation - Diff CIF TXN#
+		##################################
+		sv_s = "count|"
+		sv_s = sv_s + "SELECT count(1) from custom.c_cpvalue where exists "
+		#sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'RESTRICT_TRSFER' and instr(parameter_value,?SVAR)!= 0) and exists " 
+		sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'MKR_ROLE_DIFF_CIF' and instr(parameter_value,?SVAR)!= 0) and "
+		sv_s = sv_s + "parameter_id = 'MKR_WCLASS_DIFF_CIF' and instr(parameter_value,?SVAR) != 0"
+
+		#BANCS.INPARAM.BINDVARS = CUST.HTM.tranSubType+"|"+CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		BANCS.INPARAM.BINDVARS = CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_r = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_r)
+
+		IF (sv_r == "0") THEN
+		#{
+			IF(BANCS.OUTPARAM.count != 0)THEN
+			#{
+				CUST.HTM.mkr_diff_flg = "Y"
+			#}
+			ENDIF
+		#}	
+		ENDIF
+	#}
+	ENDIF
+	IF(CUST.HTM.mode == "A")THEN
+	#{
+		IF((CUST.HTM.mkr_same_flg != "Y") AND (CUST.HTM.mkr_diff_flg != "Y")) THEN
+		#{
+			CUST.HTM.successFlg="N"
+			CUST.HTM.errorMessage="You don't have access to create transfer transaction"
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF((CUST.HTM.mode == "P") OR (CUST.HTM.mode == "V"))THEN
+	#{		
+		##################################
+		# Checker Validation - Same CIF TXN#
+		##################################
+		sv_s = "count|"
+		sv_s = sv_s + "SELECT count(1) from custom.c_cpvalue where exists "
+		#sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'RESTRICT_TRSFER' and instr(parameter_value,?SVAR)!= 0) and exists " 
+		sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'CKR_ROLE_SAME_CIF' and instr(parameter_value,?SVAR)!= 0) and "
+		sv_s = sv_s + "parameter_id = 'CKR_WCLASS_SAME_CIF' and instr(parameter_value,?SVAR) != 0"
+
+		#BANCS.INPARAM.BINDVARS = CUST.HTM.tranSubType+"|"+CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		BANCS.INPARAM.BINDVARS = CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_r = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_r)
+
+		IF (sv_r == "0") THEN
+		#{
+			IF(BANCS.OUTPARAM.count != 0)THEN
+			#{
+				CUST.HTM.ckr_same_flg = "Y"
+			#}
+			ENDIF
+		#}	
+		ENDIF
+		
+		##################################
+		# Checker Validation - Diff CIF TXN#
+		##################################
+		sv_s = "count|"
+		sv_s = sv_s + "SELECT count(1) from custom.c_cpvalue where exists "
+		#sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'RESTRICT_TRSFER' and instr(parameter_value,?SVAR)!= 0) and exists " 
+		sv_s = sv_s + "(select * from custom.c_cpvalue where parameter_id = 'CKR_ROLE_DIFF_CIF' and instr(parameter_value,?SVAR)!= 0) and "
+		sv_s = sv_s + "parameter_id = 'CKR_WCLASS_DIFF_CIF' and instr(parameter_value,?SVAR) != 0"
+
+		#BANCS.INPARAM.BINDVARS = CUST.HTM.tranSubType+"|"+CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		BANCS.INPARAM.BINDVARS = CUST.HTM.roleId+"|"+CUST.HTM.userWorkClass
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_r = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_r)
+
+		IF (sv_r == "0") THEN
+		#{
+			IF(BANCS.OUTPARAM.count != 0)THEN
+			#{
+				CUST.HTM.ckr_diff_flg = "Y"
+			#}
+			ENDIF
+		#}	
+		ENDIF
+	#}
+	ENDIF
+	
+	PRINT(CUST.HTM.mkr_same_flg)
+	PRINT(CUST.HTM.mkr_diff_flg)
+	PRINT(CUST.HTM.ckr_same_flg)
+	PRINT(CUST.HTM.ckr_diff_flg)
+	PRINT(CUST.HTM.mode)
+	
+	##################################
+	# Transaction Category check same cif / diff cif#
+	##################################
+	sv_s = "count|"
+	sv_s = sv_s + "select count(distinct cust_id) from tbaadm.dctd_acli "
+	sv_s = sv_s + "where cust_id is not null and tran_id =lpad(?SVAR,9,' ') and tran_date=to_date(?SVAR,'dd-mm-yyyy') and bank_id=?SVAR" 
+	
+	BANCS.INPARAM.BINDVARS = CUST.HTM.tranId+"|"+CUST.HTM.tranDate+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+
+	sv_r = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_r)
+
+	IF (sv_r == "0") THEN
+	#{
+		IF(BANCS.OUTPARAM.count > 1)THEN
+		#{
+			CUST.HTM.diff_flg="Y"
+		#}
+		ELSE
+		#{
+			CUST.HTM.same_flg="Y"
+		#}
+		ENDIF
+	#}	
+	ELSE
+	#{
+		CUST.HTM.successFlg="N"
+		CUST.HTM.errorMessage="DB error: Unable to categorize Transaction"
+	#}
+	ENDIF
+	 sv_s = "count|"
+        sv_s = sv_s + "select count(1) from tbaadm.dctd_acli "
+        sv_s = sv_s + "where cust_id is null and tran_id=lpad(?SVAR,9,' ') and tran_date=to_date(?SVAR,'dd-mm-yyyy') and bank_id=?SVAR"
+
+        BANCS.INPARAM.BINDVARS = CUST.HTM.tranId+"|"+CUST.HTM.tranDate+"|"+BANCS.STDIN.contextBankId
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_r = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_r)
+
+        IF (sv_r == "0") THEN
+        #{
+                IF(BANCS.OUTPARAM.count > 0)THEN
+                #{
+                        CUST.HTM.diff_flg="Y"
+                        CUST.HTM.same_flg="N"
+                #}
+                ENDIF
+        #}
+        ELSE
+        #{
+                CUST.HTM.successFlg="N"
+                CUST.HTM.errorMessage="DB error: Unable to categorize Transaction"
+        #}
+        ENDIF
+	
+	IF((CUST.HTM.mode == "P") OR (CUST.HTM.mode == "V"))THEN
+	#{
+		IF(CUST.HTM.same_flg == "Y")THEN
+		#{
+			IF(CUST.HTM.ckr_same_flg != "Y")THEN
+			#{
+				CUST.HTM.successFlg="N"
+				CUST.HTM.errorMessage="You don't have access to Post/Verify transfer transaction between same customer"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		IF(CUST.HTM.diff_flg == "Y")THEN
+		#{
+			IF(CUST.HTM.ckr_diff_flg != "Y")THEN
+			#{
+				CUST.HTM.successFlg="N"
+				CUST.HTM.errorMessage="You don't have access to Post/Verify transfer transaction between different customer"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	IF((CUST.HTM.mode == "C") OR (CUST.HTM.mode == "M"))THEN
+	#{
+		IF(CUST.HTM.same_flg == "Y")THEN
+		#{
+			IF(CUST.HTM.mkr_same_flg != "Y")THEN
+			#{
+				CUST.HTM.successFlg="N"
+				CUST.HTM.errorMessage="You don't have access to Copy/Modify transfer transaction between same customer"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		IF(CUST.HTM.diff_flg == "Y")THEN
+		#{
+			IF(CUST.HTM.mkr_diff_flg != "Y")THEN
+			#{
+				CUST.HTM.successFlg="N"
+				CUST.HTM.errorMessage="You don't have access to Copy/Modify transfer transaction between different customer"
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+		
+	
+ENDOFSCRIPT:
+
+sv_u = urhk_SetOrbOut(CUST.HTM.successFlg+"|"+CUST.HTM.errorMessage)
+PRINT(sv_u)
+
+TRACE OFF
+EXITSCRIPT
+END-->

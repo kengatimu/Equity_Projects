@@ -1,0 +1,216 @@
+##########################################################################################
+# Product		: Finacle Core
+# Category		: User Defined
+# Script		: EftH2HTraMod.scr
+# Menu                  : 
+# Description			: Modify tran remarks for H2H transactions
+# Author                : JAMES GICHIRI
+# Date	                : 31-08-2023
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+###########################################################################################
+<--start
+trace on
+
+        IF (REPEXISTS("CUST") == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+		IF (REPEXISTS("CUSTS") == 0) THEN
+        #{
+                CREATEREP("CUSTS")
+        #}
+        ENDIF
+
+
+        IF (CLASSEXISTS("CUST","BILL") == 0) THEN
+        #{
+                CREATECLASS("CUST","BILL",5)
+        #}
+		ENDIF
+		IF (CLASSEXISTS("CUSTS","SBACT") == 0) THEN
+        #{
+            CREATECLASS("CUSTS","SBACT",5)
+        #}
+		ENDIF
+		
+		IF(FIELDEXISTS(CUSTS.SBACT.foracid)==1)THEN
+		#{
+			sv_j = "cif_id |select  cif_id from tbaadm.gam where foracid=?SVAR and bank_id=?SVAR "
+		    BANCS.INPARAM.BINDVARS = CUSTS.SBACT.foracid + "|" + BANCS.STDIN.contextBankId
+			
+			print(sv_j)
+			sv_u = urhk_dbSelectWithBind(sv_j)
+			IF(sv_u == 0) THEN
+				CUST.BILL.CIF_ID=BANCS.OUTPARAM.cif_id
+				IF((trim(CUST.BILL.CIF_ID)!="54300525673") AND (trim(CUST.BILL.CIF_ID)!="54200100780") AND (trim(CUST.BILL.CIF_ID)!="54300525673"))THEN
+				#{
+					EXITSCRIPT
+				#}
+				ELSE
+				#{
+					CUSTS.SBACT.tranid = trim(CUSTS.SBACT.tranid)
+					CUSTS.SBACT.tranid = lpad(CUSTS.SBACT.tranid,9,' ')
+					print (CUSTS.SBACT.tranid)
+				#}
+				ENDIF
+									
+			ELSE
+				EXITSCRIPT
+			ENDIF	
+		
+		#}
+		ENDIF
+		
+		
+			
+		sv_j = "ref_num |select  SUBSTR('" + LTRIM(CUSTS.SBACT.tranPrtcls) + ")', 1, INSTR('" + LTRIM(CUSTS.SBACT.tranPrtcls) + "', ' ') - 1) AS REF_NUMBER FROM DUAL "
+		print(sv_j)
+		sv_u = urhk_dbSelectWithBind(sv_j)
+		IF(sv_u == 0) THEN
+			CUST.BILL.REF_NUM=BANCS.OUTPARAM.ref_num
+			print(BANCS.OUTPARAM.ref_num)
+				
+		ENDIF
+		
+
+		
+		
+
+
+	IF (FIELDEXISTS(CUSTS.SBACT.tranid)==1)THEN
+
+		CUST.BILL.tranId = CUSTS.SBACT.tranid
+		IF(CUSTS.SBACT.tranPrtcls!="")THEN
+			sv_y="TRAN, particular, serial, type,tran_sol|"
+			sv_y = sv_y + " select TRAN_ID, TRAN_PARTICULAR,PART_TRAN_SRL_NUM, PART_TRAN_TYPE, DTH_INIT_SOL_ID from tbaadm.DTD WHERE BANK_ID=?SVAR AND tran_id= lpad(?SVAR,9,' ') "
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUSTS.SBACT.tranid
+			print(BANCS.INPARAM.BINDVARS)
+			print (sv_y)
+
+			sv_v = urhk_dbcursorOpenWithBind(sv_y)
+			PRINT(sv_v)
+
+
+			IF(sv_v == 0) THEN
+				CUST.BILL.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+				print(CUST.BILL.CURSOR_NUMBER)
+				sv_b = urhk_dbCursorFetch(CUST.BILL.CURSOR_NUMBER)
+				print(sv_b)
+				BANCS.INPUT.RECCOUNT = CINT("1")
+				print(BANCS.INPUT.RECCOUNT)
+				CUST.BILL.tranDate= BANCS.STDIN.BODDate
+				WHILE(sv_b == "0")
+				
+					CUST.BILL.partTranSrlNum = trim(BANCS.OUTPARAM.serial)
+					CUST.BILL.partTranSrlNum = "   " + CUST.BILL.partTranSrlNum
+					CUST.BILL.pforacid=""
+					CUST.BILL.tran_sol_id=BANCS.OUTPARAM.tran_sol
+					
+					Print (CUST.BILL.tranId)
+					print (CUST.BILL.tranDate)
+					print (CUST.BILL.partTranSrlNum)
+					print (BANCS.STDIN.mySolId)
+					print (CUST.BILL.tran_sol_id)
+					
+					IF(BANCS.STDIN.mySolId!=CUST.BILL.tran_sol_id)THEN
+					#{
+						sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.BILL.tran_sol_id)
+						sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+						IF(sv_u != 0) THEN
+						#{
+							print("Unable to change context bank")
+							CALL("trapSRVError.scr")
+						#}
+						ENDIF
+
+					#}
+					ENDIF
+					
+					sv_u = urhk_SetUrhkInp("pTran.tranId|" + CUST.BILL.tranId)
+					sv_u = urhk_SetUrhkInp("pTran.tranDate|" +  CUST.BILL.tranDate)
+					sv_u = urhk_SetUrhkInp("pTran.partTranSrlNum|" + CUST.BILL.partTranSrlNum)
+					sv_u = urhk_SetUrhkOut("tranPrtcls| tranptcls")
+					sv_u = urhk_SetUrhkOut("acct.foracid| tacct")
+					sv_u = urhk_ExecSrv("SRV_FetchPartTranForModify|retain_all_output = Y|same_user_verify = Y")
+					PRINT(sv_u)
+
+					print(BANCS.OUTPARAM.tranptcls)
+					CUST.BILL.pforacid = BANCS.OUTPARAM.tacct
+					print(BANCS.OUTPARAM.tacct)
+					
+						
+					IF (sv_u == 0) THEN
+					
+						IF (trim(CUST.BILL.pforacid) != trim(CUSTS.SBACT.foracid))THEN
+						#{
+							GOTO NEXTREC
+						#}
+						ELSE
+						#{
+							IF(BANCS.OUTPARAM.tranptcls=="CHARGE FOR OTC ECS TRAN")THEN
+							#{
+								CUSTS.SBACT.tranPrtcls = BANCS.OUTPARAM.tranptcls + " " + CUST.BILL.REF_NUM
+							#}
+							ELSE
+							#{
+								CUSTS.SBACT.tranPrtcls = CUST.BILL.REF_NUM + " " + BANCS.OUTPARAM.tranptcls 
+							#}
+							ENDIF
+						#}
+						ENDIF
+						
+						sv_u = urhk_CopyOutToIn("")
+						
+						print(CUSTS.SBACT.tranPrtcls)
+						
+						sv_u = urhk_SetUrhkInp("tranPrtcls|"+MID$(CUSTS.SBACT.tranPrtcls,0,50))
+						#sv_u = urhk_SetUrhkInp("tranRmks|"+MID$(CUSTS.SBACT.tranRmks,0,30))
+						sv_u = urhk_ExecSrv("SRV_ModifyPartTran|retain_all_output = Y|same_user_verify = Y")
+						PRINT(sv_u)
+						IF (sv_u == 0) THEN
+							print("SUCCESS")
+						ENDIF
+					ELSE
+						 CALL("trapSRVError.scr")
+					ENDIF
+
+					NEXTREC:
+					sv_b = urhk_dbCursorFetch(CUST.BILL.CURSOR_NUMBER)
+					print(sv_b)
+				DO
+			ENDIF
+
+			#----------------------------------------------------------------------------------------------------
+			# SRV Error check
+			#----------------------------------------------------------------------------------------------------
+			IF (sv_u != 0) THEN
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				ELSE
+					sv_v = 0
+				ENDIF
+				IF (sv_v > 0) then
+					sv_u = system("echo 'Error for Acct:"+CUST.BILL.tranId+" '")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>H2HError.log")
+						print(sv_u)
+					DO
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+
+EXITSCRIPT
+trace off
+end-->

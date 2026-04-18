@@ -1,0 +1,219 @@
+#------------------------------------------------------------------------------------------------------------------    
+#	Name			:
+#	Description		: This script is used for charge collection in batch
+#	Date			: 13-09-2013
+#	Author			: Bharath
+#	Input			: NA
+#	Output			: NA
+#	Called Script	:
+#	Calling Scrip	: NA
+#	Menu Option		: NA
+#	Srl. No			Date			Author			Description.
+#	-------			---------		-------			---------------
+#	1.0				13-09-2013		Bharath			Original Version
+#--------------------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="4fb88a7114189901a71f212b7a2c9332b09e5dad45094734eedfe025354e74c1"
+	TRACE ON
+	
+	sv_u = urhk_B2k_PrintRepos("BANCS")
+	print(sv_u)
+	
+	#--------------------------------------------------------------------------
+	#  Creation of MISS repository and CHRG class
+	#--------------------------------------------------------------------------
+	sv_r = REPEXISTS("CUST")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	sv_r = REPEXISTS("MISS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("MISS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("MISS", "CHRG")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("MISS", "CHRG", 5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST", "GCHRG")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUST", "GCHRG", 5)
+	#}
+	ENDIF
+	
+	
+	#--------------------------------------------------------------------------
+	# Initialise the Local Variables
+	#--------------------------------------------------------------------------
+	MISS.CHRG.error = ""
+	sv_z = 0
+	
+	#--------------------------------------------------------------------------
+	# Selecting total number of accounts which are not charged
+	#--------------------------------------------------------------------------
+	sv_s = "bodDate|SELECT to_char((db_stat_date-1),'DD-MM-YYYY') "
+	sv_s = sv_s + " FROM TBAADM.GCT "
+	sv_s = sv_s + " WHERE GCT.bank_id = ?SVAR"
+	
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		MISS.CHRG.bodDate = BANCS.OUTPARAM.bodDate
+		print(MISS.CHRG.bodDate)
+		#}
+	ELSE
+		#{
+		MISS.CHRG.error = "Error in finding BOD Date"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "dtdCount|"
+	sv_s = sv_s + " SELECT COUNT(DISTINCT(foracid)) "
+	sv_s = sv_s + " FROM TBAADM.EAB, TBAADM.GAM, TBAADM.SMT, TBAADM.GCT "
+	sv_s = sv_s + " WHERE GAM.acid = EAB.acid "
+	sv_s = sv_s + " AND GAM.bank_id = EAB.bank_id "
+	sv_s = sv_s + " AND GAM.acid = SMT.acid "
+	sv_s = sv_s + " AND GAM.bank_id = SMT.bank_id "
+	sv_s = sv_s + " AND GAM.bank_id = GCT.bank_id "
+	sv_s = sv_s + " AND EAB.tran_date_bal < 200000 "
+	sv_s = sv_s + " AND GAM.sol_id =?SVAR "
+	sv_s = sv_s + " AND GAM.schm_code in ('CA288','SB188') "
+	sv_s = sv_s + " AND GAM.acct_crncy_code = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_cls_flg = 'N' "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + " AND EAB.eod_date BETWEEN (GCT.db_stat_date-31) AND GCT.db_stat_date "
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.homeCrncyCode + "|" +  BANCS.STDIN.contextBankId
+	#BANCS.INPARAM.BINDVARS = BANCS.STDIN.homeCrncyCode + "|" +  BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0) THEN
+	#{
+		MISS.CHRG.dtdCount = BANCS.OUTPARAM.dtdCount
+		print(MISS.CHRG.dtdCount)
+		#}
+	ELSE
+		#{
+		MISS.CHRG.error = "Error in finding records count"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	IF (CDOUBLE(MISS.CHRG.dtdCount) == 0 ) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------
+	#  Finding foracid
+	#------------------------------------------------------------------
+	sv_s = "foracid|"
+	sv_s = sv_s + " SELECT DISTINCT foracid "
+	sv_s = sv_s + " FROM TBAADM.EAB, TBAADM.GAM, TBAADM.SMT, TBAADM.GCT "
+	sv_s = sv_s + " WHERE GAM.acid = EAB.acid "
+	sv_s = sv_s + " AND GAM.bank_id = EAB.bank_id "
+	sv_s = sv_s + " AND GAM.acid = SMT.acid "
+	sv_s = sv_s + " AND GAM.bank_id = SMT.bank_id "
+	sv_s = sv_s + " AND GAM.bank_id = GCT.bank_id "
+	sv_s = sv_s + " AND EAB.tran_date_bal < 200000 "
+	sv_s = sv_s + " AND GAM.sol_id =?SVAR "
+	sv_s = sv_s + " AND GAM.schm_code in ('CA288','SB188') "
+	sv_s = sv_s + " AND GAM.acct_crncy_code = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_cls_flg = 'N' "
+	sv_s = sv_s + " AND GAM.bank_id = ?SVAR "
+	sv_s = sv_s + " AND EAB.eod_date BETWEEN (GCT.db_stat_date-31) AND GCT.db_stat_date "
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + BANCS.STDIN.homeCrncyCode + "|" +  BANCS.STDIN.contextBankId
+	#BANCS.INPARAM.BINDVARS = BANCS.STDIN.homeCrncyCode + "|" +  BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	#-----------------------------------------------------------------------------------
+	#---Opening Cursor
+	#-----------------------------------------------------------------------------------
+	sv_c = urhk_dbcursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	
+	IF (sv_c != 0) THEN
+	#{
+		MISS.CHRG.error = "Cursor opening failed"
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		MISS.CHRG.cursorNo = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		print(MISS.CHRG.cursorNo)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------
+	#  Getting account to credit/debit and amount
+	#------------------------------------------------------------------
+	#BANCS.STDIN.drAccount = BANCS.STDIN.mySolId + "6500100046"
+	
+	WHILE (sv_c == 0)
+	#{
+		sv_c = urhk_dbCursorFetch(MISS.CHRG.cursorNo)
+		print(sv_c)
+		IF (sv_c != 0) THEN
+		#{
+			print("cursor completed")
+			#}
+		ELSE
+			#{
+			MISS.CHRG.foracid = BANCS.OUTPARAM.foracid
+			print(MISS.CHRG.foracid)
+			
+			CUST.GCHRG.drAcctId			= MISS.CHRG.foracid
+			CUST.GCHRG.acctCrncyCode	= BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.eventId			= "SUPRM"
+			CUST.GCHRG.chrgAmt			= ""
+			CUST.GCHRG.tranType			= "T"
+			CUST.GCHRG.tranSubType		= "BI"
+			
+			CALL("gchrgcommon.scr")
+			IF(CUST.GCHRG.successOrFailure == "S") THEN
+			#{
+				print(CUST.GCHRG.tranId)
+				#}
+			ELSE
+				#{
+				MISS.CHRG.error = CUST.GCHRG.gchrgErrMsg
+				print(MISS.CHRG.error)
+				sv_u = system("echo '"+MISS.CHRG.error+"' >>supremeChrg.log")
+				GOTO NEXTREC
+			#}
+			ENDIF
+		#}
+		ENDIF
+		NEXTREC:
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(MISS.CHRG.cursorNo)
+		print(sv_c)
+		
+	ENDOFSCRIPT:
+		IF(MISS.CHRG.error != "" ) THEN
+		#{
+			print(MISS.CHRG.error)
+			sv_u = system("echo '"+MISS.CHRG.error+"' >>supremeChrg.log")
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->

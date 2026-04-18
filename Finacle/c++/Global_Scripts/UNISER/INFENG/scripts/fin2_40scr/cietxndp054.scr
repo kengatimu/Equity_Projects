@@ -1,0 +1,680 @@
+##########################################################################################
+# Source Name           : cietxndp054.scr
+# Date                  : 04-Feb-2014
+# Description           : Get Charge Details Script - CW and RF
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        04-Feb-2014   Mohan Raghu Arudi         Base Version
+###########################################################################################
+<--START
+CHECKSUM="c0e75cad472cd0f31988f723e287fa7a129f993af22d62f286232f52dc9e668b"
+	TRACE ON
+	
+	###########################################################################################
+	# Initialize the variables
+	###########################################################################################
+	
+	CUST.CIETXN.startEntityId = ""
+	CUST.CIETXN.startSolId = ""
+	CUST.CIETXN.entityId = ""
+	
+	CUST.CIETXN.errorFlg = "N"
+	CUST.CIETXN.errorMsg = " "
+	CUST.CIETXN.scriptSuccess = "Y"
+	
+	###########################################################################################
+	# Do Context Switch
+	###########################################################################################
+	
+	CUST.CIETXN.startEntityId = BANCS.STDIN.contextBankId
+	CUST.CIETXN.startSolId = BANCS.STDIN.mySolId
+	
+	PRINT(BANCS.STDIN.contextBankId)
+	PRINT(CUST.CIETXN.drAcctNumEntityId)
+	
+	CUST.CIETXN.entityId = CUST.CIETXN.drAcctNumEntityId
+	PRINT(CUST.CIETXN.entityId)
+	CALL("cietxndp010.scr")
+	
+	###########################################################################################
+	# Get the Charge Event Id 1
+	###########################################################################################
+	
+	CUST.CIETXN.chargeEventId = "CW_CHRG_EVT_ID"
+	PRINT(CUST.CIETXN.chargeEventId)
+	
+	###########################################################################################
+	# Derive the Charge Amt
+	# 1. Convert Tran Amt to USD
+	# 2. Compare it with the Slab
+	###########################################################################################
+	
+	CUST.CIETXN.contextChrgCrncy = CUST.CIETXN.tranAmtCcy
+	CUST.CIETXN.contextChrgAmt = CUST.CIETXN.tranAmt
+	
+	PRINT(CUST.CIETXN.contextChrgAmt)
+	PRINT(CUST.CIETXN.contextChrgCrncy)
+	
+	#--------------------------------------------------------------------------------------
+	
+	CUST.CIETXN.chargeRate = ""
+	CUST.CIETXN.chargeRateCode = ""
+	
+	lv_s = "chargeRateCode|SELECT RATE_CODE FROM TBAADM.ADM A, TBAADM.PTT P WHERE 1=1"
+	lv_s = lv_s + " AND A.AMT_DRV_SRL_NUM = P.AMT_DERV_SRL_NUM"
+	lv_s = lv_s + " AND A.BANK_ID = P.BANK_ID"
+	lv_s = lv_s + " AND P.BANK_ID = ?SVAR"
+	lv_s = lv_s + " AND P.EVENT_TYPE = ?SVAR"
+	lv_s = lv_s + " AND P.EVENT_ID = ?SVAR"
+	print(lv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.drAcctNumEntityId + "|GCHRG|" + CUST.CIETXN.chargeEventId
+	print(BANCS.INPARAM.BINDVARS)
+	lv_d = urhk_dbSelectWithBind(lv_s)
+	print(lv_d)
+	
+	IF(lv_d == 0)THEN
+	#{
+		CUST.CIETXN.chargeRateCode = BANCS.OUTPARAM.chargeRateCode
+		PRINT(CUST.CIETXN.chargeRateCode)
+		#}
+	ELSE
+		#{
+		lv_s = "chargeRateCode|SELECT CHRG_RATE_CODE FROM TBAADM.GCT WHERE BANK_ID = ?SVAR"
+		print(lv_s)
+		BANCS.INPARAM.BINDVARS = CUST.CIETXN.drAcctNumEntityId
+		print(BANCS.INPARAM.BINDVARS)
+		lv_d = urhk_dbSelectWithBind(lv_s)
+		print(lv_d)
+		
+		IF(lv_d == 0)THEN
+		#{
+			CUST.CIETXN.chargeRateCode = BANCS.OUTPARAM.chargeRateCode
+			PRINT(CUST.CIETXN.chargeRateCode)
+			#}
+		ELSE
+			#{
+			CUST.CIETXN.chargeRateCode = "TTS"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------
+	# Convert to USD
+	#-----------------------------------------------------------------------------------------
+	
+	CUST.CIETXN.tranAmtInUsd = "0"
+	
+	BANCS.INPARAM.InputAmount = CUST.CIETXN.tranAmt
+	BANCS.INPARAM.FromCurrency = CUST.CIETXN.tranAmtCcy
+	BANCS.INPARAM.ToCurrency = "USD"
+	BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+	BANCS.INPARAM.Rate = 0.00
+	BANCS.INPARAM.CustId = ""
+	
+	sv_u = urhk_B2k_ConvertAmount("")
+	print(sv_u)
+	
+	IF(sv_u == 0)THEN
+	#{
+		CUST.CIETXN.tranAmtInUsd = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+		PRINT(CUST.CIETXN.tranAmtInUsd)
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------
+	# Get the Slab Amount from CPARAM
+	#-----------------------------------------------------------------------------------------
+	
+	#---- SLAB1 ----#
+	
+	CUST.CIETXN.parameterId = CUST.CIETXN.txnType + "CHRG_SLAB1_UPTO_100USD_FXD"
+	print(CUST.CIETXN.parameterId)
+	
+	CUST.CIETXN.chargeSlab1 = ""
+	sv_s = "chargeSlab1|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+	sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.startEntityId + "|" + CUST.CIETXN.parameterId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CIETXN.scriptSuccess = "N"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		print(sv_u)
+		sv_s = "Error_1|Error^Charge Slab is not set in CPARAM^drAcctNum"
+		print(sv_s)
+		sv_u = urhk_SetOrbOut(sv_s)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.chargeSlab1 = BANCS.OUTPARAM.chargeSlab1
+	print(CUST.CIETXN.chargeSlab1)
+	
+	IF(TRIM(CUST.CIETXN.chargeSlab1) == "")THEN
+	#{
+		CUST.CIETXN.chargeSlab1 = "0"
+	#}
+	ENDIF
+	
+	#---- SLAB2 ----#
+	
+	CUST.CIETXN.parameterId = CUST.CIETXN.txnType + "CHRG_SLAB2_101_500USD_FXD"
+	print(CUST.CIETXN.parameterId)
+	
+	CUST.CIETXN.chargeSlab2 = ""
+	sv_s = "chargeSlab2|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+	sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.startEntityId + "|" + CUST.CIETXN.parameterId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CIETXN.scriptSuccess = "N"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		print(sv_u)
+		sv_s = "Error_1|Error^Charge Slab is not set in CPARAM^drAcctNum"
+		print(sv_s)
+		sv_u = urhk_SetOrbOut(sv_s)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.chargeSlab2 = BANCS.OUTPARAM.chargeSlab2
+	print(CUST.CIETXN.chargeSlab2)
+	
+	IF(TRIM(CUST.CIETXN.chargeSlab2) == "")THEN
+	#{
+		CUST.CIETXN.chargeSlab2 = "0"
+	#}
+	ENDIF
+	
+	#---- SLAB3 ----#
+	
+	CUST.CIETXN.parameterId = CUST.CIETXN.txnType + "CHRG_SLAB3_501_1000USD_FXD"
+	print(CUST.CIETXN.parameterId)
+	
+	CUST.CIETXN.chargeSlab3 = ""
+	sv_s = "chargeSlab3|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+	sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.startEntityId + "|" + CUST.CIETXN.parameterId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CIETXN.scriptSuccess = "N"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		print(sv_u)
+		sv_s = "Error_1|Error^Charge Slab is not set in CPARAM^drAcctNum"
+		print(sv_s)
+		sv_u = urhk_SetOrbOut(sv_s)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.chargeSlab3 = BANCS.OUTPARAM.chargeSlab3
+	print(CUST.CIETXN.chargeSlab3)
+	
+	IF(TRIM(CUST.CIETXN.chargeSlab3) == "")THEN
+	#{
+		CUST.CIETXN.chargeSlab3 = "0"
+	#}
+	ENDIF
+	
+	#---- SLAB4 ----#
+	
+	CUST.CIETXN.parameterId = CUST.CIETXN.txnType + "CHRG_SLAB4_ABOVE_1000USD_PCT"
+	print(CUST.CIETXN.parameterId)
+	
+	CUST.CIETXN.chargeSlab4 = ""
+	sv_s = "chargeSlab4|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+	sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+	sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+	sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+	sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+	sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+	sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+	sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.startEntityId + "|" + CUST.CIETXN.parameterId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d != 0)THEN
+	#{
+		CUST.CIETXN.scriptSuccess = "N"
+		sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+		print(sv_u)
+		sv_s = "Error_1|Error^Charge Slab is not set in CPARAM^drAcctNum"
+		print(sv_s)
+		sv_u = urhk_SetOrbOut(sv_s)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.CIETXN.chargeSlab4 = BANCS.OUTPARAM.chargeSlab4
+	print(CUST.CIETXN.chargeSlab4)
+	
+	IF(TRIM(CUST.CIETXN.chargeSlab4) == "")THEN
+	#{
+		CUST.CIETXN.chargeSlab4 = "0"
+	#}
+	ENDIF
+	
+	#---- Sudan Charge Amount ----#
+	
+	IF(CUST.CIETXN.startEntityId == "11")THEN
+	#{
+		CUST.CIETXN.parameterId = CUST.CIETXN.txnType + "_SS_CHRG_PCT"
+		print(CUST.CIETXN.parameterId)
+		
+		CUST.CIETXN.ssChargePcnt = ""
+		sv_s = "ssChargePcnt|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPMASTER M ,CUSTOM.C_CPVALUE V"
+		sv_s = sv_s + " WHERE M.MODULE_NAME = V.MODULE_NAME"
+		sv_s = sv_s + " AND M.MODULE_NAME = 'IETX'"
+		sv_s = sv_s + " AND M.BANK_ID = V.BANK_ID"
+		sv_s = sv_s + " AND M.BANK_ID = ?SVAR"
+		sv_s = sv_s + " AND M.PARAMETER_ID = V.PARAMETER_ID"
+		sv_s = sv_s + " AND M.PARAMETER_ID = ?SVAR"
+		sv_s = sv_s + " AND M.ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND M.DEL_FLG != 'Y'"
+		sv_s = sv_s + " AND V.ENTITY_CRE_FLG = 'Y'"
+		sv_s = sv_s + " AND V.DEL_FLG != 'Y'"
+		print(sv_s)
+		
+		BANCS.INPARAM.BINDVARS = CUST.CIETXN.startEntityId + "|" + CUST.CIETXN.parameterId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		
+		IF(sv_d != 0)THEN
+		#{
+			CUST.CIETXN.scriptSuccess = "N"
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			print(sv_u)
+			sv_s = "Error_1|Error^Charge is not set in CPARAM for Sudan^drAcctNum"
+			print(sv_s)
+			sv_u = urhk_SetOrbOut(sv_s)
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		CUST.CIETXN.ssChargePcnt = BANCS.OUTPARAM.ssChargePcnt
+		print(CUST.CIETXN.ssChargePcnt)
+		
+		IF(TRIM(CUST.CIETXN.ssChargePcnt) == "")THEN
+		#{
+			CUST.CIETXN.ssChargePcnt = "0"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------
+	# Compare with the slab
+	#-----------------------------------------------------------------------------------------
+	
+	IF(CDOUBLE(CUST.CIETXN.tranAmtInUsd) <= 100)THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = CUST.CIETXN.chargeSlab1
+		PRINT(CUST.CIETXN.chargeTranAmt)
+	#}
+	ENDIF
+	
+	IF((CDOUBLE(CUST.CIETXN.tranAmtInUsd) > 100) AND (CDOUBLE(CUST.CIETXN.tranAmtInUsd) <= 500))THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = CUST.CIETXN.chargeSlab2
+		PRINT(CUST.CIETXN.chargeTranAmt)
+	#}
+	ENDIF
+	
+	
+	IF((CDOUBLE(CUST.CIETXN.tranAmtInUsd) > 500) AND (CDOUBLE(CUST.CIETXN.tranAmtInUsd) <= 1000))THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = CUST.CIETXN.chargeSlab3
+		PRINT(CUST.CIETXN.chargeTranAmt)
+	#}
+	ENDIF
+	
+	IF(CDOUBLE(CUST.CIETXN.tranAmtInUsd) > 1000)THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = CDOUBLE(CUST.CIETXN.chargeSlab4) * CDOUBLE(CUST.CIETXN.tranAmtInUsd) / CDOUBLE("100")
+		PRINT(CUST.CIETXN.chargeTranAmt)
+	#}
+	ENDIF
+	
+	IF(CUST.CIETXN.startEntityId == "11")THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = CDOUBLE(CUST.CIETXN.ssChargePcnt) * CDOUBLE(CUST.CIETXN.tranAmtInUsd) / CDOUBLE("100")
+		PRINT(CUST.CIETXN.chargeTranAmt)
+		
+		IF(CDOUBLE(CUST.CIETXN.ssChargePcnt) == 0)THEN
+		#{
+			CUST.CIETXN.chargeTranAmt = "0"
+			#}
+		ELSE
+			#{
+			IF(CDOUBLE(CUST.CIETXN.chargeTranAmt)<5)THEN
+			#{
+				CUST.CIETXN.chargeTranAmt = "5"
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	CUST.CIETXN.chargeTranAmtCcy = "USD"
+	
+	#-----------------------------------------------------------------------------------------
+	# Exclude Staff Account From Charge
+	#-----------------------------------------------------------------------------------------
+	CUST.CIETXN.chargeFlg = "Y" 
+	BANCS.INPARAM.BINDVARS = CUST.CIETXN.drAcctNum
+	PRINT(BANCS.INPARAM.BINDVARS)
+	lv_s = "staffAccount|SELECT 1 FROM DUAL WHERE EXISTS(SELECT FORACID FROM TBAADM.GAM WHERE "
+	lv_s = lv_s + " FORACID = ?SVAR AND SCHM_TYPE = 'SBA' AND SCHM_CODE = 'SB190')"
+	print(lv_s)
+	lv_d = urhk_dbSelectWithBind(lv_s)
+	print(lv_d)
+	
+	IF(lv_d == 0)THEN
+	#{
+		CUST.CIETXN.chargeTranAmt = "0"
+		CUST.CIETXN.chargeFlg = "N" 
+	ELSE
+		CUST.CIETXN.chargeFlg = "Y" 
+	#}
+	ENDIF
+	
+	IF(FIELDEXISTS(CUST.CIETXN.crAcctNum))THEN
+	#{
+		BANCS.INPARAM.BINDVARS = CUST.CIETXN.crAcctNum
+		PRINT(BANCS.INPARAM.BINDVARS)
+		lv_s = "staffAccount|SELECT 1 FROM DUAL WHERE EXISTS(SELECT FORACID FROM TBAADM.GAM WHERE "
+		lv_s = lv_s + " FORACID = ?SVAR AND SCHM_TYPE = 'SBA' AND SCHM_CODE = 'SB190')"
+		print(lv_s)
+		lv_d = urhk_dbSelectWithBind(lv_s)
+		print(lv_d)
+		
+		IF(lv_d == 0)THEN
+		#{
+			CUST.CIETXN.chargeTranAmt = "0"
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------
+	# Convert Back to Tran Amt Ccy
+	#-----------------------------------------------------------------------------------------
+	
+	CUST.CIETXN.chrgAmtInAcctCrncy = "0"
+	IF (cdouble(CUST.CIETXN.chargeTranAmt) > 0) THEN
+		BANCS.INPARAM.InputAmount = CUST.CIETXN.chargeTranAmt
+		BANCS.INPARAM.FromCurrency = "USD"
+		BANCS.INPARAM.ToCurrency = CUST.CIETXN.tranAmtCcy
+		BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+		BANCS.INPARAM.Rate = 0.00
+		BANCS.INPARAM.CustId = ""
+		
+		sv_u = urhk_B2k_ConvertAmount("")
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			CUST.CIETXN.chrgAmtInAcctCrncy = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+			PRINT(CUST.CIETXN.chrgAmtInAcctCrncy)
+		#}
+		ENDIF
+	ELSE
+			CUST.CIETXN.chrgAmtInAcctCrncy = CDOUBLE("0")
+			PRINT(CUST.CIETXN.chrgAmtInAcctCrncy)
+	ENDIF
+	
+	#-----------------------------------------------------------------------------------------
+	IF((BANCS.STDIN.contextBankId == "11") AND (CUST.CIETXN.startSolId == "2011")) THEN
+	#{
+		CUST.CIETXN.chargeTranAmt1 = cdouble(CUST.CIETXN.chargeAmt1)
+		PRINT(CUST.CIETXN.chargeTranAmt1)
+		CUST.CIETXN.chrgAmtInAcctCrncy1 = "0"
+		
+		BANCS.INPARAM.InputAmount = CUST.CIETXN.chargeTranAmt1
+		BANCS.INPARAM.FromCurrency = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.ToCurrency = CUST.CIETXN.tranAmtCcy
+		BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+		BANCS.INPARAM.Rate = 0.00
+		BANCS.INPARAM.CustId = ""
+		
+		sv_u = urhk_B2k_ConvertAmount("")
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			CUST.CIETXN.chrgAmtInAcctCrncy1 = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+			PRINT(CUST.CIETXN.chrgAmtInAcctCrncy1)
+		#}
+		ENDIF
+		
+		CUST.CIETXN.chargeCrAcctID = CUST.CIETXN.vostroAcct
+		CUST.CIETXN.chargeEventId = CUST.CIETXN.chargeEventId
+		CUST.CIETXN.chargeTranAmt1 = CUST.CIETXN.chrgAmtInAcctCrncy1
+		CUST.CIETXN.chargeTranCcy = CUST.CIETXN.tranAmtCcy
+		PRINT(CUST.CIETXN.chargeTranAmt1)
+		PRINT(CUST.CIETXN.chargeTranCcy)
+		
+	#}
+	ENDIF
+	#--------------------------------------------------------------------------------------------------------------
+	
+	CUST.CIETXN.chargeCrAcctID = CUST.CIETXN.vostroAcct
+	CUST.CIETXN.chargeEventId = CUST.CIETXN.chargeEventId
+	CUST.CIETXN.chargeTranAmt = CUST.CIETXN.chrgAmtInAcctCrncy
+	CUST.CIETXN.chargeTranCcy = CUST.CIETXN.tranAmtCcy
+	PRINT(CUST.CIETXN.chargeTranAmt)
+	PRINT(CUST.CIETXN.chargeTranCcy)
+	
+	#######################################################################################
+	# Tran Particulars for Charge Transaction
+	#######################################################################################
+	
+	CUST.CIETXN.chargeTranParticulars = "Inter Country Cash Withdrawal Charge"
+	CUST.CIETXN.chargeTranRmks = ""
+	
+	CUST.CIETXN.chargeTranParticulars = "Inter Country Cash Withdrawal Charge"
+	CUST.CIETXN.chargeTranRmks = ""
+	
+	#######################################################################################
+	IF (BANCS.STDIN.contextBankId == "56") THEN
+	#{
+		IF (CUST.CIETXN.txnType == "RF") THEN
+		#{
+			
+			print(CUST.CIETXN.tranAmt)
+			print(CUST.CIETXN.tranAmtCcy)
+			
+			IF (CUST.CIETXN.tranAmtCcy!="USD") THEN
+			#{
+				
+				CUST.CIETXN.tranAmtUsd = "0"
+				BANCS.INPARAM.InputAmount = CUST.CIETXN.tranAmt
+				BANCS.INPARAM.FromCurrency = CUST.CIETXN.tranAmtCcy
+				BANCS.INPARAM.ToCurrency = "USD"
+				BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+				BANCS.INPARAM.Rate = 0.00
+				BANCS.INPARAM.CustId = ""
+				
+				sv_u = urhk_B2k_ConvertAmount("")
+				print(sv_u)
+				
+				IF(sv_u == 0)THEN
+				#{
+					CUST.CIETXN.tranAmtUsd = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+					PRINT(CUST.CIETXN.tranAmtUsd)
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			
+			CUST.CIETXN.limitamt="1000"
+			print(CUST.CIETXN.limitamt)
+			
+			
+			IF ((CINT(CUST.CIETXN.tranAmtUsd) < CINT(CUST.CIETXN.limitamt)) OR (CINT(CUST.CIETXN.tranAmtUsd) == CINT(CUST.CIETXN.limitamt)))  THEN
+			#{
+				CUST.CIETXN.chargeAmt = "0"
+				print(CUST.CIETXN.chargeAmt)
+				
+				#}
+			ELSE
+				#{
+				
+				
+				CUST.CIETXN.limitchargeusd="15"
+				CUST.CIETXN.limitcharge1usd = (CDOUBLE(CUST.CIETXN.tranAmt) * CDOUBLE("0.2")) / CDOUBLE("100")
+				print(CUST.CIETXN.limitcharge1usd)
+				
+				IF (CUST.CIETXN.tranAmtCcy!="USD") THEN
+				#{
+					
+					BANCS.INPARAM.InputAmount = CUST.CIETXN.limitchargeusd
+					BANCS.INPARAM.FromCurrency = "USD"
+					BANCS.INPARAM.ToCurrency = CUST.CIETXN.tranAmtCcy
+					BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+					BANCS.INPARAM.Rate = 0.00
+					BANCS.INPARAM.CustId = ""
+					
+					sv_u = urhk_B2k_ConvertAmount("")
+					print(sv_u)
+					
+					IF(sv_u == 0)THEN
+					#{
+						CUST.CIETXN.limitcharge = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						PRINT(CUST.CIETXN.limitcharge)
+					#}
+					ENDIF
+					
+					BANCS.INPARAM.InputAmount = CUST.CIETXN.limitcharge1usd
+					BANCS.INPARAM.FromCurrency = "USD"
+					BANCS.INPARAM.ToCurrency = CUST.CIETXN.tranAmtCcy
+					BANCS.INPARAM.RateCode = CUST.CIETXN.chargeRateCode
+					BANCS.INPARAM.Rate = 0.00
+					BANCS.INPARAM.CustId = ""
+					
+					sv_u = urhk_B2k_ConvertAmount("")
+					print(sv_u)
+					
+					IF(sv_u == 0)THEN
+					#{
+						CUST.CIETXN.limitcharge1 = CDOUBLE(BANCS.OUTPARAM.OutputAmount)
+						PRINT(CUST.CIETXN.limitcharge1)
+					#}
+					ENDIF
+					
+					IF ((CUST.CIETXN.limitcharge1) > (CUST.CIETXN.limitcharge)) THEN
+					#{
+						CUST.CIETXN.chargeTranAmt = CUST.CIETXN.limitcharge
+						print(CUST.CIETXN.chargeTranAmt)
+						#}
+					ELSE
+						#{
+						CUST.CIETXN.chargeTranAmt = CUST.CIETXN.limitcharge1
+						print(CUST.CIETXN.chargeTranAmt)
+					#}
+					ENDIF
+					
+					#}
+				ELSE
+					#{
+					
+					IF ((CUST.CIETXN.limitcharge1usd) > (CUST.CIETXN.limitchargeusd)) THEN
+					#{
+						CUST.CIETXN.chargeTranAmt = CUST.CIETXN.limitchargeusd
+						print(CUST.CIETXN.chargeTranAmt)
+						#}
+					ELSE
+						#{
+						CUST.CIETXN.chargeTranAmt = CUST.CIETXN.limitcharge1usd
+						print(CUST.CIETXN.chargeTranAmt)
+					#}
+					ENDIF
+					
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	ENDOFSCRIPT:
+		
+		PRINT(CUST.CIETXN.startEntityId)
+		PRINT(CUST.CIETXN.entityId)
+		PRINT(BANCS.STDIN.contextBankId)
+		
+		CUST.CIETXN.entityId = CUST.CIETXN.startEntityId
+		CALL("cietxndp010.scr")
+		
+		sv_u = urhk_SetUrhkInp("sol.solId|"+CUST.CIETXN.startSolId)
+		print(sv_u)
+		sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+		print(sv_u)
+		
+END-->

@@ -1,0 +1,423 @@
+<--START
+TRACE ON
+
+        sv_r = REPEXISTS("CUST")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATEREP ("CUST")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST","DATA")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","DATA",5)
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST","RATE")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","RATE",5)
+        #}
+        ENDIF
+        sv_r = CLASSEXISTS("CUST","GCHRG")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","GCHRG",5)
+        #}
+        ENDIF
+
+        CUST.DATA.errFlg = "N"
+        CUST.DATA.errMsg = " "
+        CUST.DATA.acctNum = " "
+        CUST.DATA.newsanctLim = "0"
+        CUST.DATA.oldsanctLim = "0"
+        CUST.DATA.chrgCrncy = " "
+        CUST.DATA.datediff = "0"
+        CUST.DATA.acid = " "
+        CUST.DATA.crncyCode = " "
+	CUST.DATA.oldLimExpDate = ""
+	CUST.DATA.schmCode = " "
+	CUST.DATA.tranAmt = "0"
+
+        IF(FIELDEXISTS(BANCS.INPUT.acctNum))THEN
+        #{
+                IF(BANCS.INPUT.acctNum !="")THEN
+                #{
+                        CUST.DATA.acctNum = TOUPPER(TRIM(BANCS.INPUT.acctNum))
+                        PRINT(CUST.DATA.acctNum)
+                #}
+                ELSE
+                #{
+                        CUST.DATA.errFlg = "Y"
+                        CUST.DATA.errMsg = "Account Number not entered"
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = "Account Number not entered"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+	sv_s = "schmCode|SELECT SCHM_CODE FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR"
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+		CUST.DATA.schmCode = BANCS.OUTPARAM.schmCode
+		PRINT(CUST.DATA.schmCode)
+	#}
+	ELSE
+	#{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = "Invalid Account"
+                GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+        BANCS.INPUT.moduleName  = "OT"
+        BANCS.INPUT.parameterId = "ODSAN_SCHMS"
+        CALL ("getcparamvalue.scr")
+        IF(BANCS.OUTPUT.parameterVal != "")THEN
+        #{
+                CUST.DATA.schmparmVal = BANCS.OUTPUT.parameterVal
+                #}
+        ELSE
+                #{
+                CUST.DATA.errorFlg = "Y"
+                CUST.DATA.errorMsg = "CPARAM setup has not done for parameter ID:"+BANCS.INPUT.parameterId
+                GOTO ENDOFSCRIPT
+
+        #}
+        ENDIF
+
+        sv_p = GETPOSITION(CUST.DATA.schmparmVal,CUST.DATA.schmCode)
+        PRINT(sv_p)
+
+        IF(sv_p <= "0")THEN
+        #{
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+        IF(FIELDEXISTS(BANCS.INPUT.newsanctLim))THEN
+        #{
+                IF(BANCS.INPUT.newsanctLim !="")THEN
+                #{
+                        CUST.DATA.newsanctLim = TOUPPER(TRIM(BANCS.INPUT.newsanctLim))
+                        PRINT(CUST.DATA.newsanctLim)
+                #}
+                ELSE
+                #{
+                        CUST.DATA.errFlg = "Y"
+                        CUST.DATA.errMsg = "Sanction Limit not entered"
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = "Sanction Limit not entered"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        IF(FIELDEXISTS(BANCS.INPUT.newLimExpDate))THEN
+        #{
+                IF(BANCS.INPUT.newLimExpDate !="")THEN
+                #{
+                        CUST.DATA.newLimExpDate = TOUPPER(TRIM(BANCS.INPUT.newLimExpDate))
+                        PRINT(CUST.DATA.newLimExpDate)
+                #}
+                ELSE
+                #{
+                        CUST.DATA.errFlg = "Y"
+                        CUST.DATA.errMsg = "Sanction Limit Expired not entered"
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = "Sanction Limit Expired not entered"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+        sv_s = "oldsanctLim,oldLimExpDate,crncyCode,acid|SELECT SANCT_LIM,to_char((to_date(LIM_EXP_DATE,'DD-MM-YY')),'DD-MM-YYYY'),CRNCY_CODE,ACID FROM TBAADM.LHT "
+        sv_s = sv_s + "WHERE BANK_ID=?SVAR AND ACID = (SELECT ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR) AND SERIAL_NUM=(SELECT MAX(SERIAL_NUM) "
+	sv_s = sv_s + "FROM TBAADM.LHT WHERE BANK_ID=?SVAR AND ACID = (SELECT ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR) AND DEL_FLG='N' AND ENTITY_CRE_FLG='Y') AND STATUS='A'"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+  BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum +"|"+ BANCS.STDIN.contextBankId 
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+  BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.DATA.oldsanctLim = BANCS.OUTPARAM.oldsanctLim
+                PRINT(CUST.DATA.oldsanctLim)
+                CUST.DATA.oldLimExpDate = BANCS.OUTPARAM.oldLimExpDate
+                PRINT(CUST.DATA.oldLimExpDate)
+                CUST.DATA.crncyCode = BANCS.OUTPARAM.crncyCode
+                PRINT(CUST.DATA.crncyCode)
+                CUST.DATA.acid = BANCS.OUTPARAM.acid
+                PRINT(CUST.DATA.acid)
+        #}
+        #ELSE
+        #{
+        #        CUST.DATA.errFlg = "Y"
+        #        CUST.DATA.errMsg = "Invalid Account ID"
+        #        GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        CUST.DATA.LimDiff = CDOUBLE(CUST.DATA.newsanctLim) - CDOUBLE(CUST.DATA.oldsanctLim)
+        PRINT(CUST.DATA.LimDiff)
+
+        sv_s = "newLimExpDate|select to_char((to_date(?SVAR,'DD-MM-YY')),'DD-MM-YYYY') from dual"
+        BANCS.INPARAM.BINDVARS = CUST.DATA.newLimExpDate
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0) THEN
+        #{
+                CUST.DATA.newLimExpDate = BANCS.OUTPARAM.newLimExpDate
+                PRINT(CUST.DATA.newLimExpDate)
+        #}
+        ENDIF
+
+	IF(TRIM(CUST.DATA.oldLimExpDate) != "")THEN
+	#{
+        	BANCS.INPARAM.date1 = CUST.DATA.newLimExpDate
+        	BANCS.INPARAM.date2 = CUST.DATA.oldLimExpDate
+        	sv_a = urhk_B2k_dateDiff("")
+        	PRINT(sv_a)
+        	IF(sv_a == 0) THEN
+        	#{
+
+                	CUST.DATA.datediff=BANCS.OUTPARAM.dateDiff
+                	PRINT(CUST.DATA.datediff)
+        	#}
+        	ENDIF
+	#}
+	ENDIF
+
+        IF(CUST.DATA.datediff > "0")THEN
+        #{
+                CUST.DATA.tranAmt = CUST.DATA.newsanctLim
+		CUST.DATA.remarks = "Sanction Limit Maturity Extension"
+                GOTO CHRGCALC
+        #}
+        ENDIF
+
+        IF(CUST.DATA.LimDiff > CDOUBLE("0"))THEN
+        #{
+                CUST.DATA.tranAmt = CUST.DATA.LimDiff
+		CUST.DATA.remarks = "Sanction Limit Extension"
+                GOTO CHRGCALC
+        #}
+        ENDIF
+
+        CHRGCALC:
+        BANCS.INPUT.entityId = CUST.DATA.acid
+        BANCS.INPUT.eventId = "SANLIM"
+        BANCS.INPUT.eventType = "GCHRG"
+        BANCS.INPUT.inputAmount = CUST.DATA.tranAmt
+        BANCS.INPUT.CallMode = "SCRIPT"
+        BANCS.INPUT.chrgCollCrncy = CUST.DATA.crncyCode
+        BANCS.STDIN.ScriptName = "eventChargeCalc_1.scr"
+
+	sv_e = " "
+
+	CUST.DATA.ODacnt = CUST.DATA.acctNum
+        CALL("eventChargeCalc_1.scr")
+
+        IF(TRIM(sv_e) != "")THEN
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = sv_e
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+        CUST.DATA.chrgAmt = BANCS.OUTPUT.collAmount
+        CUST.DATA.chrgCrncy = CUST.DATA.crncyCode
+
+        sv_s = "lnkedEvent|SELECT LINKED_EVENT_ID FROM TBAADM.PTT WHERE EVENT_ID='SANLIM' AND BANK_ID=?SVAR AND EVENT_TYPE='GCHRG'"
+        BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId
+
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+
+        IF(sv_d == "0")THEN
+        #{
+                CUST.DATA.vatEvent = BANCS.OUTPARAM.lnkedEvent
+                PRINT(CUST.DATA.vatEvent)
+
+                BANCS.INPUT.inputCrncy = CUST.DATA.crncyCode
+                BANCS.INPUT.inputAmount = CUST.DATA.chrgAmt
+                BANCS.INPUT.entityId    = CUST.DATA.acid
+
+                CALL("vatOnEventChargeCalc.scr")
+
+                CUST.DATA.vatAmt = BANCS.OUTPUT.collAmount
+
+        #}
+        ENDIF
+
+        sv_s = "intDrAccnt|SELECT FORACID FROM TBAADM.GAC,TBAADM.GAM WHERE GAC.BANK_ID=?SVAR AND GAM.ACID=GAC.INT_DR_ACID AND GAM.BANK_ID=GAC.BANK_ID AND "
+        sv_s = sv_s + "GAC.ACID=(SELECT ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR)"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.DATA.intDrAccnt = BANCS.OUTPARAM.intDrAccnt
+        #}
+        ELSE
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "Interest Debit account not mapped to :"+CUST.DATA.acctNum
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.intDrAccnt)
+
+        IF(sv_u == "0")THEN
+        #{
+                CUST.DATA.avlblAmt = BANCS.OUTPARAM.EffAvailableAmt
+                PRINT(CUST.DATA.avlblAmt)
+                CUST.DATA.intCrncy = BANCS.OUTPARAM.acctCrncyCode
+                PRINT(CUST.DATA.intCrncy)
+        #}
+        ELSE
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "Interest Debit account not mapped to :"+CUST.DATA.acctNum
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        CUST.DATA.totalAmt = CDOUBLE(CUST.DATA.chrgAmt) + CDOUBLE(CUST.DATA.vatAmt)
+        PRINT(CUST.DATA.totalAmt)
+
+        IF(CUST.DATA.intCrncy != CUST.DATA.crncyCode)THEN
+        #{
+                CUST.RATE.acctCrncy = CUST.DATA.crncyCode
+                CUST.RATE.refCrncy = CUST.DATA.intCrncy
+                CUST.RATE.TranType = "T"
+                CALL("fetchRateCode.scr")
+                IF(CUST.RATE.errorFlg != "Y")THEN
+                #{
+                        CUST.DATA.rateCode      =       CUST.RATE.rateCode
+                        CUST.DATA.rate          =       CUST.RATE.rate
+                #}
+                ENDIF
+
+                PRINT(CUST.DATA.totalAmt)
+                BANCS.INPARAM.InputAmount  = CUST.DATA.totalAmt
+                BANCS.INPARAM.FromCurrency = CUST.DATA.crncyCode
+                BANCS.INPARAM.ToCurrency   = CUST.DATA.intCrncy
+                BANCS.INPARAM.RateCode     = CUST.DATA.rateCode
+                BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+                #----------------------------------------------------------------------
+                #Convert The Uncollected Amount Into AED for Storing Into Custom Table
+                #----------------------------------------------------------------------
+                lv_f = urhk_B2k_ConvertAmount("")
+                IF(lv_f == 0)THEN
+                #{
+                        CUST.DATA.totalAmt = BANCS.OUTPARAM.OutputAmount
+                        PRINT(CUST.DATA.totalAmt)
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        IF(CDOUBLE(CUST.DATA.totalAmt) > CDOUBLE(CUST.DATA.avlblAmt))THEN
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "No sufficient balance to collect Charge and VAT, Modification not allowed"
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        CUST.GCHRG.drAcctId                     = CUST.DATA.intDrAccnt
+        CUST.GCHRG.acctCrncyCode                = CUST.DATA.crncyCode
+        CUST.GCHRG.eventId                      = "SANLIM"
+        CUST.GCHRG.chrgAmt                      = CUST.DATA.tranAmt + "|" + CUST.DATA.crncyCode
+        CUST.GCHRG.tranType                     = "T"
+        CUST.GCHRG.tranSubType                  = "CI"
+
+        CALL("gchrgcommon.scr")
+        IF(CUST.GCHRG.successOrFailure == "S") THEN
+        #{
+                PRINT(CUST.GCHRG.chargeTranId)
+		sv_s = "UPDATE CUSTOM.SANLIM_TRAN SET TRAN_ID=?SVAR,TRAN_AMT=?SVAR,TRAN_DATE=sysdate,CHRG_REASON=?SVAR WHERE BANK_ID=?SVAR AND ODACCT_NUM=?SVAR "
+		sv_s = sv_s + "AND TRAN_ID is null"
+		
+		BANCS.INPARAM.BINDVARS= CUST.GCHRG.chargeTranId +"|"+ CUST.DATA.tranAmt +"|"+ CUST.DATA.remarks +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+        	PRINT(sv_s)
+        	PRINT(BANCS.INPARAM.BINDVARS)
+        	sv_q = urhk_dbSQLWithBind(sv_s)
+        	PRINT(sv_q)
+        	IF(sv_q != 0)THEN
+        	#{
+
+                	CUST.DATA.errFlg = "N"
+                	CUST.DATA.errMsg = "Table update failed"
+        	#}
+        	ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg ="Charge collection failed modification can't be done" 
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+ENDOFSCRIPT:
+
+	PRINT(CUST.DATA.errFlg)
+        sv_u = urhk_SetOrbOut("errFlg|"+CUST.DATA.errFlg)
+	PRINT(CUST.DATA.errMsg)
+        sv_u = urhk_SetOrbOut("errMsg|"+CUST.DATA.errMsg)
+
+TRACE OFF
+END-->
+

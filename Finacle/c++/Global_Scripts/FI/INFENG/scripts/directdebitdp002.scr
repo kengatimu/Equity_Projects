@@ -1,0 +1,186 @@
+############################################################################################################									
+# Source Name						: directdebitdp002.scr
+# Date								: 10-03-2013
+# Description						: This script will get call when CDDUM(P) is invoked
+# Input								: None
+# Output							: None
+# Called Script						: None
+# Calling Script					:
+# Author     						: Shilpa
+# Modification History				:
+# < Version No.> 	<Date>		<Author Name> 		<Description>
+#	1				10-03-2013 	Shilpa 				Original Version
+#	2				27-10-2013	Bharath				Upload initiated in background
+#
+# Using tablespace 4
+############################################################################################################
+<--START
+CHECKSUM="695fbca00008e973547c37d1daa09b406b4c8dc133d19200c0e998a44c88ec40"
+	TRACE ON
+	
+	#==========================================================*
+	# CREATING NEW REPOSITORY AND CLASS
+	#==========================================================*
+	
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF (CLASSEXISTS("CUST", "CDDUM") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CDDUM", 5)
+	#}
+	ENDIF
+	
+	sv_s = "sysdate|select sysdate from dual"
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	CUST.CDDUM.sysdate = BANCS.OUTPARAM.sysdate
+	print(CUST.CDDUM.sysdate)
+	
+	
+	CUST.CDDUM.error_file = CUST.CDDUM.Originator + "_KBA_Processor_" + CUST.CDDUM.sysdate + ".ERR"
+	print(CUST.CDDUM.error_file)
+	CUST.CDDUM.suc_file = CUST.CDDUM.Originator + "_KBA_Processor_" + CUST.CDDUM.sysdate + ".SUC"
+	CUST.CDDUM.excel_file = trim(CUST.CDDUM.Originator) + ".lst"
+	print(CUST.CDDUM.excel_file)
+	
+	sv_a = "test -f " + CUST.CDDUM.error_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CDDUM.error_file)
+	#}
+	ENDIF
+	
+	
+	sv_a = "test -f " + CUST.CDDUM.suc_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CDDUM.suc_file)
+	#}
+	ENDIF
+	
+	sv_a = "test -f " + CUST.CDDUM.excel_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CDDUM.excel_file)
+	#}
+	ENDIF
+	
+	sv_u = urhk_getFileLocation("COM|directdebitdp001.com")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		#----------------------------------------------------------------------------------
+		#---    Setting Env variables
+		#----------------------------------------------------------------------------------
+		sv_a = "sqlInput|" + CUST.CDDUM.Originator + "," + BANCS.STDIN.userId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable fileName"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "originator|" + CUST.CDDUM.Originator
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable fileName"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "bankId|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "userId|" + BANCS.STDIN.userId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#----------------------------------------------------------------------------------
+		#---    Executing com file in background
+		#----------------------------------------------------------------------------------
+		BANCS.INPARAM.scriptName = "directdebitdp001.com"
+		BANCS.INPARAM.arguments = ""
+		sv_u = urhk_CallShellScript("b")
+		print(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Upload process failed please retry"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.errMsg = "Unable to load com file"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	##########################################################################################
+	# Calling com
+	##########################################################################################
+	
+	#CUST.CDDUM.com="directdebitdp001.com"
+	#PRINT(CUST.CDDUM.com)
+	#
+	#sv_x = urhk_getFileLocation("COM|" + CUST.CDDUM.com)
+	#print(sv_x)
+	#
+	#sv_l = BANCS.OUTPARAM.fileLocation
+	#print(sv_l)
+	#
+	#
+	#sv_t  =  sv_l + CUST.CDDUM.com  + " " + '"' +CUST.CDDUM.Originator + "," + BANCS.STDIN.userId + '"' + " " + '"' + CUST.CDDUM.Originator + '"' + " " + BANCS.STDIN.contextBankId + " " + BANCS.STDIN.userId
+	#PRINT(sv_t)
+	#
+	#sv_u = SYSTEM(sv_t + " &")
+	##sv_u = SYSTEM(sv_t)
+	#print(sv_u)
+	
+	#IF (sv_r == 0) THEN
+	##{
+	#	sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+	#	sv_g = "RESULT_MSG|Record successfully processed ."
+	#	sv_u = urhk_SetOrbOut(sv_g)
+	##}
+	#ELSE
+	##{
+	#	sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+	#	sv_g = "RESULT_MSG|Record are not transfered. "
+	#	sv_u = urhk_SetOrbOut(sv_g)
+	##}
+	#ENDIF
+	
+	ENDSCRIPT:
+		TRACE OFF
+END-->

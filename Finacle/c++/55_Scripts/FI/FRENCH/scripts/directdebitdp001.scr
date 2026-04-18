@@ -1,0 +1,381 @@
+############################################################################################################									
+# Source Name						: directdebitmn002.scr
+# Date								: 10-03-2013
+# Description						: This script will get call when CDDUM(U) is invoked
+# Input								: None
+# Output							: None
+# Called Script						: None
+# Calling Script					: directdebitmn003.scr
+# Author     						: Shilpa
+# Modification History				:
+# < Version No.> 	<Date>		<Author Name> 	<Description>
+#	0.1				10-03-2013 	Shilpa 			Original Version
+#	0.2				27-10-2013	Bharath			Upload initiated in background
+# Using tablespace 4
+############################################################################################################
+
+<--START
+CHECKSUM="5e8c01182fb27cd870889db1541df5d40700107f471db82eb227002174f0bac9"
+	TRACE ON
+	#==========================================================
+	# CREATING NEW REPOSITORY AND CLASS
+	#==========================================================
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "CDDUM") == 0) THEN
+	#{
+		CREATECLASS("CUST", "CDDUM", 5)
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName="CLEARING"
+	BANCS.INPUT.parameterId="TRANSUBTYPE"
+	call("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CDDUM.tranSubType = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.errMsg = BANCS.INPUT.parameterId+" setup is not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName="CDDUM"
+	BANCS.INPUT.parameterId="BACID"
+	call("getcparamvalue.scr")
+	IF(BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.CDDUM.bacid = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.errMsg = BANCS.INPUT.parameterId+" setup is not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	print(BANCS.STDIN.mySolId)
+	
+	sv_s = "sysdate,sysdate1|select to_char(sysdate,'DD-MM-YYYY'),to_char(sysdate,'DDMMYY') from dual"
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	CUST.CDDUM.sysdate = BANCS.OUTPARAM.sysdate
+	print(CUST.CDDUM.sysdate)
+	
+	CUST.CDDUM.sysdate1 = BANCS.OUTPARAM.sysdate1
+	print(CUST.CDDUM.sysdate1)
+	
+	IF ( CUST.CDDUM.Test == "N" ) THEN
+	#{
+		CUST.CDDUM.postind = "P"
+		CUST.CDDUM.Rename = "Y"
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.postind = "T"
+		CUST.CDDUM.Rename = "N"
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# SUC file to upload
+	#----------------------------------------------------------
+	
+	CUST.CDDUM.suc_file = CUST.CDDUM.Originator + "_APPLIED_" + CUST.CDDUM.Originator + "_" + CUST.CDDUM.sysdate + ".SUC"
+	print (CUST.CDDUM.suc_file)
+	sv_a = "test -f " + CUST.CDDUM.suc_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CDDUM.suc_file)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# SUC file to upload in TTUM --- Unapplied
+	#----------------------------------------------------------
+	
+	CUST.CDDUM.ttumsal_file = CUST.CDDUM.Originator + "_UNAPPLIED_" + CUST.CDDUM.Originator + "_" + CUST.CDDUM.sysdate + ".SUC"
+	print(CUST.CDDUM.ttumsal_file)
+	sv_a = "test -f " + CUST.CDDUM.ttumsal_file
+	sv_r = system(sv_a)
+	print(sv_r)
+	
+	IF(sv_r == 0) THEN
+	#{
+		sv_a = system("rm -f " + CUST.CDDUM.ttumsal_file)
+	#}
+	ENDIF
+	
+	#----------------------------------------------------------
+	# Checking if  there are pending records
+	#----------------------------------------------------------
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + "from CUSTOM.C_KBADDS WHERE "
+	sv_s = sv_s + "ORIGINATOR_code = ?SVAR "
+	sv_s = sv_s + "AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND UPL_STATUS ='P' "
+	sv_s = sv_s + "AND DEL_FLG='N' "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CDDUM.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	#--------------------------------------------------------------------------
+	# Creating files for upload
+	#--------------------------------------------------------------------------
+	
+	#{
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + " FROM CUSTOM.C_KBADDS "
+	sv_s = sv_s + " WHERE Originator_code = ?SVAR "
+	sv_s = sv_s + " AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + " AND UPL_STATUS ='P' "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + " AND STATUS in ('RA') "
+	sv_s = sv_s + " AND DEL_FLG='N' "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CDDUM.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	
+	IF (sv_q == "0") THEN
+	#{
+		CUST.CDDUM.applied = "N"
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.applied = "Y"
+	#}
+	ENDIF
+	print(CUST.CDDUM.applied)
+	
+	sv_s = "Count|select count(1) "
+	sv_s = sv_s + "FROM CUSTOM.C_KBADDS where "
+	sv_s = sv_s + "Originator_code =?SVAR "
+	sv_s = sv_s + "AND RCRE_USER_ID =?SVAR "
+	sv_s = sv_s + "AND UPL_STATUS ='P' "
+	sv_s = sv_s + " AND bank_id = ?SVAR "
+	sv_s = sv_s + "AND STATUS ='63' "
+	sv_s = sv_s + "AND DEL_FLG='N' "
+	
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS = CUST.CDDUM.Originator + "|" +  BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+	sv_r = urhk_dbselectWithBind(sv_s)
+	print(BANCS.INPARAM.BINDVARS)
+	print (sv_r)
+	
+	sv_q = BANCS.OUTPARAM.Count
+	print(sv_q)
+	
+	IF (sv_q == "0") THEN
+	#{
+		CUST.CDDUM.unapplied = "N"
+		CUST.CDDUM.charge = "N"
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.unapplied = "Y"
+		CUST.CDDUM.charge = "Y"
+	#}
+	ENDIF
+	print(CUST.CDDUM.unapplied)
+	print(CUST.CDDUM.charge)
+	
+	sv_u = urhk_getFileLocation("COM|directdebitdp002.com")
+	print(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		sv_s = "lstFileName|select concat(concat('"+CUST.CDDUM.Originator+"',to_char(sysdate,'ddmmyy')),'.TXT') "
+		sv_s = sv_s + " FROM DUAL "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = ""
+		sv_d = urhk_dbselectWithBind(sv_s)
+		print(sv_d)
+		
+		IF (sv_d == 0) THEN
+		#{
+			CUST.CDDUM.lstFileName = BANCS.OUTPARAM.lstFileName
+			#}
+		ELSE
+			#{
+			CUST.CDDUM.lstFileName = CUST.CDDUM.Originator
+		#}
+		ENDIF
+		
+		#----------------------------------------------------------------------------------
+		#---    Setting Env variables
+		#----------------------------------------------------------------------------------
+		sv_a = "sqlInput|" + BANCS.STDIN.mySolId + "," + CUST.CDDUM.Dracno + "," + CUST.CDDUM.Originator + "," + BANCS.STDIN.userId  + "," + TRIM(CUST.CDDUM.ChrgAmt) + "," + BANCS.STDIN.homeCrncyCode + "," + BANCS.STDIN.contextBankId + "," + CUST.CDDUM.bacid
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable fileName"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "originator|" + CUST.CDDUM.Originator
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable fileName"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "sysdate|" + CUST.CDDUM.sysdate
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "pstdFlg|" + CUST.CDDUM.postind
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "renameFlg|" + CUST.CDDUM.Rename
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "onsUser|" + BANCS.STDIN.userId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "bankId|" + BANCS.STDIN.contextBankId
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "tranSubType|" + CUST.CDDUM.tranSubType
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "sysdate1|" + CUST.CDDUM.sysdate1
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "filePath|" + CUST.CDDUM.FilePath
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable drAcctCrncy"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		sv_a = "lstFileName|" + CUST.CDDUM.lstFileName
+		sv_u = urhk_putEnvForCallShellScript(sv_a)
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Error in setting env variable"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#----------------------------------------------------------------------------------
+		#---    Executing com file in background
+		#----------------------------------------------------------------------------------
+		BANCS.INPARAM.scriptName = "directdebitdp002.com"
+		BANCS.INPARAM.arguments = ""
+		sv_u = urhk_CallShellScript("b")
+		print(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			CUST.CDDUM.errMsg = "Upload process failed please retry"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		CUST.CDDUM.errMsg = "Unable to load com file"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	############################################################################################
+	# Clling com
+	############################################################################################
+	#CUST.CDDUM.com="directdebitdp002.com"
+	#PRINT(CUST.CDDUM.com)
+	#
+	#sv_x = urhk_getFileLocation("COM|" + CUST.CDDUM.com)
+	#print(sv_x)
+	#
+	#sv_l = BANCS.OUTPARAM.fileLocation
+	#print(sv_l)
+	#
+	#sv_t  =  sv_l + CUST.CDDUM.com  + " " + '"' + BANCS.STDIN.mySolId + "," + CUST.CDDUM.Dracno + "," + CUST.CDDUM.Originator + "," + BANCS.STDIN.userId  + "," + TRIM(CUST.CDDUM.ChrgAmt) + "," + BANCS.STDIN.homeCrncyCode + "," + BANCS.STDIN.contextBankId + "," + CUST.CDDUM.bacid + '"' + " " + '"' + CUST.CDDUM.Originator + '"' + " " + CUST.CDDUM.sysdate + " " + CUST.CDDUM.postind + " " + CUST.CDDUM.Rename + " " + BANCS.STDIN.userId + " " + BANCS.STDIN.contextBankId + " " + CUST.CDDUM.tranSubType + " " + CUST.CDDUM.sysdate1 + " " + CUST.CDDUM.FilePath
+	#PRINT(sv_t)
+	#
+	#sv_u = SYSTEM(sv_t + " &")
+	#print(sv_u)
+	
+	ENDOFSCRIPT:
+		EXITSCRIPT
+END-->

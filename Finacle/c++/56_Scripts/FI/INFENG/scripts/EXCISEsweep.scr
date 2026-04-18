@@ -1,0 +1,243 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : EXCISEsweep.scr
+#  Description     : This script will be called by a batch job
+#  Date            : 19-03-2020
+#  Author          : Edwin Zico
+#  Job             : EXDSW
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             19-03-2020     Edwin Zico		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","VAT") == 0) THEN
+#{
+	CREATECLASS("CUST","VAT",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+CUST.VAT.errMsg = ""
+
+	sv_s = "foracid,EXCISEDUTYSUM|"
+	sv_s = sv_s + " select distinct * from (select foracid,  trunc(( (sum(tran_amt) * (15/115))),2) as excisedutysum from tbaadm.dtd,tbaadm.gam where dtd.bank_id=?SVAR and gam.acid=dtd.acid and "
+	sv_s = sv_s + " dtd.tran_date =  (select to_char(db_stat_date ,'DD-MON-RRRR')  from tbaadm.gct where  Bank_id=?SVAR) "
+	sv_s = sv_s + " and part_tran_type='C' and substr(foracid,5,13) in  ('650061113','650061121','650061119','650061436','650061114','650061116','650061112','650061118','650061120','650061115',"
+	sv_s = sv_s + " '650061117','650061122','650050903','650052123','650012007','650071573','650071574','650051479','650051590','650052218','650050929','650051548','650050845','650050846',"
+	sv_s = sv_s + " '650050772','650050848','650050503','650050513','650050502','650051896','650012436','620012408','650060943','650052271','650052138','650072243','650072245','650012436',"
+	sv_s = sv_s + " '650051508','650051528','650012420') and dtd.del_flg='N' and pstd_flg='Y' group by foracid)"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_e = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_e)
+
+IF(sv_e == 0) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	IF(sv_q == 1) THEN
+	#{
+		sv_x = urhk_dbCursorClose(sv_m)
+		print(sv_x)
+		CUST.VAT.errMsg ="No Data."
+		sv_e=urhk_SetOrbOut("StattusCode|Error")
+		sv_e=urhk_SetOrbOut("Error|"+CUST.VAT.errMsg )
+		EXITSCRIPT
+	#}
+	ENDIF
+	print(sv_q)
+
+	WHILE (sv_q==0)
+	
+		CUST.VAT.foracid=BANCS.OUTPARAM.foracid
+		print(CUST.VAT.foracid)
+		CUST.VAT.EXCISEDUTYSUM=BANCS.OUTPARAM.EXCISEDUTYSUM
+		print(CUST.VAT.EXCISEDUTYSUM)
+
+	#--------------------------------------------------------------------------
+	# Initialise the MTT repository
+	#--------------------------------------------------------------------------
+		sv_r = REPEXISTS("MTT")
+		IF (sv_r == 0) THEN
+			CREATEREP("MTT")
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","TranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","TranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","PartTranDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","PartTranDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","InputDetails")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","InputDetails",5)
+		ENDIF
+
+		sv_r = CLASSEXISTS("MTT","Error")
+		IF (sv_r == 0) THEN
+			CREATECLASS("MTT","Error",5)
+		ENDIF
+		sv_r = CLASSEXISTS("BANCS","INPARAM")
+		IF (sv_r == 0) THEN
+		CREATECLASS("BANCS","INPARAM",5)
+		ENDIF
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT
+	#===================================
+
+		BANCS.INPARAM.PostTranFlg 		= "Y"
+		BANCS.INPARAM.CommitFlg 		= "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+		BANCS.INPARAM.ValidationFlag 		= "Y"
+		BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+		BANCS.INPARAM.CheckExceptions 		= "N"
+
+		
+#		sv_r = urhk_MTTS_Initialize("")
+#		print(sv_r)
+
+		sv_a = urhk_MTTS_PopulateInputDetails("")
+		print(sv_a)
+		MTT.TranDetails.TranDate="0"
+		MTT.TranDetails.TranType = "T"
+		MTT.TranDetails.TranSubType = "BI"
+		MTT.TranDetails.IgnoreExcp = "I"
+		MTT.TranDetails.Consolidate = "N"
+		MTT.TranDetails.Remarks = "EXCISE DUTY Sweep"
+
+		print(CUST.VAT.foracid)
+		print(CUST.VAT.EXCISEDUTYSUM)
+		CUST.VAT.GL = "1000340011950"
+		print(CUST.VAT.GL)
+
+		sv_v = "ExciseTran"
+		print(sv_v)
+
+		sv_r = urhk_MTTS_DefineTransaction("ExciseTran")
+
+		IF((CUST.VAT.EXCISEDUTYSUM > 0)  and (CUST.VAT.foracid!=""))THEN
+		#{		
+			
+			#CustomerDebit
+					MTT.PartTranDetails.Account 	= CUST.VAT.foracid 
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = "EXCISE DUTY Sweep " + CUST.VAT.GL 
+					MTT.PartTranDetails.RefAmount = -(cdouble(CUST.VAT.EXCISEDUTYSUM))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Dr.EXCISE DUTY Sweep" 
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "CustDr"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.VAT.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+			#EXCISE Credit
+					MTT.PartTranDetails.Account 	= CUST.VAT.GL
+					MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.RateCode 	="MEAN"
+					MTT.PartTranDetails.Rate 	= "0"
+					MTT.PartTranDetails.ValueDateDiff = "0"
+					MTT.PartTranDetails.Particulars = "Cr from EXCISE DUTY Sweep" + CUST.VAT.foracid 
+					MTT.PartTranDetails.RefAmount = (cdouble(CUST.VAT.EXCISEDUTYSUM))
+					print(MTT.PartTranDetails.RefAmount)
+					MTT.PartTranDetails.Remarks = "Cr from:" + CUST.VAT.foracid
+					MTT.PartTranDetails.IgnoreExcp = "I"
+					MTT.PartTranDetails.Consolidate = "N"
+					MTT.PartTranDetails.TranIdentifier = sv_v
+					sv_e = "EXCISEIncome"
+					print(sv_e)
+					sv_r = urhk_MTTS_definePartTran(sv_e)
+					print(sv_r)
+					
+					IF(fieldexists(MTT.Error.Description)) THEN
+					#{
+						print(MTT.Error.Description)
+						CUST.VAT.MTTErrDesc = MTT.Error.Description
+					#}
+					ENDIF
+		
+		
+				sv_r = urhk_MTTS_EndDefinition("")
+				print(sv_r)
+				IF(fieldexists(BANCS.OUTPARAM.MTTTranId)) THEN
+				#{
+				
+					print(BANCS.OUTPARAM.MTTTranId)
+					CUST.VAT.tranid = BANCS.OUTPARAM.MTTTranId
+					print(CUST.VAT.tranid)
+				#}
+				ENDIF
+		#}
+		ELSE
+		#{
+			sv_r = urhk_MTTS_EndDefinition("")
+			print(sv_r)			
+			GOTO NEXTREC
+		#}
+		ENDIF		
+
+	NEXTREC:
+	
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)
+	
+	
+	#}
+	DO
+#}
+ELSE
+#{
+
+	CUST.VAT.errMsg ="Data Error"
+	sv_e=urhk_SetOrbOut("StattusCode|Error")
+	sv_e=urhk_SetOrbOut("Error|"+CUST.VAT.errMsg)
+#}
+ENDIF
+
+
+
+EXITSCRIPT
+
+trace off
+end-->
+	

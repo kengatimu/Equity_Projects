@@ -1,0 +1,157 @@
+# This script has the logic for deriving the SOL ID for the incoming meessages
+# A sample logic is given , banks can customize this based on their requirement.
+
+#This script is called at the end of TrfrPaysyMsg.scr , so input available are -
+#	BANCS.INPUT.PaysysId
+#	BANCS.OUTPUT.RecvrBIC	BANCS.OUTPUT.MessageId	(Got from TrfrSwiftMsg.scr)
+#	BANCS.OUTPUT.FormattedPaysysMsg  BANCS.INPUT.PaysysMsg
+
+<--START
+CHECKSUM="15156941c496ded6e7e643655fc1c225f14bc8f98c8cd4cbf91cdf3274c7d18a"
+	TRACE ON
+	#Method 1:
+	#If MT No. is 103 or 100 get the acct.sol_id of the binificiary account
+	IF((BANCS.OUTPUT.MessageId == "100") OR( BANCS.OUTPUT.MessageId == "103")) THEN
+	#{
+		sv_p = getPosition(BANCS.OUTPUT.FormattedPaysysMsg,":59")
+		sv_s = mid$(BANCS.OUTPUT.FormattedPaysysMsg,sv_p+3,strlen(BANCS.OUTPUT.FormattedPaysysMsg))
+		sv_p = getPosition(sv_s,"|")
+		IF(sv_p == 0) THEN
+		#{
+			sv_p = strlen(sv_s)
+		#}
+		ENDIF
+		sv_f = mid$(sv_s,0,sv_p-1)
+		#Acct. No. may be prefixed with SLASH '/'
+		sv_k = getPosition(sv_f,"/")
+		#sv_k = mid$(sv_s,0,1)
+		IF(sv_k != 0)  THEN
+		#{
+			sv_f = mid$(sv_f,sv_k,sv_p-2)
+			sv_q = "sol_id| SELECT sol_id FROM TBAADM.GAM "
+			sv_q = sv_q + " WHERE foracid=?SVAR"
+			sv_q = sv_q + " AND del_flg = 'N'"
+			sv_q = sv_q + " AND entity_cre_flg = 'Y'"
+			sv_q = sv_q + "	AND bank_i = ?SVAR"
+			sv_r = urhk_dbSelectWithBind(sv_q)
+			BANCS.INPARAM.BINDVARS = sv_f +"|"+ BANCS.STDIN.contextBankId
+			IF(sv_r ==0) THEN
+			#{
+				BANCS.OUTPUT.SolId = BANCS.OUTPARAM.sol_id
+				exitscript
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	#Method 2:
+	BANCS.INPARAM.PaysysId  = BANCS.INPUT.PaysysId
+	sv_a = urhk_getPaysysDetails("")
+	sv_b = BANCS.OUTPARAM.DefltRecvrBIC
+	
+	#Select SOL_ID from BRBIC/BRTM table for defalut receiver BIC set up in PAYSYS.
+	sv_s = "total_count | Select count(*) "
+	sv_f = " from TBAADM.BRBIC where paysys_id = '" + BANCS.INPUT.PaysysId + "' "
+	sv_f = sv_f + " AND bank_identifier = '" + sv_b + "' "
+	
+	sv_q = sv_s + sv_f
+	sv_r = urhk_dbSelectWithBind(sv_q)
+	#If Records found check for unique record
+	IF (sv_r == 0) THEN
+	#{
+		#If single record found , Get the sol_id for the same and return
+		IF(BANCS.OUTPARAM.total_count == 1) THEN
+		#{
+			sv_s = "bank_code,branch_code | Select bank_code,branch_code "
+			sv_q = sv_s + sv_f
+			sv_r = urhk_dbSelectWithBind(sv_q)
+			sv_x = BANCS.OUTPARAM.bank_code
+			sv_y = BANCS.OUTPARAM.branch_code
+			
+			#Get Sol_Id for this bank, branch.
+			sv_s = "sol_count| select count(*) "
+			sv_f = " from TBAADM.SOL where bank_code ='" + sv_x+"' AND br_code = '"+sv_y + "' "
+			sv_q = sv_s + sv_f
+			sv_r = urhk_dbselect(sv_q)
+			IF(sv_r == 0) THEN
+			#{
+				sv_s = "sol_id| select sol_id"
+				IF(BANCS.OUTPARAM.sol_count > 1) THEN
+				#{
+					sv_f = sv_f + " AND extn_cntr_code='00' AND rownum = 1  "
+				#}
+				ENDIF
+				
+				sv_q = sv_s + sv_f
+				sv_r = urhk_dbSelectWithBind(sv_q)
+				IF(sv_r == 0 ) THEN
+				#{
+					BANCS.OUTPUT.SolId = BANCS.OUTPARAM.sol_id
+					exitscript
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#Method 3
+	#If NO sol_id found then check the sol_id for the reciver BIC of the message
+	
+	sv_s = "total_count | Select count(*) "
+	sv_f = " from TBAADM.BRBIC where paysys_id = '" + BANCS.INPUT.PaysysId + "' "
+	sv_f = sv_f + " AND bank_identifier = '" + BANCS.OUTPUT.RecvrBIC + "' "
+	
+	sv_q = sv_s + sv_f
+	sv_r = urhk_dbSelectWithBind(sv_q)
+	
+	#If Records found , exit from here itself.
+	IF (sv_r == 0) THEN
+	#{
+		#If single record found , Get the sol_id for the same and return
+		IF(BANCS.OUTPARAM.total_count == 1) THEN
+		#{
+			sv_s = "bank_code,branch_code | Select bank_code,branch_code "
+			sv_q = sv_s + sv_f
+			sv_r = urhk_dbSelectWithBind(sv_q)
+			sv_x = BANCS.OUTPARAM.bank_code
+			sv_y = BANCS.OUTPARAM.branch_code
+			
+			#Get Sol_Id for this bank, branch.
+			sv_s = "sol_count| select count(*) "
+			sv_f = " from TBAADM.SOL where bank_code ='" + sv_x+"' AND br_code = '"+sv_y + "' "
+			sv_q = sv_s + sv_f
+			sv_r = urhk_dbSelectWithBind(sv_q)
+			IF(sv_r == 0 ) THEN
+			#{
+				sv_s = "sol_id| select sol_id"
+				
+				IF(BANCS.OUTPARAM.sol_count > 1) THEN
+				#{
+					sv_f = sv_f + " AND extn_cntr_code='00'  AND rownum=1 "
+				#}
+				ENDIF
+				
+				sv_q = sv_s + sv_f
+				sv_r = urhk_dbSelectWithBind(sv_q)
+				IF(sv_r == 0 ) THEN
+				#{
+					BANCS.OUTPUT.SolId = BANCS.OUTPARAM.sol_id
+					exitscript
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	TRACE OFF
+	EXITSCRIPT
+END-->

@@ -1,0 +1,38 @@
+--====================================================================================================
+-- Table Name: CUSTOM.CUST_INTEREST_MAINT
+-- Synonym Name : CUSTOM.C_PREFINT
+-- Date: 29-August-2018
+-- Description: This table is used for Maintaining Preferential interest limit based on User Role.
+-- Author: Haneesha Kanumuru
+-- Modification History :
+--<Version No.> <Date> <Author Name> <Description>
+--===================================================================================
+
+DROP TABLE CUSTOM.CUST_INTEREST_MAINT CASCADE CONSTRAINTS;
+
+CREATE TABLE "CUSTOM"."CUST_INTEREST_MAINT" 
+   (	"ROLE_ID" VARCHAR2(8 BYTE), 
+	"PREF_INTEREST" VARCHAR2(8 BYTE), 
+	"DEL_FLG" CHAR(1 BYTE), 
+	"ENTITY_CRE_FLG" CHAR(1 BYTE), 
+	"RCRE_USER_ID" VARCHAR2(15 BYTE), 
+	"RCRE_TIME" DATE, 
+	"LCHG_USER_ID" VARCHAR2(15 BYTE), 
+	"LCHG_TIME" DATE, 
+	"BANK_ID" VARCHAR2(8 BYTE)
+   ) 
+
+  CREATE UNIQUE INDEX "CUSTOM"."IDX_INTEREST" ON "CUSTOM"."CUST_INTEREST_MAINT" ("BANK_ID", "ROLE_ID"); 
+ 
+ DROP SYNONYM CUSTOM.C_PREFINT;
+
+CREATE SYNONYM CUSTOM.C_PREFINT FOR CUSTOM.CUST_INTEREST_MAINT;
+
+
+GRANT INSERT, SELECT, UPDATE,DELETE ON CUSTOM.CUST_INTEREST_MAINT TO TBAADM;
+
+GRANT INSERT, SELECT, UPDATE,DELETE ON CUSTOM.CUST_INTEREST_MAINT TO TBAGEN;
+
+GRANT INSERT, SELECT, UPDATE,DELETE ON CUSTOM.CUST_INTEREST_MAINT TO TBAUTIL;
+
+COMMIT;

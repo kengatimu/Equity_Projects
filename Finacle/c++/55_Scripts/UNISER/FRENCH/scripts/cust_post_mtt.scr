@@ -1,0 +1,189 @@
+<--START
+	# Script body goes here
+	#===================================
+	# Initializing BANCS parameters
+	#===================================
+	TRACE ON
+	
+	BANCS.INPARAM.PostTranFlg               = "X"
+	BANCS.INPARAM.CommitFlg                 = "Y"
+	BANCS.INPARAM.ValidationFlag            = "Y"
+	BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg   = "N"
+	BANCS.INPARAM.proxyPostFlg              = "N"
+	BANCS.INPARAM.CheckExceptions           = "N"
+	
+	sv_u = urhk_MTTS_initialize("")
+	PRINT(sv_u)
+	#===================================
+	# Clear Error Message
+	#===================================
+	MTT.Error.Description 	=   ""
+	
+	#-------------------------------------------
+	#	Populate the details required for Transaction header
+	#------------------------------------------
+	
+	MTT.TranDetails.TranDate	=   "0"
+	MTT.TranDetails.PostFlag        =   	"Y"
+	MTT.TranDetails.TranType        =   	"T"
+	MTT.TranDetails.TranSubType     =   	"BI"
+	#MTT.TranDetails.tran_particular =  CUST.ACCT.tran_particular
+	MTT.TranDetails.IgnoreExcp      =   	"I"
+	MTT.TranDetails.Consolidate     =   	"N"
+	MTT.TranDetails.ReversalFlag    =   	"N"
+	MTT.TranDetails.PostTranFlg     =   	"Y"
+	MTT.TranDetails.ValidationFlag      	=   	"N"
+	MTT.TranDetails.RestrictModifyInd 	=   	"SECOND_GROUP"
+	MTT.TranDetails.ErrorCheckForLuw =   	"N"
+	MTT.TranDetails.ModuleId              =	"HTM"
+	
+	#***************************************************************************
+	#Define the transaction
+	#***************************************************************************
+	PRINT("before define")
+	sv_r = urhk_MTTS_DefineTransaction("ABC")
+	PRINT(sv_r)
+	IF (sv_r != 0) THEN
+	#{
+		sv_c = "Unable to Define the Transaction.."
+		PRINT(sv_c)
+		MTT.Error.Description = sv_c
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		PRINT("success")
+	#}
+	ENDIF
+	
+	
+	# ---------------------------------------------------------------------
+	# Populate the details required for CREDIT and DEBIT part-tran to office account
+	# ---------------------------------------------------------------------
+	PRINT(CUST.ACCT.crForacid)
+	PRINT(CUST.ACCT.tranAmt)
+	PRINT(CUST.ACCT.tranCrncy)
+	MTT.PartTranDetails.Account = CUST.ACCT.crForacid
+	MTT.PartTranDetails.RefAmount   = CDOUBLE(CUST.ACCT.tranAmt)
+	MTT.PartTranDetails.RefCurrency = CUST.ACCT.tranCrncy
+	MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.ProxyPstgInd= "N"
+	MTT.PartTranDetails.Particulars = CUST.ACCT.tran_particular
+	MTT.PartTranDetails.Particulars2 = "TDA corr tran -" + CUST.ACCT.tdAccountF
+	MTT.PartTranDetails.tran_particular = CUST.ACCT.tran_particular
+	MTT.PartTranDetails.TranIdentifier  = "ABC"
+	MTT.PartTranDetails.EntryUserId = BANCS.STDIN.userId
+	
+	#----------------------- Modification done for partitioned account   --------------------------------#
+	BANCS.INPARAM.BINDVARS = CUST.ACCT.crForacid + "|" + BANCS.STDIN.contextBankId
+	sv_o = "partType,partFlag|select PARTITIONED_TYPE,PARTITIONED_FLG from tbaadm.gam where foracid=?SVAR "
+	sv_o =sv_o+"AND entity_cre_flg='Y' AND del_flg='N' AND bank_id=?SVAR"
+	sv_p = urhk_dbSelectwithbind(sv_o)
+	PRINT(sv_p)
+	
+	IF(sv_p == 0)  THEN
+	#{
+		PRINT(BANCS.OUTPARAM.partType)
+		PRINT(BANCS.OUTPARAM.partFlag)
+		IF(BANCS.OUTPARAM.partFlag == "Y") THEN
+		#{
+			MTT.PartTranDetails.ACPARTB2kType= BANCS.OUTPARAM.partType
+			PRINT(MTT.PartTranDetails.ACPARTB2kType)
+			MTT.PartTranDetails.ACPARTB2kId = CUST.ACCT.tdAccountF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#-------------------------------------------- Modifications ends here ----------------------------------------------------#
+	
+	sv_r = urhk_MTTS_DefinePartTran("CR")
+	PRINT(sv_r)
+	IF(sv_r != 0) THEN
+	#{
+		sv_c = "Unable to Define the Part Tran."
+		PRINT(sv_c)
+		MTT.Error.Description = sv_c
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	PRINT(CUST.ACCT.crForacid)
+	PRINT(CUST.ACCT.tranAmt)
+	PRINT(CUST.ACCT.tranCrncy)
+	MTT.PartTranDetails.Account = CUST.ACCT.drForacid
+	MTT.PartTranDetails.RefAmount   = -1*CDOUBLE(CUST.ACCT.tranAmt)
+	MTT.PartTranDetails.RefCurrency = CUST.ACCT.tranCrncy
+	MTT.PartTranDetails.ValueDate   = 0
+	MTT.PartTranDetails.Consolidate = "N"
+	MTT.PartTranDetails.ProxyPstgInd= "N"
+	MTT.PartTranDetails.Particulars = CUST.ACCT.tran_particular
+	MTT.PartTranDetails.Particulars2 = "TDA corr tran -" + CUST.ACCT.tdAccountF
+	MTT.PartTranDetails.tran_particular = CUST.ACCT.tran_particular
+	MTT.PartTranDetails.TranIdentifier  = "ABC"
+	
+	#----------------------- Modification done for partitioned account   --------------------------------#
+	BANCS.INPARAM.BINDVARS = CUST.ACCT.drForacid + "|" + BANCS.STDIN.contextBankId
+	sv_o = "partType,partFlag|select PARTITIONED_TYPE,PARTITIONED_FLG from tbaadm.gam where foracid=?SVAR "
+	sv_o =sv_o+"AND entity_cre_flg='Y' AND del_flg='N' AND bank_id=?SVAR"
+	sv_p = urhk_dbSelectwithbind(sv_o)
+	PRINT(sv_p)
+	
+	IF(sv_p == 0)  THEN
+	#{
+		PRINT(BANCS.OUTPARAM.partType)
+		PRINT(BANCS.OUTPARAM.partFlag)
+		IF(BANCS.OUTPARAM.partFlag == "Y") THEN
+		#{
+			MTT.PartTranDetails.ACPARTB2kType= BANCS.OUTPARAM.partType
+			PRINT(MTT.PartTranDetails.ACPARTB2kType)
+			MTT.PartTranDetails.ACPARTB2kId = CUST.ACCT.tdAccountF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#-------------------------------------------- Modifications ends here ----------------------------------------------------#
+	
+	sv_r = urhk_MTTS_DefinePartTran("DR")
+	PRINT(sv_r)
+	IF(sv_r != 0) THEN
+	#{
+		sv_c = "Unable to Define the Part Tran."
+		PRINT(sv_c)
+		MTT.Error.Description = sv_c
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	# ---------------------------------------------------------------------
+	# Commit the transaction
+	# ---------------------------------------------------------------------
+	sv_r = urhk_MTTS_EndDefinition("")
+	IF (sv_r != 0) THEN
+	#{
+		sv_c = "Unable to end the transaction definition.."
+		PRINT(sv_c)
+		MTT.Error.Description = sv_c
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		PRINT("successfully posted")
+		
+	#}
+	ENDIF
+	
+	
+	ENDOFSCRIPT:
+		sv_r = urhk_MTTS_Close("")
+		EXITSCRIPT
+		#TRACE OFF
+END-->

@@ -1,0 +1,673 @@
+##########################################################################################
+# Source Name           : hlaspayrevdp001.scr
+# Date                  : 23-Nov-2013
+# Description           : Batch Job For HLASPAY Reversal
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        23-Nov-2013   Mohan Raghu Arudi         Base Version
+###########################################################################################
+<--START
+CHECKSUM="3d4fa9059db686e4023ce186e36d92d3b11da4d19f3912627d989c590b799c4d"
+	TRACE ON
+	
+	###########################################################################################
+	# LASPAY Reversal Operation
+	###########################################################################################
+	
+	CUST.HLASPAYREV.cmnDrAcct = ""
+	CUST.HLASPAYREV.opAcct = ""
+	CUST.HLASPAYREV.opAcid = ""
+	
+	sv_s = "opAcid|SELECT OP_ACID FROM TBAADM.LAM"
+	sv_s = sv_s + " WHERE ACID = ?SVAR"
+	sv_s = sv_s + " AND BANK_ID = ?SVAR"
+	print(sv_s)
+	
+	BANCS.INPARAM.BINDVARS = CUST.HLASPAYREV.acid + "|" + CUST.HLASPAYREV.bankId
+	print(BANCS.INPARAM.BINDVARS)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d == 0)THEN
+	#{
+		CUST.HLASPAYREV.opAcid = BANCS.OUTPARAM.opAcid
+		PRINT(CUST.HLASPAYREV.opAcid)
+		sv_u = urhk_B2k_AcidToForacid(CUST.HLASPAYREV.opAcid)
+		print(sv_u)
+		
+		IF(sv_u == 0)THEN
+		#{
+			CUST.HLASPAYREV.opAcct = BANCS.OUTPARAM.Foracid
+			PRINT(CUST.HLASPAYREV.opAcct)
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	CUST.HLASPAYREV.scriptSuccess = "Y"
+	CUST.HLASPAYREV.drFromOperAcctFlg = "N"
+	CUST.HLASPAYREV.cmnDrAcct = CUST.HLASPAYREV.opAcct
+	CUST.HLASPAYREV.crExcessAcctFlg = "N"
+	CUST.HLASPAYREV.srcAcctNum = CUST.HLASPAYREV.opAcct
+	CUST.HLASPAYREV.srvError = ""
+	CUST.HLASPAYREV.srvErrMsg = ""
+	CUST.HLASPAYREV.srvErrorType = ""
+	
+	PRINT(CUST.HLASPAYREV.loanAcctNum)
+	PRINT(CUST.HLASPAYREV.tranId)
+	PRINT(CUST.HLASPAYREV.tranDate)
+	PRINT(CUST.HLASPAYREV.drFromOperAcctFlg)
+	PRINT(CUST.HLASPAYREV.cmnDrAcct)
+	PRINT(CUST.HLASPAYREV.crExcessAcctFlg)
+	PRINT(CUST.HLASPAYREV.srcAcctNum)
+	
+	###########################################################################################
+	# SRV For Reversal
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkInp("laPayCrit.tranType|T")
+	lv_a = urhk_SetUrhkInp("laPayCrit.drFromOperAcctFlg|"+CUST.HLASPAYREV.drFromOperAcctFlg)
+	IF(TRIM(CUST.HLASPAYREV.cmnDrAcct) != "")THEN
+	#{
+		lv_a = urhk_SetUrhkInp("laPayCrit.cmnDrAcct.foracid|"+CUST.HLASPAYREV.cmnDrAcct)
+	#}
+	ENDIF
+	lv_a = urhk_SetUrhkInp("laPayCrit.crExcessAcctFlg|"+CUST.HLASPAYREV.crExcessAcctFlg)
+	
+	lv_u = urhk_ExecSrvNoCommit("SRV_validateLaSchdUnSchdPmntCrit|same_user_verify = Y|retain_all_output = Y")
+	print(lv_u)
+	
+	IF(lv_u != 0)THEN
+	#{
+		lv_u = urhk_CopyOutToIn("")
+		print(lv_u)
+		
+		lv_u = urhk_ExecSrvNoCommit("SRV_validateLaSchdUnSchdPmntCrit|same_user_verify = Y|retain_all_output = Y")
+		print(lv_u)
+	#}
+	ENDIF
+	
+	IF(lv_u != 0)THEN
+	#{
+		CUST.HLASPAYREV.srvError = "N"
+		#SRV Error Handling Script
+		CALL("hlaspayrevdp002.scr")
+		
+		IF(CUST.HLASPAYREV.srvError == "Y")THEN
+		#{
+			CUST.HLASPAYREV.scriptSuccess = "N"
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "SRV Error: " + CUST.HLASPAYREV.srvErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	###########################################################################################
+	
+	lv_u = urhk_CopyOutToIn("")
+	print(lv_u)
+	
+	###########################################################################################
+	# Set SRV Input
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.laAcct.foracid|"+CUST.HLASPAYREV.loanAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.srcAcct.foracid|"+CUST.HLASPAYREV.srcAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.selFlg|Y")
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.rvrslTranIdentifier.tranId|"+CUST.HLASPAYREV.tranId)
+	
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.tranDate + " 00:00:00"
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.rvrslTranIdentifier.tranDate|"+ lv_d)
+	
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.valueDate + " 00:00:00"
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.laPayValueDate|"+lv_d)
+	lv_a = urhk_SetUrhkInp("laPayDtlRec.glDate|"+lv_d)
+	
+	###########################################################################################
+	# Set SRV Output
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.enteredCrAmt|enteredCrAmt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.collFlowId.id|collFlowId")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.ptranSrlNum|ptranSrlNum")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStdngUnearnedIncome|outStdngUnearnedIncome")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.excessCrAmt|excessCrAmt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.excessCrAcct.foracid|excessCrAcct")
+	
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.liability|adjDtlLiability")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.principal|adjDtlPrincipal")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.interest|adjDtlInterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.penalinterest|adjDtlPenalinterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.userenteredpenalinterest|adjDtlUserenteredpenalinterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.accrdInterest|adjDtlAccrdInterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.bankChrg|adjDtlBankChrg")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.otherChrg|adjDtlOtherChrg")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.fee|adjDtlFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.prepayFee|adjDtlPrepayFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.origPrepayFee|adjDtlOrigPrepayFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.prepayFeeInLaCrncy|adjDtlPrepayFeeInLaCrncy")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.deferInt|adjDtlDeferInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.total|adjDtlTotal")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.tranFee|adjDtlTranFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.origTranFee|adjDtlOrigTranFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.tranFeeAcctDetails.foracid|adjDtlTranFeeAcct")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.tranFeeEventId.eventId|adjDtlEventId")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.adjDtl.tranFeeEventId.eventType|adjDtlEventType")
+	
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.liability|outStdLiability")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.principal|outStdPrincipal")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.interest|outStdInterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.penalinterest|outStdPenalinterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.userenteredpenalinterest|outStdUserenteredpenalinterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.accrdInterest|outStdAccrdInterest")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.bankChrg|outStdBankChrg")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.otherChrg|outStdOtherChrg")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.fee|outStdFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.prepayFee|outStdPrepayFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.origPrepayFee|outStdOrigPrepayFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.prepayFeeInLaCrncy|outStdPrepayFeeInLaCrncy")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.deferInt|outStdDeferInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.total|outStdTotal")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.tranFee|outStdTranFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.origTranFee|outStdOrigTranFee")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.tranFeeAcctDetails.foracid|outStdTranFeeAcct")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.tranFeeEventId.eventId|outStdEventId")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.tranFeeEventId.eventType|outStdEventType")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.tranFeeModifyFlg|outStdTranFeeModifyFlg")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.overduePrin|outStdOverduePrin")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.overdueInt|outStdOverdueInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.plannedPrepayment|outStdPlannedPrepayment")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.deferredInt|outStdDeferredInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.normalPrin|outStdNormalPrin")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.normalInt|outStdNormalInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.penalInt|outStdPenalInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.accrPenal|outStdAccrPenal")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.holInt|outStdHolInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.compoundInt|outStdCompoundInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.penaltyOnInt|outStdPenaltyOnInt")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.penaltyOnPrin|outStdPenaltyOnPrin")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.intOnOverdueDmd|outStdIntOnOverdueDmd")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.normalBankCharges|outStdNormalBankCharges")
+	lv_a = urhk_SetUrhkOut("laPayDtlRec.outStandingDtl.normalOtherCharges|outStdNormalOtherCharges")
+	
+	###########################################################################################
+	# SRV Execution
+	###########################################################################################
+	
+	lv_u = urhk_ExecSrvNoCommit("SRV_FetchLaSchedulePmtForRvrsl|same_user_verify = Y|retain_all_output = Y")
+	print(lv_u)
+	
+	IF(lv_u != 0)THEN
+	#{
+		lv_u = urhk_CopyOutToIn("")
+		print(lv_u)
+		
+		lv_u = urhk_ExecSrvNoCommit("SRV_FetchLaSchedulePmtForRvrsl|same_user_verify = Y|retain_all_output = Y")
+		print(lv_u)
+	#}
+	ENDIF
+	
+	IF(lv_u != 0)THEN
+	#{
+		CUST.HLASPAYREV.srvError = "N"
+		#SRV Error Handling Script
+		CALL("hlaspayrevdp002.scr")
+		
+		IF(CUST.HLASPAYREV.srvError == "Y")THEN
+		#{
+			CUST.HLASPAYREV.scriptSuccess = "N"
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "SRV Error: " + CUST.HLASPAYREV.srvErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	print(BANCS.OUTPARAM.enteredCrAmt)
+	print(BANCS.OUTPARAM.collFlowId)
+	print(BANCS.OUTPARAM.ptranSrlNum)
+	print(BANCS.OUTPARAM.outStdngUnearnedIncome)
+	print(BANCS.OUTPARAM.excessCrAmt)
+	print(BANCS.OUTPARAM.excessCrAcct)
+	
+	print(BANCS.OUTPARAM.adjDtlLiability)
+	print(BANCS.OUTPARAM.adjDtlPrincipal)
+	print(BANCS.OUTPARAM.adjDtlInterest)
+	print(BANCS.OUTPARAM.adjDtlPenalinterest)
+	print(BANCS.OUTPARAM.adjDtlUserenteredpenalinterest)
+	print(BANCS.OUTPARAM.adjDtlAccrdInterest)
+	print(BANCS.OUTPARAM.adjDtlBankChrg)
+	print(BANCS.OUTPARAM.adjDtlOtherChrg)
+	print(BANCS.OUTPARAM.adjDtlFee)
+	print(BANCS.OUTPARAM.adjDtlPrepayFee)
+	print(BANCS.OUTPARAM.adjDtlOrigPrepayFee)
+	print(BANCS.OUTPARAM.adjDtlPrepayFeeInLaCrncy)
+	print(BANCS.OUTPARAM.adjDtlDeferInt)
+	print(BANCS.OUTPARAM.adjDtlTotal)
+	print(BANCS.OUTPARAM.adjDtlTranFee)
+	print(BANCS.OUTPARAM.adjDtlOrigTranFee)
+	print(BANCS.OUTPARAM.adjDtlTranFeeAcct)
+	print(BANCS.OUTPARAM.adjDtlEventId)
+	print(BANCS.OUTPARAM.adjDtlEventType)
+	
+	print(BANCS.OUTPARAM.outStdLiability)
+	print(BANCS.OUTPARAM.outStdPrincipal)
+	print(BANCS.OUTPARAM.outStdInterest)
+	print(BANCS.OUTPARAM.outStdPenalinterest)
+	print(BANCS.OUTPARAM.outStdUserenteredpenalinterest)
+	print(BANCS.OUTPARAM.outStdAccrdInterest)
+	print(BANCS.OUTPARAM.outStdBankChrg)
+	print(BANCS.OUTPARAM.outStdOtherChrg)
+	print(BANCS.OUTPARAM.outStdFee)
+	print(BANCS.OUTPARAM.outStdPrepayFee)
+	print(BANCS.OUTPARAM.outStdOrigPrepayFee)
+	print(BANCS.OUTPARAM.outStdPrepayFeeInLaCrncy)
+	print(BANCS.OUTPARAM.outStdDeferInt)
+	print(BANCS.OUTPARAM.outStdTotal)
+	print(BANCS.OUTPARAM.outStdTranFee)
+	print(BANCS.OUTPARAM.outStdOrigTranFee)
+	print(BANCS.OUTPARAM.outStdTranFeeAcct)
+	print(BANCS.OUTPARAM.outStdEventId)
+	print(BANCS.OUTPARAM.outStdEventType)
+	print(BANCS.OUTPARAM.outStdTranFeeModifyFlg)
+	print(BANCS.OUTPARAM.outStdOverduePrin)
+	print(BANCS.OUTPARAM.outStdOverdueInt)
+	print(BANCS.OUTPARAM.outStdPlannedPrepayment)
+	print(BANCS.OUTPARAM.outStdDeferredInt)
+	print(BANCS.OUTPARAM.outStdNormalPrin)
+	print(BANCS.OUTPARAM.outStdNormalInt)
+	print(BANCS.OUTPARAM.outStdPenalInt)
+	print(BANCS.OUTPARAM.outStdAccrPenal)
+	print(BANCS.OUTPARAM.outStdHolInt)
+	print(BANCS.OUTPARAM.outStdCompoundInt)
+	print(BANCS.OUTPARAM.outStdPenaltyOnInt)
+	print(BANCS.OUTPARAM.outStdPenaltyOnPrin)
+	print(BANCS.OUTPARAM.outStdIntOnOverdueDmd)
+	print(BANCS.OUTPARAM.outStdNormalBankCharges)
+	print(BANCS.OUTPARAM.outStdNormalOtherCharges)
+	
+	###########################################################################################
+	# Assign values to Repository variables
+	###########################################################################################
+	
+	CUST.HLASPAYREV.enteredCrAmt = BANCS.OUTPARAM.enteredCrAmt
+	CUST.HLASPAYREV.collFlowId = BANCS.OUTPARAM.collFlowId
+	CUST.HLASPAYREV.ptranSrlNum = BANCS.OUTPARAM.ptranSrlNum
+	CUST.HLASPAYREV.outStdngUnearnedIncome = BANCS.OUTPARAM.outStdngUnearnedIncome
+	CUST.HLASPAYREV.excessCrAmt = BANCS.OUTPARAM.excessCrAmt
+	CUST.HLASPAYREV.excessCrAcct = BANCS.OUTPARAM.excessCrAcct
+	
+	CUST.HLASPAYREV.adjDtlLiability			= BANCS.OUTPARAM.adjDtlLiability
+	CUST.HLASPAYREV.adjDtlPrincipal			= BANCS.OUTPARAM.adjDtlPrincipal
+	CUST.HLASPAYREV.adjDtlInterest			= BANCS.OUTPARAM.adjDtlInterest
+	CUST.HLASPAYREV.adjDtlPenalinterest		= BANCS.OUTPARAM.adjDtlPenalinterest
+	CUST.HLASPAYREV.adjDtlUserenteredpenalinterest	= BANCS.OUTPARAM.adjDtlUserenteredpenalinterest
+	CUST.HLASPAYREV.adjDtlAccrdInterest		= BANCS.OUTPARAM.adjDtlAccrdInterest
+	CUST.HLASPAYREV.adjDtlBankChrg			= BANCS.OUTPARAM.adjDtlBankChrg
+	CUST.HLASPAYREV.adjDtlOtherChrg			= BANCS.OUTPARAM.adjDtlOtherChrg
+	CUST.HLASPAYREV.adjDtlFee			= BANCS.OUTPARAM.adjDtlFee
+	CUST.HLASPAYREV.adjDtlPrepayFee			= BANCS.OUTPARAM.adjDtlPrepayFee
+	CUST.HLASPAYREV.adjDtlOrigPrepayFee		= BANCS.OUTPARAM.adjDtlOrigPrepayFee
+	CUST.HLASPAYREV.adjDtlPrepayFeeInLaCrncy	= BANCS.OUTPARAM.adjDtlPrepayFeeInLaCrncy
+	CUST.HLASPAYREV.adjDtlDeferInt			= BANCS.OUTPARAM.adjDtlDeferInt
+	CUST.HLASPAYREV.adjDtlTotal			= BANCS.OUTPARAM.adjDtlTotal
+	CUST.HLASPAYREV.adjDtlTranFee			= BANCS.OUTPARAM.adjDtlTranFee
+	CUST.HLASPAYREV.adjDtlOrigTranFee		= BANCS.OUTPARAM.adjDtlOrigTranFee
+	CUST.HLASPAYREV.adjDtlTranFeeAcct		= BANCS.OUTPARAM.adjDtlTranFeeAcct
+	CUST.HLASPAYREV.adjDtlEventId			= BANCS.OUTPARAM.adjDtlEventId
+	CUST.HLASPAYREV.adjDtlEventType			= BANCS.OUTPARAM.adjDtlEventType
+	
+	CUST.HLASPAYREV.outStdLiability			= BANCS.OUTPARAM.outStdLiability
+	CUST.HLASPAYREV.outStdPrincipal			= BANCS.OUTPARAM.outStdPrincipal
+	CUST.HLASPAYREV.outStdInterest			= BANCS.OUTPARAM.outStdInterest
+	CUST.HLASPAYREV.outStdPenalinterest		= BANCS.OUTPARAM.outStdPenalinterest
+	CUST.HLASPAYREV.outStdUserenteredpenalinterest	= BANCS.OUTPARAM.outStdUserenteredpenalinterest
+	CUST.HLASPAYREV.outStdAccrdInterest		= BANCS.OUTPARAM.outStdAccrdInterest
+	CUST.HLASPAYREV.outStdBankChrg			= BANCS.OUTPARAM.outStdBankChrg
+	CUST.HLASPAYREV.outStdOtherChrg			= BANCS.OUTPARAM.outStdOtherChrg
+	CUST.HLASPAYREV.outStdFee			= BANCS.OUTPARAM.outStdFee
+	CUST.HLASPAYREV.outStdPrepayFee			= BANCS.OUTPARAM.outStdPrepayFee
+	CUST.HLASPAYREV.outStdOrigPrepayFee		= BANCS.OUTPARAM.outStdOrigPrepayFee
+	CUST.HLASPAYREV.outStdPrepayFeeInLaCrncy	= BANCS.OUTPARAM.outStdPrepayFeeInLaCrncy
+	CUST.HLASPAYREV.outStdDeferInt			= BANCS.OUTPARAM.outStdDeferInt
+	CUST.HLASPAYREV.outStdTotal			= BANCS.OUTPARAM.outStdTotal
+	CUST.HLASPAYREV.outStdTranFee			= BANCS.OUTPARAM.outStdTranFee
+	CUST.HLASPAYREV.outStdOrigTranFee		= BANCS.OUTPARAM.outStdOrigTranFee
+	CUST.HLASPAYREV.outStdTranFeeAcct		= BANCS.OUTPARAM.outStdTranFeeAcct
+	CUST.HLASPAYREV.outStdEventId			= BANCS.OUTPARAM.outStdEventId
+	CUST.HLASPAYREV.outStdEventType			= BANCS.OUTPARAM.outStdEventType
+	CUST.HLASPAYREV.outStdTranFeeModifyFlg		= BANCS.OUTPARAM.outStdTranFeeModifyFlg
+	CUST.HLASPAYREV.outStdOverduePrin		= BANCS.OUTPARAM.outStdOverduePrin
+	CUST.HLASPAYREV.outStdOverdueInt		= BANCS.OUTPARAM.outStdOverdueInt
+	CUST.HLASPAYREV.outStdPlannedPrepayment		= BANCS.OUTPARAM.outStdPlannedPrepayment
+	CUST.HLASPAYREV.outStdDeferredInt		= BANCS.OUTPARAM.outStdDeferredInt
+	CUST.HLASPAYREV.outStdNormalPrin		= BANCS.OUTPARAM.outStdNormalPrin
+	CUST.HLASPAYREV.outStdNormalInt			= BANCS.OUTPARAM.outStdNormalInt
+	CUST.HLASPAYREV.outStdPenalInt			= BANCS.OUTPARAM.outStdPenalInt
+	CUST.HLASPAYREV.outStdAccrPenal			= BANCS.OUTPARAM.outStdAccrPenal
+	CUST.HLASPAYREV.outStdHolInt			= BANCS.OUTPARAM.outStdHolInt
+	CUST.HLASPAYREV.outStdCompoundInt		= BANCS.OUTPARAM.outStdCompoundInt
+	CUST.HLASPAYREV.outStdPenaltyOnInt		= BANCS.OUTPARAM.outStdPenaltyOnInt
+	CUST.HLASPAYREV.outStdPenaltyOnPrin		= BANCS.OUTPARAM.outStdPenaltyOnPrin
+	CUST.HLASPAYREV.outStdIntOnOverdueDmd		= BANCS.OUTPARAM.outStdIntOnOverdueDmd
+	CUST.HLASPAYREV.outStdNormalBankCharges		= BANCS.OUTPARAM.outStdNormalBankCharges
+	CUST.HLASPAYREV.outStdNormalOtherCharges	= BANCS.OUTPARAM.outStdNormalOtherCharges
+	
+	###########################################################################################
+	# Set SRV Input
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkInp("laPayCrit.tranType|T")
+	lv_a = urhk_SetUrhkInp("laPayCrit.drFromOperAcctFlg|"+CUST.HLASPAYREV.drFromOperAcctFlg)
+	IF(TRIM(CUST.HLASPAYREV.cmnDrAcct) != "")THEN
+	#{
+		lv_a = urhk_SetUrhkInp("laPayCrit.cmnDrAcct.foracid|"+CUST.HLASPAYREV.cmnDrAcct)
+	#}
+	ENDIF
+	lv_a = urhk_SetUrhkInp("laPayCrit.crExcessAcctFlg|"+CUST.HLASPAYREV.crExcessAcctFlg)
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.valueDate + " 00:00:00"
+	
+	print(CUST.HLASPAYREV.valueDate)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.key.serial_num|0")
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laAcct.foracid|"+CUST.HLASPAYREV.loanAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.srcAcct.foracid|"+CUST.HLASPAYREV.srcAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.selFlg|Y")
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laPayValueDate|"+lv_d)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranId|"+CUST.HLASPAYREV.tranId)
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.tranDate + " 00:00:00"
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranDate|"+ lv_d)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.enteredCrAmt|"+CUST.HLASPAYREV.enteredCrAmt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.collFlowId.id|"+CUST.HLASPAYREV.collFlowId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.ptranSrlNum|"+CUST.HLASPAYREV.ptranSrlNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStdngUnearnedIncome|"+CUST.HLASPAYREV.outStdngUnearnedIncome)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.excessCrAmt|"+CUST.HLASPAYREV.excessCrAmt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.excessCrAcct.foracid|"+CUST.HLASPAYREV.excessCrAcct)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.liability|"+CUST.HLASPAYREV.adjDtlLiability)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.principal|"+CUST.HLASPAYREV.adjDtlPrincipal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.interest|"+CUST.HLASPAYREV.adjDtlInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.penalinterest|"+CUST.HLASPAYREV.adjDtlPenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.userenteredpenalinterest|"+CUST.HLASPAYREV.adjDtlUserenteredpenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.accrdInterest|"+CUST.HLASPAYREV.adjDtlAccrdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.bankChrg|"+CUST.HLASPAYREV.adjDtlBankChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.otherChrg|"+CUST.HLASPAYREV.adjDtlOtherChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.fee|"+CUST.HLASPAYREV.adjDtlFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.prepayFee|"+CUST.HLASPAYREV.adjDtlPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.origPrepayFee|"+CUST.HLASPAYREV.adjDtlOrigPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.prepayFeeInLaCrncy|"+CUST.HLASPAYREV.adjDtlPrepayFeeInLaCrncy)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.deferInt|"+CUST.HLASPAYREV.adjDtlDeferInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.total|"+CUST.HLASPAYREV.adjDtlTotal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFee|"+CUST.HLASPAYREV.adjDtlTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.origTranFee|"+CUST.HLASPAYREV.adjDtlOrigTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeAcctDetails.foracid|"+CUST.HLASPAYREV.adjDtlTranFeeAcct)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeEventId.eventId|"+CUST.HLASPAYREV.adjDtlEventId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeEventId.eventType|"+CUST.HLASPAYREV.adjDtlEventType)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.liability|"+CUST.HLASPAYREV.outStdLiability)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.principal|"+CUST.HLASPAYREV.outStdPrincipal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.interest|"+CUST.HLASPAYREV.outStdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penalinterest|"+CUST.HLASPAYREV.outStdPenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.userenteredpenalinterest|"+CUST.HLASPAYREV.outStdUserenteredpenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.accrdInterest|"+CUST.HLASPAYREV.outStdAccrdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.bankChrg|"+CUST.HLASPAYREV.outStdBankChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.otherChrg|"+CUST.HLASPAYREV.outStdOtherChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.fee|"+CUST.HLASPAYREV.outStdFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.prepayFee|"+CUST.HLASPAYREV.outStdPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.origPrepayFee|"+CUST.HLASPAYREV.outStdOrigPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.prepayFeeInLaCrncy|"+CUST.HLASPAYREV.outStdPrepayFeeInLaCrncy)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.deferInt|"+CUST.HLASPAYREV.outStdDeferInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.total|"+CUST.HLASPAYREV.outStdTotal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFee|"+CUST.HLASPAYREV.outStdTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.origTranFee|"+CUST.HLASPAYREV.outStdOrigTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeAcctDetails.foracid|"+CUST.HLASPAYREV.outStdTranFeeAcct)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeEventId.eventId|"+CUST.HLASPAYREV.outStdEventId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeEventId.eventType|"+CUST.HLASPAYREV.outStdEventType)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeModifyFlg|"+CUST.HLASPAYREV.outStdTranFeeModifyFlg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.overduePrin|"+CUST.HLASPAYREV.outStdOverduePrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.overdueInt|"+CUST.HLASPAYREV.outStdOverdueInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.plannedPrepayment|"+CUST.HLASPAYREV.outStdPlannedPrepayment)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.deferredInt|"+CUST.HLASPAYREV.outStdDeferredInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalPrin|"+CUST.HLASPAYREV.outStdNormalPrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalInt|"+CUST.HLASPAYREV.outStdNormalInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penalInt|"+CUST.HLASPAYREV.outStdPenalInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.accrPenal|"+CUST.HLASPAYREV.outStdAccrPenal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.holInt|"+CUST.HLASPAYREV.outStdHolInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.compoundInt|"+CUST.HLASPAYREV.outStdCompoundInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penaltyOnInt|"+CUST.HLASPAYREV.outStdPenaltyOnInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penaltyOnPrin|"+CUST.HLASPAYREV.outStdPenaltyOnPrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.intOnOverdueDmd|"+CUST.HLASPAYREV.outStdIntOnOverdueDmd)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalBankCharges|"+CUST.HLASPAYREV.outStdNormalBankCharges)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalOtherCharges|"+CUST.HLASPAYREV.outStdNormalOtherCharges)
+	
+	###########################################################################################
+	# Set SRV Output
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkOut("tranObj.tranIdentifier.tranDate|revTranDate")
+	lv_a = urhk_SetUrhkOut("tranObj.tranIdentifier.tranId|revTranId")
+	
+	###########################################################################################
+	# SRV Execution
+	###########################################################################################
+	
+	lv_u = urhk_ExecSrvNoCommit("SRV_ReverseScheduleLaPmt|same_user_verify = Y|retain_all_output = Y")
+	print(lv_u)
+	
+	IF(lv_u != 0)THEN
+	#{
+		lv_u = urhk_CopyOutToIn("")
+		print(lv_u)
+		
+		lv_u = urhk_ExecSrvNoCommit("SRV_ReverseScheduleLaPmt|same_user_verify = Y|retain_all_output = Y")
+		print(lv_u)
+	#}
+	ENDIF
+	
+	IF(lv_u != 0)THEN
+	#{
+		CUST.HLASPAYREV.srvError = "N"
+		#SRV Error Handling Script
+		CALL("hlaspayrevdp002.scr")
+		
+		IF(CUST.HLASPAYREV.srvError == "Y")THEN
+		#{
+			CUST.HLASPAYREV.scriptSuccess = "N"
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "SRV Error: " + CUST.HLASPAYREV.srvErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	PRINT(BANCS.OUTPARAM.revTranDate)
+	PRINT(BANCS.OUTPARAM.revTranId)
+	
+	CUST.HLASPAYREV.revTranDate = BANCS.OUTPARAM.revTranDate
+	CUST.HLASPAYREV.revTranId = BANCS.OUTPARAM.revTranId
+	
+	###########################################################################################
+	# Fetch For Verify
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkInp("laPayCrit.tranId|"+CUST.HLASPAYREV.revTranId)
+	
+	lv_u = urhk_ExecSrvNoCommit("SRV_FetchLASPAYDtlsForVrfy|same_user_verify = Y|retain_all_output = Y")
+	print(lv_u)
+	
+	IF(lv_u != 0)THEN
+	#{
+		lv_u = urhk_CopyOutToIn("")
+		print(lv_u)
+		
+		lv_u = urhk_ExecSrvNoCommit("SRV_FetchLASPAYDtlsForVrfy|same_user_verify = Y|retain_all_output = Y")
+		print(lv_u)
+	#}
+	ENDIF
+	
+	IF(lv_u != 0)THEN
+	#{
+		CUST.HLASPAYREV.srvError = "N"
+		#SRV Error Handling Script
+		CALL("hlaspayrevdp002.scr")
+		
+		IF(CUST.HLASPAYREV.srvError == "Y")THEN
+		#{
+			CUST.HLASPAYREV.scriptSuccess = "N"
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "SRV Error: " + CUST.HLASPAYREV.srvErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	
+	###########################################################################################
+	# Set SRV Input
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkInp("laPayCrit.tranId|"+CUST.HLASPAYREV.revTranId)
+	lv_a = urhk_SetUrhkInp("laPayCrit.tranType|T")
+	lv_a = urhk_SetUrhkInp("laPayCrit.drFromOperAcctFlg|"+CUST.HLASPAYREV.drFromOperAcctFlg)
+	IF(TRIM(CUST.HLASPAYREV.cmnDrAcct) != "")THEN
+	#{
+		lv_a = urhk_SetUrhkInp("laPayCrit.cmnDrAcct.foracid|"+CUST.HLASPAYREV.cmnDrAcct)
+	#}
+	ENDIF
+	lv_a = urhk_SetUrhkInp("laPayCrit.crExcessAcctFlg|"+CUST.HLASPAYREV.crExcessAcctFlg)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.key.serial_num|0")
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laAcct.foracid|"+CUST.HLASPAYREV.loanAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.srcAcct.foracid|"+CUST.HLASPAYREV.srcAcctNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.selFlg|Y")
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.valueDate + " 00:00:00"
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.laPayValueDate|"+lv_d)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.glDate|"+BANCS.STDIN.BODDate)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranId|"+CUST.HLASPAYREV.tranId)
+	lv_d = ""
+	lv_d = CUST.HLASPAYREV.tranDate + " 00:00:00"
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.rvrslTranIdentifier.tranDate|"+ lv_d)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.enteredCrAmt|"+CUST.HLASPAYREV.enteredCrAmt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.collFlowId.id|"+CUST.HLASPAYREV.collFlowId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.ptranSrlNum|"+CUST.HLASPAYREV.ptranSrlNum)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStdngUnearnedIncome|"+CUST.HLASPAYREV.outStdngUnearnedIncome)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.excessCrAmt|"+CUST.HLASPAYREV.excessCrAmt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.excessCrAcct.foracid|"+CUST.HLASPAYREV.excessCrAcct)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.liability|"+CUST.HLASPAYREV.adjDtlLiability)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.principal|"+CUST.HLASPAYREV.adjDtlPrincipal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.interest|"+CUST.HLASPAYREV.adjDtlInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.penalinterest|"+CUST.HLASPAYREV.adjDtlPenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.userenteredpenalinterest|"+CUST.HLASPAYREV.adjDtlUserenteredpenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.accrdInterest|"+CUST.HLASPAYREV.adjDtlAccrdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.bankChrg|"+CUST.HLASPAYREV.adjDtlBankChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.otherChrg|"+CUST.HLASPAYREV.adjDtlOtherChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.fee|"+CUST.HLASPAYREV.adjDtlFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.prepayFee|"+CUST.HLASPAYREV.adjDtlPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.origPrepayFee|"+CUST.HLASPAYREV.adjDtlOrigPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.prepayFeeInLaCrncy|"+CUST.HLASPAYREV.adjDtlPrepayFeeInLaCrncy)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.deferInt|"+CUST.HLASPAYREV.adjDtlDeferInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.total|"+CUST.HLASPAYREV.adjDtlTotal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFee|"+CUST.HLASPAYREV.adjDtlTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.origTranFee|"+CUST.HLASPAYREV.adjDtlOrigTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeAcctDetails.foracid|"+CUST.HLASPAYREV.adjDtlTranFeeAcct)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeEventId.eventId|"+CUST.HLASPAYREV.adjDtlEventId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.adjDtl.tranFeeEventId.eventType|"+CUST.HLASPAYREV.adjDtlEventType)
+	
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.liability|"+CUST.HLASPAYREV.outStdLiability)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.principal|"+CUST.HLASPAYREV.outStdPrincipal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.interest|"+CUST.HLASPAYREV.outStdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penalinterest|"+CUST.HLASPAYREV.outStdPenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.userenteredpenalinterest|"+CUST.HLASPAYREV.outStdUserenteredpenalinterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.accrdInterest|"+CUST.HLASPAYREV.outStdAccrdInterest)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.bankChrg|"+CUST.HLASPAYREV.outStdBankChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.otherChrg|"+CUST.HLASPAYREV.outStdOtherChrg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.fee|"+CUST.HLASPAYREV.outStdFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.prepayFee|"+CUST.HLASPAYREV.outStdPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.origPrepayFee|"+CUST.HLASPAYREV.outStdOrigPrepayFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.prepayFeeInLaCrncy|"+CUST.HLASPAYREV.outStdPrepayFeeInLaCrncy)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.deferInt|"+CUST.HLASPAYREV.outStdDeferInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.total|"+CUST.HLASPAYREV.outStdTotal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFee|"+CUST.HLASPAYREV.outStdTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.origTranFee|"+CUST.HLASPAYREV.outStdOrigTranFee)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeAcctDetails.foracid|"+CUST.HLASPAYREV.outStdTranFeeAcct)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeEventId.eventId|"+CUST.HLASPAYREV.outStdEventId)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeEventId.eventType|"+CUST.HLASPAYREV.outStdEventType)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.tranFeeModifyFlg|"+CUST.HLASPAYREV.outStdTranFeeModifyFlg)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.overduePrin|"+CUST.HLASPAYREV.outStdOverduePrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.overdueInt|"+CUST.HLASPAYREV.outStdOverdueInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.plannedPrepayment|"+CUST.HLASPAYREV.outStdPlannedPrepayment)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.deferredInt|"+CUST.HLASPAYREV.outStdDeferredInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalPrin|"+CUST.HLASPAYREV.outStdNormalPrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalInt|"+CUST.HLASPAYREV.outStdNormalInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penalInt|"+CUST.HLASPAYREV.outStdPenalInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.accrPenal|"+CUST.HLASPAYREV.outStdAccrPenal)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.holInt|"+CUST.HLASPAYREV.outStdHolInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.compoundInt|"+CUST.HLASPAYREV.outStdCompoundInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penaltyOnInt|"+CUST.HLASPAYREV.outStdPenaltyOnInt)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.penaltyOnPrin|"+CUST.HLASPAYREV.outStdPenaltyOnPrin)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.intOnOverdueDmd|"+CUST.HLASPAYREV.outStdIntOnOverdueDmd)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalBankCharges|"+CUST.HLASPAYREV.outStdNormalBankCharges)
+	lv_a = urhk_SetUrhkInp("laPayDtlLL.<rec_0>.outStandingDtl.normalOtherCharges|"+CUST.HLASPAYREV.outStdNormalOtherCharges)
+	
+	###########################################################################################
+	# Set SRV Output
+	###########################################################################################
+	
+	lv_a = urhk_SetUrhkOut("tranObj.tranIdentifier.tranDate|revTranDate")
+	lv_a = urhk_SetUrhkOut("tranObj.tranIdentifier.tranId|revTranId")
+	
+	###########################################################################################
+	
+	lv_u = urhk_ExecSrvNoCommit("SRV_LASPAYDtlsVerify|same_user_verify = Y|retain_all_output = Y")
+	print(lv_u)
+	
+	IF(lv_u != 0)THEN
+	#{
+		lv_u = urhk_CopyOutToIn("")
+		print(lv_u)
+		
+		lv_u = urhk_ExecSrvNoCommit("SRV_LASPAYDtlsVerify|same_user_verify = Y|retain_all_output = Y")
+		print(lv_u)
+	#}
+	ENDIF
+	
+	IF(lv_u != 0)THEN
+	#{
+		CUST.HLASPAYREV.srvError = "N"
+		#SRV Error Handling Script
+		CALL("hlaspayrevdp002.scr")
+		
+		IF(CUST.HLASPAYREV.srvError == "Y")THEN
+		#{
+			CUST.HLASPAYREV.scriptSuccess = "N"
+			CUST.HLASPAYREV.errMsgFlg = "Y"
+			CUST.HLASPAYREV.errMsg = "SRV Error: " + CUST.HLASPAYREV.srvErrMsg
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	###########################################################################################
+	
+	PRINT(CUST.HLASPAYREV.scriptSuccess)
+	
+	ENDOFSCRIPT:
+		
+END-->

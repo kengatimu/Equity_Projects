@@ -1,0 +1,109 @@
+<--start
+trace on
+	sv_r = REPEXISTS("CUST")
+        IF (sv_r == 0) THEN
+        #{
+                CREATEREP("CUST")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST", "BALCHK")
+        IF (sv_r == 0) THEN
+        #{
+                CREATECLASS("CUST", "BALCHK", 5)
+        #}
+        ENDIF
+
+	#-----------------------------------------------------------------------------------------------
+	# Report file creation
+	#-----------------------------------------------------------------------------------------------
+	sv_y = 0
+	sv_p = urhk_B2k_PID("")
+	CUST.BALCHK.pid = TRIM(BANCS.OUTPARAM.PID)
+	print(CUST.BALCHK.pid)
+	CUST.BALCHK.fileName = "TellerglBalance"+ CUST.BALCHK.pid +".rpt"
+	CUST.BALCHK.fileName = "${FIN_REPORTS_DIR}/" + BANCS.STDIN.userId + "/"+CUST.BALCHK.fileName
+	print(CUST.BALCHK.fileName)
+	sv_s = "echo '                                     FAILURE REPORT\n' >"+CUST.BALCHK.fileName
+	print(sv_s)
+	sv_a = system(sv_s)
+	
+
+
+
+
+	#-----------------------------------------------------------------------------------------------
+	# Validation of Teller accounts zeroization
+	#-----------------------------------------------------------------------------------------------
+	sv_s = "Count|SELECT count(1) from GAM where CLR_BAL_AMT !=0 "
+	sv_s = sv_s + " AND bacid in(select EMP_CASH_ACCT from tbaadm.gec where bank_id =?SVAR and del_flg='N' and ENTITY_CRE_FLG='Y') "
+	sv_s = sv_s + " AND GAM.sol_id = ?SVAR "
+	sv_s = sv_s + " AND GAM.acct_cls_flg='N' "
+	sv_s = sv_s + " AND GAM.del_flg = 'N'"
+	sv_s = sv_s + " AND GAM.entity_cre_flg = 'Y'"
+	sv_s = sv_s + " AND GAM.bank_id= ?SVAR "
+	print(sv_s)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d =  urhk_dbSelectWithBind(sv_s)
+	IF (sv_d == 0 ) THEN
+	#{
+		sv_k = BANCS.OUTPARAM.Count
+		print(sv_k)
+		IF (CINT(BANCS.OUTPARAM.Count) > 0 ) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+			sv_s = "echo 'Unzerolised Teller Accounts Exist for the sol' >>"+CUST.BALCHK.fileName
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+			sv_y = 1
+			call("ebCITAlerts.scr")
+			call("ebCITEmailAlerts.scr")
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.RET = "0"
+		sv_y = 0
+		BANCS.OUTPUT.successOrFailure = "S"
+		exitscript
+	#}
+	ENDIF
+	
+
+		
+		IF ( sv_y == 1 ) THEN
+		#{
+			#--------------------------------------------------------------------------------------------------------------
+			# For HPR Entry
+			#--------------------------------------------------------------------------------------------------------------
+			sv_s = "babx4040 ${B2K_SESSION_ID} "+CUST.BALCHK.fileName+' '+'"'+"EOD Validation Failure Report" + '"' + " MANAGER 1 N"
+			print(sv_s)
+			sv_a = system(sv_s)
+			print(sv_a)
+		#}
+		ENDIF
+
+		IF (sv_y != 0) THEN
+		#{
+			BANCS.INPUT.RET = "1"
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ELSE
+		#{
+			BANCS.INPUT.RET = "0"
+			BANCS.OUTPUT.successOrFailure = "S"
+		#}
+		ENDIF
+
+
+print(BANCS.INPUT.RET)
+print(BANCS.OUTPUT.successOrFailure)
+
+EXITSCRIPT
+
+trace off
+end-->

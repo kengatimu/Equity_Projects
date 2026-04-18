@@ -1,0 +1,197 @@
+<--START
+TRACE ON
+
+############################################################################
+# Create repository and class
+############################################################################
+
+IF(REPEXISTS("CUST")==0) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","UHNU")==0) THEN
+#{
+        CREATECLASS("CUST","UHNU",5)
+#}
+ENDIF
+
+############################################################################
+# Field Initialization
+############################################################################
+
+CUST.UHNU.acctNum         = ""
+CUST.UHNU.sucOrFail       = ""
+CUST.UHNU.acid            = ""
+CUST.UHNU.acctOpnDate     = ""
+CUST.UHNU.bankId         = BANCS.STDIN.contextBankId
+CUST.UHNU.BODDate        = MID$(BANCS.STDIN.BODDate,0,10)
+sv_r = urhk_B2k_PrintRepos("BANCS")
+print(sv_r)
+
+############################################################################
+# Validating the account number from BANCS repos
+############################################################################
+
+IF(FIELDEXISTS(BANCS.INPUT.acctNum))THEN
+#{
+        CUST.UHNU.acctNum = BANCS.INPUT.acctNum
+        PRINT(CUST.UHNU.acctNum)
+#}
+ENDIF
+
+############################################################################
+# Validating the account number at DB
+############################################################################
+
+sv_s = ""
+sv_s = sv_s + "valAccCnt|"
+sv_s = sv_s + " SELECT COUNT(1) FROM TBAADM.GAM "
+sv_s = sv_s + " WHERE FORACID = ?SVAR "
+sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+sv_s = sv_s + " AND BANK_ID = ?SVAR "
+PRINT(sv_s)
+
+BANCS.INPARAM.BINDVARS = ""
+BANCS.INPARAM.BINDVARS = CUST.UHNU.acctNum + "|" + CUST.UHNU.bankId
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_d = urhk_dbSelectWithBind(sv_s)
+PRINT(sv_d)
+
+IF(sv_d == 0)THEN
+#{
+        CUST.UHNU.valAccCnt         = BANCS.OUTPARAM.valAccCnt
+        PRINT(CUST.UHNU.valAccCnt)
+
+        IF(CINT(CUST.UHNU.valAccCnt) == 0)THEN
+        #{
+                sv_z = "F|F"
+                sv_u = urhk_SetOrbOut(sv_z)
+                PRINT (sv_u)
+                GOTO ENDOFSCRIPT
+        #}
+	ELSE
+	#{
+		############################################################################
+		# Fetching the acid and account open date
+		############################################################################
+
+		sv_s = ""
+		sv_s = sv_s + "acid, acctOpnDate|"
+		sv_s = sv_s + " SELECT ACID, to_char(ACCT_OPN_DATE,'DD-MM-YYYY') FROM TBAADM.GAM "
+		sv_s = sv_s + " WHERE FORACID = ?SVAR "
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = 'Y' AND DEL_FLG = 'N'"
+		sv_s = sv_s + " AND BANK_ID = ?SVAR "
+		PRINT(sv_s)
+
+		BANCS.INPARAM.BINDVARS = ""
+		BANCS.INPARAM.BINDVARS = CUST.UHNU.acctNum + "|" + CUST.UHNU.bankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+
+		IF(sv_d == 0)THEN
+		#{
+			CUST.UHNU.acid         = BANCS.OUTPARAM.acid
+			PRINT(CUST.UHNU.acid)
+			CUST.UHNU.acctOpnDate  = BANCS.OUTPARAM.acctOpnDate
+			PRINT(CUST.UHNU.acctOpnDate)
+		ELSE
+		#{
+			CUST.UHNU.acid         = ""
+			CUST.UHNU.acctOpnDate  = ""
+		#}
+		ENDIF
+
+	#}
+        ENDIF
+
+	############################################################################
+	# Checking the Balance Mismatch
+	############################################################################
+
+	IF(CINT(CUST.UHNU.valAccCnt) == 1)THEN 
+        #{
+                sv_s = ""
+                sv_s = sv_s + "valCnt,totamt|"
+                sv_s = sv_s + " SELECT CASE WHEN TO_NUMBER(TOTAMT) = TO_NUMBER((SELECT NVL(G.CLR_BAL_AMT + G.BAL_ON_PURGE_DATE,0) FROM TBAADM.GAM G  "
+                sv_s = sv_s + " WHERE G.ENTITY_CRE_FLG ='Y' AND G.DEL_FLG='N' AND G.FORACID=?SVAR AND G.BANK_ID=?SVAR)) THEN 'EQUAL' ELSE 'NOTEQUAL' END,totamt "
+                sv_s = sv_s + " FROM "
+                sv_s = sv_s + " (SELECT  SUM(AMT) AS TOTAMT FROM "
+                sv_s = sv_s + " (SELECT NVL(SUM(D.TRAN_AMT * DECODE(D.PART_TRAN_TYPE,'C',1,-1)),0) AS AMT  "
+                sv_s = sv_s + " FROM TBAADM.DTD D "
+                sv_s = sv_s + " WHERE D.DEL_FLG='N' AND D.PSTD_FLG='Y' "
+		sv_s = sv_s + " AND D.VALUE_DATE <= TO_DATE(?SVAR,'DD-MM-YYYY') "
+		sv_s = sv_s + " AND D.TRAN_DATE BETWEEN TO_DATE(?SVAR,'DD-MM-YYYY') AND TO_DATE(?SVAR,'DD-MM-YYYY') "
+                sv_s = sv_s + " AND D.ACID = ?SVAR "
+                sv_s = sv_s + " UNION ALL "
+                sv_s = sv_s + " SELECT  NVL(SUM(H.TRAN_AMT * DECODE(H.PART_TRAN_TYPE,'C',1,-1)),0) AS AMT "
+                sv_s = sv_s + " FROM TBAADM.HTD H "
+                sv_s = sv_s + " WHERE DEL_FLG='N' AND PSTD_FLG='Y' "
+		sv_s = sv_s + " AND VALUE_DATE <= TO_DATE(?SVAR,'DD-MM-YYYY') "
+		sv_s = sv_s + " AND TRAN_DATE BETWEEN TO_DATE(?SVAR,'DD-MM-YYYY') AND TO_DATE(?SVAR,'DD-MM-YYYY') "
+                sv_s = sv_s + " AND ACID=?SVAR )) "
+
+                BANCS.INPARAM.BINDVARS = ""
+                BANCS.INPARAM.BINDVARS = CUST.UHNU.acctNum + "|" + CUST.UHNU.bankId + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.UHNU.BODDate + "|" + CUST.UHNU.acctOpnDate  + "|"
+                BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.UHNU.BODDate + "|" + CUST.UHNU.acid + "|"
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.UHNU.BODDate + "|" + CUST.UHNU.acctOpnDate  + "|"
+                BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + CUST.UHNU.BODDate + "|" + CUST.UHNU.acid
+                PRINT(CUST.UHNU.acctNum)
+
+                sv_d = urhk_dbSelectWithBind(sv_s)
+                PRINT(sv_d)
+
+                IF(sv_d == 0)THEN
+                #{
+                        CUST.UHNU.valCnt         = BANCS.OUTPARAM.valCnt
+                        PRINT(CUST.UHNU.valCnt)
+
+                        CUST.UHNU.totamt         = BANCS.OUTPARAM.totamt
+                        PRINT(CUST.UHNU.totamt)
+
+                        IF(CUST.UHNU.valCnt == "EQUAL")THEN
+                        #{
+                                sv_z = "S|S"
+                                sv_u = urhk_SetOrbOut(sv_z)
+                                PRINT (sv_u)
+                                GOTO ENDOFSCRIPT
+                        #}
+                        ELSE
+                        #{
+                                sv_z = "S|F"
+                                sv_u = urhk_SetOrbOut(sv_z)
+                                PRINT (sv_u)
+                                GOTO ENDOFSCRIPT
+                        #}
+                        ENDIF
+
+                #}
+                ELSE
+                #{
+                        sv_z = "F|F"
+                        sv_u = urhk_SetOrbOut(sv_z)
+                        PRINT (sv_u)
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+#}
+ELSE
+#{
+        sv_z = "F|F"
+        sv_u = urhk_SetOrbOut(sv_z)
+        PRINT (sv_u)
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+ENDOFSCRIPT:
+        TRACE OFF
+END-->

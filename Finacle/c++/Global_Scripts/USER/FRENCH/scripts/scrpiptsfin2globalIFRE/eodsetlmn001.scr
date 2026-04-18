@@ -1,0 +1,395 @@
+#------------------------------------------------------------------------------------------------    
+#	Name			: eodsetlmn001.scr
+#	Description    	: Batch job for provisioning.
+#	Date			: 09-01-2013
+#	Author      	: Farhan
+#	Input           : NA
+#	Output			: NA
+#	Called Script	: NA
+#	Calling Script	: getcparamvalue.scr
+#	Menu Option		: HBJSTM and HBJE
+#	Srl.No		Date			Author			Description.
+#	------		----			------			------------
+#	1.0 		09-01-2013		Farhan		    Original Version
+#	2.0         23-02-2013      Farhan          Removed the repository and classes
+#----------------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="b1183bdb8596d4364b65fe7ef68bd4c079ba8e4b229a3df5aeb14c3afb0475e4"
+	TRACE ON
+	#------------------------------------------------------------------------------
+	#	Creating repository and class
+	#	Initializing the variables
+	# 	Getting all the values FROM CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","PROV") == 0) THEN
+	#{
+		CREATECLASS("CUST","PROV",5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#	Initializing the variables
+	#------------------------------------------------------------------------------
+	
+	CUST.PROV.tranRmksHdr			= ""
+	CUST.PROV.homeCrncyCode		    = ""
+	CUST.PROV.cursorNo				= ""
+	CUST.PROV.crDr1     			= ""
+	CUST.PROV.crDr2     			= ""
+	CUST.PROV.hoAcct          		= ""
+	CUST.PROV.brAcct          		= ""
+	CUST.PROV.amt           		= ""
+	CUST.PROV.schm   			    = ""
+	CUST.PROV.errMsg				= ""
+	CUST.PROV.tranBdyPtclr			= ""
+	CUST.PROV.tmpVar				= ""
+	CUST.PROV.schmIncom   			= ""
+	CUST.PROV.schmExpen				= ""
+	CUST.PROV.schm                  = ""
+	
+	#------------------------------------------------------------------
+	#  Getting header remarks
+	#------------------------------------------------------------------
+	BANCS.INPUT.moduleName = "EODSETL"
+	BANCS.INPUT.parameterId = "SCHM_INCOM"
+	
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.PROV.schmIncom = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.PROV.errMsg = "INCOM Scheme setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName = "EODSETL"
+	BANCS.INPUT.parameterId = "SCHM_EXPEN"
+	
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.PROV.schmExpen = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.PROV.errMsg = "EXPEN Scheme setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName = "EODSETL"
+	BANCS.INPUT.parameterId = "EOD_TRANRMKS"
+	
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.PROV.tranRmksHdr = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.PROV.tranRmksHdr = ""
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName = "EODSETL"
+	BANCS.INPUT.parameterId = "EOD_TRANPTCLR"
+	
+	CALL("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.PROV.tranBdyPtclr = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.PROV.tranBdyPtclr = ""
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName = "GENERAL"
+	BANCS.INPUT.parameterId = "NORRATECODE"
+	
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.PROV.refCode = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.PROV.refCode)
+		#}
+	ELSE
+		#{
+		CUST.PROV.errMsg = "NORRATECODE setup not done in CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------
+	# 	Passing transaction header input to the service
+	#---------------------------------------------------------------
+	sv_u = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranType|T")
+	sv_u = urhk_SetUrhkInp("transferTranHdr.tranTypeSubType.tranSubType|BI")
+	sv_u = urhk_SetUrhkInp("tranDtl.remarks|"+CUST.PROV.tranRmksHdr)
+	sv_u = urhk_SetUrhkInp("tranDtl.ignoreXcpnFlg|I")
+	sv_u = urhk_SetUrhkInp("tranDtl.pstFlg|Y")
+	
+	#--------------------------------------------------------------------------
+	# bacid selection cursor
+	#--------------------------------------------------------------------------
+	sv_s = "bacid|select distinct bacid FROM TBAADM.GAM "
+	sv_s = sv_s + " WHERE bank_id = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_c)
+	
+	IF (sv_c != 0) THEN
+	#{
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	CUST.PROV.cursorNo = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(CUST.PROV.cursorNo)
+	sv_n = urhk_dbCursorFetch(CUST.PROV.cursorNo)
+	PRINT(sv_n)
+	CUST.PROV.tmpVar = "0"
+	
+	WHILE (sv_c == 0)
+	#{
+		CUST.PROV.bacid = BANCS.OUTPARAM.bacid
+		sv_q = CUST.PROV.bacid
+		PRINT(sv_q)
+		sv_i = sv_q + "|" + BANCS.STDIN.homeCrncyCode + "|" +  BANCS.STDIN.mySolId
+		sv_u = urhk_B2k_BacidToAcctId(sv_i)
+		PRINT(sv_u)
+		IF (sv_u == 1 ) THEN
+		#{
+			GOTO NEXTREC
+		#}
+		ENDIF
+		
+		CUST.PROV.hoAcct = BANCS.OUTPARAM.AcctId
+		PRINT(CUST.PROV.hoAcct)
+		
+		#---------------------------------------------------------------------------------
+		# Cursor Initialize
+		#---------------------------------------------------------------------------------
+		sv_s = ""
+		sv_s = "clr_bal_amt,foracid,schm_code|select clr_bal_amt,foracid,schm_code "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE sol_id = ?SVAR "
+		sv_s = sv_s + "AND bacid = ?SVAR "
+		sv_s = sv_s + "AND schm_code IN (?SVAR,?SVAR) "
+		sv_s = sv_s + "AND del_flg = 'N' "
+		sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+		sv_s = sv_s + "AND bank_id = ?SVAR"
+		PRINT(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId + "|" + CUST.PROV.bacid + "|" + CUST.PROV.schmIncom + "|" + CUST.PROV.schmExpen + "|" + BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_c = urhk_dbCursorOpenWithBind(sv_s)
+		PRINT(sv_c)
+		IF (sv_c == 0) THEN
+		#{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			PRINT(sv_m)
+			sv_c = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_c)
+			WHILE(sv_c == 0)
+			#{
+				CUST.PROV.amt = BANCS.OUTPARAM.clr_bal_amt
+				PRINT(CUST.PROV.amt)
+				CUST.PROV.brAcct = BANCS.OUTPARAM.foracid
+				PRINT(CUST.PROV.brAcct)
+				CUST.PROV.schm = BANCS.OUTPARAM.schm_code
+				PRINT(CUST.PROV.schm)
+				
+				IF (CUST.PROV.schm == CUST.PROV.schmExpen) THEN
+				#{
+					CUST.PROV.amt = -CDOUBLE(CUST.PROV.amt)
+					PRINT(CUST.PROV.amt)
+				#}
+				ENDIF
+				
+				#-----------------------------------------------------------------------
+				# 	Defining Transaction between br account and Ho Account
+				#-----------------------------------------------------------------------
+				IF (CDOUBLE(CUST.PROV.amt) < 0) THEN
+				#{
+					CUST.PROV.crDr1 = "D"
+					CUST.PROV.crDr2 = "C"
+					CUST.PROV.amt = -1 * CDOUBLE(CUST.PROV.amt)
+					#}
+				ELSE
+					#{
+					CUST.PROV.crDr1 = "C"
+					CUST.PROV.crDr2 = "D"
+				#}
+				ENDIF
+				
+				IF (CINT(CUST.PROV.amt) != 0) THEN
+				#{
+					#-----------------------------------------------------
+					# Add partTran0
+					#-----------------------------------------------------
+					sv_a = "tranDtl.partTranDetailLL.<rec_" + CUST.PROV.tmpVar + ">."
+					PRINT(sv_a)
+					sv_u = urhk_SetUrhkInp(sv_a + "key.serial_num|"+CUST.PROV.tmpVar)
+					sv_u = urhk_SetUrhkInp(sv_a + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_a + "acctId.foracid|"+CUST.PROV.hoAcct)
+					sv_u = urhk_SetUrhkInp(sv_a + "partTranType.code|"+CUST.PROV.crDr1)
+					sv_u = urhk_SetUrhkInp(sv_a + "valueDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_a + "glDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_a + "tranAmt|"+CUST.PROV.amt+"|"+ BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_a + "refNum| ")
+					sv_u = urhk_SetUrhkInp(sv_a + "tranRmks| ")
+					sv_u = urhk_SetUrhkInp(sv_a + "refCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_a + "refAmt|"+CUST.PROV.amt+"|"+ BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_a + "entryUserId.userId|" + BANCS.STDIN.userId)
+					sv_u = urhk_SetUrhkInp(sv_a + "vfdUserId.userId|" + BANCS.STDIN.userId)
+					sv_u = urhk_SetUrhkInp(sv_a + "tranParticulars|" + CUST.PROV.tranBdyPtclr)
+					sv_u = urhk_SetUrhkInp(sv_a + "rateCode.refCode|" + CUST.PROV.refCode)
+					
+					#---------------------------------------------------------
+					# Add partTran1
+					#---------------------------------------------------------
+					CUST.PROV.tmpVar = CINT(CUST.PROV.tmpVar)+1
+					sv_b = "tranDtl.partTranDetailLL.<rec_" + CUST.PROV.tmpVar + ">."
+					PRINT(sv_b)
+					sv_u = urhk_SetUrhkInp(sv_b + "key.serial_num|"+CUST.PROV.tmpVar)
+					sv_u = urhk_SetUrhkInp(sv_b + "pTranIdentifier.tranDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_b + "partTranType.code|"+CUST.PROV.crDr2)
+					sv_u = urhk_SetUrhkInp(sv_b + "acctId.foracid|"+CUST.PROV.brAcct)
+					sv_u = urhk_SetUrhkInp(sv_b + "valueDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_b + "glDate|"+BANCS.STDIN.BODDate)
+					sv_u = urhk_SetUrhkInp(sv_b + "tranAmt|"+CUST.PROV.amt+"|"+ BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_b + "refNum| ")
+					sv_u = urhk_SetUrhkInp(sv_b + "tranRmks| ")
+					sv_u = urhk_SetUrhkInp(sv_b + "refCrncyCode.crncyCode|" + BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_b + "refAmt|"+CUST.PROV.amt+"|"+ BANCS.STDIN.homeCrncyCode)
+					sv_u = urhk_SetUrhkInp(sv_b + "tranParticulars|" + CUST.PROV.tranBdyPtclr)
+					sv_u = urhk_SetUrhkInp(sv_a + "rateCode.refCode|" + CUST.PROV.refCode)
+					
+					CUST.PROV.tmpVar = CINT(CUST.PROV.tmpVar) + 1
+					PRINT(CUST.PROV.tmpVar)
+				#}
+				ENDIF
+				sv_c = urhk_dbCursorFetch(sv_m)
+				PRINT(sv_c)
+			#}
+			DO
+			sv_c = urhk_dbCursorClose(sv_m)
+			
+		#}
+		ENDIF
+		
+		NEXTREC:
+			sv_c = urhk_dbCursorFetch(CUST.PROV.cursorNo)
+			PRINT(sv_c)
+		#}
+		DO
+		sv_c = urhk_dbCursorClose(CUST.PROV.cursorNo)
+		
+		
+		#-------------------------------------------------------------------------
+		#--Adding  the tansaction
+		#-------------------------------------------------------------------------
+		sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranId|tranId")
+		sv_u = urhk_SetUrhkOut("tranDtl.tranIdentifier.tranDate|tranDate")
+		sv_u = urhk_ExecSrv("SRV_AddTransferTran|retain_all_output = Y")
+		PRINT(sv_u)
+		IF (sv_u != 0) THEN
+		#{
+			sv_u = urhk_CopyOutToIn("")
+			sv_u = urhk_ExecSrv("SRV_AddTransferTran|retain_all_output = Y")
+			PRINT(sv_u)
+		#}
+		ENDIF
+		
+		IF (sv_u == 0) THEN
+		#{
+			IF (FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) THEN
+			#{
+				CUST.PROV.tranId = BANCS.OUTPARAM.tranId
+				CUST.PROV.tranDate = BANCS.OUTPARAM.tranDate
+				PRINT(CUST.PROV.tranId)
+				PRINT(CUST.PROV.tranDate)
+			#}
+			ENDIF
+			
+			#############################################################
+			#EXECUTION OF SERVICE POST TRANSFER TRANSACTIONS
+			#############################################################
+			sv_u = urhk_CopyOutToIn("")
+			PRINT(sv_u)
+			sv_u = urhk_ExecSrv("SRV_PostTransferTran|retain_all_output = Y")
+			PRINT(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				sv_u = urhk_ExecSrv("SRV_PostTransferTran")
+				PRINT(sv_u)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		IF (sv_u != 0) THEN
+		#{
+			PRINT(sv_u)
+			IF (sv_u != 0) THEN
+			#{
+				sv_v = BANCS.OUTPARAM.Error_num
+				PRINT(BANCS.OUTPARAM.Error_num)
+				IF (sv_v > 0) THEN
+				#{
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						PRINT(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						PRINT(sv_e)
+						sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						PRINT(sv_e)
+						sv_i = sv_i + 1
+					#}
+					DO
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		IF (FIELDEXISTS(BANCS.OUTPARAM.tranId) == 1) THEN
+		#{
+			PRINT(BANCS.OUTPARAM.tranId)
+		#}
+		ENDIF
+		
+	ENDOFSCRIPT:
+		IF (CUST.PROV.errMsg != "") THEN
+		#{
+			sv_u = system("echo '"+CUST.PROV.errMsg+"' >>GZN1.log")
+		#}
+		ENDIF
+		
+		
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

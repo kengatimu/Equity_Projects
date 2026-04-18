@@ -1,0 +1,632 @@
+#=======================================================================
+# Name                   : LAA_charges_batch.scr
+# Date                   : 22-11-2020
+# Description            : To fetch the LAA accounts and to charge anticipatory charges quarterly
+# MenuOption             : HBJSTM/HBJE
+# Author                 : Sreeraj P Nair
+# Called Script          : NA
+# Calling Script         : NA
+# Reference Document     : NA
+# Modification History
+# S.No.  Date          Name                 Description
+# -----  ----------    ----------------     -----------------------------
+#  1.0   22-11-2020    Chethan Kumar D      Original Version
+#========================================================================
+<--START
+TRACE ON
+
+        #------------------------------------#
+        #-- Repository And Class Creation  --#
+        #------------------------------------#
+
+		IF(REPEXISTS("CUST") == 0) THEN
+		#{
+			CREATEREP("CUST")
+		#}
+		ENDIF
+
+		IF (CLASSEXISTS("CUST", "DATA") == 0) THEN
+		#{
+			CREATECLASS("CUST", "DATA", 5)
+		#}
+		ENDIF
+
+	#-----------------------------
+	## Variable Intialization
+	#-----------------------------
+
+		CUST.DATA.errMsg   = ""
+		CUST.DATA.crAcct   = ""
+		CUST.DATA.crAcctBacid = "LACHG_FUND RESER"
+		#CUST.DATA.crAcctBacid = "21800010"
+		CUST.DATA.vatAccount = ""
+		CUST.DATA.rateCode = "TTS"
+		CUST.DATA.demandFlowId = "DISBT"
+		#CUST.DATA.demandFlowId = "VCBDI"
+		CUST.DATA.vatPcnt = "0"
+		
+	#---------------------------------
+        # Populate MTT details
+        #---------------------------------
+
+		sv_r = urhk_MTTS_PopulateInputDetails("")
+		Print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT      
+		#}
+		ENDIF
+
+	#---------------------------------
+        #  Closing of MTT if it is opened
+        #---------------------------------
+
+		sv_g = urhk_MTTS_Close("")
+		print(sv_g)
+	
+		IF (sv_g != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+        #-----------------------------
+        #--- Initialize MTT details
+        #-----------------------------
+
+		BANCS.INPARAM.PostTranFlg               = "Y"
+		BANCS.INPARAM.CommitFlg                 = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+		BANCS.INPARAM.ValidationFlag            = "N"
+		BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+		BANCS.INPARAM.CheckExceptions           = "Y"
+
+		sv_o = urhk_MTTS_Initialize("")
+		PRINT(sv_o)
+		
+		IF(sv_o != 0)THEN
+		#{
+			sv_o = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+
+
+        #-------------------------------
+        # Define the transaction
+        #-------------------------------
+
+		MTT.TranDetails.TranDate        = "0"
+		MTT.TranDetails.TranType        = "T"
+		MTT.TranDetails.TranSubType     = "BI"
+		MTT.TranDetails.ValidationFlag  = "N"
+		MTT.TranDetails.IgnoreExcp      = "I"
+		MTT.TranDetails.CommitFlg       = "Y"
+		MTT.TranDetails.PostFlag        = "Y"
+
+		sv_r = urhk_MTTS_DefineTransaction("EOD_TranDetails")
+		print(sv_r)
+
+		IF (sv_r != 0) THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			CUST.DATA.errMsg = MTT.Error.Description
+			PRINT(CUST.DATA.errMsg)
+			EXITSCRIPT
+		#}
+		ENDIF
+		
+        #-------------------------------
+        #	Fetching charges amount from CPARAM table
+        #-------------------------------
+
+		sv_q = "chargeAmount|SELECT PARAMETER_VALUE FROM CUSTOM.C_CPARAM_VALUE_TABLE WHERE PARAMETER_ID = 'LA_CHRG_AMOUNT' and BANK_ID = ?SVAR "
+		print(sv_q)
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		Print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		print(sv_c)
+
+		IF(sv_c == 0) THEN
+		#{
+			CUST.DATA.chargePcnt = BANCS.OUTPARAM.chargeAmount
+			print(CUST.DATA.chargePcnt)
+		#}
+		ELSE
+		#{
+			CUST.DATA.chargePcnt = "0"
+		#}
+		ENDIF
+		
+	#---------------------------------------------
+	#	Fetching Event details from PTT table
+	#---------------------------------------------
+
+		lv_q = "vatPcnt|SELECT AMT_PCNT FROM TBAADM.PTT,TBAADM.ADM WHERE AMT_DERV_SRL_NUM = AMT_DRV_SRL_NUM "
+		lv_q = lv_q + " AND EVENT_TYPE = 'LNKED' AND EVENT_ID = ?SVAR AND PTT.ENTITY_CRE_FLG = 'Y' "
+		lv_q = lv_q + " AND PTT.DEL_FLG != 'Y' AND ADM.ENTITY_CRE_FLG = 'Y' AND ADM.DEL_FLG != 'Y'"
+		lv_q = lv_q + " AND AMT_IND = 'P' AND PTT.BANK_ID = ?SVAR AND ADM.BANK_ID = ?SVAR"
+
+		PRINT(lv_q)
+
+		#BANCS.INPARAM.BINDVARS = "OUTRTGCHG_DUTY" +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId
+		BANCS.INPARAM.BINDVARS = "VATEUR" +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+
+		lv_u = urhk_dbSelectWithBind(lv_q)
+		PRINT(lv_u)
+
+		IF(lv_u == "0") THEN
+		#{
+			CUST.DATA.vatPcnt	 = BANCS.OUTPARAM.vatPcnt
+			PRINT(CUST.DATA.vatPcnt)
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------
+        # Cursor query to fetch eligible accounts for the batchjob
+        #--------------------------------------------------------------
+
+		sv_q = "loanAcct,laAcctCrncyCode,tot_loan_amt,disp_amnt,op_acid,drAcct|"
+		sv_q = sv_q + " SELECT GAM.FORACID,ACCT_CRNCY_CODE,GAM.SANCT_LIM,SUM(LTD.FLOW_AMT),LAM.OP_ACID,(SELECT FORACID FROM TBAADM.GAM WHERE ACID=LAM.OP_ACID) "
+		sv_q = sv_q + " FROM TBAADM.GAM , TBAADM.LTD ,TBAADM.LAM  "
+		sv_q = sv_q + " WHERE GAM.ACID = LAM.ACID  AND GAM.ACID = LTD.ACID  AND GAM.SCHM_TYPE = 'LAA' AND LTD.REVERSED_FLG !='Y' AND LAM.OP_ACID IS NOT NULL  "
+		sv_q = sv_q + " AND LTD.REVERSAL_FLG !='Y' AND LTD.FLOW_ID = ?SVAR AND GAM.ACCT_CLS_FLG != 'Y' AND NVL(GAM.FREZ_CODE,' ') NOT IN ('D','T') "
+		sv_q = sv_q + " AND GAM.ENTITY_CRE_FLG = 'Y' AND GAM.DEL_FLG != 'Y' "
+		sv_q = sv_q + " AND GAM.SOL_ID = ?SVAR  AND GAM.SCHM_CODE IN ('ML532','ML533')" 
+		sv_q = sv_q + " AND GAM.BANK_ID = ?SVAR AND LTD.BANK_ID = ?SVAR AND LAM.BANK_ID = ?SVAR "
+		sv_q = sv_q + " GROUP BY GAM.FORACID,ACCT_CRNCY_CODE,GAM.SANCT_LIM,OP_ACID "
+		sv_q = sv_q + " HAVING SUM(LTD.FLOW_AMT) < GAM.SANCT_LIM "
+		print(sv_q)
+		
+		BANCS.INPARAM.BINDVARS = CUST.DATA.demandFlowId +"|"+ BANCS.STDIN.mySolId +"|"+ BANCS.STDIN.contextBankId 
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_l = urhk_dbcursorOpenWithBind(sv_q)
+		print(sv_l)
+
+		IF(sv_l == 0) THEN
+		#{
+			CUST.DATA.CURSOR_NUMBER = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			print(CUST.DATA.CURSOR_NUMBER )
+
+			sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+			print(sv_c)
+
+			WHILE(sv_c == "0")
+			#{
+				CUST.DATA.EffAvailableAmt = "0"
+				CUST.DATA.acct_crncy_code = BANCS.STDIN.homeCrncyCode
+
+				CUST.DATA.loanAcct = BANCS.OUTPARAM.loanAcct
+				print(CUST.DATA.loanAcct)
+				
+				CUST.DATA.laAcctCrncyCode = BANCS.OUTPARAM.laAcctCrncyCode
+				print(CUST.DATA.laAcctCrncyCode)
+
+				CUST.DATA.drAcct = BANCS.OUTPARAM.drAcct
+				print(CUST.DATA.drAcct)
+
+				CUST.DATA.tot_loan_amt = BANCS.OUTPARAM.tot_loan_amt
+				print(CUST.DATA.tot_loan_amt)
+
+				CUST.DATA.disp_amnt = BANCS.OUTPARAM.disp_amnt
+				print(CUST.DATA.disp_amnt)
+				
+				CUST.DATA.diffAmt = CDOUBLE(CUST.DATA.tot_loan_amt) - CDOUBLE(CUST.DATA.disp_amnt)
+				print(CUST.DATA.diffAmt)
+
+				IF(BANCS.STDIN.homeCrncyCode != CUST.DATA.laAcctCrncyCode) THEN
+				#{
+					BANCS.INPARAM.InputAmount       = CUST.DATA.diffAmt
+					BANCS.INPARAM.FromCurrency      = CUST.DATA.laAcctCrncyCode
+					BANCS.INPARAM.ToCurrency        = BANCS.STDIN.homeCrncyCode
+					BANCS.INPARAM.RateCode          = CUST.DATA.rateCode
+					BANCS.INPARAM.Rate              = ""
+
+					sv_p = urhk_B2k_ConvertAmount("")
+					print(sv_p)
+
+					IF(sv_p == 0) THEN
+					#{
+						CUST.DATA.diffAmt = BANCS.OUTPARAM.OutputAmount
+						print(CUST.DATA.diffAmt)
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+
+				CUST.DATA.chargeAmount = (CDOUBLE(CUST.DATA.diffAmt) * CDOUBLE(CUST.DATA.chargePcnt)) / 100.00
+				print(CUST.DATA.chargeAmount)
+				
+				BANCS.INPARAM.InputAmount = CUST.DATA.chargeAmount
+                BANCS.INPARAM.RoundOffAmt = "0.01"
+                BANCS.INPARAM.RoundOffFlag = "H"
+
+                sv_r = urhk_B2k_RoundOff ("")
+				print(sv_r)
+				
+				IF(sv_r == "0") THEN
+				#{
+					CUST.DATA.chargeAmount = BANCS.OUTPARAM.OutputAmount
+					PRINT(CUST.DATA.chargeAmount)
+				#}
+				ENDIF
+				
+				CUST.DATA.vatAmount = (CDOUBLE(CUST.DATA.chargeAmount) * CDOUBLE(CUST.DATA.vatPcnt)) / 100.00
+				print(CUST.DATA.vatAmount)
+
+				BANCS.INPARAM.InputAmount = CUST.DATA.vatAmount
+                BANCS.INPARAM.RoundOffAmt = "0.01"
+                BANCS.INPARAM.RoundOffFlag = "H"
+
+                sv_r = urhk_B2k_RoundOff ("")
+				print(sv_r)
+				
+				IF(sv_r == "0") THEN
+				#{
+					CUST.DATA.vatAmount = BANCS.OUTPARAM.OutputAmount
+					PRINT(CUST.DATA.vatAmount)
+				#}
+				ENDIF
+				
+				CUST.DATA.totChargeAmt = CDOUBLE(CUST.DATA.chargeAmount) + cdouble(CUST.DATA.vatAmount)
+				print(CUST.DATA.totChargeAmt)
+			
+	
+				#sv_a = "42017464" +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+				sv_a = "VAT" +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+				print(sv_a)
+
+				sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+				print(sv_k)
+				
+				IF(sv_k == 0)THEN
+				#{
+						CUST.DATA.vatAccount = BANCS.OUTPARAM.AcctId
+						PRINT(CUST.DATA.vatAccount)
+				#}
+				ELSE
+				#{
+						CUST.DATA.vatAccount = ""
+				#}
+				ENDIF
+
+				sv_a = CUST.DATA.crAcctBacid +"|"+BANCS.STDIN.homeCrncyCode+"|"+BANCS.STDIN.mySolId
+				sv_k =  urhk_B2k_BacidToAcctId(sv_a)
+				print(sv_k)
+				
+				IF(sv_k == 0)THEN
+				#{
+						CUST.DATA.crAcct = BANCS.OUTPARAM.AcctId
+						PRINT(CUST.DATA.crAcct)
+				#}
+				ELSE
+				#{
+						CUST.DATA.crAcct = ""
+				#}
+				ENDIF
+				
+				sv_a = urhk_getAcctDetailsInRepository(CUST.DATA.drAcct)
+				PRINT(sv_a)
+
+				IF(sv_a == 0)  THEN
+				#{
+					CUST.DATA.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+					PRINT(CUST.DATA.EffAvailableAmt)
+
+					CUST.DATA.acct_crncy_code = BANCS.OUTPARAM.acctCrncyCode
+					PRINT(CUST.DATA.acct_crncy_code)
+
+					IF(BANCS.STDIN.homeCrncyCode != CUST.DATA.acct_crncy_code) THEN
+					#{
+						BANCS.INPARAM.InputAmount       = CUST.DATA.EffAvailableAmt
+						BANCS.INPARAM.FromCurrency      = CUST.DATA.acct_crncy_code
+						BANCS.INPARAM.ToCurrency        = BANCS.STDIN.homeCrncyCode
+						BANCS.INPARAM.RateCode          = CUST.DATA.rateCode
+						BANCS.INPARAM.Rate              = ""
+
+						sv_p = urhk_B2k_ConvertAmount("")
+						print(sv_p)
+
+						IF(sv_p == 0) THEN
+						#{
+							CUST.DATA.EffAvailableAmt = BANCS.OUTPARAM.OutputAmount
+							print(CUST.DATA.EffAvailableAmt)
+						#}
+						ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+
+
+				IF(CDOUBLE(CUST.DATA.EffAvailableAmt)>=CDOUBLE(CUST.DATA.totChargeAmt)) THEN
+				#{
+					CUST.DATA.lienAmt = "0"
+					CUST.DATA.tranAmt = CUST.DATA.totChargeAmt
+					CUST.DATA.vatToBeCollected = CUST.DATA.vatAmount
+					CUST.DATA.chargesToBecollected = CUST.DATA.chargeAmount
+				#}				
+				ELSE
+				#{
+					CUST.DATA.lienAmt = CDOUBLE(CUST.DATA.totChargeAmt) - CDOUBLE(CUST.DATA.EffAvailableAmt)
+					CUST.DATA.tranAmt = CUST.DATA.EffAvailableAmt
+					
+					IF(CDOUBLE(CUST.DATA.tranAmt) >=  CDOUBLE(CUST.DATA.chargeAmount)) THEN				
+					#{
+						CUST.DATA.chargesToBecollected = CDOUBLE(CUST.DATA.chargeAmount)
+						CUST.DATA.vatToBeCollected     = CDOUBLE(CUST.DATA.tranAmt) - CDOUBLE(CUST.DATA.chargesToBecollected)
+					#}
+					ELSE	
+					#{
+						CUST.DATA.chargesToBecollected = CUST.DATA.tranAmt
+						CUST.DATA.vatToBeCollected     = "0"
+					#}
+					ENDIF
+					
+					PRINT(CUST.DATA.chargesToBecollected)
+					PRINT(CUST.DATA.vatToBeCollected)
+				#}
+				ENDIF
+
+				PRINT(CUST.DATA.tranAmt)
+				PRINT(CUST.DATA.lienAmt)
+
+				IF(CDOUBLE(CUST.DATA.lienAmt) > 0) THEN
+				#{
+					IF(BANCS.STDIN.homeCrncyCode != CUST.DATA.acct_crncy_code) THEN
+					#{
+						BANCS.INPARAM.InputAmount       = CUST.DATA.lienAmt
+						BANCS.INPARAM.FromCurrency      = BANCS.STDIN.homeCrncyCode
+						BANCS.INPARAM.ToCurrency        = CUST.DATA.acct_crncy_code
+						BANCS.INPARAM.RateCode          = CUST.DATA.rateCode
+						BANCS.INPARAM.Rate              = ""
+
+						sv_p = urhk_B2k_ConvertAmount("")
+						print(sv_p)
+
+						IF(sv_p == 0) THEN
+						#{
+							CUST.DATA.lienAmt = BANCS.OUTPARAM.OutputAmount
+							print(CUST.DATA.lienAmt)
+						#}
+						ENDIF
+					#}
+					ENDIF
+
+					sv_i = "INSERT INTO CUSTOM.C_LACHG_LIEN (SOL_ID, LA_ACCNT,FORACID, EXECUTION_DATE, LIEN_AMOUNT, STATUS, BANK_ID, LCHG_USER_ID, LCHG_TIME) "
+					sv_i = sv_i + " VALUES (?SVAR, ?SVAR,?SVAR, TO_DATE(?SVAR,'DD-MM-RRRR'), ?SVAR, 'E', ?SVAR, ?SVAR, SYSDATE)"
+					print (sv_i)
+
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId +"|"+ CUST.DATA.loanAcct +"|"+ CUST.DATA.drAcct +"|"+ MID$(BANCS.STDIN.BODDate,0,10) 
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ CUST.DATA.lienAmt +"|"+ BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.userId
+					Print(BANCS.INPARAM.BINDVARS)
+
+					sv_i = urhk_dbSqlWithBind(sv_i)
+					print (sv_i)
+				#}
+				ENDIF
+
+				PRINT(":DEBUG:")
+				PRINT(CUST.DATA.EffAvailableAmt)
+				PRINT(CUST.DATA.totChargeAmt)
+				PRINT(CUST.DATA.tranAmt)
+				PRINT(CUST.DATA.chargesToBecollected)
+				PRINT(CUST.DATA.vatToBeCollected)
+				PRINT(CUST.DATA.lienAmt)
+
+				IF(CDOUBLE(CUST.DATA.tranAmt) > 0)THEN
+				#{
+					#	Debit charge amount/partial charges amount from LAA operative account 
+					
+					IF(BANCS.STDIN.homeCrncyCode != CUST.DATA.acct_crncy_code) THEN
+					#{
+						MTT.PartTranDetails.RateCode            = CUST.DATA.rateCode
+						MTT.PartTranDetails.Rate                = ""
+					#}
+					ENDIF
+					
+					MTT.PartTranDetails.RefAmount       = CDOUBLE(CUST.DATA.tranAmt) * -1
+					MTT.PartTranDetails.Account         = CUST.DATA.drAcct
+					MTT.PartTranDetails.RefCurrency     = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.ValueDate       = "0"
+					MTT.PartTranDetails.Particulars     = "Commisison on fund reservation ("+ CUST.DATA.loanAcct + ")"
+					MTT.PartTranDetails.Remarks         = ""
+					MTT.PartTranDetails.TranIdentifier  = "EOD_TranDetails"
+					MTT.PartTranDetails.Consolidate     = "N"
+					MTT.PartTranDetails.Refnum          = ""
+					MTT.TranDetails.PostFlag            = "Y"
+					MTT.TranDetails.IgnoreExcp          = "Y"
+
+					sv_r = urhk_MTTS_DefinePartTran("DR_TEMP")
+					Print(sv_r)
+		
+					IF (sv_r != 0) THEN
+					#{
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						CUST.DATA.errMsg = MTT.Error.Description
+						PRINT(CUST.DATA.errMsg)
+					#}
+					ENDIF
+
+					#	Credit to charges account 
+
+					MTT.PartTranDetails.Account        = CUST.DATA.crAcct
+					MTT.PartTranDetails.RefAmount      = CDOUBLE(CUST.DATA.chargesToBecollected)
+					MTT.PartTranDetails.RefCurrency    = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.ValueDate      = "0"
+					MTT.PartTranDetails.Particulars    = "Commisison on fund reservation ("+ CUST.DATA.loanAcct + ")"
+					MTT.PartTranDetails.Remarks        = ""
+					MTT.PartTranDetails.TranIdentifier = "EOD_TranDetails"
+					MTT.PartTranDetails.Consolidate    = "N"
+					MTT.PartTranDetails.Refnum         = ""
+					MTT.TranDetails.PostFlag           = "Y"
+					MTT.TranDetails.IgnoreExcp         = "Y"
+			
+					sv_i = urhk_MTTS_DefinePartTran("CR_TEMP")
+					PRINT(sv_i)
+			
+					IF (sv_i != 0) THEN
+					#{
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						CUST.DATA.errMsg = MTT.Error.Description
+						PRINT(CUST.DATA.errMsg)
+					#}
+					ENDIF
+					
+					#	Credit to vat account 
+
+					MTT.PartTranDetails.Account        = CUST.DATA.vatAccount
+					MTT.PartTranDetails.RefAmount      = CDOUBLE(CUST.DATA.vatToBeCollected)
+					MTT.PartTranDetails.RefCurrency    = BANCS.STDIN.homeCrncyCode
+					MTT.PartTranDetails.ValueDate      = "0"
+					MTT.PartTranDetails.Particulars    = "Commisison on fund reservation ("+ CUST.DATA.loanAcct + ")"
+					MTT.PartTranDetails.Remarks        = ""
+					MTT.PartTranDetails.TranIdentifier = "EOD_TranDetails"
+					MTT.PartTranDetails.Consolidate    = "N"
+					MTT.PartTranDetails.Refnum         = ""
+					MTT.TranDetails.PostFlag           = "Y"
+					MTT.TranDetails.IgnoreExcp         = "Y"
+			
+					sv_i = urhk_MTTS_DefinePartTran("CR_TEMP")
+					PRINT(sv_i)
+			
+					IF (sv_i != 0) THEN
+					#{
+						sv_r = urhk_MTTS_ReportErrorCondition("")
+						CUST.DATA.errMsg = MTT.Error.Description
+						PRINT(CUST.DATA.errMsg)
+					#}
+					ENDIF
+				#}
+				ENDIF
+		
+				sv_c = urhk_dbCursorFetch(CUST.DATA.CURSOR_NUMBER)
+				PRINT(sv_c)
+
+			#}
+			DO
+
+			sv_c = urhk_dbCursorClose(CUST.DATA.CURSOR_NUMBER)
+			print(sv_c)
+		#}
+		ENDIF
+	
+	#--------------------------------------------------------------
+        # MTT ending definition to create transaction
+        #--------------------------------------------------------------
+	
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF
+
+		IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			CUST.DATA.tranId = TRIM(BANCS.OUTPARAM.MTTTranId)
+			PRINT(CUST.DATA.tranId)
+		#}
+		ENDIF
+
+	#--------------------------------------------------------------
+        # MTT Closing an initialized MTT
+        #--------------------------------------------------------------
+	
+		sv_r = urhk_MTTS_Close("")
+		print(sv_r)
+
+	#------------------------------------------------------------------
+	#	Fetching Total lien amount to mark lien
+	#------------------------------------------------------------------
+	
+		sv_c = "lienAmt,loanAcct,foracid|SELECT LIEN_AMOUNT,LA_ACCNT,FORACID FROM CUSTOM.C_LACHG_LIEN"
+		sv_c = sv_c +" WHERE SOL_ID = ?SVAR AND EXECUTION_DATE = TO_DATE(?SVAR,'DD-MM-RRRR') AND BANK_ID = ?SVAR AND STATUS = 'E'"
+		print(sv_c)
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId +"|"+ MID$(BANCS.STDIN.BODDate,0,10) +"|"+ BANCS.STDIN.contextBankId
+		Print(BANCS.INPARAM.BINDVARS)
+
+		sv_d = urhk_dbCursorOpenWithBind(sv_c)
+		print(sv_d)
+
+		IF ( sv_d == 0 ) then
+		#{
+			CUST.DATA.cursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+
+			sv_r = urhk_dbCursorFetch(CUST.DATA.cursorNumber)
+			print(sv_r)
+
+			WHILE(sv_r == 0)
+			#{
+				CUST.DATA.lienAmt = BANCS.OUTPARAM.lienAmt
+				CUST.DATA.foracid = BANCS.OUTPARAM.foracid
+				CUST.DATA.loanAcct = BANCS.OUTPARAM.loanAcct
+
+				print(CUST.DATA.foracid)
+				print(CUST.DATA.lienAmt)
+				print(CUST.DATA.loanAcct)
+
+				BANCS.INPARAM.acctNum       = CUST.DATA.foracid
+				BANCS.INPARAM.blockMode     = "A"
+				BANCS.INPARAM.lienAmt       = CUST.DATA.lienAmt
+				BANCS.INPARAM.expiryDate    = "31-12-2099"
+				BANCS.INPARAM.remarks       = "Commisison on fund reservation ("+ CUST.DATA.loanAcct + ")"
+				BANCS.INPARAM.reasonCode    = "CHG"
+				BANCS.INPARAM.bodDate       = LEFT$(BANCS.STDIN.BODDate,10)
+				BANCS.INPARAM.lienValueDate = LEFT$(BANCS.STDIN.BODDate,10)
+				
+				sv_u = urhk_updateLien("")
+				print(sv_u)
+
+				IF ( sv_u == 0 ) THEN
+				#{
+					Print("Lien marked successfully for account "+ CUST.DATA.foracid)
+
+					sv_c = "UPDATE CUSTOM.C_LACHG_LIEN SET STATUS = 'S',LCHG_TIME = SYSDATE "
+					sv_c = sv_c + " WHERE SOL_ID = ?SVAR AND LA_ACCNT = ?SVAR AND FORACID = ?SVAR "
+					sv_c = sv_c + " AND EXECUTION_DATE = TO_DATE(?SVAR,'DD-MM-RRRR') AND BANK_ID = ?SVAR"
+					print(sv_c)
+
+					BANCS.INPARAM.BINDVARS = BANCS.STDIN.mySolId +"|"+ CUST.DATA.loanAcct +"|"+ CUST.DATA.foracid
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS +"|"+ MID$(BANCS.STDIN.BODDate,0,10) +"|"+ BANCS.STDIN.contextBankId
+					Print(BANCS.INPARAM.BINDVARS)
+
+					sv_d = urhk_dbSqlWithBind(sv_c)
+					print(sv_d)
+				#}
+				ELSE
+				#{
+					Print("Lien mark failed for account "+ CUST.DATA.foracid)
+				#}
+				ENDIF
+
+				sv_r = urhk_dbCursorFetch(CUST.DATA.cursorNumber)
+				print(sv_r)
+			#}
+			DO
+
+			sv_x = urhk_dbCursorClose(CUST.DATA.cursorNumber)
+			print(sv_x)
+		#}
+		ENDIF
+
+END-->

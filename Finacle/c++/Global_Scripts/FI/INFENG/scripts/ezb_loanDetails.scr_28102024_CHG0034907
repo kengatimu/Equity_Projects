@@ -1,0 +1,731 @@
+#---------------------------------------------------------------------------------------------
+#  Name            : ezb_loanDetails.scr
+#  Description     : fetchs interest details for account
+#  Date            : 28-05-2023
+#  Author          : Harrison Ruiru
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Menu Option     :  (API)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             28-08-2023     Harrison Ruiru		Original Version
+#---------------------------------------------------------------------------------------------
+#####3
+#---------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+	sv_u=REPEXISTS("CUST")
+	IF(sv_u==0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+
+	sv_u=CLASSEXISTS("CUST", "EZB")
+	IF(sv_u==0) THEN
+	#{
+		CREATECLASS("CUST", "EZB", 5)
+	#}
+	ENDIF
+
+	sv_t=urhk_b2k_printrepos("BANCS")
+	print(sv_t)
+
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("AccountNo"))== 0) ) THEN
+	#{
+   		CUST.EZB.errMsg="Please Enter Account Number"
+   		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+        sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+        sv_t = "Message | " +CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+        exitscript
+	ELSE 
+		CUST.EZB.AccountNo = trim( ("BANCS").("INPUT").("AccountNo") )
+		print(CUST.EZB.AccountNo)
+	#}
+	ENDIF
+
+	CUST.EZB.created_flg= ""
+	CUST.EZB.del_flg = ""
+	CUST.EZB.acctCloseflg = ""
+	CUST.EZB.schmType = ""
+
+
+	sv_q = "created_flg, del_flg|"
+	sv_q = sv_q + "SELECT ENTITY_CRE_FLG, DEL_FLG FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR "
+	print(sv_q)
+
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ CUST.EZB.AccountNo
+	print(BANCS.INPARAM.BINDVARS)
+
+	lv_s = urhk_dbSelectWithBind(sv_q)
+	print(lv_s)
+
+	IF(lv_s == 0)THEN
+	#{
+		CUST.EZB.created_flg = BANCS.OUTPARAM.created_flg
+		print(CUST.EZB.created_flg)
+		CUST.EZB.del_flg = BANCS.OUTPARAM.del_flg
+		print(CUST.EZB.del_flg)
+	ELSE 
+		CUST.EZB.created_flg = ""
+		CUST.EZB.del_flg = ""
+	#}
+	ENDIF
+
+	sv_a = urhk_getAcctDetailsInRepository(CUST.EZB.AccountNo)
+	print(sv_a)
+
+	IF(sv_a == 0)THEN
+	#{
+		#---------------------------------------------------------------------------------------------------------------
+		# Variable Initialization
+		#---------------------------------------------------------------------------------------------------------------
+
+		CUST.EZB.acctCloseflg = BANCS.OUTPARAM.acctCloseflg
+		print(CUST.EZB.acctCloseflg)
+		CUST.EZB.schmType = BANCS.OUTPARAM.schmType
+		print(CUST.EZB.schmType)
+
+		IF( (CUST.EZB.acctCloseflg == "N") AND (CUST.EZB.created_flg=="Y") AND (CUST.EZB.del_flg=="N") AND (CUST.EZB.schmType=="LAA") )THEN
+		#{
+			sv_u = urhk_B2k_ForacidToAcid(CUST.EZB.AccountNo)
+			print(sv_u)
+			if (sv_u ==0) then
+			#{
+				CUST.EZB.acid=BANCS.OUTPARAM.Acid
+				print(CUST.EZB.acid)
+			else
+				CUST.EZB.acid  = ""
+				CUST.EZB.errMsg="Invaid Account Number."
+				sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+				sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+				sv_t = "Message | " +CUST.EZB.errMsg
+				sv_u = urhk_SetOrbOut(sv_t)
+				exitscript
+			#}
+			endif
+		ELSE
+			IF(CUST.EZB.created_flg =="N")THEN
+				CUST.EZB.errMsg = "Account creation not yet authorised : "+ CUST.EZB.AccountNo
+			ENDIF
+			IF(CUST.EZB.del_flg =="Y")THEN
+				CUST.EZB.errMsg = "The record is deleted : "+CUST.EZB.AccountNo
+			ENDIF
+			IF(CUST.EZB.acctCloseflg =="Y")THEN
+				CUST.EZB.errMsg = "Account has been closed : "+ CUST.EZB.AccountNo
+			ENDIF
+			IF( (CUST.EZB.schmType != "LAA") )THEN
+				CUST.EZB.errMsg = "Scheme Type not Allowed."
+			ENDIF
+
+			sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+			sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+			sv_t = "Message | " +CUST.EZB.errMsg
+			sv_u = urhk_SetOrbOut(sv_t)
+			exitscript
+		#}
+		ENDIF
+
+		sv_q = "accruedPrincipalInterest,accruedPenaltyInterest,maturityDate |"
+		sv_q = sv_q + " select e.nrml_accrued_amount_dr, e.penal_accrued_amount_dr, to_char(l.ei_perd_end_date, 'DD-MM-YYYY') from tbaadm.eit e, tbaadm.lam l where e.bank_id=?SVAR and e.entity_id=?SVAR and l.acid=e.entity_id and l.bank_id = e.bank_id"
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId+"|"+CUST.EZB.acid
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_c = urhk_dbSelectWithBind(sv_q)
+		PRINT(sv_c)
+
+		IF(sv_c == 0)THEN
+		#{
+			CUST.EZB.accruedPrincipalInterest = BANCS.OUTPARAM.accruedPrincipalInterest
+			print(CUST.EZB.accruedPrincipalInterest)
+			CUST.EZB.accruedPenaltyInterest = BANCS.OUTPARAM.accruedPenaltyInterest
+			print(CUST.EZB.accruedPenaltyInterest)
+			CUST.EZB.maturityDate = BANCS.OUTPARAM.maturityDate
+			CUST.EZB.maturityDate = BANCS.OUTPARAM.maturityDate + " 00:00:00"
+			print(CUST.EZB.maturityDate)
+		ELSE
+			CUST.EZB.accruedPrincipalInterest = ""
+			CUST.EZB.accruedPenaltyInterest = ""
+			CUST.EZB.maturityDate = ""
+			CUST.EZB.errMsg="Error Occured Fetching the record"
+	   		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+	        sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+	        sv_t = "Message | " +CUST.EZB.errMsg
+	        sv_u = urhk_SetOrbOut(sv_t)
+			exitscript
+		#}
+		ENDIF 
+		
+		sv_c = ""
+
+		#----------------------------------------------------------------------------------------------
+		#---SRV_InquireLAAccT
+		#----------------------------------------------------------------------------------------------
+
+		sv_i = urhk_SetUrhkInp("acctCommonInfo.acctGeneralInfo.acctBasic.foracid|"+ CUST.EZB.AccountNo)
+
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCode|schmCode")
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.schmCode.schmCodeDesc|schmCodeDesc")
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.acctCrncyCode.crncyCode|crncyCode")
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.acctName|loanHolderName")
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctInterestTax.basicInterest.netInt|netInt")
+		##sv_o = urhk_SetUrhkOut("acctCommonInfo.acctJointHolder.acctJointHolderLL.<rec_0>.addressDet.cntryCode|cntryCode")
+		sv_o = urhk_SetUrhkOut("acctSchemeLA.loanAmount|loanAmount")
+		sv_o = urhk_SetUrhkOut("acctSchemeLA.loanPerdMths|loanPerdMths")
+		sv_o = urhk_SetUrhkOut("acctSchemeLA.loanPerdDays|loanPerdDays")
+		sv_o = urhk_SetUrhkOut("acctSchemeLA.operAcct.foracid|operAcct")
+
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.interestFrequency.type|interestFrequencyType")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.interestFrequency.startDd|startDd")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.noOfDemands|noOfDemands")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.noOfDemandsRaised|noOfDemandsRaised")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.nextIntDemandDate|nextIntDemandDate")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.flowAmt|flowAmt")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.repaymentLL.<rec_0>.nextDemandDate|nextDemandDate")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.shdlNo|shdlNo")
+
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.overdueAmt|overdueAmt")
+		sv_o = urhk_SetUrhkOut("acctRepaymentShdlLA.intOverdueAmt|intOverdueAmt")
+		sv_o = urhk_SetUrhkOut("addnlInfo.acctBal|loanLiability")
+		sv_o = urhk_SetUrhkOut("addnlInfo.acctBalCrDrInd|CrDrFlg")
+		sv_o = urhk_SetUrhkOut("acctManualLedgerLA.pastDueFlg|pastDueFlg")
+
+		sv_o = urhk_SetUrhkOut("acctChargeFreqLA.totalAmtCollected|feeAndCharges")
+		sv_o = urhk_SetUrhkOut("acctCommonInfo.acctGeneralInfo.acctBasic.acctOpnDate|acctOpnDate")
+
+		sv_u = urhk_ExecSrv("SRV_InquireLAAcct|retain_all_output = Y|same_user_verify = Y")
+		print(sv_u)
+
+		if(sv_u == 0)then
+		#{
+			print("Success. OK")
+
+			IF(BANCS.OUTPARAM.shdlNo !="")THEN
+				CUST.EZB.shdlNo = BANCS.OUTPARAM.shdlNo
+				print(CUST.EZB.shdlNo)
+			ELSE
+				CUST.EZB.shdlNo = " "
+			ENDIF
+			IF( BANCS.OUTPARAM.overdueAmt !="")THEN
+				CUST.EZB.overdueAmt = BANCS.OUTPARAM.overdueAmt
+				print(CUST.EZB.overdueAmt)
+			ELSE
+				CUST.EZB.overdueAmt = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.intOverdueAmt !="")THEN
+				CUST.EZB.intOverdueAmt = BANCS.OUTPARAM.intOverdueAmt
+				print(CUST.EZB.intOverdueAmt)
+			ELSE
+				CUST.EZB.intOverdueAmt = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.loanLiability !="")THEN
+				CUST.EZB.loanLiability = BANCS.OUTPARAM.loanLiability
+				print(CUST.EZB.loanLiability)
+			ELSE
+				CUST.EZB.loanLiability = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.CrDrFlg !="")THEN
+				CUST.EZB.CrDrFlg = BANCS.OUTPARAM.CrDrFlg
+				print(CUST.EZB.CrDrFlg)
+				IF( (CUST.EZB.CrDrFlg == "D") AND (CUST.EZB.loanLiability !=""))THEN
+				#{
+					lv_c = "-"
+					CUST.EZB.loanLiability = lv_c + CUST.EZB.loanLiability
+					print(CUST.EZB.loanLiability)
+				#}
+				ENDIF
+			ELSE
+				CUST.EZB.CrDrFlg = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.pastDueFlg !="")THEN
+				CUST.EZB.pastDueFlg = BANCS.OUTPARAM.pastDueFlg
+				print(CUST.EZB.pastDueFlg)
+			ELSE
+				CUST.EZB.pastDueFlg = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.schmCode !="")THEN
+				CUST.EZB.schmCode = BANCS.OUTPARAM.schmCode
+				print(CUST.EZB.schmCode)
+			ELSE
+				CUST.EZB.schmCode = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.schmCodeDesc !="")THEN
+				CUST.EZB.schmCodeDesc = BANCS.OUTPARAM.schmCodeDesc
+				print(CUST.EZB.schmCodeDesc)
+			ELSE
+				CUST.EZB.schmCodeDesc = " "
+			ENDIF
+			
+			IF( BANCS.OUTPARAM.crncyCode !="")THEN
+				CUST.EZB.crncyCode = BANCS.OUTPARAM.crncyCode
+				print(CUST.EZB.crncyCode)
+			ELSE
+				CUST.EZB.crncyCode = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.loanHolderName !="")THEN
+				CUST.EZB.loanHolderName = BANCS.OUTPARAM.loanHolderName
+				print(CUST.EZB.loanHolderName)
+			ELSE
+				CUST.EZB.loanHolderName = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.netInt !="")THEN
+				CUST.EZB.intRate = BANCS.OUTPARAM.netInt
+				print(CUST.EZB.intRate)
+			ELSE
+				CUST.EZB.intRate = " "
+			ENDIF
+
+			IF( BANCS.OUTPARAM.loanAmount !="")THEN
+				CUST.EZB.loanAmount = BANCS.OUTPARAM.loanAmount
+				print(CUST.EZB.loanAmount)
+			ELSE
+				CUST.EZB.loanAmount = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.loanPerdMths !="")THEN
+				CUST.EZB.loanPerdMths = BANCS.OUTPARAM.loanPerdMths
+				print(CUST.EZB.loanPerdMths)
+			ELSE
+				CUST.EZB.loanPerdMths = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.loanPerdDays !="")THEN
+				CUST.EZB.loanPerdDays = BANCS.OUTPARAM.loanPerdDays
+				print(CUST.EZB.loanPerdDays)
+			ELSE
+				CUST.EZB.loanPerdDays = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.operAcct !="")THEN
+				CUST.EZB.operAcct = BANCS.OUTPARAM.operAcct
+				print(CUST.EZB.operAcct)
+			ELSE
+				CUST.EZB.operAcct = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.interestFrequencyType !="")THEN
+				CUST.EZB.interestFrequencyType = BANCS.OUTPARAM.interestFrequencyType
+				print(CUST.EZB.interestFrequencyType)
+			ELSE
+				CUST.EZB.interestFrequencyType = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.startDd !="")THEN
+				CUST.EZB.startDd = BANCS.OUTPARAM.startDd
+				print(CUST.EZB.startDd)
+			ELSE
+				CUST.EZB.startDd = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.noOfDemands !="")THEN
+				CUST.EZB.noOfDemands = BANCS.OUTPARAM.noOfDemands
+				print(CUST.EZB.noOfDemands)
+			ELSE
+				CUST.EZB.noOfDemands = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.acctOpnDate !="")THEN
+				CUST.EZB.acctOpnDate = BANCS.OUTPARAM.acctOpnDate
+				print(CUST.EZB.acctOpnDate)
+			ELSE
+				CUST.EZB.acctOpnDate = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.nextIntDemandDate !="")THEN
+				CUST.EZB.nextIntDemandDate = BANCS.OUTPARAM.nextIntDemandDate
+				print(CUST.EZB.nextIntDemandDate)
+			ELSE
+				CUST.EZB.nextIntDemandDate = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.flowAmt !="")THEN
+				CUST.EZB.flowAmt = BANCS.OUTPARAM.flowAmt
+				print(CUST.EZB.flowAmt)
+			ELSE
+				CUST.EZB.flowAmt = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.nextIntDemandDate !="")THEN
+				CUST.EZB.interestPaymentDate = BANCS.OUTPARAM.nextIntDemandDate
+				print(CUST.EZB.interestPaymentDate)
+			ELSE
+				CUST.EZB.interestPaymentDate = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.nextIntDemandDate !="")THEN
+				CUST.EZB.principalPaymentDate = BANCS.OUTPARAM.nextIntDemandDate
+				print(CUST.EZB.principalPaymentDate)
+			ELSE
+				CUST.EZB.principalPaymentDate = " "
+			ENDIF
+
+			IF(BANCS.OUTPARAM.feeAndCharges !="")THEN
+				CUST.EZB.feeAndCharges = BANCS.OUTPARAM.feeAndCharges
+				print(CUST.EZB.feeAndCharges)
+			ELSE
+				CUST.EZB.feeAndCharges = " "
+			ENDIF
+			
+			CUST.EZB.totOvdAmt = CDOUBLE(CUST.EZB.overdueAmt) +  CDOUBLE(CUST.EZB.intOverdueAmt)
+			print(CUST.EZB.totOvdAmt)
+			CUST.EZB.loanTenor = CUST.EZB.loanPerdMths +" Months / "+ CUST.EZB.loanPerdDays +" Days"
+			
+			#CUST.EZB.noOfDemandsRaised = BANCS.OUTPARAM.noOfDemandsRaised
+			#print(CUST.EZB.noOfDemandsRaised)
+			
+		else 
+			print("error")
+			IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+			#{
+				print(BANCS.OUTPARAM.Error_num)
+				sv_v = BANCS.OUTPARAM.Error_num
+			#}
+			ELSE
+			#{
+				sv_v = 0
+			#}
+			ENDIF
+
+			IF (sv_v > 0) then
+			#{
+				sv_u = system("echo 'Error'")
+				sv_i = 1
+				WHILE (sv_i <= sv_v)
+				#{
+					sv_f = FORMAT$(sv_i,"%d")
+					sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+					sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+					sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+					print(sv_e)
+					sv_i = sv_i + 1
+					sv_u = system("echo '"+sv_e+"' >>loanDetails.log")
+					print(sv_u)
+					sv_t = urhk_SetOrbOut("SuccessOrFailure|N")
+					sv_t = "message| " +sv_e
+
+					sv_u = urhk_SetOrbOut(sv_t)
+				#}
+				DO
+				EXITSCRIPT
+			#}    
+			ENDIF
+		#}
+		endif 
+
+		#----------------------------------------------------------------------------------------------
+		#--- PAST DUE AMOUNT
+		#----------------------------------------------------------------------------------------------
+
+		lv_q = "pastDueDate,chrgOflg | "
+		lv_q = lv_q + "  SELECT to_char(pd_xfer_date, 'DD-MM-YYYY'),CHRGE_OFF_FLG FROM tbaadm.gac WHERE acid=?SVAR AND bank_id=?SVAR "
+		print(lv_q)
+		BANCS.INPARAM.BINDVARS = CUST.EZB.acid +"|"+ BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(lv_q)
+		PRINT(sv_c)
+
+		IF(sv_c == 0)THEN
+		#{
+			IF( (BANCS.OUTPARAM.pastDueDate !="") )THEN
+			#{
+				CUST.EZB.pastDueDate = BANCS.OUTPARAM.pastDueDate + " 00:00:00"
+				print(CUST.EZB.pastDueDate)
+			ELSE
+				CUST.EZB.pastDueDate = " "
+			#}
+			ENDIF
+
+			IF( (BANCS.OUTPARAM.chrgOflg !=""))THEN
+			#{
+				CUST.EZB.chrgOflg = BANCS.OUTPARAM.chrgOflg
+				print(CUST.EZB.chrgOflg)
+			ELSE
+				CUST.EZB.chrgOflg = " "
+			#}
+			ENDIF
+		else
+			CUST.EZB.pastDueDate = " "
+			CUST.EZB.chrgOflg = " "
+		#}
+		ENDIF
+	
+
+		#----------------------------------------------------------------------------------------------
+		#---LAST PAYMENT AMOUNT
+		#----------------------------------------------------------------------------------------------
+
+		lv_s = " count| select Count(*) from tbaadm.ldth where acid=?SVAR and del_flg='N' and bank_id=?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.EZB.acid +"|"+ BANCS.STDIN.contextBankId
+
+		lv_c = urhk_dbSelectWithBind(lv_s)
+		PRINT(lv_c)
+
+		if(lv_c == 0)then
+		#{
+			CUST.EZB.count = BANCS.OUTPARAM.count
+			print(CUST.EZB.count)
+
+			if(CUST.EZB.count > 0)then
+			#{
+				CUST.EZB.isDth = "Y"
+			ELSE 
+				CUST.EZB.isDth = "N"
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		#paidEMI
+		lv_q = "count | select count (distinct dmd_date) from tbaadm.ldt, tbaadm.lfm, tbaadm.lam where LDT.BANK_ID =?SVAR AND  "
+		lv_q = lv_q + " LDT.DEL_FLG !='Y' AND LDT.DMD_FLOW_ID = LFM.FLOW_ID AND LFM.BANK_ID = LDT.BANK_ID and LDT.TOT_ADJ_AMT = LDT.DMD_AMT  AND LDT.ACID =?SVAR AND "
+		lv_q = lv_q + " LFM.DEL_FLG !='Y' AND LDT.SHDL_NUM = lam.rep_shdl_num and lam.acid=ldt.acid and lam.bank_id=ldt.bank_id and lam.del_flg !='Y' ORDER BY DMD_EFF_DATE, DECODE(LFM.DMD_TYPE,'P',1,3) "
+		print(lv_q)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+  CUST.EZB.acid 
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(lv_q)
+		PRINT(sv_c)
+
+		IF(sv_c == 0)THEN
+		#{
+			CUST.EZB.paidEMI = BANCS.OUTPARAM.count 
+			print(CUST.EZB.paidEMI)
+		ELSE
+			lv_q = "count | select count (distinct dmd_date) from tbaadm.LDTH, tbaadm.lfm, tbaadm.lam where LDTH.BANK_ID =?SVAR AND  "
+			lv_q = lv_q + " LDTH.DEL_FLG !='Y' AND LDTH.DMD_FLOW_ID = LFM.FLOW_ID AND LFM.BANK_ID = LDTH.BANK_ID and LDTH.TOT_ADJ_AMT = LDTH.DMD_AMT  AND LDTH.ACID =?SVAR AND "
+			lv_q = lv_q + " LFM.DEL_FLG !='Y' AND LDTH.SHDL_NUM = lam.rep_shdl_num and lam.acid=LDTH.acid and lam.bank_id=LDTH.bank_id and lam.del_flg !='Y' ORDER BY DMD_EFF_DATE, DECODE(LFM.DMD_TYPE,'P',1,3) "
+			print(lv_q)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+  CUST.EZB.acid 
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_c = urhk_dbSelectWithBind(lv_q)
+			PRINT(sv_c)
+			IF(sv_c == 0)THEN
+			#{
+				CUST.EZB.paidEMI = BANCS.OUTPARAM.count 
+				print(CUST.EZB.paidEMI)
+			ELSE
+				CUST.EZB.paidEMI = ""
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		lv_q = "lastPaymentDate,lastPaymentAmt |SELECT to_char(last_adj_date, 'DD-MM-YYYY'), SUM(tot_adj_amt)"
+		lv_q = lv_q + " FROM tbaadm.ldth l WHERE l.dmd_flow_id IN ('INDEM', 'PRDEM') and l.last_adj_date IN  "
+		lv_q = lv_q + " (SELECT last_adj_date FROM tbaadm.lam WHERE acid =l.acid AND bank_id=l.bank_id ) "
+		lv_q = lv_q + " AND l.shdl_num IN (SELECT rep_shdl_num FROM tbaadm.lam WHERE acid =l.acid AND bank_id=l.bank_id) AND l.acid=?SVAR AND l.bank_id=?SVAR and l.del_flg='N' group by last_adj_date "
+		print(lv_q)
+		BANCS.INPARAM.BINDVARS = CUST.EZB.acid +"|"+ BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		
+		sv_c = urhk_dbSelectWithBind(lv_q)
+		PRINT(sv_c)
+
+		IF(sv_c == 0)THEN
+		#{
+			CUST.EZB.lastPaymentAmt = BANCS.OUTPARAM.lastPaymentAmt
+			print(CUST.EZB.lastPaymentAmt)
+			CUST.EZB.lastPaymentDate = BANCS.OUTPARAM.lastPaymentDate + " 00:00:00"
+			print(CUST.EZB.lastPaymentDate)
+		else
+			lv_h = "lastPaymentDate,lastPaymentAmt |SELECT to_char(last_adj_date, 'DD-MM-YYYY'), SUM(tot_adj_amt) "
+			lv_h = lv_h + " FROM tbaadm.ldt l WHERE l.dmd_flow_id IN ('INDEM', 'PRDEM') and l.last_adj_date IN  "
+			lv_h = lv_h + " (SELECT last_adj_date FROM tbaadm.lam WHERE acid =l.acid AND bank_id=l.bank_id ) "
+			lv_h = lv_h + " AND l.shdl_num IN (SELECT rep_shdl_num FROM tbaadm.lam WHERE acid =l.acid AND bank_id=l.bank_id) AND l.acid=?SVAR AND l.bank_id=?SVAR and l.del_flg='N' group by last_adj_date "
+			print(lv_h)
+			BANCS.INPARAM.BINDVARS = CUST.EZB.acid +"|"+ BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_c = urhk_dbSelectWithBind(lv_h)
+			PRINT(sv_c)
+			IF(sv_c == 0)THEN
+			#{
+				CUST.EZB.lastPaymentAmt = BANCS.OUTPARAM.lastPaymentAmt 
+				print(CUST.EZB.lastPaymentAmt)
+				CUST.EZB.lastPaymentDate = BANCS.OUTPARAM.lastPaymentDate + " 00:00:00"
+				print(CUST.EZB.lastPaymentDate)
+			ELSE
+				CUST.EZB.lastPaymentAmt = " "
+				CUST.EZB.lastPaymentDate = " "
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+
+		IF(CUST.EZB.chrgOflg != "Y")THEN
+			#----------------------------------------------------------------------------------------------
+			#--- PAYOFF AMOUNT
+			#----------------------------------------------------------------------------------------------
+			CUST.EZB.accountID = CUST.EZB.AccountNo
+			CUST.EZB.collAcctID = CUST.EZB.operAcct
+
+			CUST.EZB.reasonCode = ""
+			CUST.EZB.prePaymentType = "V"
+			CUST.EZB.funcCode = "I"
+			CUST.EZB.payOffValueDate = BANCS.STDIN.BODDate
+			CUST.EZB.commonAcct = ""
+			CUST.EZB.payOffAmount = " "
+			CUST.EZB.position = ""
+			CUST.EZB.tranType                     = "T"
+			CUST.EZB.tranSubType                  = "CI"
+			CUST.EZB.payoffSol = ""
+			CUST.EZB.payoffAcct = ""
+			CUST.EZB.chrgCrncy = " "
+			CUST.EZB.acctBal = ""
+
+			sv_b = urhk_SetUrhkInp("payOffCrit.laAcct.foracid|" + CUST.EZB.AccountNo)
+			PRINT(sv_b)
+			PRINT(CUST.EZB.payOffValueDate)
+			sv_b = urhk_SetUrhkInp("payOffCrit.payOffValueDate|" + CUST.EZB.payOffValueDate)
+			PRINT(sv_b)
+			PRINT(CUST.EZB.funcCode)
+			sv_b = urhk_SetUrhkInp("payOffCrit.funcCode|" + CUST.EZB.funcCode)
+			PRINT(sv_b)
+			#----------------------------------------------------------------------
+			#Payoff type: V-Voluntary/M-Mandatory   
+			#----------------------------------------------------------------------
+			PRINT(CUST.EZB.prePaymentType)
+			sv_b = urhk_SetUrhkInp("payOffCrit.prePaymentType|" + CUST.EZB.prePaymentType)
+			PRINT(sv_b)
+			#----------------------------------------------------------------------
+			#Tran type: C-Cash/T-Transfer
+			#----------------------------------------------------------------------
+			PRINT(CUST.EZB.tranType)
+			sv_b = urhk_SetUrhkInp("payOffCrit.tranType.tranType|" + CUST.EZB.tranType)
+			PRINT(sv_b)
+			sv_b = urhk_SetUrhkInp("payOffCrit.tranType.tranSubType|" + CUST.EZB.tranSubType)
+			PRINT(sv_b)
+			sv_b = urhk_SetUrhkInp("payOffCrit.collAcct.foracid|" + CUST.EZB.operAcct)
+			PRINT(sv_b)
+
+			sv_a = urhk_SetUrhkOut("payOffDtl.netPayOffAmtAdj|payOffAmount")
+			PRINT(sv_a)
+			sv_u = urhk_ExecSrv("SRV_InquirePayOffDtls|same_user_verify = Y|retain_all_output = Y")
+			print(sv_u)
+
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				#}
+				ELSE
+				#{
+					sv_v = 0
+				#}
+				ENDIF
+
+				IF (sv_v > 0) then
+				#{
+					sv_u = system("echo 'Error'")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>loanDetails.log")
+						print(sv_u)
+						sv_t = urhk_SetOrbOut("SuccessOrFailure|N")
+						sv_t = "message| " +sv_e
+
+						sv_u = urhk_SetOrbOut(sv_t)
+					#}
+					DO
+				#}    
+				ENDIF
+			ELSE 
+				CUST.EZB.payOffAmount = LEFT$(BANCS.OUTPARAM.payOffAmount,GETPOSITION(BANCS.OUTPARAM.payOffAmount,"|") -1 )
+				PRINT(CUST.EZB.payOffAmount)
+			#}
+			ENDIF
+		ELSE
+			CUST.EZB.payOffAmount =" "
+		ENDIF 
+
+		#----------------------------------------------------------------------------------------------
+		#--- RESPONSE     
+		#----------------------------------------------------------------------------------------------
+
+		sv_c = " "
+		sv_t = "LoanDetails_RES.<rec_1>.LoanAccountNumber |" + CUST.EZB.AccountNo
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanCurrency |" + CUST.EZB.crncyCode
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanType |" + CUST.EZB.schmCode
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanTypeDesc |" + CUST.EZB.schmCodeDesc
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.FundingAccount |" + CUST.EZB.operAcct
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.PaymentFrequency |" + CUST.EZB.interestFrequencyType
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.OriginalAmount |" + CUST.EZB.loanAmount
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.EMIAmount |" + CUST.EZB.flowAmt
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanHolderName |" + CUST.EZB.loanHolderName
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanTenor |" + CUST.EZB.loanTenor
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.DisbursementAccount |" + CUST.EZB.operAcct
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.InterestRate |" + CUST.EZB.intRate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.NextPaymentDate |" + CUST.EZB.nextIntDemandDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.NextPaymentAmount |" + CUST.EZB.flowAmt
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanStartDate |" + CUST.EZB.acctOpnDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.OutstandingLoanAmount |" + CUST.EZB.loanLiability
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.PastDueDate |" + CUST.EZB.pastDueDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LastPaymentDate |" + CUST.EZB.lastPaymentDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LastPaymentAmount |" + CUST.EZB.lastPaymentAmt
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.NumberofInstallment |" + CUST.EZB.noOfDemands
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.InstallmentPaid |" + CUST.EZB.paidEMI
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.LoanMaturityDate |" + CUST.EZB.maturityDate
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.AccrualPrincipalInterest |" + CUST.EZB.accruedPrincipalInterest
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.AccruedPenaltyInterest |" + CUST.EZB.accruedPenaltyInterest
+		sv_u = urhk_SetOrbOut(sv_t)
+		sv_t = "LoanDetails_RES.<rec_1>.PayoffAmount |" + CUST.EZB.payOffAmount
+		sv_u = urhk_SetOrbOut(sv_t)
+	ELSE 
+		CUST.EZB.errMsg="Invalid Account Number."
+   		sv_u = urhk_SetOrbOut("SuccessOrFailure|F")
+        sv_u = urhk_SetOrbOut("ErrorCode|E9999")
+        sv_t = "Message | " +CUST.EZB.errMsg
+        sv_u = urhk_SetOrbOut(sv_t)
+		exitscript
+	#}
+	ENDIF
+ENDSCRIPT:
+trace off
+END-->

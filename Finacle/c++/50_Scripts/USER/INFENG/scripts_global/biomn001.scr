@@ -1,0 +1,812 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       biomn001.scr
+# Author                :       Eshan Babbar
+# Description           :       Main script for doing biometric validation
+# Input                 :       Account ID/Customer ID
+# Output                :       Customer ID
+# Called Script         :       None
+# Calling Script        :       None
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           04-04-2013         Eshan Babbar      Original Version          1.0
+#-----------------------------------------------------------------------------------------------------------
+<--START
+#trace on
+
+#sv_u = urhk_B2k_PrintRepos("BANCS")
+#print(sv_u)
+	
+	#--------------------------------------------
+	# Calling the common script
+	#-------------------------------------------	
+	CALL("Common_Interface_CreateRepos.scr")
+	print(BANCS.INPUT.custIdOrAcctId)
+	print(BANCS.INPUT.menuId)
+	
+         BANCS.INPUT.custIdOrAcctId = TRIM(BANCS.INPUT.custIdOrAcctId)
+	 print(BANCS.INPUT.custIdOrAcctId)
+
+	#--------------------------------------------
+	# Initailizing the variables
+	#-------------------------------------------
+	CUST.INTERFACE.bioUrl = ""
+	CUST.INTERFACE.userCust = ""
+	CUST.INTERFACE.cifId = ""
+	CUST.INTERFACE.errorMsgFlg = "N"
+	CUST.INTERFACE.message = "" 
+	CUST.INTERFACE.status = "NA"
+	CUST.INTERFACE.urlCall = "N"
+	CUST.INTERFACE.acid  = ""
+	CUST.INTERFACE.cifValues = ""
+	CUST.INTERFACE.modeOfOper = ""
+	CUST.INTERFACE.schm_code = ""
+	CUST.INTERFACE.corp = "N"
+	
+	CUST.INTERFACE.skipBioVal = "N"
+
+	#----------------------------------------------------------
+	# Fetching biometric url value from set in CPARAM
+	#----------------------------------------------------------
+	CUST.INTERFACE.parameterId = "BIO_URL"
+	
+	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.parameterId + "|" + BANCS.STDIN.contextBankId + "|Y" + "|N"
+	print(BANCS.INPARAM.BINDVARS)	
+	sv_s = "paramVal|SELECT PARAMETER_VALUE "
+	sv_s = sv_s + "FROM CUSTOM.C_CPVALUE "
+	sv_s = sv_s + "WHERE PARAMETER_ID = ?SVAR "
+	sv_s = sv_s + "AND BANK_ID = ?SVAR "
+	sv_s = sv_s + "AND ENTITY_CRE_FLG = ?SVAR "
+	sv_s = sv_s + "AND DEL_FLG = ?SVAR"
+	print(sv_s)
+	
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	print(sv_d)
+	
+	IF(sv_d == 0) THEN
+	#{
+		CUST.INTERFACE.bioUrl = BANCS.OUTPARAM.paramVal
+		print(CUST.INTERFACE.bioUrl)
+	#}
+	ELSE
+	#{
+	    CUST.INTERFACE.errorCode= "BIOM_ERROR_01"
+
+		CALL("Common_Interface_GetErrorDesc.scr")
+		IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+		#{
+			  sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			  CUST.INTERFACE.errorMsg = "Could not fetch CPARAM value for " +  CUST.INTERFACE.errorCode
+			  sv_z = "Error_0|ERROR^" + CUST.CONTRACT.errorMsg + "^paramVal"
+			  sv_u = urhk_SetOrbOut(sv_z)
+			  CUST.INTERFACE.successFlg = "F"
+			  GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			  CUST.INTERFACE.errorMsg = CUST.INTERFACE.errorDesc
+			  sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			  print(sv_u)
+			  sv_u = urhk_SetOrbOut("Error_0|ERROR^" + CUST.INTERFACE.errorMsg + "^paramVal")
+			  print(sv_u)                
+			  GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	
+	#}
+	ENDIF
+
+        #---------------------------------------------------
+        # Check whether bio validation should be done for user/Customer
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="STAFF_MENU"
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id like ?SVAR and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.INPUT.menuId
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v == 0 )THEN
+                #{
+                        #Customer should be compared
+                        CUST.INTERFACE.userCust = "C"
+
+                #}
+                ELSE
+                #{
+                        # User should be validated
+                        CUST.INTERFACE.userCust = "U"
+                #}
+                ENDIF
+        #}
+        ENDIF
+        
+        #---------------------------------------------------
+        # Check whether bio validation should be done for user/Customer
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="SKIP_STAFF_MENU"
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id like ?SVAR and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.INPUT.menuId
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v != 0 )THEN
+                #{
+                        #Customer should be compared
+                        CUST.INTERFACE.skipBioVal = "Y"
+                        GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+
+	
+	#--------------------------------------------------------------------
+	# Checking if the bio validation should be done for the listed menus.
+	#--------------------------------------------------------------------
+	
+	IF((BANCS.INPUT.menuId == "HOAACCA") OR (BANCS.INPUT.menuId == "HOAACSB") OR (BANCS.INPUT.menuId == "HOAACOD") OR (BANCS.INPUT.menuId == "HOAACCC") OR (BANCS.INPUT.menuId == "HOAACLA") OR (BANCS.INPUT.menuId == "HOAACCL") OR (BANCS.STDIN.menuId == "OICA") OR (BANCS.STDIN.menuId == "OISA") OR (BANCS.STDIN.menuId == "OIOA") OR (BANCS.STDIN.menuId == "OIFA") OR (BANCS.STDIN.menuId == "HOAACTD") OR (BANCS.STDIN.menuId == "HOAACTU") OR (BANCS.STDIN.menuId == "OCMIDA") OR (BANCS.STDIN.menuId == "OITUA")) THEN
+	#{
+		CUST.INTERFACE.cifId = BANCS.INPUT.custIdOrAcctId
+		print(CUST.INTERFACE.cifId)	
+		CUST.INTERFACE.urlCall= "Y"
+		CUST.INTERFACE.cifValues = CUST.INTERFACE.cifId 
+	 	BANCS.INPARAM.BINDVARS = CUST.INTERFACE.cifId  + "|" + BANCS.STDIN.contextBankId
+        sv_s = "cnt|SELECT  count(1) fROM CRMUSER.ACCOUNTS WHERE ORGKEY = ?SVAR "
+        sv_s = sv_s + " AND BANK_ID = ?SVAR AND CORP_ID IS NULL "
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        IF(sv_d == 0) THEN
+        #{
+                IF(BANCS.OUTPARAM.cnt == 0)THEN
+                #{
+                    CUST.INTERFACE.skipBioVal = "Y"
+					GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+		
+	#}
+	ELSE
+	#{
+		#------------------------------------------------------------------------------
+		# Fetching the customer id in case the input is account id
+		#------------------------------------------------------------------------------
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.custIdOrAcctId 
+		BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|Y" + "|" + "N" + "|" + "C|E"
+		print(BANCS.INPARAM.BINDVARS)
+		sv_s = "cifId,acid,modeOfOper,schm_code|SELECT CIF_ID,ACID,MODE_OF_OPER_CODE,SCHM_CODE FROM TBAADM.GAM WHERE FORACID = ?SVAR"
+		sv_s = sv_s + " AND ENTITY_CRE_FLG = ?SVAR AND DEL_FLG = ?SVAR"
+		sv_s = sv_s + " AND ACCT_OWNERSHIP IN  (?SVAR, ?SVAR)"
+		print(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d == 0) THEN
+		#{
+			CUST.INTERFACE.cifId = BANCS.OUTPARAM.cifId
+			CUST.INTERFACE.acid  = BANCS.OUTPARAM.acid
+			CUST.INTERFACE.cifValues = CUST.INTERFACE.cifId 
+			CUST.INTERFACE.modeOfOper = BANCS.OUTPARAM.modeOfOper
+			CUST.INTERFACE.schm_code = BANCS.OUTPARAM.schm_code
+
+			IF ((CUST.INTERFACE.modeOfOper != "ALL") AND (CUST.INTERFACE.modeOfOper != "SELF") AND (CUST.INTERFACE.modeOfOper != "ANY") AND (CUST.INTERFACE.modeOfOper != "ETS") AND (CUST.INTERFACE.modeOfOper != "BTS"))THEN
+			#{
+				CUST.INTERFACE.modeOfOper = "ALL"
+			#}
+			ENDIF 
+            BANCS.INPARAM.BINDVARS = CUST.INTERFACE.cifId  + "|" + BANCS.STDIN.contextBankId
+            sv_s = "cnt|SELECT  count(1) fROM CRMUSER.ACCOUNTS WHERE ORGKEY = ?SVAR "
+            sv_s = sv_s + " AND BANK_ID = ?SVAR AND CORP_ID IS NULL "
+            sv_d = urhk_dbSelectWithBind(sv_s)
+            IF(sv_d == 0) THEN
+            #{
+                    IF(BANCS.OUTPARAM.cnt == 0)THEN
+                    #{
+                            CUST.INTERFACE.corp = "Y"
+                    #}
+                    ENDIF
+            #}
+            ENDIF
+
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.cifId = ""
+			IF(BANCS.INPUT.menuId != "HRINBX") THEN
+			#{	
+				CUST.INTERFACE.skipBioVal = "Y"
+				GOTO ENDOFVAL
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	PRINT(CUST.INTERFACE.cifId)
+	
+	#------------------------------------------------------------------------------
+	# Validating the customer id. IF its null then product would take care of
+	# throwing error. We just need to skip the Biometric validation
+	# Only if this is configured to url call to biometric
+	#------------------------------------------------------------------------------
+	IF ( CUST.INTERFACE.urlCall == "Y" ) THEN
+	#{
+		IF(CUST.INTERFACE.cifId != "") THEN
+		#{
+			#------------------------------------------------------------------------------
+			# Checking whether customer override is required by checking OBCUST
+			#------------------------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = CUST.INTERFACE.cifId + "|" + BANCS.STDIN.contextBankId
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N" + "|" + "Y"
+			print(BANCS.INPARAM.BINDVARS)
+			sv_s = "count|SELECT COUNT(*) FROM CUSTOM.C_BIO_CUST_OVERDUE "
+			sv_s = sv_s + " WHERE CUST_ID = ?SVAR"
+			sv_s = sv_s + " AND BANK_ID = ?SVAR"
+			sv_s = sv_s + " AND DEL_FLG = ?SVAR AND OVER_RIDE_FLG = ?SVAR"
+			print(sv_s)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(BANCS.OUTPARAM.count)
+			
+			IF(BANCS.OUTPARAM.count != 0) THEN
+			#{
+				print("skipping")	
+				CUST.INTERFACE.skipBioVal = "Y"
+				GOTO ENDOFVAL
+			#}
+			ELSE
+			#{
+				BANCS.OUTPUT.parameterVal = ""
+				BANCS.INPUT.moduleName="BIOM"
+				BANCS.INPUT.parameterId="ENROL_VAL_MENU"
+
+				sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+				sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+				sv_q = sv_q + " where parameter_id like ?SVAR and module_name = ?SVAR "
+				sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+				print(sv_q)
+				BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+				BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.INPUT.menuId
+				print(BANCS.INPARAM.BINDVARS)
+				sv_i = urhk_dbSelectWithBind(sv_q)
+				print(sv_i)
+				
+				IF ( sv_i == 0 ) THEN
+				#{
+					sv_v=BANCS.OUTPARAM.isValid
+					print(sv_v)
+					if(sv_v == 0 )THEN
+					#{
+						#Need not call the enrolled status
+						print("skipping")	
+						CUST.INTERFACE.skipBioVal = "Y"
+						GOTO ENDOFVAL
+					#}
+					ELSE
+					#{
+
+						#---------------------------------------------------
+						# Check whether bio validation should be done for user/Customer
+						#---------------------------------------------------
+						print(BANCS.INPUT.menuId)
+
+						BANCS.OUTPUT.parameterVal = ""
+						BANCS.INPUT.moduleName="BIOM"
+						BANCS.INPUT.parameterId="SKIP_BIO"
+
+						sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+						sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+						sv_q = sv_q + " where parameter_id like ?SVAR and module_name = ?SVAR "
+						sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+						print(sv_q)
+						BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "Y"
+						print(BANCS.INPARAM.BINDVARS)
+						sv_i = urhk_dbSelectWithBind(sv_q)
+						print(sv_i)
+						IF ( sv_i == 0 ) THEN
+						#{
+							sv_v=BANCS.OUTPARAM.isValid
+							print(sv_v)
+							if(sv_v != 0 )THEN
+							#{
+								#Disable for the entity
+								CUST.INTERFACE.skipBioVal = "Y"
+								GOTO ENDOFVAL
+							#}
+							ENDIF
+						#}
+						ENDIF
+
+
+						#---------------------------------------------------
+						# Check whether bio validation should be done for sols
+						#---------------------------------------------------
+						BANCS.OUTPUT.parameterVal = ""
+						BANCS.INPUT.moduleName="BIOM"
+						BANCS.INPUT.parameterId="SKIP_SOL_BIO"
+
+						sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+						sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+						sv_q = sv_q + " where parameter_id like '" + BANCS.INPUT.parameterId + "%' and module_name = ?SVAR "
+						sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+						print(sv_q)
+						BANCS.INPARAM.BINDVARS = BANCS.INPUT.moduleName
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+						BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.mySolId
+						print(BANCS.INPARAM.BINDVARS)
+						sv_i = urhk_dbSelectWithBind(sv_q)
+						print(sv_i)
+						IF ( sv_i == 0 ) THEN
+						#{
+							sv_v=BANCS.OUTPARAM.isValid
+							print(sv_v)
+							if(sv_v != 0 )THEN
+							#{
+								#Disable for the entity
+								CUST.INTERFACE.skipBioVal = "Y"
+								GOTO ENDOFVAL
+							#}
+							ENDIF
+						#}
+						ENDIF
+
+
+						CALL("biodp001.scr")
+
+
+						print(CUST.INTERFACE.errorMsgFlg)
+						print(CUST.INTERFACE.message)
+						print(CUST.INTERFACE.status)
+						# Irrespctive of status , send the status message to app_custom.js
+						CUST.INTERFACE.skipBioVal = "Y"
+						GOTO ENDOFVAL
+				
+					#}
+					ENDIF
+				#}
+				ELSE
+				#{
+					# DB Operation failed
+					sv_u = urhk_SetOrbOut("Error_0|ERROR DB operation failed. Kindly contact Admin")
+					GOTO ENDOFVAL
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{	
+			CUST.INTERFACE.skipBioVal = "Y"	
+			GOTO ENDOFVAL
+		#}	
+		ENDIF
+	#}
+	ENDIF
+
+# Removed as the validation should be there for every transaction irrespective of whether the user is bio enabled
+
+#	BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId 
+#	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+#	print(BANCS.INPARAM.BINDVARS)
+#	sv_s = "bio_enable|SELECT REQ_TWO_FACTOR_AUTH  FROM SSOADM.USER_PROFILE_TBL WHERE USER_ID = ?SVAR"
+#	sv_s = sv_s + " AND DEL_FLG = ?SVAR"
+#	print(sv_s)
+#	sv_d = urhk_dbSelectWithBind(sv_s)
+#	print(sv_d)
+#	IF(sv_d == 0) THEN
+#	#{
+#		CUST.INTERFACE.bio_enable= BANCS.OUTPARAM.bio_enable
+#		print(CUST.INTERFACE.bio_enable)
+#		IF(CUST.INTERFACE.bio_enable != "B")THEN
+#		#{
+#			print("skipping")
+#			CUST.INTERFACE.skipBioVal = "Y"
+#			GOTO ENDOFVAL
+#		#}
+#		ENDIF
+#	#}
+#	ENDIF
+	
+	IF(CUST.INTERFACE.modeOfOper != "SELD")THEN
+	#{
+		IF(CUST.INTERFACE.acid != "")THEN
+		#{
+			BANCS.INPARAM.BINDVARS = CUST.INTERFACE.acid + "|" + "N" + "|" + BANCS.STDIN.contextBankId
+			sv_s = "recCount|SELECT COUNT(*) FROM TBAADM.AAS"
+			sv_s = sv_s + " WHERE ACID = ?SVAR"
+			sv_s = sv_s + " AND DEL_FLG=?SVAR AND BANK_ID = ?SVAR "
+			sv_s = sv_s + " AND CUST_ID IS NOT NULL "
+			sv_s = sv_s + " AND ACCT_POA_AS_REC_TYPE <> 'M' "
+			print(sv_s)
+			sv_m  = urhk_dbSelectWithBind(sv_s)
+			print(sv_m)
+				
+			IF(sv_m == 0) THEN
+			#{
+				CUST.INTERFACE.recCount = BANCS.OUTPARAM.recCount
+			#}
+			ELSE
+			#{
+				sv_u = urhk_SetOrbOut("Error_0|ERROR DB operation failed. Kindly contact Admin")
+				GOTO ENDOFVAL
+			#}
+			ENDIF
+
+			IF(CUST.INTERFACE.recCount > 0)THEN
+			#{
+				BANCS.INPARAM.BINDVARS = CUST.INTERFACE.acid + "|" + "N" + "|" + BANCS.STDIN.contextBankId
+				sv_s = "customerID|SELECT CUST_ID FROM TBAADM.AAS"
+				sv_s = sv_s + " WHERE ACID = ?SVAR"
+				sv_s = sv_s + " AND DEL_FLG=?SVAR AND BANK_ID = ?SVAR "
+				sv_s = sv_s + " AND CUST_ID IS NOT NULL "
+				sv_s = sv_s + " AND ACCT_POA_AS_REC_TYPE <> 'M' "
+
+				print(sv_s)
+				sv_m  = urhk_dbCursorOpenWithBind(sv_s)
+				print(sv_m)
+				IF(sv_m == 0) THEN
+				#{
+					sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+					print(sv_n)
+				#}
+				ELSE
+				#{
+					sv_u = urhk_SetOrbOut("Error_0|ERROR DB operation failed. Kindly contact Admin")
+					GOTO ENDOFVAL
+				#}
+				ENDIF
+
+				sv_f = urhk_dbCursorFetch(sv_n)
+				print(sv_f)
+				WHILE(sv_f == 0)
+				#{
+					CUST.INTERFACE.custId = BANCS.OUTPARAM.customerID
+					print(CUST.INTERFACE.custId)	
+					#------------------------------------------------------------------------------
+					# Checking whether customer override is required by checking OBCUST
+					#------------------------------------------------------------------------------
+					BANCS.INPARAM.BINDVARS = CUST.INTERFACE.custId + "|" + BANCS.STDIN.contextBankId
+					BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "N"
+					print(BANCS.INPARAM.BINDVARS)
+					sv_s = "jointCifId|SELECT CIF_ID FROM TBAADM.CMG"
+					sv_s = sv_s + " WHERE CUST_ID = ?SVAR"
+					sv_s = sv_s + " AND BANK_ID = ?SVAR"
+					sv_s = sv_s + " AND DEL_FLG = ?SVAR "
+					print(sv_s)
+					sv_d = urhk_dbSelectWithBind(sv_s)
+					IF(sv_d == 0) THEN
+					#{
+						print(BANCS.OUTPARAM.jointCifId)
+                        # If there are joint CIF , check whether the customer is corporate/Retail
+                        IF(CUST.INTERFACE.corp == "Y") THEN
+                        #{
+                                CUST.INTERFACE.cifValues = ""
+                                CUST.INTERFACE.corp = "N"
+                        #}
+                        ENDIF
+						IF(CUST.INTERFACE.cifValues != "") THEN
+						#{	
+								CUST.INTERFACE.cifValues = CUST.INTERFACE.cifValues + "," + BANCS.OUTPARAM.jointCifId
+								print(CUST.INTERFACE.cifValues)
+						#}
+						ELSE
+						#{
+								CUST.INTERFACE.cifValues = BANCS.OUTPARAM.jointCifId
+								print(CUST.INTERFACE.cifValues)
+						#}
+						ENDIF
+					#}
+					ELSE
+					#{
+						#sv_u = urhk_SetOrbOut("Error_0|ERROR DB operation failed. Kindly contact Admin")
+						# Joint CIF is not valid 
+						#GOTO ENDOFVAL
+					#}
+					ENDIF
+
+
+					sv_f = urhk_dbCursorFetch(sv_n)
+					print(sv_f)
+
+				#}
+				DO
+				#Closing cursor
+				sv_f = urhk_dbCursorClose(sv_n)
+				print(sv_f)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#--------------------------------------------
+	# Sending the bio url to front end.
+	#-------------------------------------------
+
+	# Disable bio validation for the all the brances in Kenya except 
+#        IF((BANCS.STDIN.contextBankId == "54") OR (BANCS.STDIN.contextBankId == "43")) THEN
+#        #{
+#             IF((BANCS.STDIN.mySolId == "136") OR (BANCS.STDIN.mySolId == "017"))THEN
+#             #{
+#		 # Bio validation is enabled	
+#		 # FOR 136 we have to disable biometric except SB444 schme
+#		IF(BANCS.STDIN.mySolId=="136")THEN
+#		#{
+#			IF(CUST.INTERFACE.schm_code !=  "SB444")THEN
+#			#{
+#				CUST.INTERFACE.skipBioVal = "Y"
+#			#}
+#			ENDIF
+#		#}
+#		ENDIF
+#
+#             #}
+#             else
+#             #{
+#			CUST.INTERFACE.skipBioVal = "Y"			
+#             #}
+#	     ENDIF
+##         #}
+#         ENDIF
+
+	
+        # Disable bio validation for all  the brances in Uganda except
+        #IF(BANCS.STDIN.contextBankId == "56")THEN
+        #{
+        #        IF((BANCS.STDIN.mySolId == "1043")) THEN
+	#	#{
+	#	     # Dont skip bio val
+	#	#}
+	#	ELSE
+	#	#{
+	#		CUST.INTERFACE.skipBioVal = "Y"
+	#	#}
+	#	ENDIF
+        #}
+        #ENDIF
+
+        #---------------------------------------------------
+        # Check whether bio validation should be done for user/Customer
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="SKIP_BIO"
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id like ?SVAR and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + "Y"
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v != 0 )THEN
+                #{
+                        #Disable for the entity
+                        CUST.INTERFACE.skipBioVal = "Y"
+                        GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        #---------------------------------------------------
+        # Check whether bio validation should be done for sols
+        #---------------------------------------------------
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="SKIP_SOL_BIO"
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id like '" + BANCS.INPUT.parameterId + "%' and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.mySolId
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v != 0 )THEN
+                #{
+                        #Disable for the entity
+                        CUST.INTERFACE.skipBioVal = "Y"
+                        GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        #---------------------------------------------------
+        # Check whether bio validation should be done for schemes - Entity wise.
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="BIO_SCHEME_SKIP" 
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id like '" + BANCS.INPUT.parameterId + "' and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS =  BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.schm_code
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v != 0 )THEN
+                #{
+                        #Disable for the entity
+                        CUST.INTERFACE.skipBioVal = "Y"
+                        GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+
+	#---------------------------------------------------
+        # Check whether bio validation should be done for schemes + SOL combination
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="BIO_SKIP_SCHEME_" + BANCS.STDIN.mySolId
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id = '" + BANCS.INPUT.parameterId + "' and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS =  BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.schm_code 
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v != 0 )THEN
+                #{
+                        #Disable for the entity
+                        CUST.INTERFACE.skipBioVal = "Y"
+                        GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        #---------------------------------------------------
+        # Check whether bio validation should be done for schemes + SOL combination + not for skipping.
+		# For the schme defined in this , bio validation will be available and for all the remaining it will skip
+        #---------------------------------------------------
+        print(BANCS.INPUT.menuId)
+
+        BANCS.OUTPUT.parameterVal = ""
+        BANCS.INPUT.moduleName="BIOM"
+        BANCS.INPUT.parameterId="BIO_NOT_SKIP_SCHEME_" + BANCS.STDIN.mySolId
+
+
+	sv_q = "iVal|select parameter_value from custom.c_cpvalue where parameter_id = ?SVAR"
+	sv_q = sv_q + " AND module_name = ?SVAR " 
+	sv_q = sv_q + " AND BANK_ID = ?SVAR "
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.parameterId + "|" + BANCS.INPUT.moduleName 
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+	sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+		if(BANCS.OUTPARAM.iVal == "NA")THEN
+		#{
+			GOTO ENDOFVAL
+		#}
+		ENDIF
+	#}
+	ELSE
+	#{
+		GOTO ENDOFVAL
+	#}
+	ENDIF
+
+        sv_q = "isValid|select  instr((select listagg(parameter_value,',') "
+        sv_q = sv_q + " within group (order by parameter_id) from custom.c_cpvalue "
+        sv_q = sv_q + " where parameter_id = '" + BANCS.INPUT.parameterId + "' and module_name = ?SVAR "
+        sv_q = sv_q + " and bank_id = ?SVAR ),?SVAR ) from dual"
+        print(sv_q)
+        BANCS.INPARAM.BINDVARS = BANCS.INPUT.moduleName
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+        BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.INTERFACE.schm_code
+        print(BANCS.INPARAM.BINDVARS)
+        sv_i = urhk_dbSelectWithBind(sv_q)
+        print(sv_i)
+        IF ( sv_i == 0 ) THEN
+        #{
+                sv_v=BANCS.OUTPARAM.isValid
+                print(sv_v)
+                if(sv_v == 0 )THEN
+                #{
+                        #Disable for the entity
+                        #CUST.INTERFACE.skipBioVal = "Y"
+                        #GOTO ENDOFVAL
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+	
+
+ENDOFVAL:
+	
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.skipBioVal + "|" + CUST.INTERFACE.bioUrl +  "&"
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + CUST.INTERFACE.userCust + "&" 
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + CUST.INTERFACE.status  + "&"
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + BANCS.STDIN.contextBankId + "&" 
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + CUST.INTERFACE.cifId + "&" 
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + BANCS.STDIN.userId + "&"
+	CUST.INTERFACE.bioInput = CUST.INTERFACE.bioInput + CUST.INTERFACE.message + "&" + CUST.INTERFACE.cifValues + "&" + CUST.INTERFACE.modeOfOper
+
+
+	print(CUST.INTERFACE.bioInput)
+	sv_v = urhk_SetOrbOut(CUST.INTERFACE.bioInput)
+	PRINT(sv_v)
+	
+	ENDOFSCRIPT:
+
+#trace off
+END-->

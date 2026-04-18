@@ -1,0 +1,247 @@
+###############################################################################
+#   Source Name         :   denomdp021.scr
+#   Date                :   21-JUL-2010
+#   Description         :   This script is for releasing the blocked denominations
+#   Author              :   Castro / Sandeep Patil
+#   Called Script       :   NA
+#   Calling Script      :
+#   MODULE CODE         :  DENOM
+#   Modification History:
+#   <Serial No.>   <Date>   <Author Name>    <Description>
+#	0.2		26-AUG-2011	Arathilakshmi		Edited to include HGCHRG/HTUTM menu
+#################################################################################
+
+<--START
+TRACE ON
+
+sv_r = REPEXISTS("CUST")
+IF (sv_r == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+sv_r = CLASSEXISTS("CUST", "DENOM")
+IF (sv_r == 0) THEN
+#{
+	CREATECLASS("CUST", "DENOM", 5)
+#}
+ENDIF
+
+sv_q = urhk_B2k_PrintRepos("BANCS")
+print(sv_q)
+
+IF ((BANCS.STDIN.menuId == "HGCHRG") OR (BANCS.STDIN.funcName == "SRV_DeleteGenChrgDtl")) THEN
+#{
+	sv_q = urhk_SRV_GetVal("genChrgCrit.gchSrlNum")
+	CUST.DENOM.tranId = LPAD(TRIM(BANCS.OUTPARAM.srvValue), 9)
+	lv_s = "tranDate|SELECT to_char(tran_date,'DD-MM-YYYY') FROM C_DERD "
+	lv_s = lv_s + "WHERE dxfer_id = ?SVAR "
+	lv_s = lv_s + "AND bank_id = ?SVAR AND sol_id = ?SVAR "
+	lv_s = lv_s + "AND dxfer_flg = 'C' "
+	BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+	print(BANCS.INPARAM.BINDVARS)
+	print(lv_s)
+	lv_q = urhk_dbSelectWithBind(lv_s)
+	print(lv_q)
+	IF (lv_q == 0) THEN
+	#{
+		CUST.DENOM.tranDate = BANCS.OUTPARAM.tranDate
+	#}
+	ELSE
+	#{
+		CUST.DENOM.tranDate = LEFT$(BANCS.STDIN.BODDate, 10)
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	IF ((BANCS.STDIN.menuId == "HLAUPAY") OR (BANCS.STDIN.serviceName == "SRV_ProcessLaUnSchPmtXcel")) THEN
+	#{
+		sv_q = urhk_SRV_GetVal("laPayCrit.tranId")
+		CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+		sv_q = urhk_SRV_GetVal("laPayDtlLL.<rec_0>.glDate")
+		CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue, 10)
+	#}
+	ELSE
+	#{
+        	IF(BANCS.STDIN.menuId =="HDDMI") THEN
+		#{
+
+    			sv_q = urhk_SRV_GetVal("ddMassIssHdr.tranId")
+    			CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+    			sv_q = urhk_SRV_GetVal("ddMassIssHdr.tranDate")
+    			CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue,10)
+		#}
+		ELSE
+		#{	
+		IF(BANCS.STDIN.menuId =="HDDMP") THEN
+			 sv_q = urhk_SRV_GetVal("ddMassPmtHdr.tranId")
+                        CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+                        sv_q = urhk_SRV_GetVal("ddMassPmtHdr.tranDate")
+                        CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue,10)
+			
+		#}
+        	ELSE
+		#{
+			sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranId")
+			CUST.DENOM.tranId = BANCS.OUTPARAM.srvValue
+			sv_q = urhk_SRV_GetVal("tranDtl.tranIdentifier.tranDate")
+			CUST.DENOM.tranDate = LEFT$(BANCS.OUTPARAM.srvValue, 10)
+		#}
+		ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+#}
+ENDIF
+print(CUST.DENOM.tranId)
+print(CUST.DENOM.tranDate)
+CUST.DENOM.userId = BANCS.STDIN.userId
+#--------------------------------------------------------------------------------------
+#	Fetching tran type,crncy code and serial number for current tra.id
+#--------------------------------------------------------------------------------------
+
+BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_q = "ptranType,crncyCode,denomCnt,denomVal,denomInd,type,solId,tellerId|"
+sv_q = sv_q + "SELECT ptran_type,crncy_code,denom_count,denom_value,denom_ind,type,sol_id,teller_id "
+sv_q = sv_q + "FROM c_detd "
+sv_q = sv_q + "WHERE dxfer_id = lpad(?SVAR,9) "
+sv_q = sv_q + "AND tran_date  = TO_DATE(?SVAR,'DD-MM-YYYY') AND bank_id = ?SVAR AND sol_id = ?SVAR"
+sv_q = sv_q + "ORDER BY part_tran_srl_num "
+print(sv_q)
+sv_a = urhk_dbCursorOpenWithBind(sv_q)
+IF (sv_a != 0) THEN
+#{
+	sv_u = urhk_setOrbOut("Message|N")
+	sv_u = urhk_setOrbOut("Details|DataBase Error")
+	goto FINISH
+#}
+ENDIF
+CUST.DENOM.Cursor1 = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+sv_f = 0
+WHILE(sv_f == 0)
+#{
+	sv_f = urhk_dbCursorFetch(CUST.DENOM.Cursor1)
+	IF (sv_f != 0) THEN
+	#{
+		sv_u = urhk_setOrbOut("Message|N")
+		sv_u = urhk_setOrbOut("Details|Table refereshed no entries for this transactions")
+		sv_i = urhk_dbCursorClose(CUST.DENOM.Cursor1)
+		goto UPDATEDETD
+	#}
+	ENDIF
+	sv_a = BANCS.OUTPARAM.denomVal
+	sv_c = BANCS.OUTPARAM.denomCnt
+	CUST.DENOM.pType = BANCS.OUTPARAM.ptranType
+	CUST.DENOM.denomInd = BANCS.OUTPARAM.denomInd
+	CUST.DENOM.type = BANCS.OUTPARAM.type
+	CUST.DENOM.tellerId = BANCS.OUTPARAM.tellerId
+	CUST.DENOM.crncyCode = BANCS.OUTPARAM.crncyCode
+	CUST.DENOM.solId = BANCS.OUTPARAM.solId
+	sv_r = 1
+	WHILE(sv_r != 0)
+	#{
+		sv_q = GETPOSITION(sv_a, "-")
+		sv_r = GETPOSITION(sv_c, "-")
+		IF (sv_q != 0) THEN
+		#{
+			sv_x = LEFT$(sv_a, (sv_q - 1))
+		#}
+		ELSE
+		#{
+			sv_x = sv_a
+		#}
+		ENDIF
+		IF (sv_r != 0) THEN
+		#{
+			sv_y = LEFT$(sv_c, (sv_r - 1))
+		#}
+		ELSE
+		#{
+			sv_y = sv_c
+		#}
+		ENDIF
+		print(sv_x)
+		print(sv_y)
+		print(CUST.DENOM.crncyCode)
+		print(sv_a)
+		print(sv_c)
+		CUST.DENOM.DENOMVALUE = sv_x
+		IF (CINT(sv_y) > 0) THEN
+		#{
+			#-----------------------------------------------------------------
+			# Updating C_DENM table
+			#-----------------------------------------------------------------
+			BANCS.INPARAM.BINDVARS = sv_y + "|" + CUST.DENOM.userId + "|" + CUST.DENOM.DENOMVALUE + "|" + CUST.DENOM.crncyCode + "|" + CUST.DENOM.denomInd + "|" + CUST.DENOM.solId + "|" + CUST.DENOM.tellerId + "|" +  BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			
+			print(CUST.DENOM.type)
+			IF (((CUST.DENOM.pType == "C") AND (CUST.DENOM.type == "")) OR (CUST.DENOM.type == "GB")) THEN
+			#{
+				
+				CUST.DENOM.denmTbl = "C_DENM_CR"
+				sv_m = "UPDATE C_DENM_CR "
+			#}
+			ELSE
+			#{
+				CUST.DENOM.denmTbl = "C_DENM_DR"
+				sv_m = "UPDATE C_DENM_DR "
+			#}
+			ENDIF
+			sv_m = sv_m + " SET denom_count = denom_count - ?SVAR "
+			
+			sv_n = " ,lchg_time = sysdate, lchg_user_id = ?SVAR "
+			sv_n = sv_n + "WHERE DENOM_VALUE = ?SVAR "
+			sv_n = sv_n + "AND CRNCY_CODE = ?SVAR "
+			sv_n = sv_n + "AND DENOM_IND = ?SVAR "
+			sv_n = sv_n + "AND SOL_ID = ?SVAR "
+			sv_n = sv_n + "AND teller_id = ?SVAR AND bank_id =  ?SVAR"
+			print(sv_m + sv_n)
+			sv_s = urhk_DBSqlWithbind(sv_m + sv_n)
+			print(sv_s)
+		#}
+		ENDIF
+		#---------------------------------------------------------------------------
+		print(sv_x)
+		print(sv_a)
+		sv_a = RIGHT$(sv_a, (STRLEN(sv_a) - (sv_q)))
+		print(sv_a)
+		PRINT(sv_q)
+		sv_c = RIGHT$(sv_c, (STRLEN(sv_c) - (sv_r)))
+		print(sv_c)
+	#}
+	DO
+	#------------ Delete the record from c_derd ----------#
+	#------------ Insert a contra entry so as to revert incase the amount is already rounded off ----------#
+#}
+DO
+
+UPDATEDETD:
+#-----Query to update Dxfer_id as 'P' in C_DETD and C_DERD table---------------
+BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+PRINT(BANCS.INPARAM.BINDVARS)
+
+sv_l = "UPDATE c_detd "
+sv_m = "UPDATE c_derd "
+sv_n = " SET dxfer_flg = 'D' "
+sv_n = sv_n + "WHERE dxfer_id = LPAD(?SVAR,9) and dxfer_flg='E' "
+sv_n = sv_n + "AND tran_date = TO_DATE(?SVAR,'DD-MM-YYYY') AND  bank_id = ?SVAR AND sol_id = ?SVAR"
+print(sv_l + sv_n)
+print(sv_m + sv_n)
+sv_v = urhk_dbsqlWithBind(sv_l + sv_n)
+print(sv_v)
+BANCS.INPARAM.BINDVARS = CUST.DENOM.tranId + "|" + CUST.DENOM.tranDate + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+PRINT(BANCS.INPARAM.BINDVARS)
+sv_v = urhk_dbsqlWithBind(sv_m + sv_n)
+print(sv_v)
+#sv_v = urhk_dbsql("COMMIT")
+#print(sv_v)
+
+
+FINISH:
+exitscript
+END-->
+

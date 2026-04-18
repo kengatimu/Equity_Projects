@@ -1,0 +1,644 @@
+#-------------------------------------------------------------------------------------------------------------
+#    Name            : CollectLoanCharge.scr
+#    Description     : disbursement charges collection
+#    Date            : 28-07-2013
+#    Author          : Dileep
+#    Input           : NA
+#    Output          : NA
+#    Called Script   : SRV_DisbLoanAcct_post_process_data.scr 
+#    Calling Script  : NA
+#    Menu Option     : FI
+#    Srl. No                     Date                    Author                 Description.
+#    ------                     ----------              -------                 ---------------
+#    1.0                        28-07-2013              Dileep                  Original Version
+#
+#---------------------------------------------------------------------------------------------------------------
+
+<--start
+trace on
+
+#----------------------------------------------------------------------
+# Create the necessary repositories and Classes
+#----------------------------------------------------------------------
+IF(REPEXISTS("CUST") == 0 ) THEN
+#{
+        CREATEREP("CUST")
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","LADIS") == 0) THEN
+#{
+        CREATECLASS("CUST","LADIS",5)
+#}
+ENDIF
+
+sv_p=urhk_B2k_printRepos("BANCS")
+
+################################## CALCULATE CHARGE AMOUNT ##################
+CUST.LADIS.vGrantTOD="N"
+CUST.LADIS.iCount=0
+sv_c=0
+
+## Getting the input and PTTM Details Start
+while(1)
+#{
+	sv_c = Format$(sv_c,"%d")
+	sv_u = urhk_SRV_GetVal("acctDisburseTranLA.chargesLL.<rec_"+sv_c+">.chrgEventType")
+	if(BANCS.OUTPARAM.srvValue != "") THEN
+	#{
+		("CUST").("LADIS").("chrgEventType_"+sv_c) = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.chargesLL.<rec_"+sv_c+">.eventId")
+		("CUST").("LADIS").("eventId_"+sv_c) = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.chargesLL.<rec_"+sv_c+">.userChargeAmt")
+		("CUST").("LADIS").("userChargeAmt_"+sv_c) = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.chargesLL.<rec_"+sv_c+">.chargeCrncy.crncyCode")
+		("CUST").("LADIS").("userChargeCncy_"+sv_c) = BANCS.OUTPARAM.srvValue
+		sv_u = urhk_SRV_GetVal("acctDisburseTranLA.chargesLL.<rec_"+sv_c+">.modifyAllwd")
+		("CUST").("LADIS").("modifyAllwd_"+sv_c) = BANCS.OUTPARAM.srvValue
+
+		print(("CUST").("LADIS").("eventId_"+sv_c))
+		print(("CUST").("LADIS").("userChargeAmt_"+sv_c))
+		print(("CUST").("LADIS").("chrgEventType_"+sv_c))
+		print(("CUST").("LADIS").("modifyAllwd_"+sv_c))
+		
+
+		sv_c = CINT(sv_c) + 1
+		CUST.LADIS.iCount=sv_c
+
+	#}
+	ELSE
+	#{
+		GOTO PROCEED
+	#}
+	ENDIF
+#}
+DO
+## Getting the input and PTTM Details END
+print(sv_c)
+PROCEED:
+
+########### SKIP CHARGE COLLECTION IF THIS IS NOT FIRST TIME LOAN DISB START ##################
+sv_u = urhk_SRV_GetVal("acctDisburseTranLA.amtAlreadyDisbursed")
+CUST.LADIS.amtAlreadyDisbursed= BANCS.OUTPARAM.srvValue
+print(CINT(CUST.LADIS.amtAlreadyDisbursed))
+
+IF(CINT(CUST.LADIS.amtAlreadyDisbursed) != 0)THEN
+#{
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+########### SKIP CHARGE COLLECTION IF THIS IS NOT FIRST TIME LOAN DISB END  ##################
+
+##Getting FreeText2 Details Started
+sv_u = urhk_SRV_GetVal("acctDisburseTranLA.laAcct.foracid")
+CUST.LADIS.Foracid = BANCS.OUTPARAM.srvValue
+
+CUST.LADIS.FreeText2 =""
+
+BANCS.INPARAM.BINDVARS = CUST.LADIS.Foracid + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+sv_s = "FreeText2|select free_text_2 from tbaadm.gac where acid =(select acid from tbaadm.gam where foracid=?SVAR  AND BANK_ID = ?SVAR)"
+sv_s = sv_s + " AND BANK_ID = ?SVAR"
+print(sv_s)
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbselectWithBind(sv_s)
+IF(sv_d == 0) THEN
+#{
+	CUST.LADIS.FreeText2 =BANCS.OUTPARAM.FreeText2
+#}
+ENDIF
+
+print(CUST.LADIS.FreeText2)
+
+##Getting FreeText2 Details END
+
+
+## Getting Loan Account Details Started
+CUST.LADIS.laAcid 		= ""
+CUST.LADIS.laSolId 		= ""
+CUST.LADIS.laCifId 		= ""
+CUST.LADIS.laCrncyCode 	= ""
+
+BANCS.INPARAM.BINDVARS = CUST.LADIS.Foracid + "|" + BANCS.STDIN.contextBankId
+sv_s = "laAcid,laSolId,laCifId,laCrncyCode,laSchmCode,laClrBalAmt|SELECT  "
+sv_s = sv_s + " ACID,SOL_ID,CIF_ID,ACCT_CRNCY_CODE,SCHM_CODE,CLR_BAL_AMT "
+sv_s = sv_s + " FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+print(sv_s)
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbselectWithBind(sv_s)
+IF(sv_d == 0) THEN
+#{
+	CUST.LADIS.laAcid 		= BANCS.OUTPARAM.laAcid
+	CUST.LADIS.laSolId 		= BANCS.OUTPARAM.laSolId
+	CUST.LADIS.laCifId 		= BANCS.OUTPARAM.laCifId
+	CUST.LADIS.laCrncyCode 	= BANCS.OUTPARAM.laCrncyCode
+	CUST.LADIS.laSchmCode 	= BANCS.OUTPARAM.laSchmCode
+#}
+ELSE
+#{
+	sv_u = urhk_SRV_SetErr("Invalid Account Number ["+ CUST.LADIS.Foracid + "]")
+	exitscript
+#}
+ENDIF
+
+
+######### Fetching the credit foracid details Start
+CUST.LADIS.crAcid 		= ""
+CUST.LADIS.crSolId 		= ""
+CUST.LADIS.crCifId 		= ""
+CUST.LADIS.crCrncyCode 	= "" 
+CUST.LADIS.crSchmCode 	= ""
+
+
+sv_u = urhk_SRV_GetVal("acctDisburseTranLA.transferAcctNum.foracid")
+CUST.LADIS.CrForacid = BANCS.OUTPARAM.srvValue
+#print(CUST.LADIS.CrId)
+
+BANCS.INPARAM.BINDVARS = CUST.LADIS.CrForacid + "|" + BANCS.STDIN.contextBankId
+sv_s = "crAcid,crSolId,crCifId,crCrncyCode,crSchmCode|SELECT ACID,SOL_ID,CIF_ID,ACCT_CRNCY_CODE,SCHM_CODE "
+sv_s = sv_s + " FROM TBAADM.GAM WHERE FORACID = ?SVAR AND BANK_ID = ?SVAR"
+print(sv_s)
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbselectWithBind(sv_s)
+IF(sv_d == 0) THEN
+#{
+	CUST.LADIS.crAcid 		= BANCS.OUTPARAM.crAcid
+	CUST.LADIS.crSolId 		= BANCS.OUTPARAM.crSolId
+	CUST.LADIS.crCifId 		= BANCS.OUTPARAM.crCifId
+	CUST.LADIS.crCrncyCode 	= BANCS.OUTPARAM.crCrncyCode
+	CUST.LADIS.crSchmCode 	= BANCS.OUTPARAM.crSchmCode
+#}
+ELSE
+#{
+	sv_u = urhk_SRV_SetErr("Invalid Account Number ["+ CUST.LADIS.CrForacid + "]")
+	exitscript
+#}
+ENDIF
+########### Fetching the credit foracid details END
+
+if(CUST.LADIS.laSchmCode=="LA579")then
+#{
+	CUST.LADIS.CrForacid = "0220273464893"
+#}
+endif
+
+
+#####-----------------------------------------------------------####
+# Fetch all the charges configured
+#####-----------------------------------------------------------####
+
+sv_s = "chargeType,pttmEventId,deductibleChrge"
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT CHARGE_TYPE,PTTM_EVENT_ID , DEDUCTIBLE_CHRGE"
+sv_s = sv_s + " FROM tbaadm.PCT "
+sv_s = sv_s + " WHERE schm_code = ?SVAR "
+sv_s = sv_s + " AND crncy_code = ?SVAR "
+sv_s = sv_s + " AND del_flg='N' "
+sv_s = sv_s + " AND assess_dmd_flg = 'A' "
+##sv_s = sv_s + " AND deductible_chrge != 'N'"
+sv_s = sv_s + " AND BANK_ID = ?SVAR "
+print(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.LADIS.laSchmCode + "|" + CUST.LADIS.laCrncyCode + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_s)
+IF( sv_e == 0 ) THEN
+#{
+	sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	print(sv_m)
+	sv_n = urhk_dbCursorFetch(sv_m)
+
+	sv_c = 0
+	CUST.LADIS.number = sv_n
+	WHILE(sv_n == 0)
+	#{
+
+		sv_c = Format$(sv_c,"%d")
+
+		print( ("BANCS").("OUTPARAM").("chargeType") )
+		print( ("BANCS").("OUTPARAM").("pttmEventId") )
+		print( ("BANCS").("OUTPARAM").("deductibleChrge") )
+		#-----------------------------------------------------------------------Edwin Z
+		IF ((("BANCS").("OUTPARAM").("chargeType") =="MISC1") AND (("BANCS").("OUTPARAM").("pttmEventId")=="INSURANCE FANIKISHA LOANS") AND (CUST.LADIS.laSchmCode =="LA547"))THEN
+		#{
+			("BANCS").("OUTPARAM").("deductibleChrge") = "N" 
+			 print( ("BANCS").("OUTPARAM").("deductibleChrge") )
+		#}
+		ENDIF		
+		#-----------------------------------------------------------------------Edwin Z	
+
+		("CUST").("LADIS").("chargeType" + sv_c) = ("BANCS").("OUTPARAM").("chargeType")
+		("CUST").("LADIS").("pttmEventId" + sv_c) = ("BANCS").("OUTPARAM").("pttmEventId")
+		("CUST").("LADIS").("deductibleChrge" + sv_c) = ("BANCS").("OUTPARAM").("deductibleChrge")
+		sv_c = CINT(sv_c) + 1
+
+		sv_n = urhk_dbCursorFetch(sv_m)
+		CUST.LADIS.number = sv_n
+	#}
+	DO
+	sv_c = urhk_dbCursorClose(sv_m)
+	PRINT(sv_c)
+
+#}
+ENDIF
+
+		
+#####-----------------------------------------------------------####
+# To get the count of charges applicable for this scheme code
+#####-----------------------------------------------------------####
+
+sv_s = "countChrg "
+sv_s = sv_s + " | "
+sv_s = sv_s + " SELECT COUNT(*) "
+sv_s = sv_s + " FROM tbaadm.PCT "
+sv_s = sv_s + " WHERE schm_code = ?SVAR "
+sv_s = sv_s + " AND crncy_code = ?SVAR "
+sv_s = sv_s + " AND del_flg='N' "
+sv_s = sv_s + " AND assess_dmd_flg = 'A' "
+##sv_s = sv_s + " AND deductible_chrge = 'Y'"
+sv_s = sv_s + " AND BANK_ID = ?SVAR "
+print(sv_s)
+BANCS.INPARAM.BINDVARS = CUST.LADIS.laSchmCode + "|" + CUST.LADIS.laCrncyCode + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+IF (sv_d == 0) THEN
+#{
+	print(BANCS.OUTPARAM.countChrg)
+	CUST.LADIS.countChrg = BANCS.OUTPARAM.countChrg
+#}
+ENDIF
+
+#####-----------------------------------------------------------------------####
+# Storing all the charges in the counter, to fetch the same in the called script
+#####-----------------------------------------------------------------------####
+
+print(CINT(CUST.LADIS.countChrg))
+
+CUST.LADIS.chgrCntr = "0"
+sv_c = CINT(CUST.LADIS.chgrCntr)
+
+WHILE(sv_c < CINT(CUST.LADIS.countChrg))
+#{
+	sv_c = Format$(sv_c,"%d")
+	print("assmntMsg.chrgAssmntLL.<rec_"+sv_c+">.chrgEventId|data_eventId"+sv_c)
+	sv_u= urhk_SetUrhkOut("assmntMsg.chrgAssmntLL.<rec_"+sv_c+">.chrgEventId|data_eventId"+sv_c)
+	sv_u= urhk_SetUrhkOut("assmntMsg.chrgAssmntLL.<rec_"+sv_c+">.chrgEventType|data_chargeType"+sv_c)
+	sv_u= urhk_SetUrhkOut("assmntMsg.chrgAssmntLL.<rec_"+sv_c+">.userEnteredAmt|data_userChargeAmt"+sv_c)
+	sv_u= urhk_SetUrhkOut("assmntMsg.chrgAssmntLL.<rec_"+sv_c+">.sysCalcAmt|data_systemChargeAmt"+sv_c)
+	sv_c = CINT(sv_c) + 1
+	print(sv_c)
+#}
+DO
+CUST.LADIS.chgrCntr=sv_c
+print(CUST.LADIS.chgrCntr)
+
+
+sv_u = urhk_SetUrhkInp("assmntMsg.laAcct.foracid|"+CUST.LADIS.Foracid)
+sv_u = urhk_SetUrhkInp("assmntMsg.laAcct.crncyCode|"+CUST.LADIS.laCrncyCode)
+sv_u = urhk_SetUrhkInp("assmntMsg.laAcct.solId|"+CUST.LADIS.laSolId)
+sv_u = urhk_SetUrhkOut("assmntMsg.laAcct.acid|acid")
+
+sv_u = urhk_ExecSrvNoCommit("SRV_FetchLAFeeDtlForAssmntColl|same_user_verify = Y|retain_all_output = Y")
+print(sv_u)
+
+IF (sv_u != 0) THEN
+#{
+	IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+	#{
+		print(BANCS.OUTPARAM.Error_num)
+		sv_v = BANCS.OUTPARAM.Error_num
+	#}
+	ELSE
+	#{
+		sv_v = 0
+	#}
+	ENDIF
+	
+	IF (sv_v > 0) then
+	#{
+		sv_i = 1
+		WHILE (sv_i <= sv_v)
+		#{
+			sv_f = FORMAT$(sv_i,"%d")
+			sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+			print(sv_e)
+			sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+			print(sv_e)
+			sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+			print(sv_e)
+			sv_i = sv_i + 1
+			sv_u = urhk_SRV_SetErr(("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f))
+		#}
+		DO
+	#}
+	ENDIF
+#}
+ENDIF
+
+
+print(CUST.LADIS.countChrg)
+
+CUST.LADIS.chgr_outrec_Cntr = "0"
+sv_c = CINT(CUST.LADIS.chgr_outrec_Cntr)
+WHILE(sv_c  < CINT(CUST.LADIS.countChrg))
+#{
+	sv_c = Format$(sv_c,"%d")
+
+	print( ("BANCS").("OUTPARAM").("data_eventId" +sv_c))
+	("CUST").("LADIS").("data_eventId" + sv_c) = ("BANCS").("OUTPARAM").("data_eventId" +sv_c)
+	("CUST").("LADIS").("data_chargeType" + sv_c) = ("BANCS").("OUTPARAM").("data_chargeType" + sv_c)
+	("CUST").("LADIS").("data_userChargeAmt" + sv_c) = ("BANCS").("OUTPARAM").("data_userChargeAmt" + sv_c)
+	("CUST").("LADIS").("data_systemChargeAmt" + sv_c) = ("BANCS").("OUTPARAM").("data_systemChargeAmt" + sv_c)
+	print(("CUST").("LADIS").("data_eventId" + sv_c))
+	print(("CUST").("LADIS").("data_chargeType" + sv_c))
+	print(("CUST").("LADIS").("data_userChargeAmt" + sv_c))
+	print(("CUST").("LADIS").("data_systemChargeAmt" + sv_c))
+
+	sv_c = CINT(sv_c) + 1
+
+#}
+DO
+
+sv_u = urhk_CopyOutToIn("")
+print(sv_u)
+
+print(CUST.LADIS.iCount)
+sv_c=0
+sv_b=0
+sv_e=1
+CUST.LADIS.iFlag="N"
+CUST.LADIS.iSkip="N"
+CUST.LADIS.netDisbChrge = 0
+WHILE(sv_d  < CINT(CUST.LADIS.countChrg))
+#{
+	sv_d = Format$(sv_d,"%d")
+	sv_b = Format$(sv_b,"%d")
+	sv_e = Format$(sv_e,"%d")
+				
+	print(("CUST").("LADIS").("data_eventId" + sv_d))
+	print(("CUST").("LADIS").("data_chargeType" + sv_d))
+	print(("CUST").("LADIS").("data_userChargeAmt" + sv_d))
+	print(("CUST").("LADIS").("data_systemChargeAmt" + sv_d))
+
+	###############################################################################
+        # Check whether the charges are passed from FI
+        ##############################################################################
+
+        CUST.LADIS.chgr_outrec_Cntr = "0"
+        sv_c = CINT(CUST.LADIS.chgr_outrec_Cntr)
+        while(sv_c <  CINT(CUST.LADIS.countChrg))
+        #{
+                sv_c = Format$(sv_c,"%d")
+
+		print( ("CUST").("LADIS").("chargeType"+sv_c) )
+		print( ("CUST").("LADIS").("pttmEventId"+sv_c) )
+		print( ("CUST").("LADIS").("deductibleChrge"+sv_c) )
+
+		IF(("CUST").("LADIS").("chargeType"+sv_c) == ("CUST").("LADIS").("data_chargeType" + sv_d)) THEN
+		#{
+			IF(("CUST").("LADIS").("pttmEventId"+sv_c) == ("CUST").("LADIS").("data_eventId" + sv_d)) THEN
+			#{
+
+				IF(("CUST").("LADIS").("deductibleChrge"+sv_c) == "N") THEN
+				#{
+					#SKIP THE LOOP as this is non deductable charge
+				  	#CUST.LADIS.iSkip = "Y"	
+
+				#}
+				ENDIF
+
+
+			#}
+			ENDIF	
+		#}
+		ENDIF
+
+                sv_c = CINT(sv_c) + 1
+        #}
+        DO
+	
+	CUST.LADIS.UserChargeCrncy 	= ("CUST").("LADIS").("userChargeAmt_" + sv_d)
+	CUST.LADIS.UserChargeCrncy 	= MID$(CUST.LADIS.UserChargeCrncy,0,strlen(CUST.LADIS.UserChargeCrncy)-4)
+	CUST.LADIS.data_chargeType 	= ("CUST").("LADIS").("chrgEventType_" + sv_d)
+	CUST.LADIS.data_eventId		= ("CUST").("LADIS").("eventId_" + sv_d)
+	print(CUST.LADIS.UserChargeCrncy)
+	print(CUST.LADIS.data_chargeType)
+	print(CUST.LADIS.data_eventId)
+	print(CUST.LADIS.laSchmCode)
+	print(CUST.LADIS.FreeText2)
+	
+	sv_q=0
+	IF((CUST.LADIS.FreeText2 == "Y") AND (CUST.LADIS.UserChargeCrncy >= 0) AND (CUST.LADIS.laSchmCode =="LA554") AND (CUST.LADIS.data_chargeType =="MISC1") AND (CUST.LADIS.data_eventId =="INSURANCE MORTGAGE LOANS"))THEN
+	#{
+
+		CUST.LADIS.iSkip = "Y"
+
+	#}
+	ENDIF
+	IF((CUST.LADIS.FreeText2 == "N") AND (CUST.LADIS.UserChargeCrncy  <1)  AND (CUST.LADIS.laSchmCode =="LA554") AND (CUST.LADIS.data_chargeType =="MISC1") AND (CUST.LADIS.data_eventId =="INSURANCE MORTGAGE LOANS"))THEN
+	#{
+
+		 CUST.LADIS.iSkip = "Y"
+
+	#}
+	ENDIF
+
+	IF(CUST.LADIS.data_chargeType =="MISC2") THEN
+	#{
+
+		CUST.LADIS.iSkip = "Y"
+
+	#}
+	ENDIF
+	IF(CUST.LADIS.iSkip == "Y")THEN
+	#{
+		CUST.LADIS.iSkip = "N"
+		sv_e = Format$(CINT(sv_e)-1,"%d")
+		sv_b = Format$(CINT(sv_b)-1,"%d")
+
+		GOTO SKIP
+	#}
+	ENDIF
+
+	
+	###############################################################################
+    # Check whether the charges are passed from FI
+    ##############################################################################
+		
+	CUST.LADIS.chgr_outrec_Cntr = "0"
+	sv_c = CINT(CUST.LADIS.chgr_outrec_Cntr)
+	while(sv_c <  CINT(CUST.LADIS.iCount))
+	#{
+		sv_c = Format$(sv_c,"%d")
+		print(("CUST").("LADIS").("chrgEventType_"+sv_c))
+		print(("CUST").("LADIS").("eventId_"+sv_c))
+		print(("CUST").("LADIS").("userChargeAmt_"+sv_c))
+	
+		IF(("CUST").("LADIS").("chrgEventType_"+sv_c) == ("CUST").("LADIS").("data_chargeType" + sv_d)) THEN
+		#{
+			IF(("CUST").("LADIS").("eventId_"+sv_c) == ("CUST").("LADIS").("data_eventId" + sv_d)) THEN
+			#{	
+				CUST.LADIS.UserChargeCrncy = ("CUST").("LADIS").("userChargeAmt_"+sv_c) 
+				print(CUST.LADIS.UserChargeCrncy)
+				IF(CUST.LADIS.UserChargeCrncy == "0|") THEN
+				#{
+					##CUST.LADIS.UserChargeCrncy=("CUST").("LADIS").("data_userChargeAmt" + sv_d)
+					GOTO nextrec
+				#}
+				ENDIF
+				print(CUST.LADIS.UserChargeCrncy)
+				CUST.LADIS.iFlag="Y"
+	
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		nextrec:
+		
+		sv_c = CINT(sv_c) + 1
+	#}
+	DO
+	
+	sv_c = Format$(sv_c,"%d")
+	
+	# IF there is no charge defined for the event type - event id combination take the system charge
+	IF(CUST.LADIS.iFlag=="N") THEN
+	#{
+		CUST.LADIS.UserChargeCrncy = ("CUST").("LADIS").("userChargeAmt_" + sv_d)
+	#}
+	ENDIF
+	
+	########################################################################
+	#Added by mani to validate freetext2
+	#######################################################################
+
+	print(CUST.LADIS.UserChargeCrncy)
+	
+	IF(("CUST").("LADIS").("data_chargeType" + sv_d) != "MISC2") THEN
+		sv_o=urhk_SetUrhkInp("assmntMsg.chrgAssmntLL.<rec_"+sv_d+">.userEnteredAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o=urhk_SetUrhkInp("assmntMsg.chrgAssmntLL.<rec_"+sv_d+">.selFlg|Y")
+		print(sv_o)
+		print(CUST.LADIS.netDisbChrge)	
+		CUST.LADIS.netDisbChrge = CDOUBLE(CUST.LADIS.netDisbChrge) + CDOUBLE(CUST.LADIS.UserChargeCrncy)
+		print(CUST.LADIS.netDisbChrge)
+		print(("CUST").("LADIS").("data_chargeType" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.collRefundRsltLL.<rec_"+sv_b+">.key.chrgType|"+("CUST").("LADIS").("data_chargeType" + sv_d))
+		print(CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.collRefundRsltLL.<rec_"+sv_b+">.chrgAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.collRefundRsltLL.<rec_"+sv_b+">.userCalcChrgAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.collRefundRsltLL.<rec_"+sv_b+">.currentCollRefundAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.collRefundRsltLL.<rec_"+sv_b+">.assmntCollFlg|Y")
+		
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.key.serial_num|0000"+sv_e)
+		print(("CUST").("LADIS").("data_chargeType" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.chrgType|"+("CUST").("LADIS").("data_chargeType" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.srlNum|1")
+		print(("CUST").("LADIS").("data_chargeType" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.chrgEventType|"+("CUST").("LADIS").("data_chargeType" + sv_d))
+		print(("CUST").("LADIS").("data_eventId" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.chrgEventId|"+("CUST").("LADIS").("data_eventId" + sv_d))
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.pttSrlNum|1")
+		print(CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.sysCalcAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.crncyCode|"+CUST.LADIS.laCrncyCode)
+		print(CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.userEnteredAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.collectedAmt|0|"+CUST.LADIS.laCrncyCode)
+		print(CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.currentCollRefundAmt|"+CUST.LADIS.UserChargeCrncy)
+		sv_o = urhk_SetUrhkInp("collRefundMsg.assessPartTranLL.<rec_"+sv_b+">.assmntCollFlg|Y")
+	ENDIF
+
+	SKIP:
+	sv_e = CINT(sv_e)+1
+	sv_b = CINT(sv_b)+1
+	CUST.LADIS.iFlag="N"
+
+	sv_d=CINT(sv_d)+1
+#}
+DO
+print(CUST.LADIS.Foracid)
+print(CUST.LADIS.laCrncyCode)
+print(CUST.LADIS.crCrncyCode)
+print(CUST.LADIS.CrForacid)
+
+if (cint(CUST.LADIS.netDisbChrge) <= cint("0")) then
+#{
+	exitscript
+#}
+endif
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.laAcct.foracid|"+CUST.LADIS.Foracid)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.laAcct.crncyCode|"+CUST.LADIS.laCrncyCode)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.laAcct.solId|"+CUST.LADIS.laSolId)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.chrgAssessCrncy.crncyCode|"+CUST.LADIS.laCrncyCode)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.tranType.code|T")
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.collRefundCrncy.crncyCode|"+CUST.LADIS.laCrncyCode)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.collRefundAcct.foracid|"+CUST.LADIS.CrForacid)
+print(CUST.LADIS.netDisbChrge)
+sv_u = urhk_SetUrhkInp("collRefundMsg.collRefundCrit.collAmt|"+CUST.LADIS.netDisbChrge+"|"+CUST.LADIS.laCrncyCode)
+
+sv_u = urhk_SetUrhkOut("collRefundMsg.tranObject.tranIdentifier.tranId|tranId")
+sv_u = urhk_SetUrhkOut("collRefundMsg.tranObject.tranIdentifier.tranDate|tranDate")
+PRINT(sv_u)
+
+IF(CUST.LADIS.vGrantTOD=="N") THEN
+#{
+	CUST.LADIS.vGrantTOD="Y"
+
+	#CALL("FI_LoanDisbChargeTod.scr")
+#}
+ENDIF
+
+
+sv_u = urhk_ExecSrv("SRV_AssessAndCollLoanFee|same_user_verify = Y|retain_all_output=Y")
+print(sv_u)
+
+IF (sv_u != 0) THEN
+#{
+	IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+	#{
+		print(BANCS.OUTPARAM.Error_num)
+		sv_v = BANCS.OUTPARAM.Error_num
+	#}
+	ELSE
+	#{
+		sv_v = 0
+	#}
+	ENDIF
+	IF (sv_v > 0) then
+	#{
+
+
+		sv_i = 1
+		WHILE (sv_i <= sv_v)
+		#{
+			sv_f = FORMAT$(sv_i,"%d")
+			sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+			print(sv_e)
+			sv_e = ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+			print(sv_e)
+			sv_e = ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+			print(sv_e)
+			sv_i = sv_i + 1
+			sv_u = urhk_SRV_SetErr(("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f))
+			sv_v=0
+		#}
+		DO
+	#}
+	ENDIF
+#}
+ELSE
+#{
+	CUST.LADIS.tranId	= BANCS.OUTPARAM.tranId
+	CUST.LADIS.tranDate	= BANCS.OUTPARAM.tranDate 
+	print(CUST.LADIS.tranId)
+#}
+ENDIF
+
+
+
+ENDOFSCRIPT:
+EXITSCRIPT
+
+trace off
+end-->

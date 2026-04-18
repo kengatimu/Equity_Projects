@@ -1,0 +1,221 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : TellerLimitCheck.scr
+#  Description     : This script will check the teller limits per branch and role in Uganda
+#  Date            : 28-11-2018
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : s_chargedp01.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             28-11-2018      Timothy Karemeri		Original Version
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+
+IF (REPEXISTS("COLL") == 0) THEN
+#{
+    CREATEREP("COLL")
+#}
+ENDIF
+
+IF (CLASSEXISTS("COLL","GLBDATA") == 0) THEN
+#{
+    CREATECLASS("COLL","GLBDATA",5)
+#}
+ENDIF
+
+sv_r = urhk_B2k_PrintRepos("BANCS")
+print(sv_r)
+##--------------------------------------------------
+### Getting the Role ID of the user
+##--------------------------------------------------
+
+PRINT(COLL.GLBDATA.tran_amt)
+COLL.GLBDATA.tranAmount1 = LEFT$(COLL.GLBDATA.tran_amt,GETPOSITION(COLL.GLBDATA.tran_amt,"|") -1 )
+print(COLL.GLBDATA.tranAmount1)
+
+COLL.GLBDATA.tranCrncy1 = RIGHT$(COLL.GLBDATA.tran_amt,3)
+print(COLL.GLBDATA.tranCrncy1)
+
+	IF (COLL.GLBDATA.tranCrncy1 != BANCS.STDIN.homeCrncyCode) THEN
+	#{
+		BANCS.INPARAM.ToCurrency = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.InputAmount = COLL.GLBDATA.tranAmount1 
+		BANCS.INPARAM.FromCurrency = COLL.GLBDATA.tranCrncy1  
+		BANCS.INPARAM.RateCode="MEAN" 
+		BANCS.INPARAM.Rate=cdouble("0") 
+		Sv_r = urhk_B2k_ConvertAmount("")  
+		if (sv_r ==1) then  
+		#{
+			COLL.GLBDATA.errMsg = "A Database error has occured. Please contact your DBA."
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			COLL.GLBDATA.tranAmountUgx = cdouble(BANCS.OUTPARAM.OutputAmount)
+			print(COLL.GLBDATA.tranAmountUgx)
+		#}
+		ENDIF
+
+	#}
+	ELSE
+	#{
+		COLL.GLBDATA.tranAmountUgx = cdouble(COLL.GLBDATA.tranAmount1)
+		print(COLL.GLBDATA.tranAmountUgx)
+	#}
+	ENDIF
+
+sv_a = "empId,roleId| "
+sv_a = sv_a + "select USER_EMP_ID,ROLE_ID from tbaadm.upr where home_bank_id = ?SVAR "
+sv_a = sv_a + "and sol_id = ?SVAR and del_flg != 'Y' "
+sv_a = sv_a + "and USER_WORK_CLASS = '060' AND user_id = ?SVAR "
+print(sv_a)
+BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.userId
+print(BANCS.INPARAM.BINDVARS)
+
+		sv_k = urhk_dbSelectWithBind(sv_a)
+		print(sv_k)
+
+		IF (sv_k==0) THEN
+		#{
+			COLL.GLBDATA.roleId= BANCS.OUTPARAM.roleId
+			print(COLL.GLBDATA.roleId)
+			COLL.GLBDATA.valueId = COLL.GLBDATA.roleId + BANCS.STDIN.mySolId
+			print(COLL.GLBDATA.valueId)
+			COLL.GLBDATA.empId= BANCS.OUTPARAM.empId
+			print(COLL.GLBDATA.empId)
+		#}
+		ELSE
+		#{
+			COLL.GLBDATA.errMsg = "Invalid User Id!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		sv_b = "tellerLimit| "
+		sv_b = sv_b + "select REF_DESC from tbaadm.rct "
+		sv_b = sv_b + "where bank_id = ?SVAR "
+		sv_b = sv_b + "and REF_REC_TYPE = 'GW' "
+		sv_b = sv_b + "AND LONG_REF_CODE = ?SVAR "
+		print(sv_b)
+		BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + COLL.GLBDATA.valueId
+		print(BANCS.INPARAM.BINDVARS)
+
+		sv_j = urhk_dbSelectWithBind(sv_b)
+		print(sv_j)
+
+		IF (sv_j==0) THEN
+		#{
+			COLL.GLBDATA.tellerLimit= BANCS.OUTPARAM.tellerLimit
+			print(COLL.GLBDATA.tellerLimit)
+		#}
+		ELSE
+		#{
+			COLL.GLBDATA.errMsg = "No Teller Limit maintained for this RoleId!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	sv_c = "glBalance, glCrncyCode| "
+	sv_c = sv_c + "select clr_bal_amt,acct_crncy_code from tbaadm.gam "
+	sv_c = sv_c + "where bank_id = ?SVAR and sol_id = ?SVAR and clr_bal_amt !='0' "
+	sv_c = sv_c + "and bacid in (select emp_cash_acct from tbaadm.gec "
+	sv_c = sv_c + "where bank_id = ?SVAR and sol_id = ?SVAR and emp_id = ?SVAR) "
+	print(sv_c)
+	BANCS.INPARAM.BINDVARS =  BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" + COLL.GLBDATA.empId
+ 	print(BANCS.INPARAM.BINDVARS)
+
+	sv_e = urhk_dbCursorOpenWithBind(sv_c)
+	print (sv_e)
+	
+	IF(sv_e==0) THEN
+	#{
+		COLL.GLBDATA.glBalTotal = cdouble("0")
+		print(COLL.GLBDATA.glBalTotal)
+		sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+		sv_q = urhk_dbCursorFetch(sv_m)
+		PRINT(sv_q)
+		
+		IF(sv_q == 1) THEN
+		#{
+			sv_x = urhk_dbCursorClose(sv_m)
+			PRINT(sv_x)
+			EXITSCRIPT
+		#}
+		ENDIF
+		PRINT(sv_q)
+		
+		WHILE (sv_q==0)
+		#{
+			#print(COLL.GLBDATA.glBalTotal)
+			COLL.GLBDATA.glBalance= BANCS.OUTPARAM.glBalance
+			print(COLL.GLBDATA.glBalance)
+			COLL.GLBDATA.glCrncyCode= BANCS.OUTPARAM.glCrncyCode
+			print(COLL.GLBDATA.glCrncyCode)
+
+
+			IF(COLL.GLBDATA.glCrncyCode != BANCS.STDIN.homeCrncyCode) THEN
+			#{
+				BANCS.INPARAM.ToCurrency = BANCS.STDIN.homeCrncyCode
+				BANCS.INPARAM.InputAmount = COLL.GLBDATA.glBalance 
+				BANCS.INPARAM.FromCurrency = COLL.GLBDATA.glCrncyCode  
+				BANCS.INPARAM.RateCode="MEAN" 
+				BANCS.INPARAM.Rate=cdouble("0") 
+				Sv_r = urhk_B2k_ConvertAmount("")  
+				if (sv_r ==1) then  
+				#{
+					COLL.GLBDATA.errMsg = "A Database error has occured. Please contact your DBA."
+					BANCS.OUTPUT.successOrFailure = "F"
+					GOTO ENDOFSCRIPT
+				#}
+				ELSE
+				#{
+					COLL.GLBDATA.glBalInUgx = cdouble(BANCS.OUTPARAM.OutputAmount)
+					print(COLL.GLBDATA.glBalInUgx)
+				#}
+				ENDIF
+
+			#}
+			ELSE
+			#{
+				COLL.GLBDATA.glBalInUgx = cdouble(COLL.GLBDATA.glBalance)
+				print(COLL.GLBDATA.glBalInUgx)
+			#}
+			ENDIF
+		COLL.GLBDATA.glBalTotal = cdouble(COLL.GLBDATA.glBalTotal) + cdouble(COLL.GLBDATA.glBalInUgx)
+		print (COLL.GLBDATA.glBalTotal)
+
+		sv_q = urhk_dbCursorFetch(sv_m)
+		print(sv_q)
+		#}
+		DO
+	#}
+	ENDIF
+
+		COLL.GLBDATA.tellerBal = -1 * cdouble(COLL.GLBDATA.glBalTotal)
+		PRINT (COLL.GLBDATA.tellerBal)
+		#COLL.GLBDATA.totalBalance = cdouble(COLL.GLBDATA.tranAmountUgx) + cdouble(COLL.GLBDATA.tellerBal)
+		#print(COLL.GLBDATA.totalBalance)
+		IF (COLL.GLBDATA.tellerBal > cdouble(COLL.GLBDATA.tellerLimit)) THEN
+		#{
+			COLL.GLBDATA.errMsg = "Teller Limit Exceeded!!!!!"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+ENDOFSCRIPT:
+IF (COLL.GLBDATA.errMsg != "") THEN
+#{
+	sv_u = urhk_SRV_SetErr(COLL.GLBDATA.errMsg)
+	PRINT(sv_u)
+#}
+ENDIF
+
+#TRACE OFF
+EXITSCRIPT
+END-->

@@ -1,0 +1,463 @@
+
+<--START
+
+	TRACE ON
+        LIBNAME CUSTOMSO
+	sv_r = REPEXISTS("CUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATEREP ("CUST")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","ODCUST")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","ODCUST",5)
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUST","RATE")
+	
+	IF(sv_r == 0) THEN
+	#{
+		CREATECLASS ("CUST","RATE",5)
+	#}
+	ENDIF
+
+	CUST.ODCUST.odacnt=""
+	CUST.ODCUST.caacnt=""
+	CUST.ODCUST.crbalance="0"
+	CUST.ODCUST.drbalance="0"
+	CUST.ODCUST.errMsg = ""
+	CUST.ODCUST.tranAmt = "0"
+	CUST.ODCUST.BODDate = MID$(BANCS.STDIN.BODDate,0,10)
+	
+	CUST.ODCUST.failureFile = "failfile_CRDRBAL_" + BANCS.STDIN.mySolId + ".lst"
+	
+	CUST.ODCUST.failFileIndex1 = ""
+	CUST.ODCUST.failFileIndex1 = urtn_fileOpen(CUST.ODCUST.failureFile + "|w")
+	
+	PRINT(CUST.ODCUST.failFileIndex1)
+	
+	CUST.ODCUST.list_file_name = CUST.ODCUST.failureFile
+	CUST.ODCUST.title = "Movement of CA credit balance to OD "
+	CUST.ODCUST.mrt_file_name = "crdrbal.mrt"
+	CUST.ODCUST.rpt_file_name = "crdrbal.rpt"
+	CUST.ODCUST.rpt =  "crdrbal"
+	
+        BANCS.INPUT.moduleName  = "OT"
+        BANCS.INPUT.parameterId = "ODCA_SCHEMES"
+        CALL ("getcparamvalue.scr")
+        IF(BANCS.OUTPUT.parameterVal != "")THEN
+        #{
+                sv_b = BANCS.OUTPUT.parameterVal
+                #}
+        ELSE
+                #{
+                CUST.ODCUST.errMsg = "CPARAM|CPARAM setup has not done for parameter ID:"+BANCS.INPUT.parameterId
+                PRINT(CUST.ODCUST.errMsg)
+                sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+                PRINT(sv_b)
+                GOTO ENDOFSCRIPT
+
+        #}
+        ENDIF
+
+        sv_a = ""
+	sv_c = GETPOSITION(sv_b,",")
+        IF(sv_c!=0) THEN
+        #{
+
+                sv_l =STRLEN(sv_b)
+                PRINT(sv_l)
+                PRINT(sv_c)
+                WHILE(sv_c !=0)
+                #{
+                        sv_a =sv_a+"'"+MID$(sv_b,0,sv_c - 1)+"'"+","
+                        PRINT(sv_a)
+                        sv_b=MID$(sv_b,sv_c,sv_l)
+                        PRINT(sv_b)
+                        sv_c = GETPOSITION(sv_b,",")
+                        sv_l =STRLEN(sv_b)
+                        PRINT(sv_l)
+                        PRINT(sv_c)
+                        IF (sv_c==0) THEN
+                        #{
+                                sv_a = sv_a +"'"+sv_b+"'"
+                                PRINT(sv_a)
+                        #}
+                        ENDIF
+                #}
+                DO
+                sv_y = sv_a
+                #}
+        ELSE
+                #{
+
+                sv_b = "'"+sv_b+"'"
+                sv_y = sv_b
+                PRINT(sv_b)
+        #}
+        ENDIF
+
+        PRINT(sv_y)
+
+	
+	
+	sv_s = "odacid,caacid,caAmt|SELECT a.ACID,INT_DR_ACID,(b.CLR_BAL_AMT-b.LIEN_AMT) FROM TBAADM.GAC a,TBAADM.GAM b WHERE a.BANK_ID=b.BANK_ID AND a.BANK_ID=?SVAR AND INT_DR_ACCT_FLG='P' AND "
+	sv_s = sv_s + "b.ACID=a.INT_DR_ACID AND b.CLR_BAL_AMT >0 AND b.DEL_FLG='N' AND b.ACCT_CLS_FLG='N' AND b.ENTITY_CRE_FLG='Y' AND b.SCHM_TYPE='CAA' AND a.ACID IN"
+	sv_s = sv_s + " (SELECT ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND DEL_FLG='N' AND ENTITY_CRE_FLG='Y' AND ACCT_CLS_FLG='N' AND a.ACID=ACID AND clr_bal_amt<0"
+	sv_s = sv_s + " AND SCHM_TYPE='ODA' AND SCHM_CODE IN ("+sv_y+"))" 
+	
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId
+	PRINT(sv_s)
+	PRINT(BANCS.INPARAM.BINDVARS)
+	
+	sv_p = urhk_dbCursorOpenWithBind(sv_s)
+	PRINT(sv_p)
+	IF(sv_p !=0) THEN
+	#{
+		CUST.ODCUST.errMsg = "DB Error: | Error in opening cursor, Please contact DBA"
+		PRINT(CUST.ODCUST.errMsg)
+		sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+		PRINT(sv_b)
+		GOTO ENDOFSCRIPT
+		
+	#}
+	ENDIF
+	
+	
+	sv_n = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(sv_n)
+	
+	sv_f = urhk_dbCursorFetch(sv_n)
+	PRINT(sv_f)
+	WHILE(sv_f == 0)
+	#{
+		CUST.ODCUST.odacid = BANCS.OUTPARAM.odacid
+		CUST.ODCUST.caacid= BANCS.OUTPARAM.caacid
+		CUST.ODCUST.caAmt= CDOUBLE(BANCS.OUTPARAM.caAmt)
+		PRINT(CUST.ODCUST.odacid)
+		PRINT(CUST.ODCUST.caacid)
+		PRINT(CUST.ODCUST.caAmt)
+
+		IF(CUST.ODCUST.caAmt <= CDOUBLE("0"))THEN
+		#{
+			GOTO NEXTACID
+		#}
+		ENDIF
+
+
+		CUST.ODCUST.tran_id = ""
+		CUST.ODCUST.tran_date = ""
+		CUST.ODCUST.odforacid =""
+		CUST.ODCUST.caforacid= ""
+		CUST.ODCUST.tranAmt = "0"
+		CUST.ODCUST.rateCode = " "
+		CUST.ODCUST.cafrezcode = ""
+		CUST.ODCUST.odfrezcode = ""
+		
+		sv_s = "odforacid,odcrncy|SELECT FORACID,ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE ACID=?SVAR AND BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.ODCUST.odacid + "|" + BANCS.STDIN.contextBankId
+	
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+	
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+	
+		IF(sv_d == 0)THEN
+		#{
+			CUST.ODCUST.odforacid = BANCS.OUTPARAM.odforacid
+			PRINT(CUST.ODCUST.odforacid)
+			CUST.ODCUST.odcrncy = BANCS.OUTPARAM.odcrncy
+			PRINT(CUST.ODCUST.odcrncy)
+		#}
+		ENDIF
+		
+		sv_s = "caforacid,cacrncy|SELECT FORACID,ACCT_CRNCY_CODE FROM TBAADM.GAM WHERE ACID=?SVAR AND BANK_ID=?SVAR"
+		BANCS.INPARAM.BINDVARS = CUST.ODCUST.caacid + "|" + BANCS.STDIN.contextBankId
+	
+		PRINT(sv_s)
+		PRINT(BANCS.INPARAM.BINDVARS)
+	
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		PRINT(sv_d)
+	
+		IF(sv_d == 0)THEN
+		#{
+			CUST.ODCUST.caforacid = BANCS.OUTPARAM.caforacid
+			PRINT(CUST.ODCUST.caforacid)
+			CUST.ODCUST.cacrncy = BANCS.OUTPARAM.cacrncy
+			PRINT(CUST.ODCUST.cacrncy)
+		#}
+		ENDIF
+		
+		sv_r = urhk_getAcctDetailsInRepository(CUST.ODCUST.caforacid)
+		IF(sv_r != 0)THEN
+		#{
+			CUST.ODCUST.errMsg = CUST.ODCUST.caforacid+"|"+"Invalid CAA account"
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ELSE
+		#{			
+			CUST.ODCUST.cafrezcode = BANCS.OUTPARAM.freezeCode
+			PRINT(CUST.ODCUST.cafrezcode)
+		
+		#}
+		ENDIF
+
+		sv_r = urhk_getAcctDetailsInRepository(CUST.ODCUST.odforacid)
+		IF(sv_r != 0)THEN
+		#{
+			CUST.ODCUST.errMsg = CUST.ODCUST.odforacid+"|"+"Invalid OD account"
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ELSE
+		#{			
+			CUST.ODCUST.odfrezcode = BANCS.OUTPARAM.freezeCode
+			PRINT(CUST.ODCUST.odfrezcode)
+		
+		#}
+		ENDIF
+
+		IF((CUST.ODCUST.cafrezcode == "D") OR (CUST.ODCUST.cafrezcode == "T"))THEN
+		#{
+			CUST.ODCUST.errMsg = CUST.ODCUST.caforacid+"|"+"Account is Frozen"
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+
+		IF((CUST.ODCUST.odfrezcode == "D") OR (CUST.ODCUST.odfrezcode == "T"))THEN
+		#{
+			CUST.ODCUST.errMsg = CUST.ODCUST.odforacid+"|"+"Account is Frozen"
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+
+		CUST.ODCUST.tranAmt = CUST.ODCUST.caAmt
+		PRINT(CUST.ODCUST.tranAmt)
+		
+        	IF(CUST.ODCUST.cacrncy != CUST.ODCUST.odcrncy)THEN
+        	#{
+			CUST.RATE.acctCrncy = CUST.ODCUST.cacrncy
+			CUST.RATE.refCrncy  = CUST.ODCUST.odcrncy
+			CUST.RATE.TranType  = "T"
+
+                	CALL("fetchRateCode.scr")
+                	CUST.ODCUST.rateCode      =       CUST.RATE.rateCode
+                	CUST.ODCUST.rate          =       CUST.RATE.rate
+
+                	BANCS.INPARAM.InputAmount  = CUST.ODCUST.tranAmt
+		        BANCS.INPARAM.FromCurrency = CUST.ODCUST.cacrncy
+        		BANCS.INPARAM.ToCurrency   = CUST.ODCUST.odcrncy
+        		BANCS.INPARAM.RateCode     = CUST.ODCUST.rateCode
+        		BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+        		#----------------------------------------------------------------------
+        		#Convert The Uncollected Amount Into AED for Storing Into Custom Table
+        		#----------------------------------------------------------------------
+        		lv_f = urhk_B2k_ConvertAmount("")
+        		IF(lv_f == 0)THEN
+        		#{
+                		CUST.ODCUST.tranAmt = BANCS.OUTPARAM.OutputAmount
+                		PRINT(CUST.ODCUST.tranAmt)
+                	#}
+			ENDIF
+
+        	#}
+        	ENDIF
+
+		sv_z = urhk_MTTS_Close("")
+		PRINT(sv_z)
+		
+		BANCS.INPARAM.PostTranFlg = "Y"
+		BANCS.INPARAM.CommitFlg = "Y"
+		BANCS.INPARAM.InsertTranWithValidnFlg = "Y"
+		BANCS.INPARAM.RestrictModifyInd = "FIRST_GROUP"
+		BANCS.INPARAM.ErrorCheckForLuw = "Y"
+		BANCS.INPARAM.CheckExceptions = "Y"
+		sv_r = urhk_MTTS_Initialize("")
+		PRINT(sv_r)
+		############################################
+		#Define Transaction  2
+		#############################################
+		MTT.TranDetails.TranID 					= ""
+		MTT.TranDetails.TranDate                = "0"
+		MTT.TranDetails.TranType                = "T"
+		MTT.TranDetails.PostFlag                = "Y"
+		MTT.TranDetails.TranSubType             = "CI"
+		MTT.TranDetails.ReversalFlag            = "N"
+		MTT.TranDetails.IgnoreExcp              = "I"
+		MTT.TranDetails.Consolidate             = "Y"
+		MTT.TranDetails.Remarks                 = "CA to OD Balance movement"
+		sv_t = urhk_MTTS_DefineTransaction("ODCA")
+		
+		IF(sv_t != "0")THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			PRINT(MTT.Error.Description)
+			CUST.ODCUST.errMsg=MTT.Error.Description
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+		
+		sv_y = CDOUBLE(CUST.ODCUST.tranAmt)
+		MTT.PartTranDetails.Account     = CUST.ODCUST.caforacid
+		MTT.PartTranDetails.RefCurrency = CUST.ODCUST.odcrncy
+		MTT.PartTranDetails.RateCode = CUST.ODCUST.rateCode
+		MTT.PartTranDetails.Particulars = "CA to OD EOD Settlement to "+CUST.ODCUST.odforacid
+		MTT.PartTranDetails.Remarks = "CA to OD EOD Settlement"
+		MTT.PartTranDetails.RefAmount = -(sv_y)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Consolidate = "Y"
+		MTT.PartTranDetails.TranIdentifier = "ODCA"
+		MTT.PartTranDetails.CarveAmtFlg="Y"
+		sv_r = urhk_MTTS_DefinePartTran("DEBIT")
+		PRINT(sv_r)
+		
+		IF(sv_r != "0")THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			PRINT(MTT.Error.Description)
+			CUST.ODCUST.errMsg=CUST.ODCUST.caforacid+"|"+MTT.Error.Description
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+		
+		###################################################
+		
+		MTT.PartTranDetails.Account=CUST.ODCUST.odforacid
+		MTT.PartTranDetails.RefAmount=CDOUBLE(CUST.ODCUST.tranAmt)
+		PRINT(MTT.PartTranDetails.RefAmount)
+		MTT.PartTranDetails.Particulars="CA to OD EOD Settlement from "+CUST.ODCUST.caforacid
+		MTT.PartTranDetails.RefCurrency= CUST.ODCUST.odcrncy
+		MTT.PartTranDetails.ValueDate="0"
+		MTT.PartTranDetails.ReportCode = ""
+		MTT.PartTranDetails.Consolidate="Y"
+		MTT.PartTranDetails.TranIdentifier="ODCA"
+		MTT.PartTranDetails.PTranBusinessType=""
+		sv_o = urhk_MTTS_DefinePartTran("CREDIT")
+		PRINT(sv_o)
+		
+		IF(sv_o != "0")THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			PRINT(MTT.Error.Description)
+			CUST.ODCUST.errMsg=CUST.ODCUST.odforacid +"|"+ MTT.Error.Description
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+		
+		sv_r = urhk_MTTS_EndDefinition("")
+		PRINT(sv_r)
+		IF(sv_r != "0")THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			PRINT(MTT.Error.Description)
+			CUST.ODCUST.errMsg=CUST.ODCUST.odforacid +"|"+ MTT.Error.Description
+			PRINT(CUST.ODCUST.errMsg)
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+			GOTO NEXTACID
+		#}
+		ENDIF
+		
+		PRINT(BANCS.OUTPARAM.MTTTranId)
+		CUST.ODCUST.tranid = BANCS.OUTPARAM.MTTTranId
+		sv_z = urhk_MTTS_Close("")
+		PRINT(sv_z)
+		IF(CUST.ODCUST.tranid != "" )THEN
+		#{
+
+			sv_s = "INSERT INTO CUSTOM.C_ODCA_TRAN(ODACCT_NUM,CAACCT_NUM,TRAN_ID,TRAN_AMT,RATE_CODE,TRAN_DATE,BANK_ID,RCRE_USER_ID,RCRE_TIME)"
+			sv_s = sv_s + " VALUES(?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,TO_DATE(?SVAR,'DD-MM-YY'),?SVAR,?SVAR,sysdate)"
+			BANCS.INPARAM.BINDVARS=CUST.ODCUST.odforacid +"|"+CUST.ODCUST.caforacid + "|" + CUST.ODCUST.tranid + "|" + CUST.ODCUST.tranAmt + "|" + CUST.ODCUST.rateCode
+			BANCS.INPARAM.BINDVARS= BANCS.INPARAM.BINDVARS + "|" + CUST.ODCUST.BODDate+ "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId
+			PRINT(sv_s)
+			PRINT(BANCS.INPARAM.BINDVARS)
+			sv_q = urhk_dbSQLWithBind(sv_s)
+			PRINT(sv_q)
+			IF(sv_q != 0)THEN
+			#{
+				CUST.ODCUST.errorMsg =CUST.ODCUST.odforacid +"|"+ "Database Insertion Failed"
+				PRINT(CUST.ODCUST.errorMsg)
+				GOTO NEXTACID
+				
+			#}
+			ENDIF	
+		#}
+		ENDIF
+		
+		
+		NEXTACID:
+			sv_f = urhk_dbCursorFetch(sv_n)
+			PRINT(sv_f)
+			
+		#}
+		DO
+		sv_p = urhk_dbCursorClose(sv_n)
+		PRINT(sv_p)
+	ENDOFSCRIPT:
+		IF(CUST.ODCUST.errMsg == "") THEN
+		#{
+			CUST.ODCUST.errMsg = " |Batch Job executed with out any Errors"
+			sv_b = urtn_fileWrite(CUST.ODCUST.failFileIndex1 + "|" + CUST.ODCUST.errMsg)
+			PRINT(sv_b)
+		#}
+		ENDIF
+		
+		sv_c = urtn_fileClose(CUST.ODCUST.failFileIndex1)
+		PRINT(sv_c)
+		
+		
+		CUST.ODCUST.ERR000002 = "Failed "
+		PRINT(CUST.ODCUST.list_file_name)
+		sv_r = "exebatch mrbx4004 $B2K_SESSION_ID " + CUST.ODCUST.mrt_file_name + " " + CUST.ODCUST.list_file_name + " " + CUST.ODCUST.rpt
+		PRINT(sv_r)
+		sv_r = SYSTEM(sv_r)
+		IF (sv_r != 0) THEN
+		#{
+			Sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			Sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.ODCUST.ERR000002 + "")
+			GOTO FINISH
+		#}
+		ENDIF
+		sv_q = "exebatch babx4040 $B2K_SESSION_ID " + " "+ CUST.ODCUST.rpt_file_name+" '" + CUST.ODCUST.title+"' MANAGER 1 N"
+		PRINT(sv_q)
+		sv_r = SYSTEM(sv_q)
+		IF (sv_r != 0) THEN
+		#{
+			Sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+			Sv_u = urhk_SetOrbOut("Error_1|ERR^" + CUST.ODCUST.ERR000002 + "^DATE")
+			GOTO FINISH
+		#}
+		ENDIF
+	BANCS.OUTPUT.successOrFailure = "S"	
+	FINISH:
+		TRACE OFF
+		EXITSCRIPT
+END-->

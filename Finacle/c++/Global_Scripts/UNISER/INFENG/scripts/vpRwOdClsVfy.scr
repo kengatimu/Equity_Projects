@@ -1,0 +1,431 @@
+#------------------------------------------------------------------------
+#  Name            : vpRwOdClsVfy.scr
+#  Description     : ODCLS job (unpool and close)
+#  Date            : 16-02-2023
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             16-02-2023      Vino Palani          Original Version
+#-------------------------------------------------------------------------
+<--start
+trace on
+
+
+        IF (REPEXISTS("ODACCT") == 0 ) THEN
+        #{
+                CREATEREP("ODACCT")
+        #}
+        ENDIF
+
+        IF (CLASSEXISTS("ODACCT","DATA") == 0) THEN
+        #{
+                CREATECLASS("ODACCT","DATA",5)
+        #}
+        ENDIF
+        IF (CLASSEXISTS("ODACCT","GLBDATA") == 0) THEN
+        #{
+                CREATECLASS("ODACCT","GLBDATA",5)
+        #}
+        ENDIF
+        ODACCT.GLBDATA.isclsyn=""
+        ##lv_c = " asolid,aacid,aacctid,aschmcode,acifid,aaopndate,aclrbalAmt,asanctLim | select sol_id,acid,foracid,schm_code,cif_id,acct_opn_date,clr_bal_amt,sanct_lim from tbaadm.gam where bank_id=?SVAR and schm_code in ('OD501','OD503','OD504','OD505') and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and clr_bal_amt>=0 and sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id=?SVAR) and acid in (select acid from tbaadm.dctd_acli where bank_id=?SVAR and pstd_flg='Y' and del_flg='N') "
+        lv_c = " asolid,aacid,aacctid,aschmcode,acifid,aaopndate,aclrbalAmt,asanctLim,freeTextOpNum,poolId | select sol_id,acid,foracid,schm_code,cif_id,acct_opn_date,clr_bal_amt,sanct_lim,free_text,pool_id from tbaadm.gam where bank_id=?SVAR and schm_code in ('OD501','OD503','OD504','OD505') and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' and clr_bal_amt>=0 and allow_sweeps='Y' and pool_id is not null and sol_id in (select sol_id from tbaadm.sst where bank_id=?SVAR and set_id=?SVAR) "
+        ##and acid in (select acid from tbaadm.dctd_acli where bank_id=?SVAR and pstd_flg='Y' and del_flg='N') "
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+        print(lv_c)
+        print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_c)
+        if(sv_u==0)then
+        #{
+                ODACCT.DATA.schdlcurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        #}
+        else
+        #{
+                print(BANCS.OUTPARAM.DB_ERRCODE)
+                print(BANCS.OUTPARAM.DB_ERRMSG)
+                exitscript
+        #}
+        endif
+        ODACCT.DATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(ODACCT.DATA.schdlcurNum)
+        if(sv_z!=0)then
+        #{
+                print(BANCS.OUTPARAM.DB_ERRCODE)
+                print(BANCS.OUTPARAM.DB_ERRMSG)
+                exitscript
+        #}
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+                ODACCT.DATA.asolid  = BANCS.OUTPARAM.asolid
+                ODACCT.DATA.aacid  = BANCS.OUTPARAM.aacid
+                ODACCT.DATA.aacctid = BANCS.OUTPARAM.aacctid
+                ODACCT.DATA.aschmcode = BANCS.OUTPARAM.aschmcode
+                ODACCT.DATA.acifid = BANCS.OUTPARAM.acifid
+                ODACCT.DATA.aaopndate = BANCS.OUTPARAM.aaopndate
+                ODACCT.DATA.aclrbalAmt = BANCS.OUTPARAM.aclrbalAmt
+                ODACCT.DATA.asanctLim = BANCS.OUTPARAM.asanctLim
+                ODACCT.DATA.freeTextOpNum = BANCS.OUTPARAM.freeTextOpNum
+                ODACCT.DATA.poolId = BANCS.OUTPARAM.poolId
+	#check clrbal 
+		if(cdouble(ODACCT.DATA.aclrbalAmt)>0)then
+		#{
+			print("Account closure not allowed ,check credit entries reveres it and close the account")
+			goto NXTCLS
+		#}
+		endif
+
+        #Tockecl limit entry
+
+                lv_j = " drtotAmt | select sum(tran_amt) from tbaadm.dctd_acli where bank_id=?SVAR and pstd_flg='Y' and del_flg='N' and part_tran_type='D' and acid=?SVAR "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + ODACCT.DATA.aacid
+                lv_j = urhk_dbSelectWithBind(lv_j)
+                if(lv_j==0)then
+                #{
+                        ODACCT.DATA.drtotAmt = BANCS.OUTPARAM.drtotAmt
+                else
+                        ODACCT.DATA.drtotAmt = "0"
+                #}
+                endif
+                lv_j = " crtotAmt | select sum(tran_amt) from tbaadm.dctd_acli where bank_id=?SVAR and pstd_flg='Y' and del_flg='N' and part_tran_type='C' and acid=?SVAR "
+                BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + ODACCT.DATA.aacid
+                lv_j = urhk_dbSelectWithBind(lv_j)
+                if(lv_j==0)then
+                #{
+                        ODACCT.DATA.crtotAmt = BANCS.OUTPARAM.crtotAmt
+                else
+                        ODACCT.DATA.crtotAmt = "0"
+                #}
+                endif
+                if(cdouble(ODACCT.DATA.drtotAmt)<=0)then
+                #{
+                        goto NXTCLS
+                #}
+                endif
+                if(cdouble(ODACCT.DATA.crtotAmt)<=0)then
+                #{
+                        goto NXTCLS
+                #}
+                endif
+	#check limit expiry date
+		lv_t = " limExppDate | select to_char(lim_exp_date,'DD-MM-RRRR') from tbaadm.lht where bank_id=?SVAR and acid=?SVAR and entity_cre_flg='Y' and del_flg='N' and serial_num in (select max(serial_num) from tbaadm.lht where bank_id=?SVAR and entity_cre_flg='Y' and del_flg='N' and acid=?SVAR) "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + ODACCT.DATA.aacid + "|" + BANCS.STDIN.contextBankId + "|" + ODACCT.DATA.aacid 
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_t)
+		lv_t = urhk_dbSelectWithBind(lv_t)
+		if(lv_t==0)then
+		#{
+			ODACCT.DATA.limExppDate = BANCS.OUTPARAM.limExppDate
+		else
+			ODACCT.DATA.limExppDate = ""
+		#}
+		endif
+		if(ODACCT.DATA.limExppDate!="")then
+		#{
+                BANCS.INPARAM.date1 = mid$(BANCS.STDIN.BODDate,0,10)
+                BANCS.INPARAM.date2 = ODACCT.DATA.limExppDate 
+                sv_u = urhk_B2K_dateDiff("")
+                print(sv_u)
+                if(sv_u == 0 ) then
+		#{
+                        ODACCT.DATA.migdatediff = BANCS.OUTPARAM.dateDiff
+                else
+                        ODACCT.DATA.migdatediff = "0"
+		#}
+                endif
+		print(ODACCT.DATA.migdatediff)
+		if(cdouble(ODACCT.DATA.migdatediff)>=0)then
+		#{
+			print("limit expired, account close and pooldelink ")
+		else
+			print("limit not expired, account close and pooldelink not allowed")
+			goto NXTCLS
+		#}
+		endif
+		#}
+		endif
+
+                if(BANCS.STDIN.mySolId!=ODACCT.DATA.asolid)then
+                #{
+
+                        sv_m = urhk_SetUrhkInp("sol.solId|"+ODACCT.DATA.asolid)
+                        print(sv_m)
+                        sv_m = urhk_ExecSrv("SRV_ModifyContextSol |same_user_verify = Y|retain_all_output = Y")
+                        print(sv_m)
+                #}
+                endif
+                if(ODACCT.DATA.freeTextOpNum=="")then
+                        print("account invalid , closure and delinking not allowed")
+                        goto NXTCLS
+                endif
+                sv_u = urhk_getAcctDetailsInRepository(ODACCT.DATA.freeTextOpNum)
+                if(sv_u==0)then
+                #{
+                        ODACCT.DATA.cClearBalance = BANCS.OUTPARAM.ClearBalance
+                else
+                        goto NXTCLS
+                #}
+                endif
+                ODACCT.GLBDATA.PoolAcct = ODACCT.DATA.freeTextOpNum
+                ODACCT.GLBDATA.foracid = ODACCT.DATA.aacctid
+                #unpool
+                if((cdouble(ODACCT.DATA.cClearBalance)>=0) and (cdouble(ODACCT.DATA.aclrbalAmt)>=0) and (ODACCT.DATA.poolId!=""))then
+                #{
+                            sv_a = urhk_SetUrhkInp("poolInfo.acct.foracid|"+ ODACCT.DATA.aacctid )
+                            sv_u = urhk_ExecSrv("SRV_FetchPoolForModify|same_user_verify = Y|retain_all_output = Y")
+                            print(sv_u)
+                                if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                                        print(BANCS.OUTPARAM.successOrFailure)
+                                        sv_s = BANCS.OUTPARAM.successOrFailure
+                                else
+                                        sv_s = "X"
+                                endif
+                                if (( sv_u == 0 ) and ( sv_s=="S") ) then
+                                #{
+                                        #loop
+                                        sv_u = urhk_GetUrhkNum("poolLL")
+                                        if(sv_u != 0)then
+                                                goto NXTCLS
+                                        endif
+                                        sv_j = cint(BANCS.OUTPARAM.srvValue)
+                                        print(sv_j)
+                                        sv_b = 0
+                                        while(sv_b < sv_j)
+                                        #{
+                                                sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.acct.foracid"
+                                                sv_u = urhk_GetUrhkOut(sv_d)
+                                                ODACCT.GLBDATA.swpAcctO = BANCS.OUTPARAM.srvValue
+                                                sv_d = "poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.scheme.schmCode"
+                                                sv_u = urhk_GetUrhkOut(sv_d)
+                                                ODACCT.GLBDATA.swpAcctOSchm = BANCS.OUTPARAM.srvValue
+                                                if(ODACCT.GLBDATA.PoolAcct==ODACCT.GLBDATA.swpAcctO)then
+                                                        ODACCT.GLBDATA.swpAO = ODACCT.GLBDATA.swpAcctO
+                                                        print(ODACCT.GLBDATA.swpAO)
+                                                        sv_o = sv_b
+                                                endif
+                                                if(ODACCT.GLBDATA.foracid==ODACCT.GLBDATA.swpAcctO)then
+                                                        ODACCT.GLBDATA.swpAT = ODACCT.GLBDATA.swpAcctO
+                                                        print(ODACCT.GLBDATA.swpAT)
+                                                        sv_t = sv_b
+                                                endif
+                                                print(sv_b)
+                                                sv_b = sv_b + 1
+                                        #}
+                                        do
+                                else
+                                        ODACCT.GLBDATA.srvAcctId = ODACCT.DATA.aacctid
+                                        callscriptifexist("ebsrvHandler.scr")
+                                        if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                                                print(ODACCT.GLBDATA.SrvError)
+                                        endif
+                                        goto NXTCLS
+                                #}
+                                endif
+
+
+        sv_u = urhk_CopyOutToIn("")
+        sv_a = urhk_SetUrhkOut("poolInfo.pool.id|PoolId")
+        sv_b = 0
+        while(sv_b < sv_j)
+        #{
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.allowSweeps|N")
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_b, "%d") + ">.delFlg|Y")
+                sv_b = sv_b + 1
+        #}
+        do
+        print(sv_o)
+        print(ODACCT.GLBDATA.swpAO)
+        ##if(sv_o!="")then
+        if(ODACCT.GLBDATA.swpAO!="")then
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_o, "%d") + ">.allowSweeps|N")
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_o, "%d") + ">.delFlg|Y")
+        endif
+        print(sv_t)
+        if(sv_t!="")then
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_t, "%d") + ">.allowSweeps|N")
+                sv_u = urhk_SetUrhkInp("poolLL.<rec_" + FORMAT$(sv_t, "%d") + ">.delFlg|Y")
+        endif
+        ##sv_u = urhk_ExecSrvNoCommit("SRV_ModifyPoolAndVerify|same_user_verify = Y|retain_all_output = Y")
+        sv_u = urhk_ExecSrv("SRV_ModifyPoolAndVerify|same_user_verify = Y|retain_all_output = Y")
+        print(sv_u)
+        if (fieldexists(BANCS.OUTPARAM.successOrFailure) == 1)then
+                print(BANCS.OUTPARAM.successOrFailure)
+                sv_s = BANCS.OUTPARAM.successOrFailure
+        else
+                sv_s = "X"
+        endif
+        if (( sv_u == 0 ) and ( sv_s=="S") ) then
+        #{
+                ODACCT.GLBDATA.PoolId = BANCS.OUTPARAM.PoolId
+                ODACCT.GLBDATA.srvErrMsg = "Pool Modified Successfully : " + ODACCT.GLBDATA.PoolId
+                ODACCT.GLBDATA.srvSucFail = "S"
+                ODACCT.GLBDATA.isclsyn = "Y"
+        else
+                ODACCT.GLBDATA.srvAcctId = ODACCT.GLBDATA.swpAO
+                callscriptifexist("ebsrvHandler.scr")
+                if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                        print(ODACCT.GLBDATA.SrvError)
+                endif
+                ODACCT.GLBDATA.isclsyn = "N"
+                goto NXTCLS
+        #}
+        endif
+        else
+                goto NXTCLS
+                #}
+                endif
+
+        if(ODACCT.GLBDATA.isclsyn!="Y")then
+                goto NXTCLS
+        endif
+
+
+        sv_a = urhk_SetUrhkInp("acctBasic.foracid|" + ODACCT.DATA.aacctid )
+        sv_a = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+        sv_a = urhk_ExecSrv("SRV_FetchOperAcctDtlForClosure|retain_all_output = Y")
+        print(sv_a)
+        if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+        #{
+               print(BANCS.OUTPARAM.successOrFailure)
+                if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_a!=0))then
+                #{
+                        callscriptifexist("ebsrvHandler.scr")
+                        if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                        #{
+                                print(ODACCT.GLBDATA.SrvError)
+                                goto NXTCLS
+                        #}
+                        endif
+                #}
+                endif
+                if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_a==0))then
+                #{
+                        print("fetch ok")
+                #}
+                endif
+        #}
+        endif
+
+
+        sv_a = urhk_CopyOutToIn("")
+        sv_a = urhk_SetUrhkInp("clsrRmks|Rw Forced closure")
+        print(sv_a)
+        sv_a = urhk_SetUrhkInp("acctGenDtl.acctClosureReason.refCode|ODCLS")
+        print(sv_a)
+
+        sv_a = urhk_ExecSrv("SRV_CloseOperAcct|retain_all_output = Y|same_user_verify = Y")
+        print(sv_a)
+
+        if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+        #{
+               print(BANCS.OUTPARAM.successOrFailure)
+                if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_a!=0))then
+                #{
+                        ODACCT.DATA.caacFlg = 0
+                        callscriptifexist("ebsrvHandler.scr")
+                        if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                        #{
+                                print(ODACCT.GLBDATA.SrvError)
+                                exitscript
+                        #}
+                        endif
+                                goto NXTCLS
+                #}
+                endif
+                if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_a==0))then
+                #{
+                        print("fetch ok")
+                #}
+                endif
+        #}
+        endif
+
+
+        sv_a = urhk_SetUrhkInp("acctBasic.foracid|" + ODACCT.DATA.aacctid )
+        sv_a = urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+        sv_a = urhk_ExecSrv("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+        print(sv_a)
+
+        if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+        #{
+               print(BANCS.OUTPARAM.successOrFailure)
+                if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_a!=0))then
+                #{
+                        ODACCT.DATA.caacFlg = 0
+                        callscriptifexist("ebsrvHandler.scr")
+                        if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                        #{
+                                print(ODACCT.GLBDATA.SrvError)
+                                exitscript
+                        #}
+                        endif
+                                goto NXTCLS
+                #}
+                endif
+                if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_a==0))then
+                #{
+                        print("fetch ok")
+                #}
+                endif
+        #}
+        endif
+
+
+
+        sv_a = urhk_CopyOutToIn("")
+        sv_a = urhk_ExecSrv("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y")
+        print(sv_a)
+
+        if(fieldexists(BANCS.OUTPARAM.successOrFailure)==1)then
+        #{
+               print(BANCS.OUTPARAM.successOrFailure)
+                if((BANCS.OUTPARAM.successOrFailure=="F") or (sv_a!=0))then
+                #{
+                        ODACCT.DATA.caacFlg = 0
+                        callscriptifexist("ebsrvHandler.scr")
+                        if(fieldexists(ODACCT.GLBDATA.SrvError)==1)then
+                        #{
+                                print(ODACCT.GLBDATA.SrvError)
+                                exitscript
+                        #}
+                        endif
+                                goto NXTCLS
+                #}
+                endif
+                if((BANCS.OUTPARAM.successOrFailure=="S") and (sv_a==0))then
+                #{
+                        print("account closed")
+                #}
+                endif
+        #}
+        endif
+
+                NXTCLS:
+                ODACCT.DATA.caacFlg = 1
+                       sv_u = urhk_dbCursorFetch(ODACCT.DATA.schdlcurNum)
+                        print(sv_u)
+                        if(sv_u!=0)then
+                                print("fetch failed")
+                                sv_u = urhk_dbCursorClose(ODACCT.DATA.schdlcurNum)
+                                print(sv_u)
+                                ODACCT.DATA.srvErrMsg =  "Demand Cursor Fetch Failed"
+                                ODACCT.DATA.srvErrCode = "DBCursor"
+                                ODACCT.DATA.srvSucFail = "F"
+                                goto ALERTRUN
+                        endif
+                        ODACCT.DATA.ddaRec = cint(ODACCT.DATA.ddaRec) + 1
+                        ODACCT.DATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + ODACCT.DATA.ddaRec
+                        print(ODACCT.DATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(ODACCT.DATA.schdlcurNum)
+        print(sv_u)
+
+
+        FINISH:
+        exitscript
+trace off
+end-->
+

@@ -1,0 +1,185 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : b_acctledgerfee002.scr
+#   Description     : This script is called from job
+#   Date            : 15-09-2017
+#   Author          : Timothy K
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : 
+#   Calling Script  : NA
+#   Menu Option     : 
+#   Srl. No         Date            Author          	Description.
+#   -------         ------          ------          	------------
+#   1.0             15-09-2017      Timothy K     		Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","LEDGR") == 0) THEN
+#{
+	CREATECLASS("CUST","LEDGR",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","GCHRG") == 0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+sv_b = BANCS.STDIN.mySolId
+print(sv_b)
+
+BANCS.INPUT.moduleName  = "CHARGES"
+BANCS.INPUT.parameterId = "LEDGER_FEE1"
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.LEDGR.chrgAmt1 = BANCS.OUTPUT.parameterVal
+	PRINT(CUST.LEDGR.chrgAmt1)
+#}
+ELSE
+#{
+	CUST.LEDGR.errMsg = "Ledger Fee for USD setup not done in CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+BANCS.INPUT.parameterId = "LEDGER_FEE2"
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.LEDGR.chrgAmt2 = BANCS.OUTPUT.parameterVal
+	PRINT(CUST.LEDGR.chrgAmt2)
+#}
+ELSE
+#{
+	CUST.LEDGR.errMsg = "Ledger Fee for UGX setup not done in CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.parameterId = "SUPEVENTID"
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.LEDGR.supEventId = BANCS.OUTPUT.parameterVal
+	PRINT(CUST.LEDGR.supEventId)
+#}
+ELSE
+#{
+	CUST.LEDGR.errMsg = "Event ID setup not done in CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_q="foracid,acctCrncyCode|"
+sv_q = sv_q + "select foracid, acct_crncy_code from tbaadm.gam where schm_code in ('SB188','CA288','CA286') " 
+sv_q = sv_q + "and bank_id = ?SVAR "
+sv_q = sv_q + "and sol_id = ?SVAR " 
+sv_q = sv_q + "and acct_cls_flg != 'Y' "
+sv_q = sv_q + "and acid in (select acid from tbaadm.smt where acct_status = 'A')"
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+
+sv_e = urhk_dbCursorOpenWithBind(sv_q)
+
+IF(sv_e==0) THEN
+	    sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	    sv_q = urhk_dbCursorFetch(sv_m)
+	    print(sv_q)
+
+	   IF(sv_q == 1) THEN
+		 sv_x = urhk_dbCursorClose(sv_m)
+		 print(sv_x)
+		 exitscript
+	   ENDIF
+	  print(sv_q)
+WHILE (sv_q==0)
+	CUST.LEDGR.foracid=BANCS.OUTPARAM.foracid
+	print(CUST.LEDGR.foracid)
+	CUST.LEDGR.acctCrncyCode=BANCS.OUTPARAM.acctCrncyCode
+	print(CUST.LEDGR.acctCrncyCode)
+	CUST.LEDGR.acct=BANCS.OUTPARAM.foracid
+
+	IF(CUST.LEDGR.acctCrncyCode == BANCS.STDIN.homeCrncyCode)THEN
+	#{
+		CUST.LEDGR.chrgamt = CUST.LEDGR.chrgAmt2
+	#}
+	ELSE
+	#{
+		sv_a = "rateAmount|"
+		sv_a = sv_a + "select VAR_CRNCY_UNITS from tbaadm.rtl where bank_id = ?SVAR "
+		sv_a = sv_a + "and FXD_CRNCY_CODE = 'USD' "
+		sv_a = sv_a + "and VAR_CRNCY_CODE = 'UGX' "
+		sv_a = sv_a + "and RATECODE = 'TTB' "
+		print(sv_a)
+
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		PRINT(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_a)
+		PRINT(sv_d)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.LEDGR.rateAmount = BANCS.OUTPARAM.rateAmount
+			PRINT(CUST.LEDGR.rateAmount)
+		#}
+		ELSE
+		#{
+			CUST.LEDGR.rateAmount = "1"
+		#}
+		ENDIF
+
+		BANCS.INPARAM.ToCurrency   = BANCS.STDIN.homeCrncyCode
+		BANCS.INPARAM.InputAmount  = CUST.LEDGR.chrgAmt1
+		BANCS.INPARAM.FromCurrency = "USD" 
+		BANCS.INPARAM.RateCode     = "TTB"
+		BANCS.INPARAM.Rate         = CUST.LEDGR.rateAmount
+		sv_u = urhk_B2k_ConvertAmount("") 
+		IF (sv_u == 1) THEN
+		#{			
+			CUST.LEDGR.errMsg = "Error getting the amount"
+		#}
+		ELSE
+		#{
+			CUST.LEDGR.chrgamt = BANCS.OUTPARAM.OutputAmount 
+			PRINT(CUST.LEDGR.chrgamt)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	CUST.GCHRG.tranType = "T"
+	CUST.GCHRG.tranSubType = "BI"
+	CUST.GCHRG.drAcctId = CUST.LEDGR.acct
+	CUST.GCHRG.acctCrncyCode = BANCS.STDIN.homeCrncyCode
+	CUST.GCHRG.chrgAmt = CUST.LEDGR.chrgamt + "|" + BANCS.STDIN.homeCrncyCode
+	CUST.GCHRG.eventId = CUST.LEDGR.supEventId
+	CALL("gchrgcommon.scr")
+	IF (CUST.GCHRG.successOrFailure == "S") THEN
+	#{
+		PRINT("Charge collected")
+	#}
+	ELSE
+	#{
+		PRINT("Failure")
+	#}
+	ENDIF
+	sv_q = urhk_dbCursorFetch(sv_m)
+	print(sv_q)	
+
+DO
+               print("ALL ACCOUNTS CHARGED")
+ENDIF
+
+trace off
+exitscript
+end-->

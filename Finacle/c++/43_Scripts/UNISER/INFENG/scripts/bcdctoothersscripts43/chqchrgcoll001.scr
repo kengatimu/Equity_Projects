@@ -1,0 +1,123 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: chqchrgcoll.scr
+# Type: NA|default
+# Description: This script is for collecting charges on cheque book issue
+# Author: shivakrishna.d
+# Date: 8/9/18 1:20 AM
+# Modification Log:
+#============================================================
+
+<--START
+CHECKSUM="5f9f7e724b357926f77ff69929afb01a314eb8c65fde8a7c81cf1f270ff5fbab"
+        # Script body goes here
+        TRACE ON
+        sv_a = urhk_B2k_PrintRepos("BANCS")
+        PRINT(CUST.CHQB.noOfChq)
+        PRINT(CUST.CHQB.leaves)
+	PRINT(CUST.CHQB.vatAmt)
+	PRINT(CUST.CHQB.chrgAmt)
+
+        #sv_s = "crncyCode,schmCode|SELECT ACCT_CRNCY_CODE,SCHM_CODE FROM TBAADM.GAM WHERE FORACID=?SVAR AND BANK_ID=?SVAR"
+        #BANCS.INPARAM.BINDVARS = CUST.CHQB.acctNum + "|" + BANCS.STDIN.contextBankId
+
+        #PRINT(sv_s)
+        #PRINT(BANCS.INPARAM.BINDVARS)
+        #sv_d = urhk_dbSelectWithBind(sv_s)
+        sv_d = urhk_getAcctDetailsInRepository(CUST.CHQB.acctNum)
+        IF(sv_d != "0")THEN
+        #{
+                CUST.GCHRG.gchrgErrMsg="Invalid Account"
+                CUST.GCHRG.successOrFailure = "F"
+                #sv_u = urhk_SetOrbErr(sv_e)
+                #sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                GOTO ENDOFSCRIPT
+                #}
+        ELSE
+                #{
+                CUST.CHQB.crncyCode=BANCS.OUTPARAM.acctCrncyCode
+                CUST.CHQB.schmCode=BANCS.OUTPARAM.schmCode
+                CUST.CHQB.EffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+                PRINT(CUST.CHQB.crncyCode)
+                PRINT(CUST.CHQB.schmCode)
+                PRINT(CUST.CHQB.EffAvailableAmt)
+
+        #}
+        ENDIF
+
+        PRINT(CUST.CHQB.chrgAmt)
+        PRINT(CUST.CHQB.EffAvailableAmt)
+
+
+        CUST.CHQB.total_chrgAmt = CDOUBLE(CUST.CHQB.chrgAmt) + CDOUBLE(CUST.CHQB.vatAmt)
+        PRINT(CUST.CHQB.total_chrgAmt)
+
+        IF(CDOUBLE(CUST.CHQB.EffAvailableAmt) < CDOUBLE(CUST.CHQB.total_chrgAmt)) THEN
+        #{
+                CUST.GCHRG.gchrgErrMsg="Account does not have sufficient balance to collect the charge"
+                CUST.GCHRG.successOrFailure = "F"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+
+		sv_d = "isBCDC | select count(*) from tbaadm.sst where bank_id=?SVAR and set_id='BCDC' and sol_id=?SVAR "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CHQB.laSolId
+		print(BANCS.INPARAM.BINDVARS)
+		print(sv_d)
+		sv_u = urhk_dbSelectWithBind(sv_d)
+		if(sv_u==0)then
+		    CUST.CHQB.isBCDC = BANCS.OUTPARAM.isBCDC
+		else
+		    CUST.CHQB.isBCDC = 0
+		endif
+
+	
+	if(cdouble(CUST.CHQB.isBCDC)>=1)then	
+		CUST.GCHRG.eventId ="CHQREQBC"
+	ELSE
+		CUST.GCHRG.eventId ="CHQREQ"
+	ENDIF
+
+        CUST.GCHRG.noOfchqs			= CUST.CHQB.noOfChq
+	CUST.GCHRG.leaves			= CUST.CHQB.leaves
+        CUST.GCHRG.drAcctId                     = CUST.CHQB.acctNum
+        CUST.GCHRG.acctCrncyCode        	= CUST.CHQB.crncyCode
+        ##CUST.GCHRG.eventId                      = "CHQREQ"
+        CUST.GCHRG.chrgAmt                      = CUST.CHQB.chrgAmt + "|" + CUST.CHQB.crncyCode
+        CUST.GCHRG.tranType                     = "T"
+        CUST.GCHRG.tranSubType          	= "CI"
+
+        CALL("gchrgcommon.scr")
+        IF(CUST.GCHRG.successOrFailure == "S") THEN
+        #{
+                PRINT(CUST.GCHRG.tranId)
+		sv_s = "INSERT INTO CUSTOM.C_CHQ_TRAN(REQ_ID,TRAN_ID,FORACID,RCRE_USER_ID,RCRE_TIME,BANK_ID) VALUES(?SVAR,?SVAR,?SVAR,?SVAR,sysdate,?SVAR)"
+		BANCS.INPARAM.BINDVARS = CUST.CHQB.requestId +"|"+ CUST.GCHRG.tranId +"|"+ CUST.CHQB.acctNum +"|"+ BANCS.STDIN.userId + "|" + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+                PRINT(BANCS.INPARAM.BINDVARS)
+                sv_d = urhk_dbSqlWithBind(sv_s)
+                PRINT(sv_d)
+                IF(sv_d != 0)THEN
+                #{
+			PRINT("Databse Insert failed")
+		#}
+		ENDIF
+
+                #}
+        ELSE
+                #{
+                #sv_e = CUST.GCHRG.gchrgErrMsg
+                #sv_m = "count"
+                #sv_e = "Error_2|ERROR:^"+ sv_e +".^"+ sv_m +""
+                #sv_u = urhk_SetOrbErr(sv_e)
+                #sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+        ENDOFSCRIPT:
+#               TRACE OFF
+END-->
+

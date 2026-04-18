@@ -1,0 +1,789 @@
+/ 
+truncate table custom.statement_jobs drop storage;
+
+truncate table custom.statement_header drop storage;
+
+truncate table custom.statement_details drop storage;
+
+begin
+custom.gen_statement('P' ,'CA200','CA207','001','001','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','002','002','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','003','003','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','004','004','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/ 
+begin
+custom.gen_statement('P' ,'CA200','CA207','005','005','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','006','006','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','007','007','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','008','008','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','009','009','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','010','010','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','011','011','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','012','012','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','013','013','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','014','014','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','015','015','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','016','016','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','017','017','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','018','018','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','019','019','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','020','020','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','021','021','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','022','022','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','023','023','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','024','024','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','025','025','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','026','026','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','027','027','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','028','028','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','029','029','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','030','030','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','031','031','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','032','032','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','033','033','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','034','034','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','035','035','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','036','036','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','037','037','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','038','038','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','039','039','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','040','040','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','041','041','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','042','042','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','043','043','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','044','044','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','045','045','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','046','046','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','047','047','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','048','048','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','049','049','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','050','050','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','051','051','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','052','052','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','053','053','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','054','054','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','055','055','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','056','056','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','057','057','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','058','058','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','059','059','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','060','060','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','061','061','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','062','062','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','063','063','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','064','064','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','065','065','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','066','066','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','067','067','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','068','068','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','069','069','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','070','070','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','071','071','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','072','072','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','073','073','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','074','074','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','075','075','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','076','076','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','077','077','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','078','078','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','079','079','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','080','080','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','081','081','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','082','082','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','083','083','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','084','084','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','085','085','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','086','086','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','087','087','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','088','088','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','089','089','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','090','090','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','091','091','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','092','092','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','093','093','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','094','094','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','095','095','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','096','096','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','097','097','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','098','098','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','099','099','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','100','100','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','101','101','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','102','102','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','103','103','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','104','104','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','105','105','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','106','106','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','107','107','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','108','108','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','109','109','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','110','110','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','111','111','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','112','112','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','113','113','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','114','114','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','115','115','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','116','116','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','117','117','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','118','118','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','119','119','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','120','120','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','121','121','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','122','122','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','123','123','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','124','124','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','125','125','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','126','126','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','127','127','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','128','128','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','129','129','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','130','130','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','131','131','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','132','132','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','133','133','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','134','134','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','135','135','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','136','136','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','137','137','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','138','138','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','139','139','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','140','140','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','141','141','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','142','142','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','143','143','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','144','144','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','145','145','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','146','146','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','147','147','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','148','148','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','149','149','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','150','150','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','151','151','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','152','152','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','153','153','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','154','154','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','155','155','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','156','156','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','157','157','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','158','158','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','159','159','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','160','160','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','161','161','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','162','162','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','163','163','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','164','164','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','165','165','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','166','166','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','167','167','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','168','168','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','169','169','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','170','170','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','171','171','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','172','172','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','173','173','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','174','174','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','175','175','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','176','176','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','177','177','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','178','178','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','179','179','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','180','180','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','181','181','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','182','182','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','183','183','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','184','184','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','185','185','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','186','186','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','187','187','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','188','188','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','189','189','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','190','190','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA200','CA207','191','191','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA216','CA218','001','050','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA216','CA218','051','102','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA216','CA218','101','191','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+begin
+custom.gen_statement('P' ,'CA288','CA288','001','191','01-Jan-2021','31-Jan-2021','54','SK04908' );
+end;
+/
+exit
+/

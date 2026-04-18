@@ -1,0 +1,1074 @@
+
+####################################################################
+####################################################################
+##                                                                ##
+##   Report Name		: larsh_01.mrt                            ##
+##   Spool File Name	: LOAN REPAYMENT SCHEDULE REPORT          ##
+##   Modification Log	:                                         ##
+##   Srl No.  Date    	   Author	   Description                ##
+##   -------  -----------  ---------   ---------------------      ##
+##   1.0      31-01-1998   Harsha      Original version           ##
+####################################################################
+####################################################################
+
+####################################################################
+RECORDLAYOUT  
+####################################################################
+$$$include larsh.mri
+####################################################################
+LOCALVARIABLES
+####################################################################
+localdate			numberType
+localyears			numberType
+sum_interest        numberType
+sum_principal		numberType
+sum_charge			numberType
+charge		    numberType
+sum_amount			numberType
+count               numberType
+fail_count			numberType
+recCount			numberType
+sum_sbsdy1Amt		numberType
+sum_sbsdy2Amt       numberType
+sum_sbsdy3Amt       numberType
+sum_quantity        numberType
+callscript              stringType
+acctBlng	    stringType
+####################################################################
+GROUPANDSORT
+####################################################################
+acct_number
+sortDate
+flowAmt
+alreadysorted
+##################################################################
+# adding alreadysorted as part of Leasing change to sort the 	##
+# Residual Value record	(Call ID : 365844)						##
+####################################################################
+REPOSITORY bankRepos.rip readonly
+####################################################################
+localYearsToAdd		stringType
+bankName   		stringType
+branchName		stringType
+
+####################################################################
+REPOSITORY argv4
+####################################################################
+sol_set_id   				stringtype
+acct_from					stringtype
+acct_to 					stringtype
+from_date         			stringtype
+to_date                   	stringtype
+schm_code_list				stringtype
+product_group				stringtype
+rep_schdl_from_date         stringtype
+no_of_months                numberType
+value_date_wise				stringtype
+include_reph_acct			stringtype
+proj_amort_schdl			stringtype
+sbsdy_code					stringtype
+page_number					numberType
+ftcf_flag					stringtype
+
+####################################################################
+MASSAGERECORD
+####################################################################
+set principal = roundoff principal N 0.001
+set interest = roundoff interest N 0.001
+set combPrinIntChrDmdAmt = roundoff combPrinIntChrDmdAmt N 0.001
+set sbsdy1Amt = roundoff sbsdy1Amt N 0.001
+set sbsdy2Amt = roundoff sbsdy2Amt N 0.001
+set sbsdy3Amt = roundoff sbsdy3Amt N 0.001
+set bankSharePcnt = roundoff bankSharePcnt N 0.000001
+set custSharePcnt = roundoff custSharePcnt N 0.000001
+set quantityPerMonth = roundoff quantityPerMonth N 0.01
+set sellPriceAmt = roundoff sellPriceAmt N 0.001
+####################################################################
+IGNORERECORD
+####################################################################
+
+####################################################################
+PAGEFORMAT
+####################################################################
+LinesPerPage	 64
+LeftMargin 		  2 
+rightMargin       2
+Topmargin	      2
+BottomMargin      2
+columnsPerLine  200
+pageHeaderLines	 16
+pageFooterLines   2
+    
+####################################################################
+ONSTARTOFREPORT
+####################################################################
+set localyears = strToNum localYearsToAdd
+execute commonPageHdr
+execute printCriteria
+nextPage
+set pageNumber = 1
+set count = 0
+set fail_count = 0
+set recCount = 0
+####################################################################
+BEFOREBREAKOF acct_number
+####################################################################
+set count = count + 1
+set recCount = 0
+if ( count > 0  )
+begin
+	if (sucFailFlg  = "S")
+	begin
+		execute pageHdr
+	end
+	else
+	begin
+		if (fail_count = 0)
+		begin
+		execute failHdr
+		end
+		execute faildetail
+	end
+end
+####################################################################
+AFTERBREAKOF acct_number
+####################################################################
+if ( count > 0  )
+begin
+	if (sucFailFlg  = "S")
+	begin
+		execute sumforacct
+	end
+end
+####################################################################
+PAGEHEADER 
+####################################################################
+#execute pageHdr
+
+####################################################################
+PAGEFOOTER
+####################################################################
+print "" size 190 fillAscii 61
+
+####################################################################
+ONEVERYRECORD 
+####################################################################
+begin
+        set callscript = runscript "COGE_fetchSetId.scr" "acct_from" "acctBlng"
+end
+
+if (schm_type = "LAA" AND disbursementIndFlg != "Y")
+begin
+	execute laaOnEveryRecord
+end
+if (schm_type = "CLA" AND disbursementIndFlg != "Y")
+begin
+	if (ei_schm_flg = "N")
+	begin
+		execute claOnEveryRecord
+	end
+	else
+	begin
+		execute laaOnEveryRecord
+	end
+end
+
+####################################################################
+PROCEDURE laaOnEveryRecord
+####################################################################
+nextLine
+if (sucFailFlg  = "S")
+begin
+    set localdate = stringToDate  flowDate
+    set localdate = periodAdd localdate localyears Y
+    print localdate DateFormat "" column 2
+
+	if acctBlng = "COGE"
+	begin
+		set callscript = runscript "COGE_fetchAcctCommChg.scr" "flowDate|acct_from" "charge"
+		set fixChargeDmdAmt = charge 
+	end
+
+    if (defmntInd = "Y")
+    begin
+        print "INSTALLMENT DEFERRED" column 52
+    end
+    else
+    begin
+	if acctBlng = "COGE"
+        begin
+		set combPrinIntChrDmdAmt = combPrinIntChrDmdAmt + fixChargeDmdAmt
+	end
+        print combPrinIntChrDmdAmt autocomma size 18 column 20
+		if(lease_type != "O")
+		begin
+        print interest autocomma size 18 column 52 
+        print principal autocomma size 18 column 70
+		end
+    end
+
+	if(islamicProductTypeFlg = "U" OR islamicProductTypeFlg = "D")
+	begin
+		print bankSharePcnt autocomma size 18 column 90
+		print custSharePcnt autocomma size 18 column 111
+		print fixChargeDmdAmt autocomma size 18 column 138
+	end
+	else
+	begin
+		print fixChargeDmdAmt autocomma size 18 column 95
+	end
+    if(islamicProductTypeFlg = "S")
+	begin
+	print quantityPerMonth autocomma size 18 column 115 precision 0 
+	end
+	else if((islamicProductTypeFlg = "I" OR forwardIjarahFlg = "Y")  OR (lease_type = "F"))
+	begin
+		print shdlBal autocomma size 18 column 123 
+	end
+	if(sbsdy_ind = "I")
+	begin
+		print sbsdy1Amt autocomma size 18 column 127 
+		print sbsdy2Amt autocomma size 18 column 152
+		print sbsdy3Amt autocomma size 18 column 170 
+
+		set sum_sbsdy1Amt = sum_sbsdy1Amt + sbsdy1Amt
+		set sum_sbsdy2Amt = sum_sbsdy2Amt + sbsdy2Amt
+		set sum_sbsdy3Amt = sum_sbsdy3Amt + sbsdy3Amt
+	end
+
+        if(islamicProductTypeFlg = "M" OR islamicProductTypeFlg = "T" OR islamicProductTypeFlg = "B" OR islamicProductTypeFlg = "A")
+        begin
+                print sellPriceAmt autocomma size 18 column 122
+        end
+
+    set sum_interest = sum_interest + interest
+    set sum_principal = sum_principal + principal
+    set sum_charge = sum_charge + fixChargeDmdAmt
+
+    set sum_amount = sum_amount + combPrinIntChrDmdAmt
+	if(islamicProductTypeFlg = "S")
+	begin
+	set sum_quantity = sum_quantity + quantityPerMonth
+	end
+end
+####################################################################
+PROCEDURE claOnEveryRecord
+####################################################################
+nextLine
+if (sucFailFlg  = "S")
+begin
+    if (freq_ind = "Y")
+    begin
+        execute print_freq_det
+    end
+    else
+    begin
+        if (recCount = 0)
+        begin
+            execute print_col_hdr
+            set recCount = 1
+        end
+        set localdate = stringToDate  flowDate
+	set localdate = periodAdd localdate localyears Y
+        print localdate DateFormat "" column 2
+    
+        if (defmntInd = "Y")
+        begin
+            print "INSTALLMENT DEFERRED" column 52
+        end
+        else
+        begin
+            print combPrinIntChrDmdAmt autocomma size 18 column 27
+        	print interest autocomma size 18 column 59 
+            print principal autocomma size 18 column 84
+        end
+        print fixChargeDmdAmt autocomma size 18 column 109
+    	set sum_interest = sum_interest + interest
+        set sum_principal = sum_principal + principal
+        set sum_charge = sum_charge + fixChargeDmdAmt
+
+        set sum_amount = sum_amount + combPrinIntChrDmdAmt
+    end
+end
+####################################################################
+PROCEDURE print_freq_det
+####################################################################
+print "From Date : " column 10
+ set localdate = stringToDate  flowStartDate
+ set localdate = periodAdd localdate localyears Y
+ print localdate DateFormat ""
+        
+print "Frequency : " column 60
+print int_freq_type
+print "/"
+print int_freq_week_num
+print "/"
+print int_freq_week_day
+print "/"
+print int_freq_start_dd
+print "/"
+print int_freq_months
+print "/"
+print int_freq_days
+print "/"
+print int_freq_hldy_stat
+####################################################################
+PROCEDURE print_col_hdr
+####################################################################
+nextline
+separatorline
+print "Flow Date" column 2
+print "Flow Amount" column 33
+if(islamicProductTypeFlg = "S")
+begin
+print "Profit Component" column 58
+end
+else if(islamicProductTypeFlg = "F")
+	begin
+	print "Variable Rental" column 58
+	end
+else
+begin
+print "Interest Component" column 58
+end
+if(islamicProductTypeFlg = "F")
+    begin
+	print "Fixed Rental"   column 83
+	end
+else
+begin
+print "Principal Component" column 83
+end
+if(islamicProductTypeFlg = "U" OR islamicProductTypeFlg = "D")
+begin
+	print "BankShare Pcnt"      column 108
+	print "CustShare Pcnt"      column 123
+	print "Charges Component" 	column 138
+end
+if(islamicProductTypeFlg = "S")
+begin
+    print "Charges Component"   column 108
+    print "Quantity to be delivered " column 123
+end
+else if(islamicProductTypeFlg = "F")
+	begin
+	print "Supplementary Charge" column 108
+	end
+else
+begin
+	print "Charges Component" 	column 108
+end
+separatorline
+
+####################################################################
+PROCEDURE sumforacct
+####################################################################
+if (schm_type = "LAA")
+begin
+	execute laaSumForAcct
+end
+if (schm_type = "CLA")
+begin
+	if (ei_schm_flg = "N")
+	begin
+		execute claSumForAcct
+	end
+	else
+	begin
+		execute laaSumForAcct
+	end
+end
+####################################################################
+PROCEDURE laaSumForAcct
+####################################################################
+    nextline
+    print "==================================================================================================================================== "
+    nextline
+#   set count = count + 1
+    print "SUM TOTALS" column 5
+    print sum_amount size 18 column 20 autocomma
+	if(lease_type != "O")
+	begin
+    print sum_interest size 18 column 52 autocomma
+    print sum_principal size 18 column 70 autocomma
+	end
+    print sum_charge size 18 column 95 autocomma
+	if(islamicProductTypeFlg = "S")
+	begin
+	print sum_quantity size 18 column 115 autocomma precision 0  
+	end
+	if(sbsdy_ind = "I")
+	begin
+    	print sum_sbsdy1Amt size 18 column 127 autocomma
+    	print sum_sbsdy2Amt size 18 column 152 autocomma
+    	print sum_sbsdy3Amt size 18 column 170 autocomma
+	end
+    nextline
+    print "==================================================================================================================================== "
+    nextline
+set sum_interest = 0
+set sum_principal = 0
+set sum_amount = 0
+set sum_quantity = 0
+set PAGE_NUMBER = pageNumber
+nextPage
+####################################################################
+PROCEDURE claSumForAcct
+####################################################################
+    nextline
+    print "==================================================================================================================================== "
+    nextline
+    print "SUM TOTALS" column 5
+    print sum_amount size 18 column 27 autocomma
+    print sum_interest size 18 column 59 autocomma
+    print sum_principal size 18 column 84 autocomma
+    print sum_charge size 18 column 109 autocomma
+    nextline
+    print "==================================================================================================================================== "
+    nextline
+set sum_interest = 0
+set sum_principal = 0
+set sum_amount = 0
+set PAGE_NUMBER = pageNumber
+nextPage
+######################################################################
+PROCEDURE commonPageHdr
+######################################################################
+set localdate = stringToDate  today
+set localdate = periodAdd localdate localyears Y
+print localdate DateFormat "" column 1
+print " "
+set localdate = stringToDate  today
+set localdate = periodAdd localdate localyears Y
+print localdate DateFormat "HH24:NN:SS"
+print bankName column 35
+print "  "
+print branchName 
+nextLine
+if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+begin
+print "REPAYMENT SCHEDULE FOR LEASE" size 128  center
+end
+else
+    begin
+    print "REPAYMENT SCHEDULE FOR LOANS" size 128  center
+end
+print "Page : " column 107
+print pageNumber size 3 precision 0
+
+######################################################################
+PROCEDURE pageHdr
+######################################################################
+nextLine
+print	"TO:"	column	7 size 3
+nextLine
+print	cust_title  column 9
+print "."
+print	cust_name
+nextLine
+print addr1			column 9
+nextLine
+print addr2			column 9
+nextLine
+print addr3			column 9
+nextLine
+print city_desc		column 9
+nextLine
+print state_desc	column 9
+nextLine
+print cntry_desc	column 9
+nextLine
+if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+begin
+	print phoneNum		column 9
+	nextLine
+	print email			column 9
+	nextLine
+end
+#This portion has been commented because of technical limitations the profit
+#field here is in the header and cannot display total profit value being computed in
+#the sum_interest variable
+#if(islamicProductTypeFlg = "S")
+#begin
+#print   "Profit :" column 9 size 10
+#print interest     column 18
+#end
+#nextLine
+separatorline
+print "Account No. :"    column 5
+print acct_number   column 19
+nextline
+if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+begin
+	print "Customer Id"	column 5
+	print ":"		column 17
+	print cust_id	column 19
+	nextline
+end
+print "Scheme      :"    column 5
+print schm_code     column 19
+print "Last Rephased on :" column 36
+set localdate = stringToDate  rep_shdl_date
+ set localdate = periodAdd localdate localyears Y
+ print localdate DateFormat "" column 57
+ 
+print "Schedule Number :" column 75
+print rep_shdl_num column 94
+nextLine
+separatorline
+if (schm_type = "LAA")
+begin
+	execute laaPageHdr
+end
+if (schm_type = "CLA")
+begin
+	if (ei_schm_flg = "N")
+	begin
+		print "Interest on actuals" column 5
+		nextLine
+		print "Interest Frequency Details           : " column 5
+	end
+	else
+	begin
+		execute laaPageHdr
+	end
+end
+######################################################################
+PROCEDURE laaPageHdr
+######################################################################
+    if(islamicProductTypeFlg = "S")
+	begin
+	print "Salam Amount                         : " column 5
+	print slmAmt  
+	nextLine
+    print "Salam Commodity                      : " column 5
+    print assetId 
+    nextLine
+    print "Purchase Quantity                    : " column 5
+    print purchaseQty  
+    nextLine
+	print "Unit Of Measurement                  : " column 5
+	print measureUnit 
+	nextLine
+	print "Effective Rate                       : " column 5
+	print intRate 
+    nextLine
+    print "Upfront installment Principal Amount : " column 5
+    print upfront_coll_amt size 20 autocomma leftjustify
+	end
+	if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+	begin
+	nextLine
+	print "Lease Type" column 5
+	print " : " column 40
+	if(lease_type = "F")
+	begin
+	print "Finance Lease" 
+	end
+	else
+	begin
+	if(lease_type = "O")
+	begin
+	print "Operating Lease"                     
+	end
+    else
+    begin
+    if(lease_type = "I")
+    begin
+    print "Operating Ijarah"
+    end
+    end
+	end
+	end
+	if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+	begin
+	nextLine
+	print "Lease Date"   column 5
+	print " : " column 40
+	print acct_open_date
+	nextLine
+	print "Lease Amount" column 5
+	print " : " column 40
+	print assetVal
+	nextLine
+	print "Lease Period (Months/Days)" 	column 5
+	print " : " column 40
+	print lease_perd_months
+	print " / "
+	print lease_perd_days
+	end
+	if(lease_type = "F")
+	begin
+	nextLine
+	print "Security Deposit" column 5
+	print " : " column 40
+	print security_value
+	nextLine
+	print "Residual Value" column 5
+	print " : " column 40
+	print residual_value
+	end
+	    if(lease_type = "F")
+	    begin
+	      nextLine
+	      print "Upfront Rental Capital Amount" column 5
+	      print " : " column 40
+		  print upfront_coll_amt size 20 autocomma leftjustify
+	    end
+	    else
+	    begin
+      	if(lease_type = " ")
+     	begin
+    	  print "Upfront installment Principal Amount" column 5
+	   	  print " : " column 40
+		  print upfront_coll_amt size 20 autocomma leftjustify
+    	end
+	    end
+    nextLine
+	if(islamicProductTypeFlg = "S")
+	begin
+	print "Upfront Installment Profit Amount" column 5
+	print " : " column 40
+	print upfront_instl_int_amt
+	end
+	else
+	begin
+        if(lease_type = " ")
+		begin
+	print "Upfront Installment Interest Amount" column 5
+	print " : " column 40
+	print upfront_instl_int_amt
+	end
+    end
+    if(lease_type = " ") 
+    begin
+    nextLine
+    print "No of Upfront Installments"  column 5
+	print " : " column 40
+	print num_upfront_inst
+    end
+    else
+    begin
+    print "No of Upfront Rentals" column 5
+    print " : " column 40
+	print num_upfront_inst
+	end
+	if(lease_type = "F")
+	begin
+    nextLine
+        if(islamicProductTypeFlg = "M" OR islamicProductTypeFlg = "T" OR islamicProductTypeFlg = "I" )
+        begin
+        print"Amortisation Rate" column 5
+        print " : " column 40
+		print intRate  size 10 autocomma leftjustify
+        nextline
+	    end
+	print "Upfront Installment Finance Charge" column 5
+	print " : " column 40
+	print upfront_instl_int_amt
+	end
+    if(lease_type = "O")
+    begin
+	nextLine
+    print "Expected Future Value" column 5
+    print " : " column 40
+	print expected_future_val
+    end
+    if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+    begin
+    nextLine
+    print "Effective Finance Charge Rate" column 5
+    print " : " column 40
+	print intRate
+    end
+    if(lease_type = "F" OR lease_type = "O")
+    begin
+    nextLine
+    print "CCY" column 5
+    print " : " column 40
+	print acct_crncy_code
+	nextLine
+	print "Payment Frequency" column 5
+	print " : " column 40
+	if(payFreq = "M")
+	begin
+		print "Monthly"
+	end
+	else if(payFreq = "D")
+	begin
+		print "Daily"
+	end
+	else if(payFreq = "Q")
+	begin
+		print "Quarterly"
+	end
+	else if(payFreq = "F")
+	begin
+		print "Fortnightly"
+	end
+	else if(payFreq = "T")
+	begin
+		print "Twice a Month"
+	end
+	else if(payFreq = "H")
+	begin
+		print "Half Yearly"
+	end
+	else if(payFreq = "W")
+	begin
+		print "Weekly"
+	end
+	if(payFreq = "Y")
+    begin
+        print "Yearly"
+    end
+	nextLine 
+	print "Payment Mode" column 5
+	print " : " column 40
+	if(payMode = "N")
+	begin
+		print "No Batch Recovery"
+	end
+	else if(payMode = "B")
+	begin
+		print "Bill to Employer"
+	end
+	else if(payMode = "D")
+    begin
+        print "Electronic Clearing"
+    end
+	else if(payMode = "E")
+    begin
+        print "Recover up to Effective Amt."
+    end
+	else if(payMode = "H")
+    begin
+        print "Recover through ACH"
+    end
+	else if(paymode = "M")
+    begin
+        print "Multisource Repayment"
+    end
+	else if(paymode = "P")
+	begin
+		print "Postdated Cheque"
+	end
+	if(paymode = "S")
+	begin
+	    print "Recover from Salary"
+	end
+	else if(paymode = "T")
+	begin
+	    print "Recover by Granting Temporary Overdraft"
+	end
+	nextLine 
+	print "Payment Type" column 5
+	print " : " column 40
+	if(payType = "E")
+	begin
+		print "Equated Installment"
+	end
+	else if(payType = "N")
+	begin
+		print "Non-Equated Installment"
+	end
+	nextLine
+	print "Payment Overdue" column 5
+	print " : " column 40
+	print overdueAmt
+    end
+	if(islamicProductTypeFlg = "S")
+	begin
+	print"Advance Profit Collected" column  5
+	print " : " column 40
+	print AdvIntColl size 10 autocomma leftjustify
+	end
+	else
+	begin
+	if(lease_type = " ")
+	begin
+	nextLine
+    print "Advance Interest Collected" column 5
+    print " : " column 40
+	print AdvIntColl size 10 autocomma leftjustify
+	end
+	end
+    if(lease_type = " " )
+    begin
+    nextLine
+    print "Discounted Interest Rate" column 5
+    print " : " column 40
+	print discount_rate size 10 autocomma leftjustify
+    nextLine
+	print "APR" column 5
+	print " : " column 40
+	print sys_calc_actual_APR
+#ifdef CURRENT_LOCALE=IN
+	if(advEiColl = "Y") AND (advEiAmt > 0)
+	begin
+		nextLine
+		print "Advance EI amount" column 5
+		print " : " column 40
+		print advEiAmt autocomma size 20 precision 2 leftjustify
+		nextLine
+		print "No. of advance EI" column 5
+		print " : " column 40
+		print advEiNo
+	end
+#endif
+
+	if(islamicProductTypeFlg = "I" OR forwardIjarahFlg = "Y")
+	begin
+	end
+	else
+	begin
+		nextLine
+		print "Outstanding unearned income" column 5
+		print " : " column 40
+		print OutUEI
+	end
+    end
+	if (sbsdy_ind = "P")
+    begin
+    	nextLine
+    	print "Principal Subsidy Amt." column 5
+    	print " : " column 40
+		print prinSbsdyAmt 
+    	nextLine
+		print "Principal Subsidy Received Date" column 5
+		print " : " column 40
+		set localdate = stringToDate prinRcvdDate 
+		set localdate = periodAdd localdate localyears Y
+		print localdate DateFormat "" 
+    	nextLine
+	end
+    separatorline
+	if(islamicProductTypeFlg = "I" OR forwardIjarahFlg = "Y")
+	begin
+    	print "Date" column 2
+    	print "Amount" column 27
+	end
+	else
+	begin
+    	print "Flow Date" column 2
+    	print "Flow Amount" column 27
+	end
+	if(lease_type = "F" OR lease_type = "O" OR lease_type = " ")
+	begin
+    print "Flow Date" column 2
+	end
+	if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+	begin
+	print "Rental Amount"  column 27
+	end
+	else
+	begin
+    print "Flow Amount" column 27
+	end
+	if(islamicProductTypeFlg = "S")
+	begin
+	print "Profit Component"   column 52
+	end
+	else if(islamicProductTypeFlg = "F")
+		begin
+		print "Variable Rental"   column 52
+		end
+	else
+	begin
+	if(lease_type = " ")
+	begin
+	print "Interest Component" column 52
+	end
+	else
+	begin
+	if(lease_type = "F")
+	begin
+	print "Finance Charge" column 61
+	end
+	end
+	end
+	if(islamicProductTypeFlg = "F")
+		begin
+		print "Fixed Rental"   column 77
+		end
+	else
+	begin
+	if(lease_type = " ")
+    begin
+	print "Principal Component" column 77
+	end
+	else
+	begin
+	if(lease_type = "F")
+	begin
+	print "Capital"            column 83
+	end
+	end
+	end
+	if(islamicProductTypeFlg = "U" OR islamicProductTypeFlg = "D")
+	begin
+		print "BankShare Pcnt"      column 102
+		print "CustShare Pcnt"      column 117
+		print "Charges Component" 	column 132
+	end
+	else if(islamicProductTypeFlg = "F")
+		begin
+		print "Supplementary Charge"   column 102
+		end
+	else
+	begin
+	if(lease_type = "F" OR lease_type = "O" OR lease_type = "I")
+	begin
+	print "Charges"             column 109
+	end
+	else
+	begin
+	print "Charges Component" 	column 102
+	end
+	end
+    if(islamicProductTypeFlg = "S")
+	begin
+	print "Quantity to be delivered " column 123
+	end
+	else if((islamicProductTypeFlg = "I" OR forwardIjarahFlg = "Y") OR (lease_type = "F"))
+	begin
+		print "Principal Outstanding"   column 123
+	end
+	if (sbsdy_ind = "I")
+	begin
+		print "Subsidy 1" column 127
+		print "Subsidy 2" column 152
+		print "Subsidy 3" column 172
+	end
+        if(islamicProductTypeFlg = "M" OR islamicProductTypeFlg = "T" OR islamicProductTypeFlg = "B" OR islamicProductTypeFlg = "A")
+        begin
+                print "Outstanding Selling Price"       column 122
+        end
+    separatorline
+######################################################################
+PROCEDURE failHdr
+######################################################################
+set fail_count = fail_count + 1
+set localdate = stringToDate  today
+set localdate = periodAdd localdate localyears Y
+print localdate DateFormat "" column 1
+print " "
+set localdate = stringToDate  today
+set localdate = periodAdd localdate localyears Y
+print localdate DateFormat "HH24:NN:SS"
+print "REPAYMENT SCHEDULE FOR LOANS PRINTING FAILED FOR FOLLOWING ACCOUNTS" size 128  center 
+print "Page : " column 130
+print pageNumber size 3 precision 0
+nextLine
+print "ACCOUNT NO.                                 REASON FOR FAILURE" size 128 center
+nextline
+######################################################################
+PROCEDURE faildetail
+######################################################################
+nextline
+print acct_number  column 35
+nextline
+print message column 55  size 128 center 
+###################################################################
+PROCEDURE printCriteria
+####################################################################
+nextline
+nextline
+separatorLine
+nextline
+print	"REPORT CRITERIA" center
+nextline
+print	"-------------------" center
+nextline
+nextline
+print   "Sol Id" column 10
+print ":" column 40
+print sol_set_id column 42
+nextLine
+print   "Acct Range" column 10
+print ":" column 40
+print acct_from column 42
+print   " To "  column 58
+print acct_to column 65
+nextLine
+print   "Date Range"  column 10
+print ":" column 40
+set localdate = stringToDate  from_date
+ set localdate = periodAdd localdate localyears Y
+  print localdate DateFormat "" column 42
+
+   print   " To "  column  52
+   set localdate = stringToDate  to_date
+    set localdate = periodAdd localdate localyears Y
+	 print localdate DateFormat "" column 56
+
+	  nextLine
+	  print   "SchemeCodes" column 10
+	  print ":" column 40
+	  print schm_code_list column 42
+	  nextLine
+	  print   "Product Group" column 10
+	  print ":" column 40
+	  print product_group column 42
+	  nextLine
+	  print   "Generate Schedule From" column 10
+	  print ":" column 40
+	  set localdate = stringToDate  rep_schdl_from_date
+	   set localdate = periodAdd localdate localyears Y
+	    print localdate DateFormat "" column 42
+		nextLine
+		if ( no_of_months = 0 )
+		begin
+		print   "No of Months" column 10
+		print ":" column 40
+		end
+		else
+		begin
+		print   "No of Months" column 10
+		print ":" column 40
+		print no_of_months precision 0 column 42
+		end
+		nextLine
+		print   "Open/Value Date Flg" column 10
+		print ":" column 40
+		print value_date_wise column 42
+		nextLine
+		print   "Include Rephased A/C" column 10
+		print ":" column 40
+		print include_reph_acct column 42
+		nextLine
+		print   "Project Amortization Schedule" column 10
+		print ":" column 40
+		print proj_amort_schdl column 42
+		nextLine
+		print   "Subsidy Code" column 10
+		print ":" column 40
+		print sbsdy_code column 42
+		nextline
+		print   "Store Cash Flows" column 10
+		print ":" column 40
+		print ftcf_flag column 42
+		nextline
+		separatorLine
+#=========================================================================
+ONENDOFREPORT
+#=========================================================================
+	if ( proj_amort_schdl = "N" AND count > 0 )
+	nextline
+	begin
+	print " Note : Amortization Schedule is drawn based on Actual balance of loan account when Schedule is set as Actual " size 110 column 4
+	end
+	nextline
+	if ( count < 1)
+	begin
+	print " NO RECORD SELECTED " size 40 column 12
+	end
+    separatorLine
+    print "***   " column 1
+    print pageNumber size 3 column 8 precision 0
+    print "PAGES PRINTED. ****END OF REPORT****" size 40 column 12
+    set page_number = pageNumber
+
+#============================ End Of File ================================
+
+##############################  ASHTE  #############################

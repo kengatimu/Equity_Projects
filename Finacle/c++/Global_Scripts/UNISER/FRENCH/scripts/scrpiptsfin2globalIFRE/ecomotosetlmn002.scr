@@ -1,0 +1,325 @@
+
+#-------------------------------------------------------------------------------------    
+#    Name				: ecomotosetlmn002.scr
+#    Description     	: This is for job id - SWPFV (ECOMOTO TRFTO FINSERVE). Debit to 
+#						: Head office Ecomotto GL and credit to Finserve account.
+#    Date            	: 28-08-2017
+#    Author          	: Sospeter
+#    Input           	: NA
+#    Output				: NA
+#    Called Script	 	: NA
+#    Calling Script	 	: getcparamvalue.scr
+#    Menu Option		: HBJSTM, HBJE
+#    Srl. No		Date			Author			Description.   
+#    -------		----			------			----------------
+#    1.0		05-01-2013			Umesh.G	 		Original Version
+#	 2.0        23-02-2013          Farhan          Removed the repository and classes
+#------------------------------------------------------------------------------------- 
+<--START 
+TRACE ON
+
+#------------------------------------------------------------------------------
+#       Creating repository and class
+#       Initializing the variables
+#       Getting all the values from CPARAM
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","ECOMOTOO") == 0) THEN
+#{
+	CREATECLASS("CUST","ECOMOTOO",5)
+#}
+ENDIF
+
+sv_u = urhk_b2k_printrepos("BANCS")
+print(sv_u)
+
+CUST.ECOMOTOO.errMsg    = ""
+CUST.ECOMOTOO.crAccount = ""
+CUST.ECOMOTOO.drAccount = ""
+CUST.ECOMOTOO.desc      = ""
+CUST.ECOMOTOO.tranamt   = "0"
+CUST.ECOMOTOO.Response = ""
+
+sv_a = BANCS.STDIN.mySolId
+CUST.ECOMOTOO.solId = sv_a
+
+BANCS.INPUT.moduleName = "ECOMOTOO"
+BANCS.INPUT.parameterId = "ECOMOTOO_CRACCT1"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.ECOMOTOO.crAccount = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.ECOMOTOO.errMsg = "Credit Account setup not done CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "ECOMOTOO"
+BANCS.INPUT.parameterId = "ECOMOTOO_DRACCT1"
+#
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.ECOMOTOO.drAccount = CUST.ECOMOTOO.solId + BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.ECOMOTOO.errMsg = "Debit Account setup not done CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "ECOMOTOO"
+BANCS.INPUT.parameterId = "ECOMOTOO_DESC1"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.ECOMOTOO.desc = BANCS.OUTPUT.parameterVal
+#}
+ELSE
+#{
+	CUST.ECOMOTOO.desc = ""
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "GENERAL"
+BANCS.INPUT.parameterId = "NORRATECODE"
+
+CALL ("getcparamvalue.scr")
+IF (BANCS.OUTPUT.parameterVal != "") THEN
+#{
+	CUST.ECOMOTOO.refCode = BANCS.OUTPUT.parameterVal
+	PRINT(CUST.ECOMOTOO.refCode)
+#}
+ELSE
+#{
+	CUST.ECOMOTOO.errMsg = "NORRATECODE setup not done in CPARAM"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Finding count of records that need to be processed
+#------------------------------------------------------------------------------
+sv_q="acid,bacid,drAccount,solId,bankId,balAmt|"
+sv_q = sv_q + "select acid,bacid,foracid,sol_id,bank_id,clr_bal_amt from tbaadm.gam where bank_id = ?SVAR and sol_id = ?SVAR and foracid = ?SVAR"
+
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" +  CUST.ECOMOTOO.solId + "|" + CUST.ECOMOTOO.drAccount
+print(BANCS.INPARAM.BINDVARS)
+
+sv_c = urhk_dbCursorOpenWithBind(sv_q)
+print(sv_c)
+
+IF (sv_c==0) then
+#{
+	CUST.ECOMOTOO.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_k = urhk_dbCursorFetch(CUST.ECOMOTOO.DbcursorNumber)
+	print(sv_k)
+
+	WHILE (sv_k == 0)
+	#{
+		CUST.ECOMOTOO.drAccount=BANCS.OUTPARAM.drAccount
+		print(CUST.ECOMOTOO.drAccount)
+		print(CUST.ECOMOTOO.crAccount)
+
+		#------------------------------------------------------------------------------
+		# Getting zoneDate, tranamt
+		# Creating narration for tran remarks
+		#------------------------------------------------------------------------------
+		sv_s = "clearBalance |SELECT clr_bal_amt "
+		sv_s = sv_s + "FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE bank_id = ?SVAR "
+		sv_s = sv_s + "AND  foracid = ?SVAR "
+		sv_s = sv_s + "AND entity_cre_flg ='Y' "
+		sv_s = sv_s + "AND acct_cls_flg ='N' "
+		sv_s = sv_s + "AND del_flg ='N' "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.ECOMOTOO.drAccount
+
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+
+		IF (sv_d == 0) THEN
+		#{
+			CUST.ECOMOTOO.amount = BANCS.OUTPARAM.clearBalance
+			print(CUST.ECOMOTOO.amount)
+		#}
+
+		ELSE
+		#{
+			CUST.ECOMOTOO.amount = "0"   		
+		#}
+		ENDIF
+
+		IF (CINT(CUST.ECOMOTOO.amount) == 0) THEN
+		#{
+		       EXITSCRIPT
+		#}
+		ENDIF
+
+		CUST.ECOMOTOO.narr = CUST.ECOMOTOO.desc
+		PRINT(CUST.ECOMOTOO.narr)
+		
+#--------------------------------------------------------------------------
+# Initialise the MTT repository
+#--------------------------------------------------------------------------
+
+        sv_r = REPEXISTS("MTT")
+        IF (sv_r == 0) THEN
+                CREATEREP("MTT")
+        ENDIF
+
+        sv_r = CLASSEXISTS("MTT","TranDetails")
+        IF (sv_r == 0) THEN
+                CREATECLASS("MTT","TranDetails",5)
+        ENDIF
+
+        sv_r = REPEXISTS("BANCS")
+        IF (sv_r == 0) THEN
+                CREATEREP("BANCS")
+        ENDIF
+
+        sv_r = CLASSEXISTS("BANCS","INPARAM")
+        IF (sv_r == 0) THEN
+                CREATECLASS("BANCS","INPARAM",5)
+        ENDIF
+
+#===================================
+# STEP 1 : INITIALIZE THE MTT
+#===================================
+
+BANCS.INPARAM.PostTranFlg 		= "Y"
+BANCS.INPARAM.CommitFlg 		= "Y"
+BANCS.INPARAM.InsertTranWithValidnFlg 	= "Y"
+BANCS.INPARAM.ValidationFlag 		= "Y"
+BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+BANCS.INPARAM.CheckExceptions 		= "N"
+
+
+
+#sv_r = urhk_MTTS_Initialize("")
+#print(sv_r)
+
+sv_u = urhk_MTTS_PopulateInputDetails("")
+
+print(BANCS.STDIN.BODDate)
+#MTT.TranDetails.TranDate= "0"
+MTT.TranDetails.TranType = "T"
+MTT.TranDetails.TranSubType = "BI"
+MTT.TranDetails.IgnoreExcp = "I"
+MTT.TranDetails.Consolidate = "Y"
+MTT.TranDetails.Remarks = "PREMIUM COLLECTION"
+
+
+sv_v = "PurchaseComm"
+print(sv_v)
+
+sv_u = urhk_MTTS_DefineTransaction("PurchaseComm")
+print(sv_u)
+
+#sv_u = urhk_MTTS_PopulateInputDetails("")
+	#--------------------------------------------------
+	# Credit to HO	
+	#--------------------------------------------------
+
+				MTT.PartTranDetails.Account = CUST.ECOMOTOO.crAccount
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = CUST.ECOMOTOO.narr
+				MTT.PartTranDetails.RefAmount = cdouble(CUST.ECOMOTOO.amount)
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = ""
+				MTT.PartTranDetails.RefNum = ""
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+				sv_e = "PurchaseIncome"
+				sv_r = urhk_MTTS_definePartTran(sv_e)
+				print(sv_r)
+
+			#------------------------------------------------------------------
+			# Debit From BR
+			#------------------------------------------------------------------
+
+				MTT.PartTranDetails.Account = CUST.ECOMOTOO.drAccount
+				MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+				MTT.PartTranDetails.ValueDateDiff = "0"
+				MTT.PartTranDetails.Particulars = CUST.ECOMOTOO.narr
+				sv_a = cdouble(CUST.ECOMOTOO.amount )
+				sv_a = -(sv_a)
+				print(sv_a)
+				MTT.PartTranDetails.RefAmount = sv_a
+				print(MTT.PartTranDetails.RefAmount)
+				MTT.PartTranDetails.Remarks = "" 
+				MTT.PartTranDetails.RefNum = "" 
+				MTT.PartTranDetails.IgnoreExcp = "I"
+				MTT.PartTranDetails.Consolidate = "N"
+				MTT.PartTranDetails.TranIdentifier = sv_v
+
+                
+		sv_h = "D" + CUST.ECOMOTOO.drAccount
+		sv_r = urhk_MTTS_definePartTran(sv_h)
+		IF (sv_r == 1) then
+		#{
+			print("Unable to create MTT Part transaction")
+			CUST.EQUIF.errMsg = "Transaction creation Failed."
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		#############################
+		# Commit the transaction	
+		#############################
+		sv_u = urhk_MTTS_EndDefinition("")
+		print(sv_u)
+		
+		CUST.ECOMOTOO.TranId = BANCS.OUTPARAM.MTTTranId
+		print(CUST.ECOMOTOO.TranId)
+
+		##################################################
+		# If any error tran id will not be created
+		##################################################
+		IF ((sv_u != 0)  OR (CUST.ECOMOTOO.TranId==""))THEN
+		#{
+			sv_r = urhk_MTTS_ReportErrorCondition("")
+			print (MTT.Error.Description)
+			CUST.ECOMOTOO.ResStatus = "F"
+			CUST.ECOMOTOO.Response = "Transaction creation Failed."
+			BANCS.OUTPUT.successOrFailure = "F"
+			#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+	
+
+		sv_k = urhk_dbCursorFetch(CUST.ECOMOTOO.DbcursorNumber)
+		print(sv_k)
+
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(CUST.ECOMOTOO.DbcursorNumber)
+	print(sv_c)
+#}
+ENDIF
+
+ENDOFSCRIPT:
+IF(CUST.ECOMOTOO.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUST.ECOMOTOO.errMsg+"' >>ECOMOTOO.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

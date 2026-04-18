@@ -1,0 +1,499 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# product: Finacle Core
+# category: User Defined
+# script: FIOutbound_request.scr
+# type: NA|default
+# description: These types of scripts do not belong to any particular category and are standalone scripts with no script specific repositories or fields.
+#============================================================
+
+<--START
+	#TRACE ON
+	
+	#==============================================================================================================
+	#- The field interfaceRequestID would have the name of the service that is being invoked
+	#- The filed interfaceRequestVersion indicates the version of the Finacle in which the service is available
+	#==============================================================================================================
+	CUST.INTERFACE.interfaceRequestVersion = "10.2"
+	#==============================================================================================================
+	#- Forming the Body as per the WSDL shared, that would get added to the request XML
+	#==============================================================================================================
+	
+	#==============================================================================================================
+	#- checking if its validation service or notification service
+	#==============================================================================================================
+	#print(CUST.UBP.billerId)
+	#print(CUST.UBP.typOfServ)
+#IF(CUST.UBP.billerId!="KRA")THEN
+IF(FIELDEXISTS(CUST.UBP.billerValReq) == 1)THEN
+#{
+IF(CUST.UBP.billerValReq=="N")THEN
+#{
+	IF(CUST.UBP.getServiceName1=="VAL")THEN
+	#{
+		#CUST.UBP.typServ="_VAL_SERVICE_NAME"
+		
+		CUST.UBP.typServ="_"+CUST.UBP.typOfServ+"_VAL_SER_NM"
+		print(CUST.UBP.typServ)
+		#CUST.UBP.typOfVal="-VALIDATION"
+		CUST.UBP.typOfVal="_"+CUST.UBP.typOfServ+"-VAL"
+		print(CUST.UBP.typOfVal)
+	#}
+	ELSE
+	#{
+		# Modified by dileep as for all the billers we have to send the notification.
+		CUST.UBP.notAndValFlg= "Y"
+		 CUST.UBP.billerValReq = "Y"
+		 CUST.INTERFACE.FlgType="NOTIFICATION"
+		CUST.UBP.servName="notifyPayment"
+		CUST.INTERFACE.interfaceRequestID = "UID"
+		GOTO NOTIFY_CALL 
+		#CUST.UBP.typServ="_NOT_SERVICE_NAME"
+		CUST.UBP.typServ="_"+CUST.UBP.typOfServ+"_NOT_SER_NM"
+		print(CUST.UBP.typServ)
+		#CUST.UBP.typOfVal="-NOTIFICATION"
+		CUST.UBP.typOfVal="_"+CUST.UBP.typOfServ+"-NOT"
+	#}
+	ENDIF
+	
+	#==============================================================================================================
+	#- Getting the service name(Interface request Id) from CPARAM for Validation service
+	#==============================================================================================================
+	
+	CUST.UBP.getServiceName=CUST.UBP.billerId+CUST.UBP.typServ
+	CUST.UBP.paramId=CUST.UBP.getServiceName
+	print(CUST.UBP.getServiceName)
+	call("ubpdp055.scr")
+	IF(CUST.UBP.cparamErrorFlg=="Y")THEN
+	#{
+		#IF(CUST.UBP.typServ=="VALIDATION")THEN
+		IF(CUST.UBP.getServiceName1=="VAL")THEN
+		#{
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			CUST.UBP.errorCode = "UBP_ERR055"
+			CALL("ubpdp044.scr")
+			CUST.INTERFACE.errorMsgDesc =CUST.UBP.errorDesc
+			#CUST.INTERFACE.errorMsgDesc = "No Validation setup done"
+			GOTO ENDOFSCRIPT
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.errorMsgFlg = "N"
+			CUST.INTERFACE.valAvailable = "N"
+			#CUST.INTERFACE.errorMsgDesc = "No NOTIFICATION setup done"
+			CUST.INTERFACE.errorMsgDesc = " "
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}	
+	ENDIF
+	CUST.INTERFACE.interfaceRequestID=CUST.UBP.paramVal
+	print(CUST.INTERFACE.interfaceRequestID)
+	#==============================================================================================================
+	#- Getting template Id from CPARAM
+	#Ex-MARA-VALIDATION - TEMPLATE_1
+	#==============================================================================================================
+	
+	CUST.UBP.getTempId=CUST.UBP.billerId+CUST.UBP.typOfVal
+	CUST.UBP.paramId=CUST.UBP.getTempId
+	print(CUST.UBP.getTempId)
+	call("ubpdp055.scr")
+	IF(CUST.UBP.cparamErrorFlg=="Y")THEN
+	#{
+		CUST.INTERFACE.errorMsgFlg = "Y"
+		#CUST.INTERFACE.errorMsgDesc = "Biller specific CPARAM setup not done."
+		CUST.UBP.errorCode = "UBP_ERR056"
+		CALL("ubpdp044.scr")
+		CUST.INTERFACE.errorMsgDesc =CUST.UBP.errorDesc
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.INTERFACE.tempId=CUST.UBP.paramVal
+	print(CUST.INTERFACE.tempId)
+	#==============================================================================================================
+	#- Fetching the request xml from table
+	#==============================================================================================================
+	BANCS.INPARAM.BINDVARS =CUST.INTERFACE.tempId
+	sv_s = "reqXml|"
+	sv_s = sv_s + " SELECT REQ_XML"
+	sv_s = sv_s + " FROM CUSTOM.CUBP_REMOTE_TEMPLATE_TBL"
+	sv_s = sv_s + " WHERE TEMPLATE_ID=?SVAR"
+	PRINT(sv_s)
+	#sv_d = urhk_dbSelectWithBind(sv_s)
+	sv_d = urhk_dbSelectLongWithBind(sv_s)
+	PRINT(sv_d)
+	IF(sv_d!=0)THEN
+	#{
+		CUST.INTERFACE.errorMsgFlg = "Y"
+		CUST.UBP.errorCode = "UBP_ERR057"
+		CALL("ubpdp044.scr")
+		CUST.INTERFACE.errorMsgDesc =CUST.UBP.errorDesc
+		#CUST.INTERFACE.errorMsgDesc = "XML not available in custom Remote table."
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	sv_x = BANCS.OUTPARAM.reqXml
+	print(sv_x)
+	#<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S='http://schemas.xmlsoap.org/soap/envelope/'><S:Header/><S:Body><ns2:getPaymentDetails xmlns:ns2='http://equitybank.ke.co/'><transactionRef>XXX</transactionRef>XXX<currency>XXX</currency></ns2:getPaymentDetails></S:Body></S:Envelope>
+	#==============================================================================================================
+	#- Getting the count of no.of req field parameter
+	#==============================================================================================================
+	BANCS.INPARAM.BINDVARS ="UBP"+"|"+BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_s = "noOfReqFld|"
+	sv_s = sv_s + " SELECT COUNT(7)"
+	sv_s = sv_s + " FROM CUSTOM.C_CPARAM_VALUE_TABLE"
+	sv_s = sv_s + " WHERE PARAMETER_ID LIKE '%" + CUST.UBP.billerId+"_"+CUST.UBP.typOfServ+"_"+CUST.UBP.getServiceName1+"_REQFLD_" + "%'"
+	sv_s = sv_s + " AND MODULE_NAME=?SVAR"
+	sv_s = sv_s + " AND BANK_ID=?SVAR"
+	PRINT(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	
+	PRINT(sv_d)
+	IF(sv_d!=0)THEN
+	#{
+		CUST.INTERFACE.errorMsgFlg = "Y"
+		#CUST.INTERFACE.errorMsgDesc = "Third party Processing failed"
+		CUST.UBP.errorCode = "UBP_ERR058"
+		CALL("ubpdp044.scr")
+		CUST.INTERFACE.errorMsgDesc =CUST.UBP.errorDesc
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.UBP.noOfReqFld = BANCS.OUTPARAM.noOfReqFld
+	PRINT(CUST.UBP.noOfReqFld)
+	sv_z=CUST.UBP.noOfReqFld
+	#==============================================================================================================
+	#- Getting the req xml name and value from CPARAM and appending the same in req xml
+	#==============================================================================================================
+	sv_v=1
+	CUST.UBP.noOfReqFld=CINT(CUST.UBP.noOfReqFld)+CINT("1")
+	print(CUST.UBP.noOfReqFld)
+	while(sv_v<CUST.UBP.noOfReqFld)
+	#{
+		
+		CUST.UBP.nameValue=CUST.UBP.billerId+"_"+CUST.UBP.typOfServ+"_"+CUST.UBP.getServiceName1+"_REQFLD_"+Format$(sv_v,"%d")
+		CUST.UBP.paramId=CUST.UBP.nameValue
+		call("ubpdp055.scr")
+		print(CUST.UBP.paramVal)
+		CUST.UBP.namValConc=CUST.UBP.paramVal
+		print(CUST.UBP.namValConc)
+		sv_z=strlen(CUST.UBP.namValConc)
+		sv_p = GETPOSITION(CUST.UBP.namValConc, "#")
+		print(sv_p)
+		sv_a = LEFT$(CUST.UBP.namValConc, sv_p - 1)
+		print(sv_a)
+		sv_g = RIGHT$(CUST.UBP.namValConc, sv_z-sv_p)
+		print(sv_g)
+		sv_y = "<"+sv_a+">"
+		sv_z = "</"+sv_a+">"
+		sv_b = GETPOSITION(sv_x, sv_y) + STRLEN(sv_y) - 1
+		sv_e = GETPOSITION(sv_x, sv_z) - 1
+		IF (GETPOSITION(sv_x, sv_y) != 0) THEN
+		#{
+			
+			sv_i = left$(sv_x,sv_b)
+			print(sv_i)
+			print(sv_b)
+			print(strlen(sv_x))
+			sv_k=right$(sv_x,(strlen(sv_x)-sv_b))
+			print(sv_k)
+			sv_m = ("CUST").("UBP").(sv_g)
+			print(sv_m)
+			sv_x=sv_i+sv_m
+			print(sv_x)
+			sv_k=ltrim(sv_k,'X')
+			print(sv_x)
+			sv_x=sv_x+sv_k
+			print(sv_x)
+		
+		#}
+		ELSE
+		#{
+			CUST.INTERFACE.errorMsgFlg = "Y"
+			#CUST.INTERFACE.errorMsgDesc = "Third party Processing failed"
+			CUST.UBP.errorCode = "UBP_ERR058"
+			CALL("ubpdp044.scr")
+			CUST.INTERFACE.errorMsgDesc =CUST.UBP.errorDesc
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		sv_v=sv_v+1
+		
+	#}	
+	do
+	CUST.INTERFACE.bodyXMLMsg=sv_x
+#}
+ENDIF
+#}
+ENDIF
+#	IF(CUST.UBP.billerId=="MARA")THEN
+	#{
+#		IF(CUST.INTERFACE.payUpdate=="N")THEN
+		#{
+#			
+#			CUST.INTERFACE.interfaceRequestID ="MaraGetDtl"
+#			CUST.INTERFACE.bodyXMLMsg = "<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S='http://schemas.xmlsoap.org/soap/envelope/'>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Header/>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Body>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<ns2:getPaymentDetails xmlns:ns2='http://equitybank.ke.co/'>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<transactionRef>"+CUST.UBP.billRefNum+"</transactionRef>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<currency>"+CUST.UBP.refCrncy+"</currency>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</ns2:getPaymentDetails>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Body>"
+#			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Envelope>"
+#			PRINT(CUST.INTERFACE.bodyXMLMsg)
+		#}
+#		ELSE
+		#{
+#			
+#			CUST.INTERFACE.interfaceRequestID = "MaraUpdateDtl"
+#			CUST.INTERFACE.bodyXMLMsg = "<transactionRef>"+CUST.INTERFACE.transactionRef+"</transactionRef>"
+#			PRINT(CUST.INTERFACE.bodyXMLMsg)
+		#}
+#		ENDIF
+	#}
+#	ENDIF
+
+NOTIFY_CALL:
+
+	###IF(CUST.UBP.billerId=="KRA")THEN
+	IF(FIELDEXISTS(CUST.UBP.billerValReq) == 1)THEN
+	#{
+	IF(CUST.UBP.billerValReq=="Y")THEN
+	#{
+		#IF(CUST.INTERFACE.goFlg=="Y")THEN
+		print(CUST.INTERFACE.FlgType)
+		#IF ((CUST.INTERFACE.FlgType=="VALIDATION") AND (CUST.UBP.userId=="FIVUSR54"))  THEN
+		IF (CUST.INTERFACE.FlgType=="VALIDATION") THEN
+
+			CUST.INTERFACE.FlgType="BUTTONCLICK"
+			print(CUST.INTERFACE.FlgType)
+		ENDIF
+		IF(CUST.INTERFACE.FlgType=="VALIDATION") THEN
+		#{
+			
+			
+			##CUST.INTERFACE.interfaceRequestID = "KRAGetBillerCode"
+			#CUST.INTERFACE.interfaceRequestID = "getBillerCode"
+			
+			#Added
+			#CUST.INTERFACE.bodyXMLMsg = "<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S='http://schemas.xmlsoap.org/soap/envelope/'>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Header/>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<ns2:getBillerCode xmlns:ns2='http://equitybank.ke.co/'>"
+			
+			#Added close
+			
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billAcctId>"+CUST.UBP.billAcctId+"</billAcctId>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</ns2:getBillerCode>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Envelope>"
+			#PRINT(CUST.INTERFACE.bodyXMLMsg)
+			#========================================
+			#Kra change
+			#========================================
+			CUST.INTERFACE.interfaceRequestID ="GetValidation"
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.interfaceRequestID + ":" +CUST.UBP.billerCode
+			IF(CUST.UBP.billerId == "2587")THEN
+                        #{
+                                IF (BANCS.STDIN.menuId=="HOCCM") THEN
+					print(BANCS.INPUT.retStrngValHid)
+					print(BANCS.INPUT.d1MRFreeText1_1)
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + BANCS.INPUT.retStrngValHid + "||" + BANCS.INPUT.d1MRFreeText1_1						
+					print(CUST.INTERFACE.bodyXMLMsg)
+				ELSE
+					CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.location + "||" + CUST.UBP.billRefNum
+					print(CUST.INTERFACE.bodyXMLMsg)
+				ENDIF
+                        #}
+                        ELSE
+                        #{
+                                CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billRefNum
+                        #}
+                        ENDIF
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billAmt
+		#}
+		ENDIF
+		
+		IF(CUST.INTERFACE.FlgType=="BUTTONCLICK")THEN
+		#{
+			
+			#CUST.INTERFACE.interfaceRequestID = "KRAGetValidationsObj"
+			#CUST.INTERFACE.interfaceRequestID = "getValidationsObj"
+			#Added
+			#CUST.INTERFACE.bodyXMLMsg = "<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S='http://schemas.xmlsoap.org/soap/envelope/'>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Header/>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<ns2:getValidationObj xmlns:ns2='http://equitybank.ke.co/'>"
+			
+			#Added close
+			
+			
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billRefNum>"+CUST.UBP.billRefNum+"</billRefNum>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billAmt>"+CUST.UBP.billAmt+"</billAmt>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billerCode>"+CUST.UBP.billAmt+"</billerCode>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</ns2:getValidationObj>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Envelope>"
+			#PRINT(CUST.INTERFACE.bodyXMLMsg)
+			#KRA CHANGE
+
+			IF((CUST.UBP.billerId == "ECITIZEN") OR (CUST.UBP.billerId == "ECITIZENUS") OR (CUST.UBP.billerId == "3020") OR (CUST.UBP.billerId == "1002") OR (CUST.UBP.billerId == "1003") OR (CUST.UBP.billerId == "ECITIZENUS") OR (CUST.UBP.billerId == "2872") OR (CUST.UBP.billerId == "2965") OR (CUST.UBP.billerId == "1348") OR (CUST.UBP.billerId == "14000") OR (CUST.UBP.billerId == "14001") OR (CUST.UBP.billerId == "14498") OR (CUST.UBP.billerId == "13999") OR (CUST.UBP.billerId == "13991") OR (CUST.UBP.billerId == "2519") OR (CUST.UBP.billerId == "13992") OR (CUST.UBP.billerId == "106") OR (CUST.UBP.billerId == "2048") OR (CUST.UBP.billerId == "0948") OR (CUST.UBP.billerId == "2745") OR (CUST.UBP.billerId == "KPA112") OR (CUST.UBP.billerId == "EUCLMISC") OR (CUST.UBP.billerId == "3003") OR (CUST.UBP.billerId == "3006") OR (CUST.UBP.billerId == "3015") OR (CUST.UBP.billerId == "EJOHEZA") OR (CUST.UBP.billerId == "CAPITALP") OR (CUST.UBP.billerId == "CAPITALP1") OR (CUST.UBP.billerId == "144111") OR (CUST.UBP.billerId == "EDUCARE") OR (CUST.UBP.billerId == "IREMBORWF"))THEN
+			#{
+				CUST.INTERFACE.interfaceRequestID = "getValidationObj"
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.interfaceRequestID = "getBillDetailsObj"		
+			#}
+			ENDIF
+			
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.interfaceRequestID + ":" + "12546"
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.interfaceRequestID + ":" +CUST.UBP.billerCode
+			IF(CUST.UBP.billerId == "2587")THEN
+			#{
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.location + "||" + CUST.UBP.billRefNum
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billRefNum		
+			#}
+			ENDIF
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billAmt 
+
+			PRINT(CUST.INTERFACE.bodyXMLMsg)
+			
+		#}
+		ENDIF
+		
+		IF(CUST.INTERFACE.FlgType=="NOTIFICATION")THEN
+		#{
+
+			#CUST.INTERFACE.interfaceRequestID = "KRAGetValidationsObj"
+			#CUST.INTERFACE.interfaceRequestID = "getValidationsObj"
+			#Added
+			#CUST.INTERFACE.bodyXMLMsg = "<?xml version='1.0' encoding='UTF-8'?><S:Envelope xmlns:S='http://schemas.xmlsoap.org/soap/envelope/'>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Header/>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<ns2:getValidationObj xmlns:ns2='http://equitybank.ke.co/'>"
+
+			#Added close
+
+
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billRefNum>"+CUST.UBP.billRefNum+"</billRefNum>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billAmt>"+CUST.UBP.billAmt+"</billAmt>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "<billerCode>"+CUST.UBP.billAmt+"</billerCode>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</ns2:getValidationObj>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Body>"
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + "</S:Envelope>"
+			#PRINT(CUST.INTERFACE.bodyXMLMsg)
+			#KRA CHANGE
+			
+			
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.interfaceRequestID + ":" +CUST.UBP.billerCode
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billRefNum
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billAmt 
+			
+			
+			CUST.INTERFACE.bodyXMLMsg =CUST.UBP.servName
+                        if((CUST.UBP.valType == "L") OR (CUST.UBP.valType == "N") OR (CUST.UBP.valType == "LR")) THEN
+                        #{
+				#Local validation biller
+                                CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + "Local," +CUST.UBP.billAcctId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billAmt
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billRefNum
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + "COR"
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.bankId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.mySolId
+                        #CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.userId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.instrmntNum
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.bankId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.userId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.payRefCrncy
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + "1"
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.mySolId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + MID$(CUST.UBP.tranDate,0,10)
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranId
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranPart
+			IF(CUST.UBP.tranRem == "")THEN
+			#{
+                        	CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + "Bill Pay"
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranRem
+			#}
+			ENDIF
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranSubType
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + MID$(CUST.UBP.tranDate,0,10)
+
+                        CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.userId
+                        PRINT(CUST.INTERFACE.bodyXMLMsg)
+
+                        #}
+                        ELSE
+                        #{
+                        
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billerCode+ ","+CUST.UBP.billAcctId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billAmt
+                        IF(CUST.UBP.billerId == "2587")THEN
+                        #{
+                                CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.location + "||" + CUST.UBP.billRefNum
+                        #}
+                        ELSE
+                        #{
+                                CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.billRefNum
+                        #}
+                        ENDIF
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.channelId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.bankId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + BANCS.STDIN.mySolId
+			#CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.userId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.instrmntNum
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.bankId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.createdBy
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.payRefCrncy
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.numOfPartTran
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.mySolId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + MID$(CUST.UBP.tranDate,0,10)
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranId
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranPart
+			if((CUST.UBP.billerId == "1225") OR (CUST.UBP.billerId == "1226") OR (CUST.UBP.billerId == "2587") )THEN
+			#{
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.name
+			#}
+			ELSE
+			#{
+				CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranRem
+			#}
+			ENDIF
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.tranSubType
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + MID$(CUST.UBP.valueDate,0,10)
+			
+			CUST.INTERFACE.bodyXMLMsg = CUST.INTERFACE.bodyXMLMsg + ":" + CUST.UBP.verifiedBy
+			PRINT(CUST.INTERFACE.bodyXMLMsg)
+			#}
+                        ENDIF
+
+
+		#}
+		ENDIF
+	#}
+	ENDIF
+	#}
+	ENDIF
+#	IF(CUST.UBP.billerId=="FDSA")THEN
+	#{
+#		
+#		CUST.INTERFACE.interfaceRequestID = "FDSAGetOrder"
+#		
+#		CUST.INTERFACE.bodyXMLMsg = "<paymentId>"+CUST.UBP.billRefNum+"</paymentId>"
+#		PRINT(CUST.INTERFACE.bodyXMLMsg)
+#		
+	#}
+#	ENDIF
+	ENDOFSCRIPT:
+		#TRACE OFF
+		EXITSCRIPT
+END-->

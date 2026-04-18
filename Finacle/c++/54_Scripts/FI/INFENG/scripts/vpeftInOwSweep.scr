@@ -1,0 +1,220 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : vpeftInOwSweep.scr 
+#  Description     : batch
+#  Date            : 23-11-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             23-11-2021      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+        sv_u = urhk_B2K_PrintRepos("BANCS")
+        print(sv_u)
+        if(repexists("EFTS")==0)then
+                createrep("EFTS")
+        endif
+        if(classexists("EFTS","GLBDATA")==0)then
+                createclass("EFTS","GLBDATA",5)
+        endif
+        sv_r = urhk_MTTS_Close("")
+        print(sv_r)
+        BANCS.INPARAM.PostTranFlg               = "Y"
+        BANCS.INPARAM.CommitFlg                 = "Y"
+        BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+        BANCS.INPARAM.ValidationFlag            = "Y"
+        BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+        BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+        BANCS.INPARAM.CheckExceptions           = "N"
+        sv_u = urhk_MTTS_Initialize("")
+        print(sv_u)
+        if(sv_u != 0 )then
+                goto EndScr
+        endif
+        sv_r = repexists("MTT")
+        if(sv_r == 0)then
+                createrep("MTT")
+        endif
+        sv_r = classexists("MTT","TranDetails")
+        if(sv_r == 0)then
+                createclass("MTT","TranDetails",5)
+        endif
+        MTT.TranDetails.TranDate="0"
+        MTT.TranDetails.TranType = "T"
+        MTT.TranDetails.TranSubType = "BI"
+        MTT.TranDetails.IgnoreExcp = "I"
+        MTT.TranDetails.Consolidate = "Y"
+        MTT.TranDetails.Remarks = "EFT In/Ow Sweep" 
+        MTT.TranDetails.ValidationFlag = "Y"
+        MTT.TranDetails.PostTranFlg = "Y"
+        MTT.TranDetails.CheckExceptions = "Y"
+        MTT.TranDetails.PostFlag        = "Y"
+        MTT.TranDetails.CommitFlg       = "Y"
+        sv_u = urhk_MTTS_DefineTransaction("eftdrcrsweep")
+        print(sv_u)
+        if(sv_u != 0 ) then
+                GOTO EndScr
+        endif
+        EFTS.GLBDATA.srvErrCode = ""
+        EFTS.GLBDATA.srvErrMsg = ""
+        EFTS.GLBDATA.srvSucFail = ""
+	lv_q = "drAcid,CrDrType,TranAmt,TranRmks | select acid,part_tran_type,sum(tran_amt),tran_rmks "
+	lv_q = lv_q + " from tbaadm.dtd where bank_id=?SVAR " 
+	lv_q = lv_q + " and acid in (select acid from tbaadm.gam where bank_id=?SVAR "
+	lv_q = lv_q + " and bacid in ('VERDRMIRROR','VERCRMIRROR','VERINMIRROR','VERMIRROR') and entity_cre_flg='Y' and del_flg='N' and acct_cls_flg<>'Y' "
+	lv_q = lv_q + " and sol_id in (select set_id from tbaadm.sst where bank_id=?SVAR and sol_id=?SVAR and del_flg='N')) "
+	lv_q = lv_q + " and tran_date=to_date(?SVAR,'DD-MM-RRRR') "
+	###lv_q = lv_q + " and tran_date in ('23-nov-2021','24-nov-2021') "
+	lv_q = lv_q + " and part_tran_type='C' "
+	lv_q = lv_q + " and pstd_flg='Y' and del_flg='N' "
+	lv_q = lv_q + " group by acid,part_tran_type,tran_rmks "
+	lv_q = lv_q + " order by tran_rmks "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.mySolId + "|" +   mid$(BANCS.STDIN.BODDate,0,10) 
+	##BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId 
+	print(lv_q)
+	print(BANCS.INPARAM.BINDVARS)
+        sv_u = urhk_dbCursorOpenWithBind(lv_q)
+        if(sv_u==0)then
+                EFTS.GLBDATA.dtdCurNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+        else
+                EFTS.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EFTS.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EFTS.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        EFTS.GLBDATA.ddaRec = 0
+        sv_z = urhk_dbCursorFetch(EFTS.GLBDATA.dtdCurNum)
+        if(sv_z!=0)then
+                EFTS.GLBDATA.srvErrCode = BANCS.OUTPARAM.DB_ERRCODE
+                EFTS.GLBDATA.srvErrMsg = BANCS.OUTPARAM.DB_ERRMSG
+                EFTS.GLBDATA.srvSucFail = "F"
+                goto Endofscript
+        endif
+        print(sv_z)
+        while(sv_z ==0)
+        ##{
+		EFTS.GLBDATA.drAcid = BANCS.OUTPARAM.drAcid
+		EFTS.GLBDATA.CrDrType = BANCS.OUTPARAM.CrDrType
+		EFTS.GLBDATA.TranAmt = BANCS.OUTPARAM.TranAmt
+		EFTS.GLBDATA.TranRmks = BANCS.OUTPARAM.TranRmks
+		print(EFTS.GLBDATA.drAcid)
+		print(EFTS.GLBDATA.CrDrType)
+		print(EFTS.GLBDATA.TranAmt)
+		print(EFTS.GLBDATA.TranRmks)
+		print(right$(EFTS.GLBDATA.TranRmks,2))
+		EFTS.GLBDATA.inouttype = right$(EFTS.GLBDATA.TranRmks,2)
+		print(EFTS.GLBDATA.inouttype)
+		lv_l = strlen(EFTS.GLBDATA.TranRmks)
+		lv_l = lv_l-2
+		print(left$(EFTS.GLBDATA.TranRmks,lv_l))
+		EFTS.GLBDATA.insuNum = left$(EFTS.GLBDATA.TranRmks,lv_l) 
+		print(EFTS.GLBDATA.insuNum)
+		lv_i = "crAcctNum | select acct_number from custom.cust_eftinow_tbl where bank_id=?SVAR and org_code=?SVAR and in_out_ind=?SVAR and del_flg='N' and entity_cre_flg='Y' " 
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + EFTS.GLBDATA.insuNum + "|" + EFTS.GLBDATA.inouttype
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_i)
+		lv_p = urhk_dbSelectWithBind(lv_i)
+		if(lv_p==0)then
+			EFTS.GLBDATA.crAcctId = BANCS.OUTPARAM.crAcctNum
+		else
+			EFTS.GLBDATA.crAcctId = ""
+		endif
+		print(EFTS.GLBDATA.crAcctId)
+		sv_u = urhk_B2k_AcidToForacid(EFTS.GLBDATA.drAcid)
+                print(sv_u)
+                if(sv_u == 0)then
+			EFTS.GLBDATA.drAcctId = BANCS.OUTPARAM.Foracid
+			print(EFTS.GLBDATA.drAcctId)
+                endif
+		if((EFTS.GLBDATA.drAcctId!="")and(EFTS.GLBDATA.crAcctId!="")and(cdouble(EFTS.GLBDATA.TranAmt)>0))then
+                MTT.PartTranDetails.Account = EFTS.GLBDATA.drAcctId 
+                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                MTT.PartTranDetails.ValueDateDiff = "0"
+                MTT.PartTranDetails.ValueDate   =  "0"
+		MTT.PartTranDetails.Particulars =  "Dr:" + EFTS.GLBDATA.insuNum + "/" + EFTS.GLBDATA.inouttype 
+                MTT.PartTranDetails.RefAmount = -1*cdouble(EFTS.GLBDATA.TranAmt)
+                print(MTT.PartTranDetails.RefAmount)
+                MTT.PartTranDetails.Remarks = ""
+                MTT.PartTranDetails.RefNum = EFTS.GLBDATA.insuNum 
+                MTT.PartTranDetails.IgnoreExcp = "I"
+                MTT.PartTranDetails.Consolidate = "Y"
+                MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+                print(MTT.PartTranDetails.TranIdentifier)
+                sv_e = "PurchaseIncome"
+                sv_r = urhk_MTTS_definePartTran(sv_e)
+                print(sv_r)
+                if (sv_r != 0) then
+                        BANCS.OUTPUT.successOrFailure = "F"
+                        print(MTT.Error.Description)
+                        MTT.Error.Description="Could not Create Part tran for collection of WTH"
+                        sv_r = urhk_MTTS_ReportErrorCondition("")
+                        print(sv_r)
+                        sv_r = BANCS.OUTPARAM.MTTErrorDesc
+                        print(sv_r)
+                        GOTO EndScr
+                endif
+                MTT.PartTranDetails.Account = EFTS.GLBDATA.crAcctId 
+                MTT.PartTranDetails.RefCurrency = BANCS.STDIN.homeCrncyCode
+                MTT.PartTranDetails.ValueDateDiff = "0"
+                MTT.PartTranDetails.ValueDate     =  "0"
+		MTT.PartTranDetails.Particulars =  "Cr:"+EFTS.GLBDATA.insuNum + "/" + EFTS.GLBDATA.inouttype 
+                MTT.PartTranDetails.RefAmount = 1 * cdouble(EFTS.GLBDATA.TranAmt)
+                print(MTT.PartTranDetails.RefAmount)
+                MTT.PartTranDetails.Remarks = ""
+                MTT.PartTranDetails.RefNum = EFTS.GLBDATA.insuNum 
+                MTT.PartTranDetails.IgnoreExcp = "I"
+                MTT.PartTranDetails.Consolidate = "Y"
+                MTT.PartTranDetails.TranIdentifier = "eftdrcrsweep"
+
+
+                sv_r = urhk_MTTS_definePartTran("eftdrcrsweep")
+                if (sv_r == 1) then
+                        EFTS.GLBDATA.expErrMsg = "Unable to define part-tran."
+                        goto EndScr
+                endif
+                sv_u = urhk_MTTS_EndDefinition("")
+                print(sv_u)
+                EFTS.GLBDATA.TranId = BANCS.OUTPARAM.MTTTranId
+                print(EFTS.GLBDATA.TranId)
+
+                print(MTT.XCPN.NumExceptions)
+		print(MTT.XCPN.NumWarnings)
+                if((MTT.XCPN.NumExceptions >= 1) or (MTT.XCPN.NumWarnings >= 1)) then
+                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                        if (sv_u != 0) then
+                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                print (MTT.Error.Description)
+                        endif
+                else
+                        sv_u = urhk_MTTS_HandleExceptions("POST")
+                        if (sv_u != 0) then
+                                sv_r = urhk_MTTS_ReportErrorCondition("")
+                                print (MTT.Error.Description)
+                        endif
+                endif
+			
+		else
+			goto NXTREC
+		endif
+		NXTREC:
+                sv_u = urhk_dbCursorFetch(EFTS.GLBDATA.dtdCurNum)
+                print(sv_u)
+                if(sv_u!=0)then
+                        print("fetch failed")
+                        sv_u = urhk_dbCursorClose(EFTS.GLBDATA.dtdCurNum)
+                        print(sv_u)
+                        EFTS.GLBDATA.srvErrMsg =  "lara Cursor Fetch Failed"
+                        EFTS.GLBDATA.srvErrCode = "DBCursor"
+                        EFTS.GLBDATA.srvSucFail = "F"
+                        goto Endofscript
+                endif
+                EFTS.GLBDATA.ddaRec = cint(EFTS.GLBDATA.ddaRec) + 1
+                EFTS.GLBDATA.recmsg    = "VVVVVVVVVVVVVVVVV Processing Record Num: VVVVVVVVVVVVVVVV  " + EFTS.GLBDATA.ddaRec
+                print(EFTS.GLBDATA.recmsg)
+        ##}vploop Ends
+        do
+        sv_u = urhk_dbCursorClose(EFTS.GLBDATA.dtdCurNum)
+        print(sv_u)
+trace off
+end-->

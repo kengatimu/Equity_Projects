@@ -1,0 +1,222 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : ebcouplmn001.scr 
+#  Description     :
+#  Date            : 30-03-2021
+#  Author          : Vino Palani
+#  Menu Option     : NA
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             30-03-2021      Vino Palani          Original Version
+#-----------------------------------------------------------------------------------------------
+<--start
+trace on
+	LIBNAME CUSTOMSO
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+	if(repexists("CUST")==0)then
+		createrep("CUST")
+	endif
+	if(classexists("CUST","GLBDATA")==0)then
+		createclass("CUST","GLBDATA",5)
+	endif
+	CUST.GLBDATA.fileName = BANCS.INPUT.FileName
+	CUST.GLBDATA.uplModuleTy = BANCS.INPUT.uplModuleTy 
+	CUST.GLBDATA.Function   =       BANCS.INPUT.funcCode
+	if(CUST.GLBDATA.Function=="U")then
+	#######{
+		#+++++++++++++++++++++++++43 AML Upload Starts
+		if((CUST.GLBDATA.uplModuleTy=="AML43")or(CUST.GLBDATA.uplModuleTy=="BL43"))then
+			call("ebCamlUpl.scr")
+			exitscript
+		endif
+		if((CUST.GLBDATA.uplModuleTy=="OFAC-SDN")or(CUST.GLBDATA.uplModuleTy=="OFAC-ADD")or(CUST.GLBDATA.uplModuleTy=="OFAC-ALT"))then
+			call("ebofacUpl.scr")
+			exitscript
+		endif
+		#+++++++++++++++++++++++++43 AML Upload Ends
+		if((CUST.GLBDATA.uplModuleTy=="MCGL")or(CUST.GLBDATA.uplModuleTy=="MCDD")or(CUST.GLBDATA.uplModuleTy=="MCFA"))then
+			call("ebMasterCardRecov.scr")
+			exitscript
+		endif
+	sv_d = "moduleId,batchIDD|select substr(upl_batch_id,1,3),upl_batch_id "
+	sv_d = sv_d + " from custom.fir_tbl where bank_id=?SVAR "
+	sv_d = sv_d + " and rcre_user_id=?SVAR  "
+	sv_d = sv_d + " and substr(upl_batch_id,1,3) = ?SVAR " 	
+	sv_d = sv_d + " and trim(rcre_time) =to_date(?SVAR,'DD-MM-RR') and rownum<=1 and del_flg<>'Y' "
+	print(sv_d)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.userId + "|" + CUST.GLBDATA.uplModuleTy + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+	sv_u = urhk_dbSelectWithBind(sv_d)
+	if(sv_u==0)then
+		CUST.GLBDATA.moduleId = BANCS.OUTPARAM.moduleId
+		CUST.GLBDATA.batchIDD = BANCS.OUTPARAM.batchIDD
+	else
+		CUST.GLBDATA.moduleId = ""
+		CUST.GLBDATA.batchIDD = ""
+	endif
+	if(CUST.GLBDATA.uplModuleTy==CUST.GLBDATA.moduleId)then
+                sv_e = "File Already Exists for the module upload with different user "
+                sv_m = "fileName"
+                CUST.GLBDATA.errMsg = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+                print(CUST.GLBDATA.errMsg)
+                goto FAILURE
+	endif
+	sv_u = urhk_getEnv("USER_PASS")
+	if(sv_u == 0)then
+		print(BANCS.OUTPARAM.envValue)
+		CUST.GLBDATA.cuserpass = BANCS.OUTPARAM.envValue
+	else
+		CUST.GLBDATA.cuserpass = ""
+	endif
+	sv_u = urhk_getEnv("CTL_PATH")
+	if(sv_u == 0)then
+		print(BANCS.OUTPARAM.envValue)
+		CUST.GLBDATA.ctlPth = BANCS.OUTPARAM.envValue
+	else
+		CUST.GLBDATA.ctlPth = ""
+	endif
+	sv_u = urhk_getEnv("DATA_PATH")
+	if(sv_u == 0)then
+		print(BANCS.OUTPARAM.envValue)
+		CUST.GLBDATA.datPth = BANCS.OUTPARAM.envValue
+	else
+		CUST.GLBDATA.datPth = ""
+	endif
+	sv_a = urhk_getEnv("ONS_LOG_DIR")
+	if(sv_u == 0)then
+		print(BANCS.OUTPARAM.envValue)
+		CUST.GLBDATA.OnsPth = BANCS.OUTPARAM.envValue
+	else
+		CUST.GLBDATA.OnsPth = ""
+	endif
+	CUST.GLBDATA.fileLoc = CUST.GLBDATA.datPth +""+BANCS.STDIN.userId + "/" + CUST.GLBDATA.fileName 
+	print(CUST.GLBDATA.fileLoc)
+#to get file name
+        sv_s = "fileName1 |"
+        sv_s = sv_s + " select substr('"+ CUST.GLBDATA.fileName +"',instr('"+ CUST.GLBDATA.fileName +"' ,'\',-1)+1) "
+        sv_s = sv_s + " from dual "
+        print(sv_s)
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        print(sv_d)
+        if (sv_d == 0) then
+        #{
+                CUST.GLBDATA.fileName1 = BANCS.OUTPARAM.fileName1
+                CUST.GLBDATA.ufileName1 = BANCS.OUTPARAM.fileName1
+                print(CUST.GLBDATA.fileName1)
+        else
+                sv_e = "File is Missing"
+                sv_m = "fileName"
+                CUST.GLBDATA.errMsg = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+                print(CUST.GLBDATA.errMsg)
+                goto FAILURE
+        #}
+        endif
+#extensions(.csv)
+        print(CUST.GLBDATA.fileName1)
+        sv_b = "."
+        sv_c = getposition(CUST.GLBDATA.fileName1, sv_b)
+        print(sv_c)
+        if (sv_c!=CINT("0")) then
+                sv_z = STRLEN(CUST.GLBDATA.fileName1)
+                print(sv_z)
+                sv_e = MID$(CUST.GLBDATA.fileName1,sv_c,sv_z)
+                print(sv_e)
+                CUST.GLBDATA.extn = sv_e
+                print(CUST.GLBDATA.extn)
+        endif
+	print(CUST.GLBDATA.extn)
+        if((CUST.GLBDATA.extn == "csv") OR (CUST.GLBDATA.extn == "CSV")) then
+                print("extensions of filename is correct")
+        else
+                sv_e = "Sorry.., Please enter only csv extension file for uploading"
+                sv_m = "fileName"
+                CUST.GLBDATA.errMsg  = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+                print(CUST.GLBDATA.errMsg)
+                goto FAILURE
+        endif
+#Read file
+        print(CUST.GLBDATA.fileName1)
+	print(CUST.GLBDATA.fileLoc)
+	sv_l = strlen(CUST.GLBDATA.fileName1)
+	sv_f = mid$(CUST.GLBDATA.fileName1,0,sv_l)
+	sv_p = getposition(sv_f,".")
+	CUST.GLBDATA.WithOutExtn = mid$(sv_f,0,(sv_p-1))
+	CUST.GLBDATA.fileLoc = CUST.GLBDATA.datPth +""+BANCS.STDIN.userId + "/" + CUST.GLBDATA.WithOutExtn + ".csv" 
+	print(CUST.GLBDATA.fileLoc)
+        sv_o = urtn_fileOpen(CUST.GLBDATA.fileLoc + "|r")
+        print(sv_o)
+
+        if (sv_o == 0) then
+                sv_d = "batchId | select to_char(sysdate,'ddmmyyyyhhmiss') from dual "
+                sv_u = urhk_dbSelectWithBind(sv_d)
+                if(sv_u==0)then
+                        CUST.GLBDATA.batchId = BANCS.OUTPARAM.batchId
+                        if(CUST.GLBDATA.uplModuleTy=="FIN")then
+                                CUST.GLBDATA.batchId = "FINRECON_" + CUST.GLBDATA.batchId
+                        endif
+                        if(CUST.GLBDATA.uplModuleTy=="MFS")then
+                                CUST.GLBDATA.batchId = "MFSRECON_" + CUST.GLBDATA.batchId
+                        endif
+                        if(CUST.GLBDATA.uplModuleTy=="SAF")then
+                                CUST.GLBDATA.batchId = "SAFRECON_" + CUST.GLBDATA.batchId
+                        endif
+                else
+                        CUST.GLBDATA.batchId = "FINRECON_"
+                endif
+                sv_o = urtn_fileClose(sv_o)
+		sv_e = "nohup babx4061 $B2K_SESSION_ID  ebcouplM.scr " + CUST.GLBDATA.ctlPth + " " + CUST.GLBDATA.fileLoc + " " +CUST.GLBDATA.cuserpass + " " + CUST.GLBDATA.batchId +" " +CUST.GLBDATA.uplModuleTy+ " @s &"
+                sv_a = system(sv_e)
+                print(sv_a)
+                sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+                print(sv_z)
+                sv_z = "RESULT_MSG|Upload Process Initiated Successfully !Batch Id " + CUST.GLBDATA.batchId
+                print(sv_z)
+                sv_u = urhk_SetOrbOut(sv_z)
+                print(sv_u)
+                goto ENDOFSCRIPT
+        else
+                sv_e = "File is Missing"
+                sv_m = "fileName"
+                CUST.GLBDATA.errMsg = "Error_1|ERROR:^"+ sv_e +".^"+ sv_m +""
+                print(CUST.GLBDATA.errMsg)
+                goto FAILURE
+        endif
+	#######}
+	endif
+	if(CUST.GLBDATA.Function=="R")then
+	#{
+	sv_a = urhk_getEnv("ONS_LOG_DIR")
+	if(sv_u == 0)then
+		print(BANCS.OUTPARAM.envValue)
+		BANCS.INPUT.OnsPth = BANCS.OUTPARAM.envValue
+	else
+		BANCS.INPUT.OnsPth = ""
+	endif
+	BANCS.INPUT.fileLoc = BANCS.INPUT.OnsPth +"/"+BANCS.STDIN.userId + "/" 
+	print(BANCS.INPUT.fileLoc)
+	sv_e = "nohup babx4061 $B2K_SESSION_ID  ebcouplM.scr " + BANCS.INPUT.fileLoc + " " + BANCS.INPUT.funcCode+ " " + BANCS.INPUT.funcCode + " " + BANCS.INPUT.funcCode + " " + BANCS.INPUT.funcCode + " @s &"
+	sv_a = system(sv_e)
+	print(sv_a)
+	sv_z = urhk_SetOrbOut("SuccessOrFailure|Y")
+	print(sv_z)
+	sv_z = "RESULT_MSG|Report Generated Successfully !Visit HPR After Few Minutes" 
+	sv_u = urhk_SetOrbOut(sv_z)
+	print(sv_u)
+	exitscript
+	#}
+	endif
+FAILURE:
+        sv_z = "SuccessOrFailure|N"
+        print(sv_z)
+        sv_u = urhk_SetOrbOut(sv_z)
+        print(sv_u)
+        sv_z = CUST.GLBDATA.errMsg
+        print(sv_z)
+        sv_u = urhk_SetOrbOut(sv_z)
+        print(sv_u)
+ENDOFSCRIPT:
+        exitscript
+
+
+	
+trace off
+end-->

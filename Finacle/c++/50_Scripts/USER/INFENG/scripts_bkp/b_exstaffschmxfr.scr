@@ -1,0 +1,141 @@
+<--start
+ TRACE ON
+
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	#}
+	ENDIF
+	
+	sv_o=BANCS.STDIN.BODDate
+	print(sv_o)
+
+	sv_b = BANCS.STDIN.mySolId
+	print(sv_b)
+
+		sv_a="foracid,empid | select a.foracid, emp_id  from custom.int_change a , tbaadm.gam " 
+		sv_a=sv_a +" where gam.foracid=a.foracid "
+		sv_a=sv_a +" and gam.entity_cre_flg='Y' "
+		sv_a=sv_a +" and a.entity_cre_flg='STF' "
+		sv_a=sv_a +" and gam.bank_id=a.bank_id "
+		sv_a=sv_a +" and acct_cls_flg='N' "
+		sv_a=sv_a +" and a.bank_id=?SVAR "
+		sv_a=sv_a +" and schm_code='SB190'  "
+		print (sv_a)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+	
+		sv_e = urhk_dbCursorOpenWithBind(sv_a)
+
+		IF(sv_e==0) THEN
+		#{
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+		
+			IF(sv_q == 1) THEN
+			#{
+				sv_x = urhk_dbCursorClose(sv_m)
+				print(sv_x)
+				exitscript
+			#}
+			ENDIF
+			print(sv_q)
+
+			WHILE (sv_q==0)
+
+				CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.foracid
+				print(CUSTS.GLBDATA.foracid)
+				CUSTS.GLBDATA.empid=BANCS.OUTPARAM.empid
+				print(CUSTS.GLBDATA.empid)
+
+				sv_z = urhk_B2k_ForacidToAcid(CUSTS.GLBDATA.foracid)
+				if(sv_z==0)then
+					CUSTS.GLBDATA.acid = BANCS.OUTPARAM.Acid
+					print (CUSTS.GLBDATA.acid)
+				endif
+				
+
+				sv_a=" acctcrncy, schmcode | select acct_crncy_code, schm_code from tbaadm.gam where "
+				sv_a=sv_a + " foracid=?SVAR and bank_id=?SVAR "
+				print(sv_a)
+				BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid +"|" + BANCS.STDIN.contextBankId
+				print (BANCS.INPARAM.BINDVARS)
+				sv_e = urhk_dbSelectWithBind(sv_a)
+				
+					if (sv_e==0) then
+						CUSTS.GLBDATA.acctcrncy=BANCS.OUTPARAM.acctcrncy
+						CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+						print(CUSTS.GLBDATA.acctcrncy)
+						print(CUSTS.GLBDATA.schmcode)
+						CUSTS.GLBDATA.trgtschmcode="SB100"
+
+						sv_a=urhk_SetUrhkInp("xferAcct.foracid|" + CUSTS.GLBDATA.foracid)
+						sv_a=urhk_SetUrhkInp("xferAcct.crncyCode|" + CUSTS.GLBDATA.acctcrncy)
+						sv_a=urhk_SetUrhkInp("sourceSchm.schmCode|" + CUSTS.GLBDATA.schmcode)
+						sv_a=urhk_SetUrhkInp("targetSchm.schmCode|" + CUSTS.GLBDATA.trgtschmcode)
+						sv_u = urhk_ExecSrv("SRV_XferAcctBtwnSchmsAndVerify|retain_all_output = Y|same_user_verify = Y")
+
+						print(sv_u)
+
+							if (sv_u==0) then
+								print("success")
+								sv_s = "UPDATE CUSTOM.INT_CHANGE "
+								sv_s = sv_s + " SET INT_CHANGE.entity_cre_flg = 'EXSTF',"
+								sv_s = sv_s + " INT_CHANGE.acct_opn_date= SYSDATE"
+								sv_s = sv_s + " WHERE INT_CHANGE.foracid= ?SVAR"
+								sv_s = sv_s + " AND INT_CHANGE.bank_id = ?SVAR"
+								print(sv_s)
+								BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+								print(BANCS.INPARAM.BINDVARS)
+								sv_d = urhk_dbSQLWithBind(sv_s)
+									if  (sv_d == 0) then
+										sv_c = urhk_dbSQLWithBind("commit")
+										print(sv_c)
+													
+									endif
+							endif
+										
+									
+							
+					endiF
+
+			if (sv_u != 0) then
+				if (FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) then
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+				else
+					sv_v = 0
+				endif
+					if (sv_v > 0) then
+						sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>scheme_code_change.log")
+						sv_i = 1
+						while (sv_i <= sv_v)
+							sv_f = FORMAT$(sv_i,"%d")
+							sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+							sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+							sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+							print(sv_e)
+							sv_i = sv_i + 1
+							sv_u = system("echo '"+sv_e+"' >>scheme_code_change.log")
+							print(sv_u)
+						do
+					endif
+			endif
+			sv_q = urhk_dbCursorFetch(sv_m)
+			print(sv_q)
+		do
+		print("scheme code change done")
+	endif
+	
+	trace on
+	exitscript
+end-->

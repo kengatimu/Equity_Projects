@@ -1,0 +1,233 @@
+<--START
+TRACE ON
+
+        sv_r = REPEXISTS("CUST")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATEREP ("CUST")
+        #}
+        ENDIF
+
+        sv_r = CLASSEXISTS("CUST","DATA")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","DATA",5)
+        #}
+        ENDIF
+        sv_r = CLASSEXISTS("CUST","RATE")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","RATE",5)
+        #}
+        ENDIF
+        sv_r = CLASSEXISTS("CUST","GCHRG")
+
+        IF(sv_r == 0) THEN
+        #{
+                CREATECLASS ("CUST","GCHRG",5)
+        #}
+        ENDIF
+
+        CUST.DATA.errFlg = "N"
+        CUST.DATA.errMsg = " "
+        CUST.DATA.acctNum = " "
+        CUST.DATA.newprefInt = "0"
+        CUST.DATA.oldprefInt = "0"
+	CUST.DATA.chnlprefInt = "0"
+        CUST.DATA.chrgCrncy = " "
+        CUST.DATA.chrgAmt = " "
+        CUST.DATA.vatAmt = " "
+        CUST.DATA.acid = " "
+        CUST.DATA.crncyCode = " "
+	CUST.DATA.schmCode = " "
+	CUST.DATA.tranAmt = "0"
+
+        IF(FIELDEXISTS(BANCS.INPUT.acctNum))THEN
+        #{
+                IF(BANCS.INPUT.acctNum !="")THEN
+                #{
+                        CUST.DATA.acctNum = TOUPPER(TRIM(BANCS.INPUT.acctNum))
+                        PRINT(CUST.DATA.acctNum)
+                #}
+                ELSE
+                #{
+                        CUST.DATA.errFlg = "Y"
+                        CUST.DATA.errMsg = "Account Number not entered"
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = "Account Number not entered"
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        sv_s = "chrgAmt,chrgCrncy,vatAmt|SELECT CHRG_AMT,CHRG_CRNCY_CODE,VAT_AMT FROM CUSTOM.SANLIM_TRAN WHERE ODACCT_NUM= ?SVAR AND "
+        sv_s = sv_s +"CHRG_INIT_MENU=?SVAR AND POST_FLG='N' AND BANK_ID=?SVAR"
+        BANCS.INPARAM.BINDVARS = CUST.DATA.acctNum +"|"+ BANCS.STDIN.menuId +"|"+ BANCS.STDIN.contextBankId
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.DATA.crncyCode = BANCS.OUTPARAM.chrgCrncy
+                CUST.DATA.chrgAmt = BANCS.OUTPARAM.chrgAmt
+                CUST.DATA.vatAmt = BANCS.OUTPARAM.vatAmt
+                PRINT(CUST.DATA.crncyCode)
+                PRINT(CUST.DATA.chrgAmt)
+                PRINT(CUST.DATA.vatAmt)
+        #}
+	ELSE
+	#{
+                CUST.DATA.errFlg = "N"
+                CUST.DATA.errMsg = " "
+                GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+
+        sv_s = "intDrAccnt|SELECT FORACID FROM TBAADM.GAC,TBAADM.GAM WHERE GAC.BANK_ID=?SVAR AND GAM.ACID=GAC.INT_DR_ACID AND GAM.BANK_ID=GAC.BANK_ID AND "
+        sv_s = sv_s + "GAC.ACID=(SELECT ACID FROM TBAADM.GAM WHERE BANK_ID=?SVAR AND FORACID=?SVAR)"
+        BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+        PRINT(sv_s)
+        PRINT(BANCS.INPARAM.BINDVARS)
+
+        sv_d = urhk_dbSelectWithBind(sv_s)
+        PRINT(sv_d)
+
+        IF(sv_d == 0)THEN
+        #{
+                CUST.DATA.intDrAccnt = BANCS.OUTPARAM.intDrAccnt
+        #}
+        ELSE
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "Interest Debit account not mapped to :"+CUST.DATA.acctNum
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        sv_u = urhk_getAcctDetailsInRepository(CUST.DATA.intDrAccnt)
+
+        IF(sv_u == "0")THEN
+        #{
+                CUST.DATA.avlblAmt = BANCS.OUTPARAM.EffAvailableAmt
+                PRINT(CUST.DATA.avlblAmt)
+                CUST.DATA.intCrncy = BANCS.OUTPARAM.acctCrncyCode
+                PRINT(CUST.DATA.intCrncy)
+        #}
+        ELSE
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "Interest Debit account not mapped to :"+CUST.DATA.acctNum
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        CUST.DATA.totalAmt = CDOUBLE(CUST.DATA.chrgAmt) + CDOUBLE(CUST.DATA.vatAmt)
+        PRINT(CUST.DATA.totalAmt)
+
+        IF(CUST.DATA.intCrncy != CUST.DATA.crncyCode)THEN
+        #{
+                CUST.RATE.acctCrncy = CUST.DATA.crncyCode
+                CUST.RATE.refCrncy = CUST.DATA.intCrncy
+                CUST.RATE.TranType = "T"
+                CALL("fetchRateCode.scr")
+                IF(CUST.RATE.errorFlg != "Y")THEN
+                #{
+                        CUST.DATA.rateCode      =       CUST.RATE.rateCode
+                        CUST.DATA.rate          =       CUST.RATE.rate
+                #}
+                ENDIF
+
+                PRINT(CUST.DATA.totalAmt)
+                BANCS.INPARAM.InputAmount  = CUST.DATA.totalAmt
+                BANCS.INPARAM.FromCurrency = CUST.DATA.crncyCode
+                BANCS.INPARAM.ToCurrency   = CUST.DATA.intCrncy
+                BANCS.INPARAM.RateCode     = CUST.DATA.rateCode
+                BANCS.INPARAM.Rate         = CDOUBLE("0.0")
+                #----------------------------------------------------------------------
+                #Convert The Uncollected Amount Into AED for Storing Into Custom Table
+                #----------------------------------------------------------------------
+                lv_f = urhk_B2k_ConvertAmount("")
+                IF(lv_f == 0)THEN
+                #{
+                        CUST.DATA.totalAmt = BANCS.OUTPARAM.OutputAmount
+                        PRINT(CUST.DATA.totalAmt)
+                #}
+                ENDIF
+        #}
+        ENDIF
+
+        IF(CDOUBLE(CUST.DATA.totalAmt) > CDOUBLE(CUST.DATA.avlblAmt))THEN
+        #{
+                 CUST.DATA.errFlg = "Y"
+                 CUST.DATA.errMsg = "No sufficient balance to collect Charge and VAT, Modification not allowed"
+                 GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+        CUST.GCHRG.drAcctId                     = CUST.DATA.intDrAccnt
+        CUST.GCHRG.acctCrncyCode                = CUST.DATA.crncyCode
+        CUST.GCHRG.eventId                      = "INTSAN"
+        CUST.GCHRG.chrgAmt                      = CUST.DATA.tranAmt + "|" + CUST.DATA.crncyCode
+        CUST.GCHRG.tranType                     = "T"
+        CUST.GCHRG.tranSubType                  = "CI"
+
+        CALL("gchrgcommon.scr")
+        IF(CUST.GCHRG.successOrFailure == "S") THEN
+        #{
+                PRINT(CUST.GCHRG.chargeTranId)
+                sv_s = "UPDATE CUSTOM.SANLIM_TRAN SET TRAN_ID=?SVAR,TRAN_AMT=?SVAR,TRAN_DATE=sysdate,CHRG_REASON=?SVAR,POST_FLG='Y' WHERE BANK_ID=?SVAR AND ODACCT_NUM=?SVAR "
+                sv_s = sv_s + "AND TRAN_ID is null"
+
+                BANCS.INPARAM.BINDVARS= CUST.GCHRG.chargeTranId +"|"+ CUST.DATA.tranAmt +"|"+ CUST.DATA.remarks +"|"+ BANCS.STDIN.contextBankId +"|"+ CUST.DATA.acctNum
+                PRINT(sv_s)
+                PRINT(BANCS.INPARAM.BINDVARS)
+                sv_q = urhk_dbSQLWithBind(sv_s)
+                PRINT(sv_q)
+                IF(sv_q != 0)THEN
+                #{
+
+                        CUST.DATA.errFlg = "N"
+                        CUST.DATA.errMsg = "Table update failed"
+                #}
+                ENDIF
+
+        #}
+        ELSE
+        #{
+                CUST.DATA.errFlg = "Y"
+                PRINT(BANCS.OUTPARAM.calcAmt)
+                CUST.DATA.calcAmt = BANCS.OUTPARAM.calcAmt
+                IF(CDOUBLE(BANCS.OUTPARAM.calcAmt) == CDOUBLE("0.00"))THEN
+                #{
+                        CUST.DATA.errFlg = "N"
+                        CUST.DATA.errMsg =" "
+                        GOTO ENDOFSCRIPT
+                #}
+                ENDIF
+
+                CUST.DATA.errFlg = "Y"
+                CUST.DATA.errMsg = CUST.GCHRG.gchrgErrMsg
+                GOTO ENDOFSCRIPT
+        #}
+        ENDIF
+
+ENDOFSCRIPT:
+
+        sv_u = urhk_SetOrbOut("errFlg|"+CUST.DATA.errFlg)
+        sv_u = urhk_SetOrbOut("errMsg|"+CUST.DATA.errMsg)
+
+TRACE OFF
+END-->
+

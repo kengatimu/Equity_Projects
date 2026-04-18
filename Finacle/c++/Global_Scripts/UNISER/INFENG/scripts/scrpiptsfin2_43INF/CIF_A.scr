@@ -1,0 +1,202 @@
+#-------------------------------------------------------------------------------------
+#    Name				: CIF_A.scr
+#    Description     	: This script will be fetching the details of the account
+#						: coming from FI and send the output to FI.
+#    Date            	: 18-01-2013
+#    Author          	: Gokulkrishna
+#    Input           	: NA
+#    Output				: NA
+#    Called Script		: NA
+#    Calling Script		: NA
+#    Menu Option		: NA
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0			18-01-2013		Gokul	 		Original Version
+#-------------------------------------------------------------------------------------
+
+<--START
+CHECKSUM="be4cfd091011bb09b3149f4f4683a72b8371e3a56b38cb572b4229f1c3f95963"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#       Creating New Repository AND Class
+	#------------------------------------------------------------------------------
+	
+	IF(REPEXISTS("EQUITY") == 0) THEN
+	#{
+		CREATEREP("EQUITY")
+	#}
+	ENDIF
+	
+	IF(CLASSEXISTS("EQUITY","CIF") == 0) THEN
+	#{
+		CREATECLASS("EQUITY","CIF", 5)
+	#}
+	ENDIF
+	PRINT(BANCS.INPUT.foracid)
+	#------------------------------------------------------------------------------
+	# Check whether the mandatory  (foracid) field Exists
+	#------------------------------------------------------------------------------
+	IF (FIELDEXISTS(BANCS.INPUT.foracid) == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		BANCS.OUTPUT.Name = "acct no. Field is Mandatory"
+		sv_a = BANCS.OUTPUT.Name
+		sv_u = urhk_SetOrbOut("Error|" +sv_a)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Receive the values FROM  FI
+	#------------------------------------------------------------------------------
+	EQUITY.CIF.foracid = TRIM(BANCS.INPUT.foracid)
+	EQUITY.CIF.ErrMessage = ""
+	
+	#------------------------------------------------------------------------------
+	# Checking the length of the foracid
+	#------------------------------------------------------------------------------
+	
+	sv_a = STRLEN(TRIM(EQUITY.CIF.foracid))
+	PRINT(sv_a)
+	
+	IF (sv_a == 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		EQUITY.CIF.ErrMessage = "foracid is mandatory"
+		sv_a = EQUITY.CIF.ErrMessage
+		sv_u = urhk_SetOrbOut("Error|" +sv_a)
+		GOTO ENDOFSCRIPT
+		#}
+	ELSE
+		#{
+		
+		#------------------------------------------------------------------------------
+		# Validating the foracid
+		#------------------------------------------------------------------------------
+		IF(EQUITY.CIF.foracid != "") THEN
+		#{
+			sv_s = "foracid|SELECT foracid "
+			sv_s = sv_s + "FROM TBAADM.GAM "
+			sv_s = sv_s + "WHERE foracid = ?SVAR "
+			sv_s = sv_s + "AND entity_cre_flg = 'Y' "
+			sv_s = sv_s + "AND del_flg = 'N' "
+			sv_s = sv_s + "AND acct_cls_flg = 'N' "
+			sv_s = sv_s + "AND bank_id = ?SVAR"
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = EQUITY.CIF.foracid + "|" + BANCS.STDIN.contextBankId
+			PRINT(BANCS.INPARAM.BINDVARS)
+			PRINT(sv_s)
+			sv_u = urhk_dbselectWithBind(sv_s)
+			PRINT(sv_u)
+			
+			IF(sv_u != 0) THEN
+			#{
+				BANCS.OUTPUT.successOrFailure = "F"
+				EQUITY.CIF.ErrMessage = "Enter valid foracid"
+				sv_a = EQUITY.CIF.ErrMessage
+				sv_u = urhk_SetOrbOut("Error|" +sv_a)
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+		#}
+		ENDIF
+		
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	#  Getting the details FROM GAM,AAS,SMT,CAM
+	#------------------------------------------------------------------------------
+	sv_s = "foracid,clrbal,cust_id,mode_of_oper_code,unclrbal,sanlim,lienamt,drwpow,eab,accstat,nmakey,accpoa|SELECT "
+	sv_s = sv_s + "GAM.foracid,GAM.clr_bal_amt,GAM.cust_id,GAM.mode_of_oper_code,(gam.un_clr_bal_amt + gam.future_un_clr_bal_amt),GAM.sanct_lim,GAM.lien_amt,GAM.drwng_power, "
+	sv_s = sv_s + "(LEAST(GAM.sanct_lim,GAM.drwng_power) + GAM.clr_bal_amt), "
+	sv_s = sv_s + "NVL((SELECT DECODE(acct_status,'D','Y','N') FROM TBAADM.SMT WHERE SMT.acid = GAM.acid AND SMT.bank_id = GAM.bank_id), "
+	sv_s = sv_s + "(SELECT DECODE(acct_status,'D','Y','N') FROM TBAADM.CAM WHERE CAM.acid = GAM.acid AND CAM.bank_id = GAM.bank_id)), "
+	sv_s = sv_s + "nma_key_type, "
+	sv_s = sv_s + "acct_poa_as_name "
+	sv_s = sv_s + "FROM TBAADM.GAM,TBAADM.AAS "
+	sv_s = sv_s + "WHERE GAM.entity_cre_flg = 'Y' "
+	sv_s = sv_s + "AND GAM.del_flg = 'N' "
+	sv_s = sv_s + "AND GAM.acct_cls_flg = 'N' "
+	sv_s = sv_s + "AND AAS.acct_poa_as_rec_type = 'M' "
+	sv_s = sv_s + "AND AAS.bank_id = GAM.bank_id "
+	sv_s = sv_s + "AND AAS.acid = GAM.acid "
+	sv_s = sv_s + "AND GAM.foracid = ?SVAR "
+	sv_s = sv_s + "AND GAM.bank_id = ?SVAR"
+	
+	BANCS.INPARAM.BINDVARS = EQUITY.CIF.foracid + "|" + BANCS.STDIN.contextBankId
+	PRINT(BANCS.INPARAM.BINDVARS)
+	PRINT(sv_s)
+	
+	#------------------------------------------------------------------------------
+	# Getting values using cursor
+	#------------------------------------------------------------------------------
+	sv_c = urhk_dbCursorOpenWithBind(sv_s)
+	IF (sv_c == 1) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_a = "DB Error Cursor open Failed"
+		sv_u = urhk_SetOrbOut("Error|" +sv_a)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	EQUITY.CIF.mainCursorNum = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	PRINT(EQUITY.CIF.mainCursorNum)
+	EQUITY.CIF.count1 = 1
+	sv_c = urhk_dbCursorFetch(EQUITY.CIF.mainCursorNum)
+	
+	WHILE (sv_c == 0)
+	#{
+		#------------------------------------------------------------------------------
+		# Getting the account details of the records fetched FROM GAM,AAS,SMT,CAM
+		#------------------------------------------------------------------------------
+		EQUITY.CIF.clrbal 			 = BANCS.OUTPARAM.clrbal
+		EQUITY.CIF.mode_of_oper_code = BANCS.OUTPARAM.mode_of_oper_code
+		EQUITY.CIF.unclrbal 		 = BANCS.OUTPARAM.unclrbal
+		EQUITY.CIF.accpoa 			 = BANCS.OUTPARAM.accpoa
+		EQUITY.CIF.lienamt 			 = BANCS.OUTPARAM.lienamt
+		EQUITY.CIF.accstat 			 = BANCS.OUTPARAM.accstat
+		EQUITY.CIF.foracid 			 = BANCS.OUTPARAM.foracid
+		
+		sv_u = urhk_SetOrbOut(" Record No_" + EQUITY.CIF.count1 + "|" + EQUITY.CIF.count1)
+		PRINT(sv_u)
+		sv_b = urhk_SetOrbOut(" Clearbalance_" + EQUITY.CIF.count1+"| " + EQUITY.CIF.clrbal)
+		sv_b = urhk_SetOrbOut(" mode_of_oper_code_" + EQUITY.CIF.count1 + "| " + EQUITY.CIF.mode_of_oper_code)
+		sv_b = urhk_SetOrbOut(" UnClearBalance_" + EQUITY.CIF.count1 + "| " + EQUITY.CIF.unclrbal)
+		sv_b = urhk_SetOrbOut(" AccPoa_" + EQUITY.CIF.count1 + "|" + EQUITY.CIF.accpoa)
+		sv_b = urhk_SetOrbOut(" LienAmt_" + EQUITY.CIF.count1 + "|" + EQUITY.CIF.lienamt)
+		sv_b = urhk_SetOrbOut(" Dormant_" + EQUITY.CIF.count1 + "|" + EQUITY.CIF.accstat)
+		sv_b = urhk_SetOrbOut(" Foracid_" + EQUITY.CIF.count1 + "| " + EQUITY.CIF.foracid)
+		
+		sv_u = urhk_getAcctDetailsInRepository(EQUITY.CIF.foracid)
+		PRINT(sv_u)
+		
+		IF (sv_u == 0) THEN
+		#{
+			EQUITY.CIF.EffAvailableAmt = CINT(BANCS.OUTPARAM.EffAvailableAmt)
+			PRINT(EQUITY.CIF.EffAvailableAmt)
+		#}
+		ENDIF
+		
+		sv_b = urhk_SetOrbOut(" effAvblAmt_" + EQUITY.CIF.count1+"| " + EQUITY.CIF.EffAvailableAmt)
+		
+		EQUITY.CIF.count1 = CINT(EQUITY.CIF.count1) + 1
+		PRINT(EQUITY.CIF.count1)
+		
+		#------------------------------------------------------------------------------
+		# To fetch the next record
+		#------------------------------------------------------------------------------
+		sv_c = urhk_dbCursorFetch(EQUITY.CIF.mainCursorNum)
+		
+	#}
+	DO
+	sv_c = urhk_dbCursorClose(EQUITY.CIF.mainCursorNum)
+	PRINT(sv_c)
+	
+	ENDOFSCRIPT:
+		TRACE OFF
+		EXITSCRIPT
+END-->

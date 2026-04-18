@@ -1,0 +1,466 @@
+#------------------------------------------------------------------------------------------------
+#  Name            : b_fcydepositcharge.scr
+#  Description     : This script will call a batchjob for charging usd accounts
+#  Date            : 10-o6-2017
+#  Author          : Timothy Karemeri
+#  Input           : NA
+#  Output          : NA
+#  Called Script   : NA
+#  Calling Script  : getcparamvalue.scr
+#  Menu Option     :  (Batch Job)
+#  Srl. No         Date            Author               Description.
+#  -------         ------          ------               ------------
+#  1.0             10-o6-2017      Timothy Karemeri		Original Version
+#  1.1             03-10-2020      Irungu James			Lien for Unfunded Accounts
+#-----------------------------------------------------------------------------------------------
+<--START
+TRACE ON
+
+#------------------------------------------------------------------------------
+#Creating repository and class
+#------------------------------------------------------------------------------
+IF (REPEXISTS("CUST") == 0) THEN
+#{
+	CREATEREP("CUST")
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","HTMDC") == 0) THEN
+#{
+	CREATECLASS("CUST","HTMDC",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("CUST","GCHRG")==0) THEN
+#{
+	CREATECLASS("CUST","GCHRG",5)
+#}
+ENDIF
+
+#------------------------------------------------------------------------------
+#Initialisig required repository variables 
+#------------------------------------------------------------------------------
+CUST.HTMDC.errMsg = ""
+CUST.HTMDC.CrncyCode="USD"
+CUST.HTMDC.CrncyCode1="KES"
+CUST.HTMDC.CrncyCode2="EUR"
+CUST.HTMDC.CrncyCode3="GBP"
+CUST.HTMDC.date=MID$(BANCS.STDIN.BODDate,0,10)
+#------------------------------------------------------------------------------
+BANCS.INPUT.moduleName = "CHARGE"
+BANCS.INPUT.parameterId = "FXEVENTID"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.HTMDC.fxEventId = BANCS.OUTPUT.parameterVal
+        PRINT(CUST.HTMDC.fxEventId)
+#}
+ELSE
+#{
+    CUST.HTMDC.errMsg = "Cparam set up not done for FXEVENTID"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "CHARGE"
+BANCS.INPUT.parameterId = "FXCAPLIMIT"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.HTMDC.fxcaplimit = BANCS.OUTPUT.parameterVal
+        PRINT(CUST.HTMDC.fxcaplimit)
+#}
+ELSE
+#{
+    CUST.HTMDC.errMsg = "Cparam set up not done for FXCAPLIMIT"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "CHARGE"
+BANCS.INPUT.parameterId = "FXCAPLIMIT1"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.HTMDC.fxcaplimit1 = BANCS.OUTPUT.parameterVal
+        PRINT(CUST.HTMDC.fxcaplimit1)
+#}
+ELSE
+#{
+    CUST.HTMDC.errMsg = "Cparam set up not done for FXCAPLIMIT1"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "CHARGE"
+BANCS.INPUT.parameterId = "FXCAPCHARGE"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.HTMDC.chargePercent = BANCS.OUTPUT.parameterVal
+        PRINT(CUST.HTMDC.chargePercent)
+#}
+ELSE
+#{
+    CUST.HTMDC.errMsg = "Cparam set up not done for FXCAPCHARGE"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+BANCS.INPUT.moduleName = "CHARGE"
+BANCS.INPUT.parameterId = "MINCHARGE"
+CALL ("getcparamvalue.scr")
+PRINT(BANCS.OUTPUT.parameterVal)
+
+IF (BANCS.OUTPUT.parameterVal != "")THEN
+#{
+        CUST.HTMDC.usd_chargeamt = BANCS.OUTPUT.parameterVal
+        PRINT(CUST.HTMDC.usd_chargeamt)
+#}
+ELSE
+#{
+    CUST.HTMDC.errMsg = "Cparam set up not done for MINCHARGE"
+    GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+sv_s = " euroRate,gbpRate,kesRate,usdRate|"
+sv_s = sv_s + "select EUR as CRNCY_EUR,GBP as CRNCY_GBP,KES as CRNCY_KES,USD as CRNCY_USD from "
+sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE = ?SVAR THEN  VAR_CRNCY_UNITS END )EUR "
+sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR  "
+sv_s = sv_s + "AND VAR_CRNCY_CODE = ?SVAR AND RATECODE = 'TTB' AND bank_id = ?SVAR)a, "
+sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE = ?SVAR THEN  VAR_CRNCY_UNITS END )GBP "
+sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR " 
+sv_s = sv_s + "AND VAR_CRNCY_CODE = ?SVAR AND RATECODE = 'TTB' "
+sv_s = sv_s + "AND bank_id = ?SVAR)b, "
+sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE =?SVAR THEN  VAR_CRNCY_UNITS END )KES "
+sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR  "
+sv_s = sv_s + "AND VAR_CRNCY_CODE = ?SVAR AND RATECODE = 'TTB' "
+sv_s = sv_s + "AND bank_id = ?SVAR)c, "
+sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE = ?SVAR THEN  VAR_CRNCY_UNITS END )USD "
+sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR " 
+sv_s = sv_s + "AND VAR_CRNCY_CODE = ?SVAR AND RATECODE = 'TTB' "
+sv_s = sv_s + "AND bank_id = ?SVAR)d "
+sv_s = sv_s + "WHERE a.BANK_ID = b.BANK_ID "
+sv_s = sv_s + "and a.BANK_ID = c.BANK_ID "
+sv_s = sv_s + "and a.BANK_ID = d.BANK_ID "
+print (sv_s)
+BANCS.INPARAM.BINDVARS = CUST.HTMDC.CrncyCode2 + "|" + CUST.HTMDC.CrncyCode2 + "|" + BANCS.STDIN.homeCrncyCode + "|" + BANCS.STDIN.contextBankId
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.HTMDC.CrncyCode3 + "|" + CUST.HTMDC.CrncyCode3 + "|" + BANCS.STDIN.homeCrncyCode+ "|" + BANCS.STDIN.contextBankId
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.HTMDC.CrncyCode1 + "|" + CUST.HTMDC.CrncyCode1 + "|" + BANCS.STDIN.homeCrncyCode+ "|" + BANCS.STDIN.contextBankId
+BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + CUST.HTMDC.CrncyCode + "|" + CUST.HTMDC.CrncyCode + "|" + BANCS.STDIN.homeCrncyCode+ "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbSelectWithBind(sv_s)
+
+IF (sv_d == 0) THEN
+#{
+	CUST.HTMDC.euroRate = BANCS.OUTPARAM.euroRate 
+	PRINT(CUST.HTMDC.euroRate)
+	CUST.HTMDC.gbpRate = BANCS.OUTPARAM.gbpRate 
+	PRINT(CUST.HTMDC.gbpRate)
+	CUST.HTMDC.kesRate = BANCS.OUTPARAM.kesRate 
+	PRINT(CUST.HTMDC.kesRate)
+	CUST.HTMDC.usdRate = BANCS.OUTPARAM.usdRate 
+	PRINT(CUST.HTMDC.usdRate)
+#}
+ENDIF
+
+sv_q="foracid,currCode,amount,schmCode|"
+sv_q = sv_q + " select  foracid,acct_crncy_code,sum (tran_amt),schm_code from tbaadm.gam, tbaadm.dtd where gam.acid = dtd.acid "
+sv_q = sv_q + " and dtd.bank_id = gam.bank_id and dtd.del_flg ='N' and dtd.bank_id= ?SVAR and gam.bank_id= ?SVAR "
+#sv_q = sv_q + " and dtd.DTH_INIT_SOL_ID= ?SVAR and tran_sub_type ='NR' and PART_TRAN_TYPE='C' "
+sv_q = sv_q + " and tran_date= to_date(?SVAR,'DD-MM-YYYY HH24:MI:SS') and dtd.DTH_INIT_SOL_ID= ?SVAR and tran_sub_type ='NR' and PART_TRAN_TYPE='C' "
+sv_q = sv_q + " and gam.acct_ownership!='O' and tran_crncy_code in ('USD','KES','EUR','GBP') group by foracid,acct_crncy_code, schm_code"
+print(sv_q)
+BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.BODDate
+#BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.contextBankId 
+BANCS.INPARAM.BINDVARS=BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.mySolId
+print(BANCS.INPARAM.BINDVARS)
+sv_d = urhk_dbCursorOpenWithBind(sv_q)
+print(sv_d)
+
+IF (sv_d==0) then
+#{
+	CUST.HTMDC.DbcursorNumber = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+	sv_k = urhk_dbCursorFetch(CUST.HTMDC.DbcursorNumber)
+	print(sv_k)
+
+	WHILE (sv_k == 0)
+	#{
+
+		CUST.HTMDC.foracid	= BANCS.OUTPARAM.foracid
+		CUST.HTMDC.amount	= BANCS.OUTPARAM.amount
+		CUST.HTMDC.CrncyCode	= BANCS.OUTPARAM.currCode
+		CUST.HTMDC.schmCode	= BANCS.OUTPARAM.schmCode
+		
+		print(CUST.HTMDC.CrncyCode)
+		print(CUST.HTMDC.foracid)
+		print(CUST.HTMDC.amount)
+		print(CUST.HTMDC.fxcaplimit)
+		
+		IF (CUST.HTMDC.CrncyCode == "KES")THEN
+		CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.fxcaplimit1) 
+		print(CUST.HTMDC.diffAmt)
+		CUST.HTMDC.Rate = CUST.HTMDC.kesRate
+		print(CUST.HTMDC.Rate)
+		ENDIF
+		
+		IF (CUST.HTMDC.CrncyCode == "USD")THEN
+		#{
+			IF ((CUST.HTMDC.schmCode =="SB188") OR (CUST.HTMDC.schmCode =="CA288")OR (CUST.HTMDC.schmCode =="CA286")) THEN
+			#{
+			CUST.HTMDC.spfxcaplimit="10000"
+			CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.spfxcaplimit) 
+			print(CUST.HTMDC.diffAmt)
+			#}
+			ELSE
+			#{
+				IF (CUST.HTMDC.foracid=="1037200812249") THEN
+				#{
+				CUST.HTMDC.spfxcaplimit="15000"
+				CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.spfxcaplimit) 
+				print(CUST.HTMDC.diffAmt)
+				#}
+				ELSE
+				#{
+				CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.fxcaplimit) 
+				print(CUST.HTMDC.diffAmt)
+				#}
+				ENDIF
+			#}
+			ENDIF
+
+		CUST.HTMDC.Rate = CUST.HTMDC.usdRate
+		print(CUST.HTMDC.Rate)
+		#}
+		ENDIF
+
+		IF (CUST.HTMDC.CrncyCode == "EUR")THEN
+		CUST.HTMDC.fxcaplimit2 = "0"
+		CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.fxcaplimit2) 
+		print(CUST.HTMDC.diffAmt)
+		CUST.HTMDC.Rate = CUST.HTMDC.euroRate
+		print(CUST.HTMDC.Rate)
+		ENDIF
+
+		IF (CUST.HTMDC.CrncyCode == "GBP")THEN
+		CUST.HTMDC.fxcaplimit2 = "0"
+		CUST.HTMDC.diffAmt = CDOUBLE(CUST.HTMDC.amount) - CDOUBLE(CUST.HTMDC.fxcaplimit2) 
+		print(CUST.HTMDC.diffAmt)
+		CUST.HTMDC.Rate = CUST.HTMDC.gbpRate
+		print(CUST.HTMDC.Rate)
+		ENDIF
+		
+		IF ((CUST.HTMDC.CrncyCode == "KES") OR (CUST.HTMDC.CrncyCode == "USD")) THEN 
+		#{
+			IF (CUST.HTMDC.diffAmt > 0) THEN
+			#{
+			BANCS.INPARAM.InputAmount  = CUST.HTMDC.diffAmt
+			BANCS.INPARAM.CurrencyCode = CUST.HTMDC.CrncyCode
+				IF (CUST.HTMDC.CrncyCode != BANCS.STDIN.homeCrncyCode) THEN
+				#{
+					BANCS.INPARAM.AmountTableCode = "CDFCY"
+					PRINT(BANCS.INPARAM.AmountTableCode)				
+				#}
+				ENDIF
+
+				sv_u = urhk_B2k_GetASTMAmount("")
+				IF (sv_u == 1) THEN
+				#{
+					CUST.HTMDC.errMsg = "CDFCY setup is available not available for currency " + CUST.HTMDC.CrncyCode
+					sv_u = urhk_SRV_SetErr(CUST.HTMDC.errMsg)
+					print(sv_u)
+					GOTO ENDOFSCRIPT			
+				#}
+				ELSE
+				#{
+					CUST.HTMDC.chargeamt = BANCS.OUTPARAM.OutputAmount
+					PRINT(CUST.HTMDC.chargeamt)
+									
+				#}
+				ENDIF
+			#}
+			ELSE
+			#{
+
+			CUST.HTMDC.chargeamt = "0"
+			PRINT(CUST.HTMDC.chargeamt)
+
+			#}
+			ENDIF
+		
+
+		#}
+		ENDIF
+		
+		IF ((CUST.HTMDC.CrncyCode == "EUR") OR (CUST.HTMDC.CrncyCode == "GBP"))THEN
+		#{	
+			sv_s = " usdToEuro,usdToGbp|"
+			sv_s = sv_s + "select EUR as CRNCY_EUR,GBP as CRNCY_GBP from "
+			sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE ='EUR' "
+			sv_s = sv_s + "THEN  VAR_CRNCY_UNITS END )EUR "
+			sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE = ?SVAR  "
+			sv_s = sv_s + "AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'TTB' "
+			sv_s = sv_s + "AND FXD_CRNCY_CODE = 'EUR' AND bank_id = '56')a, "
+			sv_s = sv_s + "(SELECT BANK_ID,(case when FXD_CRNCY_CODE ='GBP' "
+			sv_s = sv_s + "THEN  VAR_CRNCY_UNITS END )GBP "
+			sv_s = sv_s + "FROM TBAADM.RTL WHERE FXD_CRNCY_CODE= ?SVAR "
+			sv_s = sv_s + "AND VAR_CRNCY_CODE = 'USD' AND RATECODE = 'TTB' "
+			sv_s = sv_s + "AND FXD_CRNCY_CODE = 'GBP'AND bank_id = '56')b "
+			sv_s = sv_s + "WHERE a.bank_id = b.bank_id "
+			print (sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.HTMDC.CrncyCode2 + "|" + CUST.HTMDC.CrncyCode3 
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+
+			IF (sv_d == 0) THEN
+			#{
+				CUST.HTMDC.usdToEuro = BANCS.OUTPARAM.usdToEuro 
+				PRINT(CUST.HTMDC.usdToEuro)
+				CUST.HTMDC.usdToGbp = BANCS.OUTPARAM.usdToGbp 
+				PRINT(CUST.HTMDC.usdToGbp)
+			#}
+			ENDIF
+			IF (CUST.HTMDC.CrncyCode == "EUR")THEN
+			#{
+			CUST.HTMDC.minCharge = cdouble(CUST.HTMDC.usd_chargeamt) / cdouble(CUST.HTMDC.usdToEuro) 
+			print(CUST.HTMDC.minCharge)
+			CUST.HTMDC.chargeamt1 =  CDOUBLE(CUST.HTMDC.chargePercent) * CDOUBLE(CUST.HTMDC.amount)
+			PRINT(CUST.HTMDC.chargeamt1)
+			#}
+			ENDIF
+			IF (CUST.HTMDC.CrncyCode == "GBP")THEN
+			#{
+			CUST.HTMDC.minCharge = cdouble(CUST.HTMDC.usd_chargeamt) / cdouble(CUST.HTMDC.usdToGbp)
+			print(CUST.HTMDC.minCharge)
+			CUST.HTMDC.chargeamt1 = CDOUBLE(CUST.HTMDC.chargePercent) * CDOUBLE(CUST.HTMDC.amount)
+			PRINT(CUST.HTMDC.chargeamt1)
+			#}
+			ENDIF
+
+			IF (cdouble(CUST.HTMDC.chargeamt1) < cdouble(CUST.HTMDC.minCharge)) THEN
+			#{
+				CUST.HTMDC.chargeamt = CUST.HTMDC.minCharge
+				PRINT(CUST.HTMDC.chargeamt)
+			ELSE
+				CUST.HTMDC.chargeamt = CUST.HTMDC.chargeamt1
+				PRINT(CUST.HTMDC.chargeamt)
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		CUST.HTMDC.chargeamt = CDOUBLE(CUST.HTMDC.chargeamt) * CDOUBLE(CUST.HTMDC.Rate)
+		PRINT(CUST.HTMDC.chargeamt)
+
+		IF (CUST.HTMDC.foracid=="1033200738936") THEN
+
+		CUST.HTMDC.chargeamt="0"
+
+		ENDIF
+
+		IF (CUST.HTMDC.foracid=="1039201817637") THEN
+
+		CUST.HTMDC.chargeamt="0"
+
+		ENDIF
+
+
+		IF (CUST.HTMDC.foracid=="1036200650958") THEN
+
+			IF (CUST.HTMDC.amount<="50000") THEN
+
+			CUST.HTMDC.chargeamt="0"
+			
+			ENDIF
+
+
+		ENDIF
+
+		IF (CUST.HTMDC.foracid=="1036200789423") THEN
+
+			CUST.HTMDC.chargePercent1 = "0.0015"
+			CUST.HTMDC.chargeamt=CDOUBLE(CUST.HTMDC.chargePercent1) * CDOUBLE(CUST.HTMDC.diffAmt)* CDOUBLE(CUST.HTMDC.Rate)
+			print(CUST.HTMDC.chargeamt)
+			
+		ENDIF
+
+
+		IF (CDOUBLE(CUST.HTMDC.chargeamt) != 0) THEN
+		#{
+
+			#------------------------------------------------------------------
+			#  Calling gcharge common services for charge collection
+			#------------------------------------------------------------------
+			CUST.GCHRG.drAcctId		= CUST.HTMDC.foracid
+			CUST.GCHRG.acctCrncyCode	= BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.eventId		= CUST.HTMDC.fxEventId
+			CUST.GCHRG.chrgAmt		= CUST.HTMDC.chargeamt + "|" + BANCS.STDIN.homeCrncyCode
+			CUST.GCHRG.tranType		= "T"
+			CUST.GCHRG.tranSubType		= "BI"
+
+			CALL("gchrgcommon.scr")
+
+			IF(CUST.GCHRG.successOrFailure == "S") THEN
+			#{
+				print(CUST.GCHRG.tranId)
+			#}
+			ELSE
+			#{
+				CUST.HTMDC.errMsg = CUST.GCHRG.gchrgErrMsg
+				
+				IF(CLASSEXISTS("CUST","DATA")==0) THEN
+					CREATECLASS("CUST","DATA",5)
+				ENDIF
+
+					CUST.DATA.foracid = CUST.HTMDC.foracid
+					CUST.DATA.amt = CUST.HTMDC.chargeamt
+					CUST.DATA.EventID = CUST.HTMDC.fxEventId
+					CUST.DATA.RateCode  = "TTB"
+					CUST.DATA.lienRemarks = "Fx Deposit Charge"	
+				CALL("AutoLienMain.scr")
+
+
+				GOTO ENDOFSCRIPT1
+			#}
+			ENDIF
+		#}
+		ENDIF
+
+		
+		ENDOFSCRIPT1:
+		IF(CUST.HTMDC.errMsg != "") THEN
+		#{
+		    sv_u = system("echo '"+CUST.HTMDC.errMsg+"' >>charge.log")
+		#}
+		ENDIF
+		
+		sv_k = urhk_dbCursorFetch(CUST.HTMDC.DbcursorNumber)
+		print(sv_k)
+
+	#}
+	DO
+
+	sv_c = urhk_dbCursorClose(CUST.HTMDC.DbcursorNumber)
+	print(sv_c)
+#}
+ENDIF
+
+
+ENDOFSCRIPT:
+IF(CUST.HTMDC.errMsg != "") THEN
+#{
+    sv_u = system("echo '"+CUST.HTMDC.errMsg+"' >>charge.log")
+#}
+ENDIF
+
+EXITSCRIPT
+END-->

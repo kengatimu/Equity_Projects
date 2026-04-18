@@ -1,0 +1,172 @@
+#=============================================================================================
+#	ubp_biller_limit.scr
+#	This script gets the CUBP biller limits from the cparam table
+#	xx-xx-2025
+#	C.M
+#=============================================================================================
+
+<--start
+trace on
+
+	#---------------------------------
+	# Rep and Class Creation
+	#---------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	IF(CLASSEXISTS("CUST","DATA") == 0)THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	IF(CLASSEXISTS("CUST","RATE") == 0)THEN
+	#{
+		CREATECLASS("CUST","RATE",5)
+	#}
+	ENDIF
+
+	sv_r = urhk_B2k_PrintRepos("BANCS")
+	
+	#---------------------------------
+	# Variable Initialization
+	#---------------------------------
+	CUST.DATA.errFlg = "N"
+	CUST.DATA.errMsg = "null"
+	CUST.DATA.limitCheck = ""
+
+	#CUST.DATA.billerId = "AIRTUSDGAG"
+	#CUST.DATA.billerCrncy = "USD"
+	#CUST.DATA.billerAmt = "1000000000"
+	#CUST.DATA.refCrncy = "CDF"
+		
+	CUST.DATA.billerId = BANCS.INPUT.billerId
+	CUST.DATA.billerCrncy = BANCS.INPUT.billerCrncy
+	CUST.DATA.billerAmt = TRIM(BANCS.INPUT.billerAmt)
+	CUST.DATA.refCrncy = BANCS.INPUT.refCrncy
+	CUST.DATA.billerLimit = ""
+
+	PRINT(CUST.DATA.billerId)
+	PRINT(CUST.DATA.billerCrncy)
+	PRINT(CUST.DATA.billerAmt)
+	CUST.DATA.billerAmt_org = CUST.DATA.billerAmt
+	PRINT(CUST.DATA.billerAmt_org)
+	PRINT(CUST.DATA.refCrncy)
+	
+	IF((CUST.DATA.billerAmt < 0) OR (CUST.DATA.billerAmt == ""))THEN
+	#{
+		GOTO FINISH
+	#}
+	ENDIF
+	
+	#----
+	# Fetch limit from CPARAM 
+	#---
+	BANCS.INPUT.moduleName  = "UBP"
+	BANCS.INPUT.parameterId = CUST.DATA.billerId + "_LIMIT"
+	
+	PRINT(BANCS.INPUT.moduleName)
+	PRINT(BANCS.INPUT.parameterId)
+	
+	CALL("getcparamvalue.scr")
+	PRINT(BANCS.OUTPUT.parameterVal)
+	IF(BANCS.OUTPUT.parameterVal != "")THEN
+	#{
+		CUST.DATA.billerLimit = BANCS.OUTPUT.parameterVal
+		PRINT(CUST.DATA.billerLimit)
+	#}
+	ELSE
+	#{
+		#CUST.DATA.errFlg = "Y"
+		#CUST.DATA.errMsg = "Biller limit setup not done in CPARAM"
+		#GOTO FINISH
+	#}
+	ENDIF
+	
+	IF(CUST.DATA.billerCrncy != CUST.DATA.refCrncy)THEN
+	#{
+		#----
+		# Convert the bill amount to the billerCrncy
+		#---
+		CUST.DATA.billerAmt = CUST.DATA.billerAmt
+		CUST.RATE.acctCrncy = CUST.DATA.refCrncy
+		CUST.RATE.refCrncy = CUST.DATA.billerCrncy
+		CUST.RATE.TranType = "T"
+		CALL("fetchRateCode.scr")
+
+		IF(CUST.RATE.errorFlg != "Y")THEN
+		#{
+			BANCS.INPARAM.InputAmount = CUST.DATA.billerAmt
+			BANCS.INPARAM.FromCurrency = CUST.RATE.acctCrncy
+			BANCS.INPARAM.ToCurrency = CUST.RATE.refCrncy
+			BANCS.INPARAM.RateCode = CUST.RATE.rateCode
+			BANCS.INPARAM.Rate = CDOUBLE("0.0")
+			
+			sv_u = urhk_B2k_ConvertAmount("")
+			PRINT(sv_u)
+			IF(sv_u != 0)THEN
+			#{
+				PRINT(CUST.DATA.billerAmt)
+			#}
+			ELSE
+			#{
+				CUST.DATA.billerAmt = TRIM(BANCS.OUTPARAM.OutputAmount)
+				PRINT(CUST.DATA.billerAmt)
+			#}
+			ENDIF
+		#}
+		ELSE
+		#{
+			CUST.DATA.errMsg = "RateCode does not exist"
+			PRINT(CUST.DATA.errMsg)
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	PRINT(CUST.DATA.billerAmt)
+	PRINT(CUST.DATA.billerLimit)
+	
+	#----
+	# Check if the bill amount is below the limits
+	#---
+	IF(CUST.DATA.billerLimit != "")THEN
+	#{
+		lv_s = "limitCheck| SELECT CASE WHEN TO_NUMBER('"+CUST.DATA.billerAmt+"') >= TO_NUMBER('"+CUST.DATA.billerLimit+"') THEN 'G' ELSE 'L' END FROM DUAL"
+		print(lv_s)
+		lv_q = urhk_dbSelectWithBind(lv_s)
+		print(lv_q)
+		
+		IF(lv_q ==0)THEN
+			CUST.DATA.limitCheck = BANCS.OUTPARAM.limitCheck
+			PRINT(CUST.DATA.limitCheck)
+		ENDIF
+		
+		IF(CUST.DATA.limitCheck == "L")THEN
+		#{
+			CUST.DATA.errFlg = "Y"
+			CUST.DATA.errMsg = "Bill Amount: "+ CUST.DATA.billerAmt_org + "(" + CUST.DATA.refCrncy + ") is less than the set limit of " + CUST.DATA.billerLimit + "(" + CUST.DATA.billerCrncy + ")."
+			PRINT(CUST.DATA.errMsg)
+			GOTO FINISH
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	FINISH:
+	
+	sv_s = "errFlg|" + CUST.DATA.errFlg
+	PRINT(sv_s)
+	sv_u = urhk_SetOrbOut(sv_s)
+	PRINT(sv_u)
+	sv_s = "errMsg|" + CUST.DATA.errMsg
+	PRINT(sv_s)
+	sv_u = urhk_SetOrbOut(sv_s)
+	PRINT(sv_u)
+	
+	
+		EXITSCRIPT
+	
+trace off
+end-->

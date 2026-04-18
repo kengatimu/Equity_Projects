@@ -1,0 +1,287 @@
+<--START
+CHECKSUM="ac6e6b51645ae42913aabfb481fd4688bbfebfae77c647dade10fd784d03c78f"
+	TRACE ON
+	
+	####################################################################
+	#section      :creating new repository if required
+	#Description  :Checks for the existence of the repository STDWFS and
+	#               creates a new one by that name if it does not exist
+	#####################################################################
+	
+	IF (REPEXISTS("CUST") == 0 ) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	############################################################################
+	#section      :creating new class if required
+	#Desscription :checks for the existence of the class GLBDATA in the
+	#repository
+	#               create a new one if it does not exist
+	##############################################################################
+	
+	
+	IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+	#{
+		CREATECLASS("CUST","DATA",5)
+	#}
+	ENDIF
+	
+	############################################
+	#Assigns the values to the variables
+	############################################
+	
+	sv_a = urhk_b2k_PrintRepos("BANCS")
+	print(sv_a)
+	sv_y=0
+	
+	IF( (FIELDEXISTS(("BANCS").("INPUT").("Account"))== 0) ) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Account"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.Account=BANCS.INPUT.Account
+		print(CUST.DATA.Account)
+		
+		sv_s = "cif_id|SELECT CIF_ID FROM TBAADM.GAM "
+		sv_s = sv_s + "WHERE DEL_FLG !='Y' "
+		sv_s = sv_s + "AND ACCT_CLS_FLG !='Y' "
+		sv_s = sv_s + "AND ENTITY_CRE_FLG = 'Y' "
+		sv_s = sv_s + "AND FORACID = ?SVAR "
+		sv_s = sv_s + "AND BANK_ID = ?SVAR "
+		BANCS.INPARAM.BINDVARS = CUST.DATA.Account  + "|"  + BANCS.STDIN.contextBankId
+		PRINT(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.cif_id = BANCS.OUTPARAM.cif_id
+			print(CUST.DATA.cif_id)
+			#}
+		ELSE
+			#{
+			CUST.DATA.errMsg="Account Does Not Exist"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+			GOTO End
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	IF ((FIELDEXISTS(("BANCS").("INPUT").("PhoneNumber"))== 0)) THEN
+	#{
+		CUST.DATA.errMsg="Kindly Supply Equitel PhoneNumber"
+		sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		GOTO End
+		#}
+	ELSE
+		#{
+		CUST.DATA.phoneno=BANCS.INPUT.PhoneNumber
+		print(CUST.DATA.phoneno)
+		sv_s = "phonecount,orgkeyphone|SELECT count(1),orgkey FROM crmuser.phoneemail   "
+		sv_s = sv_s + " where PHONEOREMAIL='PHONE' "
+		sv_s = sv_s + " AND bank_id=?SVAR AND PHONENO=?SVAR and rownum<2 group by orgkey "
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|"  + CUST.DATA.phoneno
+		PRINT(sv_s)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		IF (sv_d == 0) THEN
+		#{
+			CUST.DATA.phonecount = BANCS.OUTPARAM.phonecount
+			print(CUST.DATA.phonecount)
+			CUST.DATA.orgkeyphone = BANCS.OUTPARAM.orgkeyphone
+			print(CUST.DATA.orgkeyphone)
+			IF (CINT(CUST.DATA.phonecount)>0 ) THEN
+				CUST.DATA.errMsg="Phone number Exist with the CIF_ID:"
+				print(CUST.DATA.errMsg)
+				CUST.DATA.errMsg = CUST.DATA.errMsg +""+ CUST.DATA.orgkeyphone
+				print(CUST.DATA.errMsg)
+				sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				GOTO End
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_q="phoneemailid,bank_id,phoneemailtype,phoneoremail,accountid,phoneno,phonenolocalcode,phonenocitycode,phonenocountrycode,preferredflag,orgkey,tmdate,status |"
+	sv_q = sv_q + " select  PHONEEMAILID, BANK_ID, PHONEEMAILTYPE, PHONEOREMAIL, ACCOUNTID, PHONENO, PHONENOLOCALCODE, "
+	sv_q = sv_q + " PHONENOCITYCODE, PHONENOCOUNTRYCODE, PREFERREDFLAG, ORGKEY, TMDATE,decode(PREFERREDFLAG,'Y','N','N') AS STATUS "
+	sv_q = sv_q + " from crmuser.phoneemail where PHONEOREMAIL='PHONE' AND PHONEEMAILTYPE='COMMPH2' AND orgkey=?SVAR AND bank_id=?SVAR AND rownum<2 "
+	print(sv_q)
+	BANCS.INPARAM.BINDVARS = CUST.DATA.cif_id + "|" + BANCS.STDIN.contextBankId
+	print(BANCS.INPARAM.BINDVARS)
+	sv_p= urhk_dbSelectWithBind(sv_q)
+	print(sv_p)
+	
+	IF (sv_p==0) THEN
+	#{
+		
+		##################
+		sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+		print(sv_h)
+		sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+		BANCS.INPARAM.BINDVARS =  sv_h
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF (sv_d =="0") THEN
+		#{
+			print(BANCS.OUTPARAM.getboddate)
+			
+			sv_s = "update crmuser.phoneemail set PHONENO=?SVAR ,PHONENOLOCALCODE=?SVAR where PHONEOREMAIL='PHONE'  "
+			sv_s = sv_s + " AND PHONEEMAILTYPE='COMMPH2' AND bank_id=?SVAR AND orgkey=?SVAR  "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.DATA.phoneno + "|" + CUST.DATA.phoneno + "|" + BANCS.STDIN.contextBankId + "|" + CUST.DATA.cif_id
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_d = urhk_dbSQLWithBind(sv_s)
+			IF (sv_d == 0) THEN
+			#{
+				sv_c = urhk_dbSQLWithBind("commit")
+				print(sv_c)
+				IF (sv_c==0) THEN
+				#{
+					CUST.DATA.varValue1 = "SUCCES"
+					print (CUST.DATA.varValue1)
+					sv_z = urhk_SetOrbOut("STATUS|"+CUST.DATA.varValue1)
+					print(sv_z)
+					sv_e=urhk_SetOrbOut("StattusCode|1")
+					#}
+				ELSE
+					#{
+					CUST.DATA.varValue1 = "FAILURE"
+					print (CUST.DATA.varValue1)
+					sv_z = urhk_SetOrbOut("STATUS|"+CUST.DATA.varValue1)
+					print(sv_z)
+					sv_e=urhk_SetOrbOut("StattusCode|2")
+					CUST.DATA.errMsg="Error in Modification"
+					sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		#}
+	ELSE
+		#{
+		sv_q="phoneemailid,bank_id,phoneemailtype,phoneoremail,accountid,phoneno,phonenolocalcode,phonenocitycode,phonenocountrycode,preferredflag,orgkey,tmdate,status |"
+		sv_q = sv_q + " select  PHONEEMAILID, BANK_ID, PHONEEMAILTYPE, PHONEOREMAIL, ACCOUNTID, PHONENO, PHONENOLOCALCODE, "
+		sv_q = sv_q + " PHONENOCITYCODE, PHONENOCOUNTRYCODE, PREFERREDFLAG, ORGKEY, TMDATE,decode(PREFERREDFLAG,'Y','N','N') AS STATUS "
+		sv_q = sv_q + " from crmuser.phoneemail where PHONEOREMAIL='PHONE' AND orgkey=?SVAR AND bank_id=?SVAR AND rownum<2 "
+		print(sv_q)
+		BANCS.INPARAM.BINDVARS = CUST.DATA.cif_id + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		sv_p= urhk_dbSelectWithBind(sv_q)
+		print(sv_p)
+		
+		IF (sv_p==0) THEN
+		#{
+			
+			CUST.DATA.phoneemailid=BANCS.OUTPARAM.phoneemailid
+			print(CUST.DATA.phoneemailid)
+			CUST.DATA.bank_id=BANCS.OUTPARAM.bank_id
+			print(CUST.DATA.bank_id)
+			CUST.DATA.phoneemailtype=BANCS.OUTPARAM.phoneemailtype
+			print(CUST.DATA.phoneemailtype)
+			CUST.DATA.phoneemailtype="COMMPH2"
+			print(CUST.DATA.phoneemailtype)
+			CUST.DATA.phoneoremail=BANCS.OUTPARAM.phoneoremail
+			print(CUST.DATA.phoneoremail)
+			CUST.DATA.accountid=BANCS.OUTPARAM.accountid
+			print(CUST.DATA.accountid)
+			CUST.DATA.phoneno=CUST.DATA.phoneno
+			print(CUST.DATA.phoneno)
+			CUST.DATA.phonenolocalcode=CUST.DATA.phoneno
+			print(CUST.DATA.phonenolocalcode)
+			CUST.DATA.phonenocitycode=BANCS.OUTPARAM.phonenocitycode
+			print(CUST.DATA.phonenocitycode)
+			CUST.DATA.phonenocountrycode=BANCS.OUTPARAM.phonenocountrycode
+			print(CUST.DATA.phonenocountrycode)
+			CUST.DATA.preferredflag=BANCS.OUTPARAM.preferredflag
+			print(CUST.DATA.preferredflag)
+			CUST.DATA.preferredflag="N"
+			print(CUST.DATA.preferredflag)
+			CUST.DATA.orgkey=BANCS.OUTPARAM.orgkey
+			print(CUST.DATA.orgkey)
+			CUST.DATA.tmdate=BANCS.OUTPARAM.tmdate
+			print(CUST.DATA.tmdate)
+			CUST.DATA.status=BANCS.OUTPARAM.status
+			print(CUST.DATA.status)
+			
+			##################
+			sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+			print(sv_h)
+			sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+			BANCS.INPARAM.BINDVARS =  sv_h
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF (sv_d =="0") THEN
+			#{
+				print(BANCS.OUTPARAM.getboddate)
+				sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+				
+				sv_s = "getsysdate,sysdate|SELECT CRMUSER.PHONEEMAILID.nextval,sysdate FROM DUAL "
+				BANCS.INPARAM.BINDVARS =  sv_h
+				sv_d = urhk_dbSelectWithBind(sv_s)
+				print(sv_d)
+				IF (sv_d =="0") THEN
+				#{
+					CUST.DATA.phoneemailidseq = BANCS.OUTPARAM.getsysdate
+					print(CUST.DATA.phoneemailidseq)
+					CUST.DATA.tmdate= BANCS.OUTPARAM.sysdate
+					print(CUST.DATA.tmdate)
+					
+				#}
+				ENDIF
+				
+				BANCS.INPARAM.BINDVARS = CUST.DATA.phoneemailidseq + "|" + CUST.DATA.bank_id + "|" + CUST.DATA.phoneemailtype + "|" + CUST.DATA.phoneoremail + "|" + CUST.DATA.accountid + "|" + CUST.DATA.phoneno + "|" + CUST.DATA.phonenolocalcode + "|" + CUST.DATA.phonenocitycode + "|" + CUST.DATA.phonenocountrycode + "|" + CUST.DATA.preferredflag + "|" + CUST.DATA.orgkey + "|" + CUST.DATA.tmdate
+				print(BANCS.INPARAM.BINDVARS)
+				sv_j = " Insert into CRMUSER.PHONEEMAIL  (PHONEEMAILID, BANK_ID, PHONEEMAILTYPE, PHONEOREMAIL, ACCOUNTID, PHONENO, PHONENOLOCALCODE, PHONENOCITYCODE, PHONENOCOUNTRYCODE, PREFERREDFLAG, ORGKEY, TMDATE) "
+				sv_j = sv_j + " Values (?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR,?SVAR)"
+				print(sv_j)
+				sv_w = urhk_dbSQLWithBind(sv_j)
+				sv_w = urhk_dbSQLWithBind("COMMIT")
+				print(sv_w)
+				IF (sv_w==0) THEN
+				#{
+					CUST.DATA.varValue1 = "SUCCES"
+					print (CUST.DATA.varValue1)
+					sv_z = urhk_SetOrbOut("STATUS|"+CUST.DATA.varValue1)
+					print(sv_z)
+					sv_e=urhk_SetOrbOut("StattusCode|1")
+					#}
+				ELSE
+					#{
+					CUST.DATA.varValue1 = "FAILURE"
+					print (CUST.DATA.varValue1)
+					sv_z = urhk_SetOrbOut("STATUS|"+CUST.DATA.varValue1)
+					print(sv_z)
+					sv_e=urhk_SetOrbOut("StattusCode|2")
+					CUST.DATA.errMsg="Invalid Bank id"
+					sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			#}
+		ELSE
+			#{
+			CUST.DATA.varValue1 = "FAILURE"
+			print (CUST.DATA.varValue1)
+			sv_z = urhk_SetOrbOut("STATUS|"+CUST.DATA.varValue1)
+			print(sv_z)
+			sv_e=urhk_SetOrbOut("StattusCode|2")
+			CUST.DATA.errMsg="Phone number Not Mainatained"
+			sv_e=urhk_SetOrbOut("Error|"+CUST.DATA.errMsg)
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	End:
+		EXITSCRIPT
+		TRACE OFF
+END-->

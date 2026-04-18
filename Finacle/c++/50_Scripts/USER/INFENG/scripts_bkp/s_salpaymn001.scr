@@ -1,0 +1,386 @@
+#============================================================
+# IMPORTANT: Auto Generated Header. DO NOT CHANGE MANUALLY.
+# Product: Finacle Core
+# Category: User Defined
+# Script: s_salpaymn001.scr
+# Type: NA|default
+# Description: s_salpaymn001.scr
+# Author:
+# Date:
+# Modification Log:
+#============================================================
+
+#    Name			 : s_salpaymn001.scr
+#    Description     : This script is used to populate tran particulares and remarks
+#    Date            : 17-07-2013
+#    Author          : Bharath Reddy B
+#    Input           : NA
+#    Output			 : NA
+#    Called Script	 : NA
+#    Calling Script	 : SRV_ProcessSalPay_pre_process_data.scr
+#    Menu Option	 : COBMM
+#    Srl. No			Date			Author			Description.
+#    ------			----------			-------			---------------
+#    1.0			17-07-2013			Bharath			Original Version
+#    1.1			22-03-2019			Edwin Zico 	   	Debiting IGLS suspense restrict
+#    1.2			14-06-2019			Edwin Zico		BANK 11 schm remittance restrict
+#------------------------------------------------------------------------------
+<--START
+CHECKSUM="f7a4c03e4f784d6069092ea7d2d0816053e5e580a1748b4271ad976c8c5de897"
+	TRACE ON
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST", "SALPAY") == 0) THEN
+	#{
+		CREATECLASS("CUST", "SALPAY", 5)
+	#}
+	ENDIF
+	
+	#------------------------------------------------------------------------------
+	# Initializing required variables
+	#------------------------------------------------------------------------------
+	CUST.SALPAY.errMsg = ""
+	
+	#------------------------------------------------------------------------------
+	# Getting values from frontend
+	#------------------------------------------------------------------------------
+	sv_u=urhk_SRV_GetVal("salPayDet.tranRemarks")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.SALPAY.tranRemarks=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.SALPAY.tranRemarks)
+		#}
+	ELSE
+		#{
+		CUST.SALPAY.errMsg = "Error in getting Tran Remarks"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_u=urhk_SRV_GetVal("salPayCreditDet.salPayCreditLL.<rec_0>.tranParticulars")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.SALPAY.tranParticulars=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.SALPAY.tranParticulars)
+		#}
+	ELSE
+		#{
+		CUST.SALPAY.errMsg = "Error in getting Tran Particulars"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Validating the entered debit scheme type
+	#-------------------------------------------------------------------------------------------------------
+	sv_u=urhk_SRV_GetVal("salPayDet.debitAcctNo.foracid")
+	PRINT(sv_u)
+	IF(sv_u == 0)THEN
+	#{
+		CUST.SALPAY.drAcct=BANCS.OUTPARAM.srvValue
+		PRINT(CUST.SALPAY.drAcct)
+		#}
+	ELSE
+		#{
+		CUST.SALPAY.errMsg = "Error in getting Debit Account"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_s = "schmCode|SELECT schm_code FROM tbaadm.gam "
+	sv_s = sv_s + "WHERE bank_id = ?SVAR "
+	sv_s = sv_s + "AND FORACID = ?SVAR"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.SALPAY.drAcct
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.SALPAY.schmCode=BANCS.OUTPARAM.schmCode
+		PRINT(CUST.SALPAY.schmCode)
+		
+		IF (CUST.SALPAY.schmCode == "SB113") THEN
+		#{
+			CUST.SALPAY.errMsg = "Accounts in scheme SB113 not allowed for this transaction"
+			GOTO ENDOFSCRIPT			
+		#}
+		ENDIF
+
+		IF (CUST.SALPAY.schmCode == "INCOM") THEN
+		#{
+			CUST.SALPAY.errMsg = "Income GL " +  CUST.SALPAY.drAcct + "  not allowed for this transaction"
+			GOTO ENDOFSCRIPT			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_s = "bacid|SELECT bacid FROM tbaadm.gam "
+	sv_s = sv_s + "WHERE bank_id = ?SVAR "
+	sv_s = sv_s + "AND FORACID = ?SVAR"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.SALPAY.drAcct
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.SALPAY.bacid=BANCS.OUTPARAM.bacid
+		PRINT(CUST.SALPAY.bacid)
+		
+		IF (CUST.SALPAY.bacid == "PAGRPREC") THEN
+		#{
+			CUST.SALPAY.errMsg = "Debiting IGLS suspense is not allowed in this transaction"
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+
+	sv_s = "acctownership|SELECT acct_ownership FROM tbaadm.gam "
+	sv_s = sv_s + "WHERE bank_id = ?SVAR "
+	sv_s = sv_s + "AND FORACID = ?SVAR"
+	PRINT(sv_s)
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.SALPAY.drAcct
+	PRINT(BANCS.INPARAM.BINDVARS)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	PRINT(sv_d)
+	IF (sv_d == 0) THEN
+	#{
+		CUST.SALPAY.acctownership=BANCS.OUTPARAM.acctownership
+		PRINT(CUST.SALPAY.acctownership)
+		
+		IF (CUST.SALPAY.acctownership != "O") THEN
+		#{
+			CUST.SALPAY.errMsg = "Only office Accounts allowed for Debit"
+			GOTO ENDOFSCRIPT
+			
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Getting no.of records count
+	#-------------------------------------------------------------------------------------------------------
+	sv_u = urhk_SRV_NumOfRecs("salPayCreditDet.salPayCreditLL")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.SALPAY.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+		PRINT(CUST.SALPAY.noOfRecords)
+		#}
+	ELSE
+		#{
+		CUST.SALPAY.errMsg = "Error in getting record count"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_l = 0
+	sv_a = "\n"
+	CUST.SALPAY.creditTotAmt = 0
+	WHILE (sv_l < CINT(CUST.SALPAY.noOfRecords))
+	#{
+		sv_r = "<rec_" + Format$(sv_l,"%d") + ">"
+		PRINT(sv_r)
+		
+		#------------------------------------------------------------------------------
+		# Setting frontend values
+		#------------------------------------------------------------------------------
+		sv_s = "salPayCreditDet.salPayCreditLL." + sv_r + ".tranParticulars|" + CUST.SALPAY.tranParticulars
+		PRINT(sv_s)
+		sv_u = urhk_SRV_SetVal(sv_s)
+		PRINT(sv_u)
+
+		#-------------------------------------------------------------------------------------------Edwin.z SS restrict start
+		# Fetch A/c - foracid
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("salPayCreditDet.salPayCreditLL." + sv_r + ".operAcctNo.foracid")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SALPAY.foracid = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SALPAY.foracid)
+		#}
+		ELSE
+		#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for foracid")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		#-------------------------------------------------------------------------------------------
+		# Fetch A/c - serial
+		#-------------------------------------------------------------------------------------------
+	
+			sv_u = urhk_SRV_GetVal("salPayCreditDet.salPayCreditLL." + sv_r + ".key.serial_num")
+			PRINT(sv_u)
+		IF (sv_u == 0) THEN
+
+		#{
+		CUST.SALPAY.serialnum = BANCS.OUTPARAM.srvValue
+		PRINT(CUST.SALPAY.serialnum)
+
+		#}
+		ELSE
+		#{
+
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for serialnum")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		#-------------------------------------------------------------------------------------------
+		# Fetch A/c - Credit Amount
+		#-------------------------------------------------------------------------------------------
+	
+		sv_u = urhk_SRV_GetVal("salPayCreditDet.salPayCreditLL." + sv_r + ".creditAmt")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SALPAY.creditAmt = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SALPAY.creditAmt)
+			CUST.SALPAY.creditAmt = LEFT$(CUST.SALPAY.creditAmt,GETPOSITION(CUST.SALPAY.creditAmt,"|") - 1)
+			PRINT(CUST.SALPAY.creditAmt)
+		#}
+		ELSE
+		#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for creditAmt")
+			BANCS.OUTPUT.successOrFailure="F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+
+		sv_u = urhk_getAcctDetailsInRepository(CUST.SALPAY.foracid)
+		PRINT(sv_u)
+		IF (sv_u ==0) THEN
+		#{				
+				CUST.SALPAY.schmCode = BANCS.OUTPARAM.schmCode
+				PRINT(CUST.SALPAY.schmCode)
+		#}
+		ELSE
+		#{
+			
+			CUST.SALPAY.schmCode     = ""
+		#}
+		ENDIF
+
+		IF ((BANCS.STDIN.contextBankId == "54") AND (CUST.SALPAY.acctownership == "O")) THEN
+		#{
+		CUST.SALPAY.creditTotAmt = cdouble(CUST.SALPAY.creditTotAmt) + cdouble(CUST.SALPAY.creditAmt)
+		print(CUST.SALPAY.creditTotAmt)
+		sv_u = urhk_getAcctDetailsInRepository(CUST.SALPAY.drAcct)
+		PRINT(sv_u)
+		IF (sv_u ==0) THEN
+		#{				
+				CUST.SALPAY.preEffAvailableAmt = BANCS.OUTPARAM.EffAvailableAmt
+		 		print(CUST.SALPAY.preEffAvailableAmt)
+
+		#}
+		ELSE
+		#{
+			CUST.SALPAY.preEffAvailableAmt = ""
+
+		#}
+		ENDIF
+			BANCS.INPUT.moduleName  = "RATETMFX"
+			BANCS.INPUT.parameterId = "BLOCKGL"
+			CALL("getcparamvalue.scr")
+			PRINT(BANCS.OUTPUT.parameterVal)
+			IF(BANCS.OUTPUT.parameterVal != "")THEN
+			#{
+				CUST.SALPAY.suspenseGl = BANCS.OUTPUT.parameterVal
+				print(CUST.SALPAY.suspenseGl)
+
+			#}
+			ELSE
+			#{
+				CUST.SALPAY.errMsg = " Gl setup not done in CPARAM"
+				GOTO ENDOFSCRIPT
+			#}
+			ENDIF
+			
+			CUST.SALPAY.foracid1 = MID$(CUST.SALPAY.drAcct,3,13)
+			PRINT(CUST.SALPAY.foracid1)
+
+			IF (CUST.SALPAY.foracid1 == CUST.SALPAY.suspenseGl) THEN
+			#{
+				IF ((CUST.SALPAY.drAcct != "2223000100774") AND (CUST.SALPAY.drAcct != "0003000100774")) THEN
+				#{
+					IF (CDOUBLE(CUST.SALPAY.creditTotAmt) > CDOUBLE(CUST.SALPAY.preEffAvailableAmt)) THEN
+					#{
+						sv_u = urhk_SRV_SetErr("GL A/C " + CUST.SALPAY.drAcct + ", cannot be overdwan for PartTransrlnum " + CUST.SALPAY.serialnum)
+						BANCS.OUTPUT.successOrFailure="F"
+						GOTO ENDOFSCRIPT
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+
+		#}
+		ENDIF
+
+
+			IF (BANCS.STDIN.contextBankId == "11") THEN
+			#{
+				#-------------------------------------------------------------------------------------------
+				#--Start scheme restriction
+				#-------------------------------------------------------------------------------------------
+					PRINT(CUST.SALPAY.foracid)
+					PRINT(CUST.SALPAY.schmCode)
+					PRINT(BANCS.STDIN.userWorkClass)
+				
+				IF ((CUST.SALPAY.schmCode == "SB120") OR (CUST.SALPAY.schmCode == "CA220")) THEN
+				#{
+					
+						IF ((BANCS.STDIN.userWorkClass != "260") AND (BANCS.STDIN.userWorkClass != "350")) THEN
+						#{
+							#sv_m = sv_m  + CUST.SALPAY.serialnum + ","+ "Insufficent Workclass to credit this Scheme Contact HO" + sv_a
+							sv_u = urhk_SRV_SetErr("Insufficent Workclass to credit this Scheme " + CUST.SALPAY.schmCode + "  only WC 260 OR 350 allowed " + " ,for PartTransrlnum " + CUST.SALPAY.serialnum )	
+							GOTO NEXTREC
+						#}
+						ENDIF
+					
+				#}
+				ENDIF
+				#-------------------------------------------------------------------------------------------
+				#--End scheme restriction
+				#-------------------------------------------------------------------------------------------Edwin.z SS restrict end
+			#}
+			ENDIF
+
+		NEXTREC:
+		sv_l = sv_l + 1
+		PRINT(sv_l)
+	#}
+	DO
+	
+	ENDOFSCRIPT:
+		IF(CUST.SALPAY.errMsg != "") THEN
+		#{
+			PRINT(CUST.SALPAY.errMsg)
+			sv_u = urhk_SRV_setErr(CUST.SALPAY.errMsg)
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		EXITSCRIPT
+END-->
+

@@ -1,0 +1,167 @@
+#--------------------------------------------------------------------------
+#  Name            : vpEcosystemClassify.scr 
+#  Description     : Ecosystem classify 
+#  Date            : 09-02-2024
+#  Author          : DKC
+#  Menu Option     : NA
+<--start
+trace on
+	sv_u = urhk_B2K_PrintRepos("BANCS")
+	print(sv_u)
+        if(repexists("ODCAL")==0)then
+                createrep("ODCAL")
+        endif
+        if(classexists("ODCAL","DATA")==0)then
+                createclass("ODCAL","DATA",5)
+        endif
+	if(fieldexists(BANCS.INPUT.schmType)==1)then
+	if(BANCS.INPUT.schmType!="ODA")then	
+		exitscript
+	endif	
+	endif
+	if(fieldexists(BANCS.INPUT.b2kType)==1)then
+		print(BANCS.INPUT.b2kType)
+	endif
+	if(fieldexists(BANCS.INPUT.b2kId)==1)then
+		print(BANCS.INPUT.b2kId)
+	endif
+	if(fieldexists(BANCS.INPUT.solId)==1)then
+		print(BANCS.INPUT.solId)
+	endif
+	BANCS.OUTPUT.maxDPDCounter	= ""  
+	BANCS.OUTPUT.mainClassificationSystem	= BANCS.INPUT.mainClassificationSystem 
+	BANCS.OUTPUT.subClassificationSystem	= BANCS.INPUT.subClassificationSystem
+	BANCS.OUTPUT.assetClsReasonCode	= ""
+	BANCS.OUTPUT.trgEntityType = BANCS.INPUT.b2kType
+	BANCS.OUTPUT.trgEntityId = BANCS.INPUT.b2kId
+
+	lv_a= urhk_B2k_AcidToForacid(BANCS.INPUT.b2kId)
+	if(lv_a==0)then
+	#{
+		ODCAL.DATA.Odforacid = BANCS.OUTPARAM.Foracid
+	#}
+	else
+	#{
+		ODCAL.DATA.Odforacid = ""
+	#}
+	endif
+	sv_u = urhk_getAcctDetailsInRepository(ODCAL.DATA.Odforacid)
+	print(sv_u)
+	if(sv_u==0)then
+	#{
+		print(BANCS.OUTPARAM.AllowSweeps)
+		print(BANCS.OUTPARAM.PoolId)
+		BANCS.INPUT.iAllowSweeps = BANCS.OUTPARAM.AllowSweeps
+		ODCAL.DATA.cClearBalance = BANCS.OUTPARAM.ClearBalance
+	#}
+	else
+	#{
+		BANCS.INPUT.iAllowSweeps = ""
+		ODCAL.DATA.cClearBalance = "0"
+	#}
+	endif
+
+	lv_h = "maOvduDate,miOvduDate | select to_char(max(dmd_ovdu_date),'DD-MM-RRRR'),to_char(min(dmd_ovdu_date),'DD-MM-RRRR') from custom.ecosystem_dmd_tbl where bank_id=?SVAR "
+	lv_h = lv_h + " and od_acid = ?SVAR  and dmd_amt>0 and entity_cre_flg='Y' and del_flg='N' and dmd_amt-tot_adj_amt-PENAL_INT != 0 and dmd_ovdu_date<=to_date(?SVAR,'DD-MM-YYYY') and rownum<=1 order by disb_srl_num,dmd_date "
+	BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.b2kId + "|" + mid$(BANCS.STDIN.BODDate,0,10) 
+	print(lv_h)
+	print(BANCS.INPARAM.BINDVARS)
+	lv_d = urhk_dbSelectWithBind(lv_h)
+	if(lv_d==0)then
+	#{
+		ODCAL.DATA.maOvduDate = BANCS.OUTPARAM.maOvduDate
+		ODCAL.DATA.miOvduDate = BANCS.OUTPARAM.miOvduDate
+	#}
+	else
+	#{
+		ODCAL.DATA.maOvduDate = ""
+		ODCAL.DATA.miOvduDate = ""
+	#}
+	endif
+	if(BANCS.OUTPARAM.miOvduDate!="")then
+	#{
+		BANCS.INPARAM.date1 = mid$(BANCS.STDIN.BODDate,0,10) 
+		BANCS.INPARAM.date2 = BANCS.OUTPARAM.miOvduDate 
+		sv_u = urhk_B2K_dateDiff("")
+		print(sv_u)
+		if(sv_u==0)then
+		#{
+			ODCAL.DATA.overdueDays = BANCS.OUTPARAM.dateDiff
+		#}
+		else
+		#{
+			ODCAL.DATA.overdueDays = "0" 
+		#}
+		endif
+	#}
+	else
+	#{
+		ODCAL.DATA.overdueDays = "0"
+	#}
+	endif
+	if(cdouble(ODCAL.DATA.cClearBalance)>=0)then
+	#{
+		lv_j = "update custom.ecosystem_dmd_tbl set del_flg='Y' where od_acid=?SVAR and bank_id=?SVAR and del_flg='N' " 
+		BANCS.INPARAM.BINDVARS = BANCS.INPUT.b2kId + "|" + BANCS.STDIN.contextBankId
+		print(BANCS.INPARAM.BINDVARS)
+		print(lv_j)
+		lv_j = urhk_dbSqlWithBind(lv_j)
+		print(lv_j)
+		if(lv_j==0)then
+			lv_j = urhk_dbSqlWithBind("commit")
+		endif
+		ODCAL.DATA.overdueDays = "0"
+	#}
+	endif
+        if(cint(ODCAL.DATA.overdueDays) <= 30) then
+	#{
+                ODCAL.DATA.mainClassfn = "PA"
+                ODCAL.DATA.subClassfn = "NORM"
+                goto ENDOFSCRIPT
+	#}
+        endif
+        if((cint(ODCAL.DATA.overdueDays) > 30) and (cint(ODCAL.DATA.overdueDays) <= 90)) then
+	#{
+                ODCAL.DATA.mainClassfn = "PA"
+                ODCAL.DATA.subClassfn = "WATC"
+                goto ENDOFSCRIPT
+	#}
+        endif
+        if((cint(ODCAL.DATA.overdueDays) > 90) and (CINT(ODCAL.DATA.overdueDays) <= 180)) then
+	#{
+                ODCAL.DATA.mainClassfn = "NPA"
+                ODCAL.DATA.subClassfn = "SUBS"
+                goto ENDOFSCRIPT
+	#}
+        endif
+        if((cint(ODCAL.DATA.overdueDays) > 180) and (CINT(ODCAL.DATA.overdueDays) <= 365)) then
+	#{
+                ODCAL.DATA.mainClassfn = "NPA"
+                ODCAL.DATA.subClassfn = "DBTL"
+                goto ENDOFSCRIPT
+	#}
+        endif
+        if(cint(ODCAL.DATA.overdueDays) > 365) then
+	#{
+                ODCAL.DATA.mainClassfn = "NPA"
+                ODCAL.DATA.subClassfn = "LOSS"
+                goto ENDOFSCRIPT
+	#}
+        endif
+        ENDOFSCRIPT:
+                if((ODCAL.DATA.subClassfn != "") and (ODCAL.DATA.mainClassfn != "")) then
+		#{
+                        BANCS.OUTPUT.maxDPDCounter = ODCAL.DATA.overdueDays 
+                        BANCS.OUTPUT.mainClassificationSystem = ODCAL.DATA.mainClassfn 
+                        BANCS.OUTPUT.subClassificationSystem = ODCAL.DATA.subClassfn 
+		#}
+                endif
+                print(BANCS.OUTPUT.mainClassificationSystem)
+                print(BANCS.OUTPUT.subClassificationSystem)
+                print(BANCS.OUTPUT.maxDPDCounter)
+                print(BANCS.OUTPUT.assetClsReasonCode)
+                print(BANCS.OUTPUT.trgEntityType)
+                print(BANCS.OUTPUT.trgEntityId)
+	exitscript
+trace off
+end-->

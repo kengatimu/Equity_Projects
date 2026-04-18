@@ -1,0 +1,400 @@
+#------------------------------------------------------------------------------------
+#    Name				: s_siexecdp001.scr
+#    Description     	: The script is used to check whether the staff is enbled or not.
+#						: If it is a staff, charge is set to "N". Otherwise it checks for
+#						: creditcust and debit cust and if it is a external SI , it sets the
+#						: charge event details. Then it validates the reference amount to be multiple of 5 cents.
+#    Date            	: 19-02-2013
+#    Author          	: Divya
+#    Input           	: NA
+#    Output				: NA
+#    Called Script		: NA
+#    Calling Script		: getcparamvalue.scr, SRV_AddSI_validate_data.scr, SRV_ModifySI_validate_data.scr
+#    Menu Option		: HSIM, HSSIM
+#    Srl. No		Date			Author			Description.
+#    -------		----			------			----------------
+#    1.0			19-02-2013		Divya	 		Original Version
+#-------------------------------------------------------------------------------------
+<--START
+CHECKSUM="036c6455d8e9dbbce558b5c17a165570689b95ec36ccddc5269e9ca413f59422"
+	TRACE ON
+	
+	
+	#------------------------------------------------------------------------------
+	#       Creating repository and class
+	#       Initializing the variables
+	#       Getting all the values from CPARAM
+	#------------------------------------------------------------------------------
+	IF (REPEXISTS("CUST") == 0) THEN
+	#{
+		CREATEREP("CUST")
+	#}
+	ENDIF
+	
+	IF (CLASSEXISTS("CUST","SIEXEC") == 0) THEN
+	#{
+		CREATECLASS("CUST","SIEXEC",5)
+	#}
+	ENDIF
+	
+	CUST.SIEXEC.errMsg   = ""
+	CUST.SIEXEC.schmCode = ""
+	CUST.SIEXEC.res		 = ""
+	CUST.SIEXEC.var2     = ""
+	
+	BANCS.INPUT.moduleName 	= "SIEXECUTION"
+	BANCS.INPUT.parameterId = "SIEXEC_SC"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.SIEXEC.schmCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.SIEXEC.errMsg = "Scheme Code setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName  = "SIEXECUTION"
+	BANCS.INPUT.parameterId = "NORRATECODE"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.SIEXEC.refCode = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.SIEXEC.errMsg = "NORRATECODE Code not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.moduleName  = "SIEXECUTION"
+	BANCS.INPUT.parameterId = "SIEXEC_ACCTNUM"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.SIEXEC.acctNum = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.SIEXEC.errMsg = "Account Number setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	BANCS.INPUT.parameterId = "SIEXEC_EVENT"
+	CALL ("getcparamvalue.scr")
+	IF (BANCS.OUTPUT.parameterVal != "") THEN
+	#{
+		CUST.SIEXEC.execId = BANCS.OUTPUT.parameterVal
+		#}
+	ELSE
+		#{
+		CUST.SIEXEC.errMsg = "Event Id setup not done CPARAM"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	
+	sv_u = urhk_SRV_GetVal("siHdr.failChrg.eventId")
+	CUST.SIEXEC.failChrgEventId = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.SIEXEC.failChrgEventId)
+
+	IF (BANCS.STDIN.contextBankId=="54") THEN
+
+		IF (CUST.SIEXEC.failChrgEventId=="") THEN
+			CUST.SIEXEC.errMsg = "Please Enter Failure charge Event Id"
+			GOTO ENDOFSCRIPT
+
+		ENDIF
+
+	ENDIF
+	
+	sv_u = urhk_SRV_GetVal("siHdr.execChrg.eventId")
+	CUST.SIEXEC.execChrgEventId = BANCS.OUTPARAM.srvValue
+	PRINT(CUST.SIEXEC.execChrgEventId)
+
+	IF (BANCS.STDIN.contextBankId=="54") THEN
+
+		IF (CUST.SIEXEC.execChrgEventId=="") THEN
+			CUST.SIEXEC.errMsg = "Please Enter Execution charge Event Id"
+			GOTO ENDOFSCRIPT
+
+		ENDIF
+	ENDIF
+	
+	
+	#-------------------------------------------------------------------------------------------------------
+	# Get the number of accounts
+	#-------------------------------------------------------------------------------------------------------
+	sv_u = urhk_SRV_NumOfRecs("subInstrLL")
+	PRINT(sv_u)
+	IF (sv_u == 0) THEN
+	#{
+		CUST.SIEXEC.noOfRecords = CINT(BANCS.OUTPARAM.srvValue)
+		PRINT(CUST.SIEXEC.noOfRecords)
+		#}
+	ELSE
+		#{
+		sv_u = urhk_SRV_SetErr("Error:urhk_SRV_NumOfRecs failed")
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	
+	sv_l = 0
+	sv_m = 0
+	sv_e = ""
+	sv_c = 0
+	sv_f = ""
+	sv_g = 0
+	WHILE (sv_l < CUST.SIEXEC.noOfRecords)
+	#{
+		sv_v = Format$(sv_l,"%d")
+		sv_r = "<rec_"+sv_v+">"
+		PRINT(sv_r)
+		
+		sv_u = Format$(sv_m,"%d")
+		sv_t = "<rec_"+sv_u+">"
+		PRINT(sv_t)
+		#-------------------------------------------------------------------------------------------
+		# Fetch PartTranType
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("subInstrLL." +sv_r+ ".subInstr.partTranType.code")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SIEXEC.code = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SIEXEC.code)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for PartTranType")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#-------------------------------------------------------------------------------------------
+		# Fetch Foracid
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("subInstrLL." +sv_r+ ".prDtlLL." +sv_t+ ".acct.foracid")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SIEXEC.foracid = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SIEXEC.foracid)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for Foracid")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#-------------------------------------------------------------------------------------------
+		# Fetch Key serial number
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("subInstrLL." +sv_r+ ".key.serial_num")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SIEXEC.srlNum = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SIEXEC.srlNum)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for serial number")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		#-------------------------------------------------------------------------------------------
+		# Fetch Fixed Amount
+		#-------------------------------------------------------------------------------------------
+		sv_u = urhk_SRV_GetVal("subInstrLL." +sv_r+ ".subInstr.fixedAmt")
+		PRINT(sv_u)
+		IF (sv_u == 0) THEN
+		#{
+			CUST.SIEXEC.refAmt = BANCS.OUTPARAM.srvValue
+			PRINT(CUST.SIEXEC.refAmt)
+			#}
+		ELSE
+			#{
+			sv_u = urhk_SRV_SetErr("Error: urhk_SRV_GetVal failed for Fixed Amount")
+			BANCS.OUTPUT.successOrFailure = "F"
+			GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+		
+		
+		PRINT(CUST.SIEXEC.code)
+		PRINT(CUST.SIEXEC.foracid)
+		IF ((CUST.SIEXEC.code != "") AND (CUST.SIEXEC.foracid != "")) THEN
+		#{
+			sv_u = urhk_getAcctDetailsInRepository(CUST.SIEXEC.foracid)
+			PRINT(sv_u)
+			IF (sv_u ==0) THEN
+			#{
+				IF (CUST.SIEXEC.code == "C") THEN
+				#{
+					CUST.SIEXEC.crcust = BANCS.OUTPARAM.custId
+					PRINT(CUST.SIEXEC.crcust)
+					#}
+				ELSE
+					#{
+					CUST.SIEXEC.drcust = BANCS.OUTPARAM.custId
+					PRINT(CUST.SIEXEC.drcust)
+				#}
+				ENDIF
+				CUST.SIEXEC.schm = BANCS.OUTPARAM.schmCode
+				PRINT(CUST.SIEXEC.schm)
+				PRINT(CUST.SIEXEC.schmCode)
+				IF ((CUST.SIEXEC.schm == CUST.SIEXEC.schmCode) AND (CUST.SIEXEC.code == "D")) THEN
+				#{
+					CUST.SIEXEC.staff = "Y"
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		PRINT("HAIIIIIII")
+		IF ((BANCS.STDIN.contextBankId=="56") OR  (BANCS.STDIN.contextBankId=="55") ) THEN
+		#{
+			CUST.SIEXEC.foracid1 = MID$(CUST.SIEXEC.foracid,4,9)
+			#}
+		ELSE
+			#{
+			CUST.SIEXEC.foracid1 = MID$(CUST.SIEXEC.foracid,3,10)
+		#}
+		ENDIF
+		
+		PRINT(CUST.SIEXEC.acctNum)
+		PRINT(CUST.SIEXEC.foracid1)
+		IF ((CUST.SIEXEC.code == "C") AND (CUST.SIEXEC.acctNum == CUST.SIEXEC.foracid1)) THEN
+		#{
+			CUST.SIEXEC.external = "Y"
+			PRINT(CUST.SIEXEC.external)
+		#}
+		ENDIF
+		
+		IF (FIELDEXISTS(CUST.SIEXEC.staff)) THEN
+		#{
+			PRINT(CUST.SIEXEC.staff)
+			sv_u = urhk_SRV_SetVal("siHdr.failChrg.eventId| ")
+			PRINT(sv_u)
+			sv_u = urhk_SRV_SetVal("siHdr.execChrg.eventId| ")
+			PRINT(sv_u)
+			sv_u = urhk_SRV_SetVal("siHdr.chrgRate.refCode| ")
+			PRINT(sv_u)
+			#}
+		ELSE
+			#{
+			PRINT("HAI")
+			IF ((FIELDEXISTS(CUST.SIEXEC.crcust)) AND (FIELDEXISTS(CUST.SIEXEC.drcust))) THEN
+			#{
+				PRINT(CUST.SIEXEC.crcust)
+				PRINT(CUST.SIEXEC.drcust)
+				IF (CUST.SIEXEC.crcust != CUST.SIEXEC.drcust) THEN
+				#{
+					PRINT("H")
+					IF (FIELDEXISTS(CUST.SIEXEC.external)) THEN
+					#{
+						PRINT(CUST.SIEXEC.external)
+						sv_u = urhk_SRV_SetVal("siHdr.execChrg.eventId|" + CUST.SIEXEC.execId)
+						PRINT(sv_u)
+						sv_u = urhk_SRV_SetVal("siHdr.chrgRate.refCode|" + CUST.SIEXEC.refCode)
+						PRINT(sv_u)
+						#IF (CUST.SIEXEC.execId != "" ) THEN
+						#{
+						#		sv_f = sv_f + CUST.SIEXEC.srlNum + ","
+						#		PRINT(sv_f)
+						
+						#						sv_g = sv_g + 1
+						#						PRINT(sv_g)
+						#}
+						#					ENDIF
+					#}
+					ENDIF
+				#}
+				ENDIF
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		
+		PRINT(CUST.SIEXEC.refAmt)
+		CUST.SIEXEC.var2 = "."
+		CUST.SIEXEC.amt = LEFT$(CUST.SIEXEC.refAmt,GETPOSITION(CUST.SIEXEC.refAmt,"|") - 1)
+		PRINT(CUST.SIEXEC.amt)
+		CUST.SIEXEC.posiRefAmt = getposition(CUST.SIEXEC.amt , CUST.SIEXEC.var2)
+		PRINT(CUST.SIEXEC.posiRefAmt)
+		CUST.SIEXEC.lenRefAmt = STRLEN(CUST.SIEXEC.amt)
+		PRINT(CUST.SIEXEC.lenRefAmt)
+		CUST.SIEXEC.mid = MID$(CUST.SIEXEC.amt,CINT(CUST.SIEXEC.posiRefAmt),CINT(CUST.SIEXEC.lenRefAmt))
+		PRINT(CUST.SIEXEC.mid)
+		IF (CINT(CUST.SIEXEC.mid) > 0) THEN
+		#{
+			CUST.SIEXEC.conInt = CINT(CUST.SIEXEC.mid)/5
+			PRINT(CDOUBLE(CUST.SIEXEC.conInt))
+			CUST.SIEXEC.conDouble = CDOUBLE(CUST.SIEXEC.mid)/5
+			PRINT(CUST.SIEXEC.conDouble)
+			IF (CDOUBLE(CUST.SIEXEC.conDouble) > CDOUBLE(CUST.SIEXEC.conInt)) THEN
+			#{
+				sv_e = sv_e + CUST.SIEXEC.srlNum + ","
+				PRINT(sv_e)
+				
+				sv_c = sv_c + 1
+				PRINT(sv_c)
+				
+				sv_u = urhk_SRV_SetVal("subInstrLL." +sv_r+ ".subInstr.fixedAmt| ")
+			#}
+			ENDIF
+		#}
+		ENDIF
+		
+		sv_l = sv_l + 1
+		PRINT(sv_l)
+	#}
+	DO
+	
+	IF (sv_c > 0) THEN
+	#{
+		BANCS.OUTPUT.successOrFailure = "F"
+		sv_e = RTRIM(sv_e,',')
+		sv_e = "Decimal value should be multiple of 5 cents for the part tran srl no :  " + sv_e
+		sv_u = urhk_SRV_SetErr(sv_e)
+	#}
+	ENDIF
+	
+	#IF (sv_g > 0) THEN
+	#{
+	#	BANCS.OUTPUT.successOrFailure = "F"
+	#    sv_f = RTRIM(sv_f,',')
+	#    sv_f = "Execution event id should be null for the part tran srl no :  " + sv_f
+	#    sv_u = urhk_SRV_SetErr(sv_f)
+	#}
+	#ENDIF
+	
+	ENDOFSCRIPT:
+		IF (CUST.SIEXEC.errMsg != "") THEN
+		#{
+			sv_u = urhk_SRV_SetErr(CUST.SIEXEC.errMsg)
+			BANCS.OUTPUT.successOrFailure = "F"
+		#}
+		ENDIF
+		
+		
+		TRACE OFF
+		EXITSCRIPT
+END-->

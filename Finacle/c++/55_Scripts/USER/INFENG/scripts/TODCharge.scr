@@ -1,0 +1,163 @@
+#----------------------------------------------------------------------------------------------------------
+# Filename              :       TODCharge.scr
+# Author                :       Venkatesh T R
+# Description           :       This is the script for collecting charges during TOD availment
+# Input                 :       Account ID
+# Output                :       Charge Amount
+# Called Script         :       None
+# Calling Script        :
+#
+# Modification History
+# Sl. #           Date             Author             Modification           Version
+# -----           -----           --------          ----------------        ---------
+#  1           24-04-2013         Venkatesh          Original Version          1.0
+#  2           24-07-2013         Bharath			Charge amount derivation logic changed
+#  3           06-08-2013         Bharath			Minimum charge condition added
+#-----------------------------------------------------------------------------------------------------------
+<--START
+CHECKSUM="ae454f21d27e2a44b32d2e3b63281d8628fb0b84a5ed4e163e904096d3893eac"
+	TRACE ON
+	#sv_a = urhk_B2K_printRepos("BANCS")
+	#print(sv_a)
+	
+	IF(FIELDEXISTS(BANCS.INPUT.acctId)) THEN
+	#{
+		print(BANCS.INPUT.inputAvailAmount)
+		print(BANCS.INPUT.acctId)
+		print(BANCS.INPUT.inputCrncy)
+		#}
+	ELSE
+		#{
+		print(BANCS.INPUT.DebitAccount)
+		print(BANCS.INPUT.ContextAmt)
+		print(BANCS.INPUT.ContextCrncy)
+		
+		BANCS.INPUT.inputAvailAmount = BANCS.INPUT.ContextAmt
+		BANCS.INPUT.acctId = BANCS.INPUT.DebitAccount
+		BANCS.INPUT.inputCrncy = BANCS.INPUT.ContextCrncy
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = BANCS.INPUT.acctId + "|" + BANCS.STDIN.contextBankId + "|"
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + BANCS.STDIN.contextBankId + "|" + "N" + "|" + "Y"
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "segment,schmCode|"
+	sv_s = sv_s + "SELECT CMG.SEGMENTATION_CLASS,GAM.SCHM_CODE FROM TBAADM.GAM,TBAADM.CMG WHERE"
+	sv_s = sv_s + " GAM.FORACID = ?SVAR AND CMG.CIF_ID = GAM.CIF_ID AND GAM.BANK_ID = ?SVAR"
+	sv_s = sv_s + " AND CMG.BANK_ID = ?SVAR AND GAM.DEL_FLG = ?SVAR AND GAM.ENTITY_CRE_FLG = ?SVAR"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		BANCS.INPUT.segment = BANCS.OUTPARAM.segment
+		BANCS.INPUT.schmCode = BANCS.OUTPARAM.schmCode
+	#}
+	ENDIF
+	
+	CUST.INTERFACE.errorCode = BANCS.INPUT.schmCode + "_SCTOPCNT"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		BANCS.INPUT.schmPcnt = "0"
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.schmPcnt = TRIM(CUST.INTERFACE.errorDesc)
+	#}
+	ENDIF
+	
+	CUST.INTERFACE.errorCode = BANCS.INPUT.segment + "_SEGTOPCNT"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		BANCS.INPUT.segmentPcnt = "0"
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.segmentPcnt = TRIM(CUST.INTERFACE.errorDesc)
+	#}
+	ENDIF
+	
+	BANCS.INPARAM.BINDVARS = "CATOD" + "|" + BANCS.STDIN.contextBankId + "|" + BANCS.INPUT.inputCrncy
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.INPUT.inputAvailAmount
+	BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.INPUT.inputAvailAmount
+	print(BANCS.INPARAM.BINDVARS)
+	sv_s = "slabPcnt|SELECT PCNT_AMT FROM TBAADM.ATC WHERE AMT_TBL_CODE = ?SVAR AND"
+	sv_s = sv_s + " BANK_ID = ?SVAR AND DEL_FLG = 'N' AND ENTITY_CRE_FLG = 'Y'"
+	sv_s = sv_s + " AND CRNCY_CODE = ?SVAR AND TO_NUMBER(?SVAR) > START_AMT AND"
+	sv_s = sv_s + " TO_NUMBER(?SVAR) <= END_AMT"
+	print(sv_s)
+	sv_d = urhk_dbSelectWithBind(sv_s)
+	IF(sv_d == 0) THEN
+	#{
+		BANCS.INPUT.slabPcnt = BANCS.OUTPARAM.slabPcnt
+		#}
+	ELSE
+		#{
+		BANCS.INPUT.slabPcnt = "0"
+	#}
+	ENDIF
+	print(BANCS.INPUT.schmPcnt)
+	print(BANCS.INPUT.segmentPcnt)
+	print(BANCS.INPUT.slabPcnt)
+	
+	IF(CDOUBLE(BANCS.INPUT.schmPcnt) > 0 ) THEN
+	#{
+		BANCS.OUTPUT.collAmount = (CDOUBLE(BANCS.INPUT.inputAvailAmount) * CDOUBLE(BANCS.INPUT.schmPcnt) / CDOUBLE("100"))
+		print(BANCS.OUTPUT.collAmount)
+		#}
+	ELSE
+		#{
+		IF(CDOUBLE(BANCS.INPUT.slabPcnt) > 0 ) THEN
+		#{
+			BANCS.OUTPUT.collAmount = CDOUBLE(BANCS.INPUT.inputAvailAmount) * CDOUBLE(BANCS.INPUT.slabPcnt) / CDOUBLE("100")
+			print(BANCS.OUTPUT.collAmount)
+			#}
+		ELSE
+			#{
+			IF(CDOUBLE(BANCS.INPUT.segmentPcnt) > 0 ) THEN
+			#{
+				BANCS.OUTPUT.collAmount = (CDOUBLE(BANCS.INPUT.inputAvailAmount) * CDOUBLE(BANCS.INPUT.segmentPcnt) / CDOUBLE("100"))
+				print(BANCS.OUTPUT.collAmount)
+				#}
+			ELSE
+				#{
+				BANCS.OUTPUT.collAmount = "0"
+				print(BANCS.OUTPUT.collAmount)
+			#}
+			ENDIF
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	#--------------------------------------------------------------------------
+	# Checking for minimum charge amount
+	#--------------------------------------------------------------------------
+	CUST.INTERFACE.errorCode = TRIM(CUST.CTODA.schmCode) + "_MINCHRG"
+	CALL("CATOD_GetParameterDesc.scr")
+	IF ( CUST.INTERFACE.SuccessFlag == "1") THEN
+	#{
+		sv_w = "SUCCESSORFAILURE|N"
+		sv_u = urhk_SetOrbOut(sv_w)
+		CUST.CTODA.errorMsg = "Could not fetch parameter value for " +  CUST.INTERFACE.errorCode
+		sv_z = "Error_0|" + CUST.CTODA.errorMsg
+		sv_u = urhk_SetOrbOut(sv_z)
+		GOTO ENDOFSCRIPT
+	#}
+	ENDIF
+	CUST.CTODA.minChrg = TRIM(CUST.INTERFACE.errorDesc)
+	print(CUST.CTODA.minChrg)
+	IF( CDOUBLE(BANCS.OUTPUT.collAmount) < CDOUBLE(CUST.CTODA.minChrg) ) THEN
+	#{
+		BANCS.OUTPUT.collAmount = CUST.CTODA.minChrg
+	#}
+	ENDIF
+	
+	BANCS.OUTPUT.collAmount = FORMAT$(CDOUBLE(BANCS.OUTPUT.collAmount),"%.2f")
+	print(BANCS.OUTPUT.collAmount)
+	BANCS.OUTPUT.collCrncy = BANCS.INPUT.inputCrncy
+	print(BANCS.OUTPUT.collCrncy)
+	BANCS.OUTPUT.AmountWithNoDiscount = BANCS.OUTPUT.collAmount
+	print(BANCS.OUTPUT.AmountWithNoDiscount)
+END-->

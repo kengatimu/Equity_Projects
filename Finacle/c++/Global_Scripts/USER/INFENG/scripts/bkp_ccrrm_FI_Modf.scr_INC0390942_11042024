@@ -1,0 +1,342 @@
+#---------------------------------------------------------------------------------    
+#	Name			: ccrrm_FI_Modf.scr
+#	Description		: Main Script for CCRRM Custom Menu
+#	Date			: 03-10-2023
+#	Author			: JAMES GICHIRI
+#	Input			: NA
+#	Output			: NA
+#	Called Script	: jsp
+#	Menu Option		: CCRRM
+#----------------------------------------------------------------------------------
+
+<--START
+TRACE ON
+LIBNAME CUSTOMSO
+
+
+	if (REPEXISTS("CUST")==0)THEN
+	#{
+	CREATEREP("CUST")
+	#}
+	endif
+
+	if (CLASSEXISTS("CUST","CCRRM")==0)THEN
+	#{
+	CREATECLASS("CUST","CCRRM",5)
+	#}
+	endif
+	
+	if(repexists("MTT")==0)then
+                createrep("MTT")
+	endif
+	
+	if(classexists("MTT","InputDetails")==0)then
+		createclass("MTT","InputDetails",5)
+	endif
+	
+	sv_a = urhk_b2k_printRepos("BANCS")
+	print(sv_a)
+	
+	sv_a = urhk_MTTS_PopulateInputDetails("")
+	print(sv_a)
+	
+	if(sv_a==0)then
+	#{
+		CUST.CCRRM.refnumber= MTT.InputDetails.Argument1
+		print(CUST.CCRRM.refnumber)
+		CUST.CCRRM.UserId= MTT.InputDetails.Argument2
+		print(CUST.CCRRM.UserId)
+		CUST.CCRRM.WorkFile= MTT.InputDetails.Argument3
+		print(CUST.CCRRM.WorkFile)
+		CUST.CCRRM.reportfile = MTT.InputDetails.Argument4
+		print(CUST.CCRRM.reportfile)
+		CUST.CCRRM.funCode = MTT.InputDetails.Argument5
+		print(CUST.CCRRM.funCode)
+		#exitscript
+	#}	
+	else
+	#{
+		print("Failed to populate the MTT")
+		exitscript
+	#}	
+	endif
+
+	
+		
+	# ********* Fetch Records and modify using CRM FI request
+	
+	
+	
+	print("Breakpoint 1")
+	
+	IF(CUST.CCRRM.funCode == "U")THEN
+	#{
+		#====================  FETCHING RECORDS FROM THE TABLE Start
+		
+			#Start of acct Modification
+			print(CUST.CCRRM.refnumber)
+			
+			sv_s = "CIF_ID,RISK_SCORE,RISK_RATING,CUST_TYPE| select CIF_ID,risk_score,risk_rating,cust_type from custom.ccrrm  where ENTITY_CRE_FLG='N' "
+			sv_s = sv_s + " and VALID_FLG ='Y' and RCRE_USER_ID=?SVAR and bank_id=?SVAR and ref_code=?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.userId +"|"+BANCS.STDIN.contextBankId+"|"+CUST.CCRRM.refnumber
+			print(BANCS.INPARAM.BINDVARS)
+			sv_k = urhk_dbCursorOpenWithBind(sv_s)
+			PRINT(sv_k)
+			sv_m = BANCS.OUTPARAM.DB_CURSOR_NUMBER
+			PRINT(sv_m)
+			sv_c = urhk_dbCursorFetch(sv_m)
+			PRINT(sv_c)
+			IF(sv_c != 0)THEN
+			#{
+					CUST.CCRRM.SorFmessage = "No records found in the upload table"
+					print(CUST.CCRRM.SorFmessage)
+					sv_c=urhk_dbCursorClose(sv_m)
+					
+					sv_r = system("echo '\t"+CUST.CCRRM.SorFmessage+"' >> "+CUST.CCRRM.reportfile)
+					print(sv_r)
+					GOTO UPDATERPT
+			#}		
+			ELSE
+			#{
+				sv_j = 0
+				PRINT(sv_j)
+
+				WHILE (sv_c == 0)
+
+					CUST.CCRRM.customer_id  	= BANCS.OUTPARAM.CIF_ID
+					CUST.CCRRM.riskscore		= BANCS.OUTPARAM.RISK_SCORE
+					CUST.CCRRM.riskrating		= BANCS.OUTPARAM.RISK_RATING
+					CUST.CCRRM.customertype		= BANCS.OUTPARAM.CUST_TYPE				
+					CUST.CCRRM.ModSuccessflg 	= "F"
+					CUST.CCRRM.SorFmessage      = ""
+					CUST.CCRRM.Statuscode    	= "U"
+					
+					print(CUST.CCRRM.customer_id)
+					print(CUST.CCRRM.riskscore)
+					print(CUST.CCRRM.riskrating)
+					print(CUST.CCRRM.customertype)
+					
+					IF ((CUST.CCRRM.customertype=="I") OR (CUST.CCRRM.customertype=="C") )THEN
+					#{
+						IF(CUST.CCRRM.customertype=="I")THEN
+						#{
+							PRINT("MODIFY RETAIL CIF")
+							if(BANCS.STDIN.contextBankId == "43")then
+							#{
+								call("ccrrCorpModReqDRC.scr")
+							#}
+							else
+							#{
+	
+								call("ccrrRetModReq.scr")
+							#}
+							endif	
+							
+						#}
+						ELSE
+						#{
+							PRINT("MODIFY COPRERATE CIF")
+						
+							if(BANCS.STDIN.contextBankId == "43")then
+							#{
+								call("ccrrCorpModReqDRC.scr")
+							#}
+							else
+							#{
+								call("ccrrCorpModReq.scr")
+							#}
+							endif	
+
+							
+							
+						#}
+						ENDIF
+						
+					#}
+					ELSE
+					#{
+						print("Invalid customer cif id")
+						#Create a report for the failed and invalid cif_id
+						CUST.CCRRM.SorFmessage = "Invalid CIF"
+						CUST.CCRRM.ModSuccessflg = "F"
+						CUST.CCRRM.Statuscode = "F"
+						
+						GOTO UPDATERPT
+						
+						
+						
+					#}
+					ENDIF
+					
+					IF(FIELDEXISTS(CUST.CRMREQ.SuccessOrFailure) == 1)THEN
+					#{
+						print(CUST.CRMREQ.SuccessOrFailure)
+						IF(trim(CUST.CRMREQ.SuccessOrFailure) == "S")THEN
+						#{
+							CUST.CCRRM.ModSuccessflg ="M"
+							CUST.CCRRM.Statuscode = "V"
+							CUST.CCRRM.SorFmessage = "CIF Modified successfully"
+							
+								
+						#}ss
+						ELSE
+						#{
+							IF(FIELDEXISTS(CUST.CRMREQ.errorDesc) == 1)THEN
+							#{
+								CUST.CCRRM.SorFmessage = CUST.CRMREQ.errorDesc
+							#}
+							ELSE
+							#{
+								CUST.CCRRM.SorFmessage = "CIF Modification failed,Manual update required"
+							#}
+							ENDIF
+							CUST.CCRRM.Statuscode = "F"
+						#}
+						ENDIF	
+					ENDIF
+					
+					# ============================== UPDATE THE MODIFCATION FLAGS
+					UPDATERPT: 
+					
+						print(CUST.CCRRM.ModSuccessflg)
+						CUST.CCRRM.SorFmessage = CUST.CCRRM.customer_id+"   "+CUST.CCRRM.SorFmessage 
+						print(CUST.CCRRM.SorFmessage)
+						
+						sv_r = system("echo '   "+CUST.CCRRM.SorFmessage+"' >> "+CUST.CCRRM.reportfile)
+						print(sv_r)
+						
+						
+						#++++++++++ Start Update 
+						
+						#------------------------------------------------------------
+						#------Updating the CCRRM table on the success condition  ---
+						#------status U - uploaded no modifification done yet----------
+						#------status F - Failed to do modifification 			  ---
+						#------status V - modification done, pending verification ---
+						#------status P - uploaded , modified done and verified -----
+						#------------------------------------------------------------
+						
+						
+						sv_s = "update CUSTOM.CCRRM set STATUS_CODE=?SVAR,"
+						sv_s = sv_s + "REMARKS= substr(replace (q'["+CUST.CCRRM.SorFmessage+"]',q'[|]',q'[ ]'),0,200) "
+						sv_s = sv_s + "where CIF_ID=?SVAR "
+						sv_s = sv_s + "and REF_CODE=?SVAR "
+						sv_s = sv_s + "and bank_id=?SVAR"
+						print(sv_s)
+						BANCS.INPARAM.BINDVARS =  CUST.CCRRM.Statuscode + "|" + CUST.CCRRM.customer_id +"|"+  CUST.CCRRM.refnumber +"|"+ BANCS.STDIN.contextBankId
+						print(BANCS.INPARAM.BINDVARS)
+						print(sv_s)
+						sv_d=urhk_dbSqlWithBind(sv_s)
+						IF (sv_d == 0)  THEN
+							sv_d = urhk_dbSQLWithBind("COMMIT")
+						ENDIF
+								
+						#++++++++++ End update 
+				
+					sv_c = urhk_dbCursorFetch(sv_m)
+					PRINT(sv_c)
+					
+				DO
+				sv_c = urhk_dbCursorClose(sv_m)
+				PRINT(sv_c)
+			
+		
+		#====================   END ============================
+		
+		ENDOFSCRIPT:
+		
+		#================ Report compilation
+		sv_a=urhk_getEnv("B2K_SESSION_ID")
+		IF(sv_a== 0)THEN
+		#{
+			CUST.CCRRM.session_id = BANCS.OUTPARAM.envValue
+			print(CUST.CCRRM.session_id)
+			
+		#}
+		ELSE
+		#{
+			CUST.CCRRM.errorMsg = "No sesion available"
+			EXITSCRIPT
+		#}
+		ENDIF
+		
+		sv_r = system("sleep 5")
+		print(sv_r)
+		
+		sv_u = urhk_getFileLocation("COM|ccrrm.com")
+		IF(sv_u==0)THEN
+		#{
+			#Setting env variable
+			#Session Id
+			sv_a = "sessionid|" + CUST.CCRRM.session_id
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+  			PRINT(sv_u)
+  			IF (sv_u != 0) THEN
+  			#{
+  				CUST.CCRRM.errorMsg = "Error in setting env variable "
+  				EXITSCRIPT
+  			#}
+  			ENDIF
+			
+			#userId
+			print(BANCS.STDIN.userId)
+			sv_a = "userid|" + BANCS.STDIN.userId
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+  			PRINT(sv_u)
+  			IF (sv_u != 0) THEN
+  			#{
+  				CUST.CCRRM.errorMsg = "Error in setting env variable "
+  				EXITSCRIPT
+  			#}
+  			ENDIF
+			
+			#Success file name
+			sv_a = "successfile|" + CUST.CCRRM.reportfile
+			sv_u = urhk_putEnvForCallShellScript(sv_a)
+  			PRINT(sv_u)
+  			IF (sv_u != 0) THEN
+  			#{
+  				CUST.CCRRM.errorMsg = "Error in setting env variable "
+  				EXITSCRIPT
+  			#}
+  			ENDIF
+
+			#Execute the com file
+			BANCS.INPARAM.scriptName = "ccrrm.com"
+			BANCS.INPARAM.arguments = ""
+  			sv_u = urhk_CallShellScript("b")
+  			print(sv_u)
+  			IF (sv_u != 0) THEN
+  			#{
+  				CUST.CCRRM.errorMsg = "Could not execute com file: Report generation failed"
+  				EXITSCRIPT
+  			#}
+  			ENDIF
+			
+			
+			
+			sv_r=system("rm -f"+ CUST.CCRRM.reportfile)
+		#}
+		ELSE
+		#{
+			CUST.CCRRM.errorMsg = "Unable to load the com file"
+  				 exitscript
+		#}
+		ENDIF
+		
+		
+	
+	#}
+	ENDIF
+	
+	print("Processing Ends")
+
+ 
+
+exitscript
+TRACE OFF
+END-->
+
+
+
