@@ -1,0 +1,382 @@
+function printBlock()
+{
+	writeCustomHeader("crprint_det");
+	with (document){
+	write('<input type="hidden" name="crprint.myIPAddress" id="myIPAddress">');
+//	write('<input type="hidden" name="crprint.acctNo" id="acctNo">');
+//	write('<input type="hidden" name="crprint.reqStat" id="reqStat">');
+	write('<input type="hidden" id="issueDate" fdt="fdate" mneb1="N" vFldId="issueDate_ui" name="' + subGroupName + '.issueDate">');
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td><table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">CUSTOM REPORTS PRINT MENU</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="tableborder">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+	write('<tr class="innertabletop1">');
+	write('<td colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+	write('<a href="javascript:showHelpFile(\'crprintdet_help.htm\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" width="47" height="21"  vspace="1" border="0"></a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+
+	write('<td class="textlabel">' + jspResArr.get("FLT000204") + ' <font color="red" size="2">*</font></td>');
+	write('<td><select name="' + subGroupName + '.funcCode" id="funcCode" ' + crprintProps.get("funcCode_ENABLED") + ' class="textfieldfont" " onchange="javascript:fnDisableFields(this)">');
+	write('<option selected value = "">--Select--</option>');
+    write('<option value="CHQ">CHQ - Cheque Issue Report</option>');
+	write('<option value="TCPI">TCPI - Cash Position Inquiry by Teller</option>');
+	write('</select>');
+	write('</td>');
+	write('<td>&nbsp;</td>');
+	write('<td>&nbsp;</td>');
+	write('<td>&nbsp;</td>');
+	write('</tr>');
+	write('<tr id="R1">');
+	write('<td class="textlabel">' + jspResArr.get("FLT11000028") + '<font color="red" size="2"> *</font></td>');	
+	write('<td class="textfield">');	
+	write('<input type="text" name="' + subGroupName + '.acctNo" id="acctNo" ' + crprintProps.get("acctNo_ENABLED") + ' size="20" maxlength="20"  class="textfieldfont" >');	
+	write('<a href="javascript:fnshowAccountIdList(document.forms[0].acctNo);" id="sLnk2" >');	
+	write('<img hotKeyId="search1" src="../Renderer/images/search_icon.gif" width="16" height="17" border="0"></img>');	
+	write('</td>');	
+	 write('<td class="textlabel">IBAN Number</td>');
+ write('<td><input name="' + subGroupName + '.ibanNo" id="ibanNo" ' + crprintProps.get("ibanNo_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="23" onChange="javascript:fnIbanVal();">');
+ 
+	write('<td>&nbsp;</td>');	
+	write('<td>&nbsp;</td>');	
+	write('<td>&nbsp;</td>');	
+	write('</tr>');	
+	write('<tr id="R2">');
+        write('<td class="textlabel" style="height: 15px">Report Date<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield">');
+        write('<input  maxlength="10" hotKeyId="calender1"  type="text" class="textfieldfont" fdt="uidate"  mnebl="false" onBlur="javascript:return crprint_det_ONBLUR1(this,this,this);" name="' + subGroupName + '.issueDate_ui" id="issueDate_ui" >');
+        write('&nbsp;<a  href="javascript:openDate(document.forms[0].issueDate_ui,BODDate)"   id="sLnk2"><img align="absmiddle" alt="Date picker" border="0" height="19"  hotKeyId="calender1" src="../Renderer/images/'+applangcode+'/calender.gif" width="24" class="img" >');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="textlabel"> </td>');
+        write('<td class="textfield"> </td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+        with (document) {
+        if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+        write('<div align="left" class="ctable">');
+        if (sReferralMode == 'S'){
+        write('<input type="button" class="Button" id="Submit" value="SUBMIT" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+        }
+        writeRefFooter();
+        write('<input type="button" class="Button" id="_BackRef_" value="CANCEL" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+        write('</div>');
+        }else{
+        if(funcCode !='I'){
+        write('<div class="ctable">');
+        write('<input id="Submit" name="Submit" type="button" class="button"    onClick="javascript:return crprint_det_ONCLICK1(this,this);"" value="Submit" hotKeyId="Submit">');
+        write('<input id="Validate" name="Validate" type="button" class="button" value="Validate"     onClick="javascript:return crprint_det_ONCLICK2(this,this);"" hotKeyId="Validate">');
+        write('<input id="Cancel" name="Cancel" type="button" class="button" value="Cancel" onClick="javascript:return crprint_det_ONCLICK3(this,this.id);"" hotKeyId="Cancel">');
+        }else{
+        write('<div class="ctable">');
+        write('<input class="button" type="button" id="Back" value="Ok" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+        }
+        writeFooter();
+        write('</div>');
+        }
+        } //End with()
+
+}//End function
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+	
+	pre_ONLOAD('crprint_det',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+	post_ONLOAD('crprint_det',this);
+}
+
+function post_ONLOAD(obj1,obj2)
+{
+	if(document.forms[0].funcCode.value == "TCPI")
+	{
+		var ObjForm = document.forms[0];
+		ObjForm.acctNo.value = "";
+		document.getElementById("acctNo").disabled = true;
+		document.forms[0].issueDate.value = "";
+		document.forms[0].ibanNo.value = "";
+		document.getElementById("issueDate").disabled = true;
+		document.getElementById("ibanNo").disabled = true;
+		document.getElementById("issueDate_ui").style.visibility = 'hidden';
+		document.getElementById("sLnk2").style.visibility = 'hidden';
+		//document.getElementById("calender1").style.visibility = 'hidden';
+		//alert("chk r1 r2");
+		document.getElementById("R1").style.visibility = 'hidden';
+		document.getElementById("R2").style.visibility = 'hidden';
+	}
+	
+    fnPopulateControlValues();
+}
+
+function fnValidateData()
+{
+        var ObjForm = document.forms[0];
+
+        return true;
+}
+function fnPopulateControlValues() 
+{
+
+	var ObjForm = document.forms[0];
+	//ObjForm.funcCode.value = funcCode;
+	//ObjForm.acctNo.value = acctNo;
+//	ObjForm.requestId.value = requestId;
+}
+
+function crprint_det_ONCHANGE1(obj,p1)
+{
+	var retVal = "";
+	if (pre_ONCHANGE('crprint_det',obj) == false) { 
+		return false;
+	}
+	if ((retVal = validateUser(p1)) == false) {
+		return false;
+	}
+	if (post_ONCHANGE('crprint_det',obj) == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function crprint_det_ONCLICK1(obj,p1)
+{
+	var retVal = "";
+
+	if(fnIsNull(document.forms[0].funcCode.value)) 
+	{
+        	alert("Enter the Function Code");
+        	document.forms[0].funcCode.focus();
+        	return false;
+        }
+
+	if(((document.forms[0].funcCode.value) != "") && ((document.forms[0].funcCode.value) != " "))
+	{
+		if(document.forms[0].funcCode.value != "TCPI")
+		{
+			if(fnIsNull(document.forms[0].acctNo.value)) 
+			{
+				alert("Enter the Account Number");        
+				document.forms[0].acctNo.focus();
+				return false;     
+			}
+		}
+		
+		
+	}
+
+        if (preEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        if ((retVal =  fnValAndSubmit(p1)) == false) {
+                return false;
+        }
+        if (postEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+
+}
+
+function crprint_det_ONCLICK2(obj,p1)
+{
+	var retVal = "";
+
+	if(fnIsNull(document.forms[0].funcCode.value)) 
+	{
+        	alert("Enter the Function Code");
+        	document.forms[0].funcCode.focus();
+        	return false;
+        }
+
+	if(((document.forms[0].funcCode.value) != "") && ((document.forms[0].funcCode.value) != " "))
+	{
+		if(document.forms[0].funcCode.value != "TCPI")
+		{
+			if(fnIsNull(document.forms[0].acctNo.value)) 
+			{
+					alert("Enter the Account Number");        
+				document.forms[0].acctNo.focus();
+					return false;     
+			}
+		}
+		
+	}
+
+        if (preEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        if ((retVal =  fnValAndSubmit(p1)) == false) {
+                return false;
+        }
+        if (postEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+
+}
+function clrpt_det_ONCLICK3(obj,p1)
+{
+        var retVal = "";
+        if (preEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        if ((retVal =  doSubmit(p1)) == false) {
+                return false;
+        }
+        if (postEventCall('crprint_det',obj,'ONCLICK') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+
+function fnshowAccountIdList(obj){
+        showAccountIdList(obj,null,null,'F');
+	fnOnchange();
+}
+
+function fnOnchange() {
+        var inputNameValues = "acctNum|"+document.forms[0].acctNo.value;
+        var outputNames     = "";
+        var scrName         = "formatacctdp001.scr";
+        var retVal          = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+        var ret1 = retVal.split("|");
+        if(ret1[0] == "MSG" )
+        {
+                alert(ret1[1]);
+        }
+
+}
+
+function fnIbanVal()
+{
+document.forms[0].acctNo.value ='';
+
+var ibanNo = document.forms[0].ibanNo.value;
+ var inputNameValues    = "ibanNo|"+ibanNo;
+                         var outputNames        = "errorFlg|errorMsg|acctNum|acctName";
+                         var scrName            = "ibanToForacidp002.scr";
+                         var retVal             = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+        var result      = retVal.split("|");
+        var errorFlg = result[1];
+        var errorMsg = result[3];
+        var acctNum = result[5];
+
+        var acctName = result[7];
+         if (errorFlg == "Y") {
+                alert(errorMsg);
+                document.forms[0].acctNo.value ='';
+                        document.forms[0].ibanNo.value = '';
+                return false;
+            } else {
+                    document.forms[0].acctNo.value =acctNum;
+
+
+        setFieldFocus(document.forms[0].acctNo);
+                }
+return true;
+}
+
+function crprint_det_ONBLUR1(obj,p1,p2)
+{
+        var retVal = "";
+        if (preEventCall('crprint_det',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = onBlurFormatDate(p1)) == false) {
+                return false;
+        }
+        if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+                return false;
+        }
+        if (postEventCall('crprint_det',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+
+function fnDisableFields(obj)
+{
+	if(document.forms[0].funcCode.value == "TCPI")
+	{
+		var ObjForm = document.forms[0];
+		ObjForm.acctNo.value = "";
+		document.getElementById("acctNo").disabled = true;
+		document.forms[0].issueDate.value = "";
+		document.forms[0].ibanNo.value = "";
+		document.getElementById("issueDate").disabled = true;
+		document.getElementById("issueDate_ui").disabled = true;
+		document.getElementById("ibanNo").disabled = true;
+		//document.getElementById("issueDate_ui").style.visibility = 'hidden';
+		document.getElementById("sLnk2").style.visibility = 'hidden';
+		//document.getElementById("calender1").style.visibility = 'hidden';
+		//alert("chk r1 r2");
+		document.getElementById("R1").style.visibility = 'hidden';
+		document.getElementById("R2").style.visibility = 'hidden';
+	}	
+	else
+	{
+		var ObjForm = document.forms[0];
+		document.getElementById("acctNo").disabled = false;
+		document.getElementById("issueDate").disabled = false;
+		document.getElementById("ibanNo").disabled = false;
+		document.getElementById("issueDate_ui").disabled = false;
+		//document.getElementById("issueDate_ui").style.visibility = 'visible';
+		document.getElementById("sLnk2").style.visibility = 'visible';
+		//document.getElementById("calender1").style.visibility = 'visible';
+		//alert("chk r1 r2");
+		document.getElementById("R1").style.visibility = 'visible';
+		document.getElementById("R2").style.visibility = 'visible';
+	}
+	
+}

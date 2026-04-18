@@ -1,0 +1,48 @@
+var err = new ErrObject("","");
+function fnOnLoad()
+{
+	objForm=document.forms[0];
+ 	fnSetFocusOnFirstField();
+ 	objForm.CIF_ID.value = cifId;
+ 	objForm.ACCT_CLS_FLG.value = acctCloseFlg;
+}
+
+function fnNextList()
+{
+	document.forms[0].txtaction.value = "Next";
+	objForm.submitform.value = "Next";
+	document.forms[0].submit();
+}
+function fnPreviousList()
+{
+	document.forms[0].txtaction.value = "Back";
+	objForm.submitform.value ="Back";
+	document.forms[0].submit();
+}
+
+function fnValidateForm()
+{
+	convertToCaps();
+	return true;
+}
+
+function fnOnButtonClick(btnObj)
+{
+	if(btnObj.id == 'Clear'){
+		formReset(objForm)
+		return;
+	}
+	objForm.submitform.value =btnObj.id;
+	if(btnObj.id == 'Cancel'){
+		convertToCaps();
+		objForm.submit();
+		return;
+	}
+	convertToCaps();
+	disableButtons();
+	fnEnableFormDataControls(objForm);
+	fnEnableDescFields(objForm);
+	objForm.submit();
+}
+
+

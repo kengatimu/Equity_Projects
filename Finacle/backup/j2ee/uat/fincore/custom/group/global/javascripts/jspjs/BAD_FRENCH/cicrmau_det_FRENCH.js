@@ -1,0 +1,7 @@
+
+var jspRes={FLT000001:" Foracide",FLT000002:": Numéro dinstrument",FLT000004:"Montant de linstrument",FLT000003:" Code de rejet",FLT000006:"Code de la  zone",FLT000005:"Date de la zone",FLT000008:"Code de la banque debitrice ",FLT000007:"Date de valeur",FLT000009:"code de lagence débitrice",FLT000010:" Code de tri  debiteur ",FLT000011:"Code banque Pres",FLT000012:"Code de lagence Pres",FLT000013:"Code de la banque démission",FLT000014:" Emettre le code de succursale",FLT000015:"Remarques du Transaction (transfert)",FLT000016:"Id Sol",FLT000017:"Fonction",FLT000018:"Définir No"};
+var jspResALT = {
+};
+
+var arrJspArr = new Array (jspRes, jspResALT);
+var jspResArr = new litMap(arrJspArr);

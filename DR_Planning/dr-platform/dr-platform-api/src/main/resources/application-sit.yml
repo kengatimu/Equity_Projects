@@ -1,0 +1,172 @@
+# ============================================================
+# DR Platform API — SIT Profile (System Integration / Dev)
+# Use for local development and system integration testing
+# ============================================================
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  output:
+    ansi:
+      enabled: always   # Force ANSI colour output in IDE / terminal
+
+  cloud:
+    vault:
+      enabled: false
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.ldap.LdapRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.thymeleaf.ThymeleafAutoConfiguration  # pure REST API — no templates
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/dr_platform}
+    username: ${DB_USERNAME:dr_platform}
+    password: ${DB_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    open-in-view: false   # disable WARN: "database queries may be performed during view rendering"
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  ldap:
+    urls: ${LDAP_URL:ldap://ldap.equitybank.com:389}
+    base: ${LDAP_BASE:DC=equitybank,DC=com}
+    username: ${LDAP_BIND_DN:CN=svc-drplatform,OU=ServiceAccounts,DC=equitybank,DC=com}
+    password: ${LDAP_BIND_PASSWORD:changeme}
+
+  # ── SMTP config for SIT ──────────────────────────────────────────────────────
+  # For real email delivery in dev, set these env vars:
+  #   MAIL_HOST=smtp.gmail.com
+  #   MAIL_PORT=587
+  #   MAIL_USERNAME=youraddress@gmail.com
+  #   MAIL_PASSWORD=<Gmail App Password — generate at myaccount.google.com/apppasswords>
+  #   MAIL_SMTP_AUTH=true
+  #   MAIL_SMTP_STARTTLS=true
+  # If not set, OTP falls back to WARN log in the console.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS:false}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:sit-dev-secret-key-minimum-256-bits-long-for-hs256-algorithm-not-for-production}
+    access-token-expiry-ms: 3600000    # 1 hour — longer for dev convenience
+    refresh-token-expiry-ms: 86400000  # 24 hours
+
+  security:
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}
+    max-login-attempts: 10
+
+  auth:
+    allowed-domains: ${ALLOWED_EMAIL_DOMAINS:equitybank.co.ke,gmail.com}
+    otp-expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+
+  ldap:
+    dev-mode: ${LDAP_DEV_MODE:true}
+    user-search-base: ${LDAP_USER_BASE:OU=Users}
+    user-search-filter: ${LDAP_USER_FILTER:(sAMAccountName={0})}
+    group-search-base: ${LDAP_GROUP_BASE:OU=Groups}
+    role-coordinator: ${LDAP_ROLE_COORDINATOR:DR-Coordinators}
+    role-app-owner: ${LDAP_ROLE_APP_OWNER:DR-AppOwners}
+    role-super-admin: ${LDAP_ROLE_SUPER_ADMIN:DR-SuperAdmins}
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID:}
+  auth-token: ${TWILIO_AUTH_TOKEN:}
+  from-number: ${TWILIO_FROM_NUMBER:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,flyway,env,loggers
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  # ── Console format ──────────────────────────────────────────────────────────
+  # Before: 2026-04-01T16:35:52.948+03:00  INFO 30805 --- [dr-platform-api] [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/] : ...
+  # After:  16:35:52.948  INFO  [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[/]  : ...
+  #
+  # Removed: full date, timezone offset, PID, app-name block, --- separator
+  # Kept:    HH:mm:ss.SSS · coloured level · thread (15 chars) · abbreviated logger (40 chars)
+  pattern:
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr(%-5level){} %clr([%15.15t]){faint} %clr(%-40.40logger{36}){cyan}: %msg%n%wEx"
+
+  level:
+    # ── Root: suppress all Spring/Hibernate/Tomcat INFO chatter ─────────────
+    root: WARN
+
+    # ── Our application — full INFO (services, controllers, audit, security) ──
+    com.equitybank.drplatform: INFO
+
+    # ── Flyway — show each migration step on startup ─────────────────────────
+    org.flywaydb.core: INFO
+
+    # ── HikariCP — show pool start / stop (2 lines at boot) ─────────────────
+    com.zaxxer.hikari.HikariDataSource: INFO
+
+    # ── Tomcat — show "started on port 8080" ─────────────────────────────────
+    org.springframework.boot.web.embedded.tomcat.TomcatWebServer: INFO
+
+    # ── DispatcherServlet — show "Completed initialisation in Xms" ───────────
+    org.springframework.web.servlet.DispatcherServlet: INFO
+
+    # ── Hibernate SQL errors — always visible (catches type mismatch, constraint violations)
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: WARN
+
+    # ── Spring Web MVC — show unhandled mapping exceptions (404 / method not allowed)
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: WARN
+
+    # ── Spring Security — show access denied details in SIT ───────────────────
+    org.springframework.security.access: INFO
+
+    # ── Suppress Hibernate dialect deprecation warning ───────────────────────
+    org.hibernate.orm.deprecation: ERROR
+
+    # ── Suppress Hibernate DDL type registry DEBUG spam ──────────────────────
+    org.hibernate.type.descriptor.sql.spi.DdlTypeRegistry: ERROR
+
+    # ── Suppress verbose Spring proxy / CGLIB noise ───────────────────────────
+    org.springframework.aop: WARN
+
+    # ── Hibernate SQL logging (temporary — disable after debugging) ───────────
+    org.hibernate.SQL: INFO
+    org.hibernate.orm.jdbc.bind: INFO

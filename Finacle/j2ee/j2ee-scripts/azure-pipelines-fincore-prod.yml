@@ -1,0 +1,249 @@
+trigger:
+  branches:
+    include:
+      - main
+
+  paths:
+    include:
+      - fincore/*
+
+variables:
+  vmImageName: 'devops-ubuntu'
+
+stages:
+  - stage: BuildFINCORE
+    displayName: FINCORE PROD BUILD
+
+    jobs:
+      - job: Build
+        displayName: 'FINCORE PROD Build Stage'
+
+        pool:
+          name: $(vmImageName)
+
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          # ------------------------------------------------------------------
+          # STEP 1: Determine Deployment Tag
+          # Checks the triggering branch and applies the correct CI build tag
+          # so downstream CD stages know which environment to target.
+          # The main branch maps to PROD — no other branches are expected here.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Determine Deployment Tag'
+            inputs:
+              script: |
+                echo "Evaluating branch for deployment tagging..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                BRANCH="$(Build.SourceBranch)"
+                echo "Detected branch: $BRANCH"
+
+                if [[ "$BRANCH" == "refs/heads/main" ]]; then
+                    echo "Branch is MAIN: PROD deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags FINCORE-PROD
+
+                else
+                    echo "Branch not mapped for deployment. Skipping tagging."
+                fi
+
+          # ------------------------------------------------------------------
+          # STEP 2: Check Modified Files
+          # Runs check-modified-files-prod.sh to diff the latest commit against
+          # the main branch baseline. Produces:
+          #   - deployment-manifest.txt  (list of changed J2EE files)
+          #   - deployment-audit.txt     (human-readable change summary)
+          #   - metadata.json            (per-server routing flags)
+          # ------------------------------------------------------------------
+          - task: Bash@3
+            displayName: 'Check Modified Files'
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files-prod.sh
+              arguments: '--app fincore'
+
+          # ------------------------------------------------------------------
+          # STEP 3: Determine Routing Tags
+          # Reads the 7 per-server deployment flags written to metadata.json by
+          # check-modified-files-prod.sh and adds the corresponding routing tags:
+          #
+          #   deploy_group_branch : J2EE-group-branch  (Group Branch server EQPROD — banks 11, 43, 54)
+          #   deploy_group_fi     : J2EE-group-fi      (Group FI server EQPRODFI   — banks 11, 43, 54)
+          #   deploy_50_branch    : J2EE-50-branch     (Rwanda Branch server)
+          #   deploy_50_fi        : J2EE-50-fi         (Rwanda FI server)
+          #   deploy_56_branch    : J2EE-56-branch     (Uganda Branch server)
+          #   deploy_56_fi        : J2EE-56-fi         (Uganda FI server)
+          #   deploy_55           : J2EE-55            (Tanzania server EQTZPROD — single server)
+          #
+          # Each tag gates a separate CD stage so only the affected servers are
+          # updated. If no flags are true the build is a no-op for deployment.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Determine Routing Tags'
+            inputs:
+              script: |
+                echo "Reading deployment routing flags from metadata.json..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                # Parse all 7 per-server flags — grep the field name, extract true or false
+                DEPLOY_GROUP_BRANCH=$(grep '"deploy_group_branch"' metadata.json | grep -o 'true\|false')
+                DEPLOY_GROUP_FI=$(grep '"deploy_group_fi"'         metadata.json | grep -o 'true\|false')
+                DEPLOY_50_BRANCH=$(grep '"deploy_50_branch"'       metadata.json | grep -o 'true\|false')
+                DEPLOY_50_FI=$(grep '"deploy_50_fi"'               metadata.json | grep -o 'true\|false')
+                DEPLOY_56_BRANCH=$(grep '"deploy_56_branch"'       metadata.json | grep -o 'true\|false')
+                DEPLOY_56_FI=$(grep '"deploy_56_fi"'               metadata.json | grep -o 'true\|false')
+                DEPLOY_55=$(grep '"deploy_55"'                     metadata.json | grep -o 'true\|false')
+
+                echo "deploy_group_branch (EQPROD   — banks 11, 43, 54) : $DEPLOY_GROUP_BRANCH"
+                echo "deploy_group_fi     (EQPRODFI — banks 11, 43, 54) : $DEPLOY_GROUP_FI"
+                echo "deploy_50_branch    (Rwanda Branch)               : $DEPLOY_50_BRANCH"
+                echo "deploy_50_fi        (Rwanda FI)                   : $DEPLOY_50_FI"
+                echo "deploy_56_branch    (Uganda Branch)               : $DEPLOY_56_BRANCH"
+                echo "deploy_56_fi        (Uganda FI)                   : $DEPLOY_56_FI"
+                echo "deploy_55           (Tanzania — EQTZPROD)         : $DEPLOY_55"
+                echo
+
+                TAGS_ADDED=0
+
+                if [ "$DEPLOY_GROUP_BRANCH" == "true" ]; then
+                    echo "Group Branch files detected — adding routing tag: J2EE-group-branch"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-group-branch"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_GROUP_FI" == "true" ]; then
+                    echo "Group FI files detected — adding routing tag: J2EE-group-fi"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-group-fi"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_50_BRANCH" == "true" ]; then
+                    echo "Rwanda Branch files detected — adding routing tag: J2EE-50-branch"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-50-branch"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_50_FI" == "true" ]; then
+                    echo "Rwanda FI files detected — adding routing tag: J2EE-50-fi"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-50-fi"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_56_BRANCH" == "true" ]; then
+                    echo "Uganda Branch files detected — adding routing tag: J2EE-56-branch"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-56-branch"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_56_FI" == "true" ]; then
+                    echo "Uganda FI files detected — adding routing tag: J2EE-56-fi"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-56-fi"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_55" == "true" ]; then
+                    echo "Tanzania files detected — adding routing tag: J2EE-55"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-55"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$TAGS_ADDED" -eq 0 ]; then
+                    echo "No deployment targets detected — no routing tags added."
+                else
+                    echo "$TAGS_ADDED routing tag(s) added."
+                fi
+
+          # ------------------------------------------------------------------
+          # STEP 4: Copy Files To Staging Directory
+          # Collects only the deployment artefacts (changed file trees +
+          # manifest/audit/metadata). Source control files and pipeline
+          # definitions are intentionally excluded from the archive.
+          # ------------------------------------------------------------------
+          - task: CopyFiles@2
+            displayName: 'Copy Files To Staging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/newFiles/**
+                **/modifiedFiles/**
+                **/deletedFiles/**
+                **/deployment-manifest.txt
+                **/deployment-audit.txt
+                **/metadata.json
+                !**/*.git*
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          # ------------------------------------------------------------------
+          # STEP 5: Archive FINCORE Files
+          # Tarballs the staging directory so it can be transferred as a single
+          # file to the Finacle PROD server via SCP in the CD stage.
+          # The archive is also copied back into the staging directory so it is
+          # included in the published artefact.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Archive FINCORE Files'
+            inputs:
+              script: |
+                echo "Archiving FINCORE PROD files from staging directory..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                tar -vzcf $(Build.SourcesDirectory)/j2ee-scripts.tar.gz .
+
+                echo "Copying archive into staging directory..."
+                cp -r $(Build.SourcesDirectory)/j2ee-scripts.tar.gz $(Build.ArtifactStagingDirectory)/
+
+          # ------------------------------------------------------------------
+          # STEP 6: List Items Of The Archive
+          # Prints every entry inside j2ee-scripts.tar.gz for build traceability.
+          # Makes it easy to confirm exactly what will land on the PROD server.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'List Items Of The Archive'
+            inputs:
+              script: |
+                cd $(Build.ArtifactStagingDirectory)
+                echo "Listing contents of j2ee-scripts.tar.gz"
+                tar -ztvf j2ee-scripts.tar.gz
+
+          # ------------------------------------------------------------------
+          # STEP 7: Create Publishing Directory
+          # Assembles the final publish package:
+          #   - j2ee-scripts.tar.gz  (the payload archive)
+          #   - deploy-j2ee-prod.sh  (deploy script)
+          #   - suScript.sh          (SSH entry point invoked by the CD agent)
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Create Publishing Directory'
+            inputs:
+              script: |
+                echo "Creating publish directory for FINCORE PROD..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                mkdir -v publishFincoreDir
+
+                echo "Copying archive to publish directory..."
+                cp -vr j2ee-scripts.tar.gz publishFincoreDir/
+
+                echo "Copying deployment scripts..."
+                cp -vr $(Build.SourcesDirectory)/deploy-j2ee-prod.sh publishFincoreDir/deploy-j2ee-prod.sh
+                cp -vr $(Build.SourcesDirectory)/suScript.sh publishFincoreDir/
+
+          # ------------------------------------------------------------------
+          # STEP 8: Publish FINCORE PROD Artifacts
+          # Publishes the assembled package as the fincore_drop artefact.
+          # The CD pipeline picks this up and SCP-transfers it to each PROD
+          # server that received a J2EE routing tag in STEP 3.
+          # ------------------------------------------------------------------
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish FINCORE PROD Artifacts'
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)/publishFincoreDir
+              ArtifactName: fincore_drop
+              publishLocation: Container

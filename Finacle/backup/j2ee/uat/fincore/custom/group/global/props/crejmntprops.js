@@ -1,0 +1,25 @@
+var crejmntLocObj ={
+	Go_MANDATORY:"N", 
+	Submit_MANDATORY:"N", 
+	rejCodeDesc_ENABLED:"enabled", 
+	Clear_ENABLED:"enabled", 
+	Clear_MANDATORY:"N", 
+	rejReasCode_ENABLED:"enabled", 
+	Cancel_ENABLED:"enabled", 
+	rejReasCode_MANDATORY:"N", 
+	newRejCode_MANDATORY:"N", 
+	rejCodeDesc_MANDATORY:"N", 
+	funcCode_MANDATORY:"N", 
+	Ok_ENABLED:"enabled", 
+	rejCode_ENABLED:"enabled", 
+	Cancel_MANDATORY:"N", 
+	Go_ENABLED:"enabled", 
+	newRejCode_ENABLED:"enabled", 
+	Validate_ENABLED:"enabled", 
+	Submit_ENABLED:"enabled", 
+	funcCode_ENABLED:"enabled", 
+	Ok_MANDATORY:"N", 
+	Validate_MANDATORY:"N", 
+	rejCode_MANDATORY:"N"
+	};
+var crejmntProps =  new Properties(crejmntLocObj);

@@ -1,0 +1,1947 @@
+/*---------------------------------------------------------------------------------------------------------------->
+<!--Name                : tmdet_custom_link.js
+<!--Description         :
+<!--Date                :
+<!--Author              :
+<!--Called By           : None
+<!--Calling jsp         : None
+<!--Menu Option         : all transaction menus
+<!--Modification History:
+<!--	Version No.	      	Date		         Author		Description
+<!--	-------        		----------        	-----------	------------------
+<!--	 0.1
+<!--	 0.2				04-07-2013			Pankaj		Modified for TO:357639
+<!--														in line 
+nos:386-392
+<!--	 0.3				17-07-2013			Kalvin		Modified for TO : 348467
+<!--	0.4                 24-07-2013          Saby	    MOdified for 357692
+<!--	0.5					26-07-2013			Kalvin		Modified For TO: 348467
+<!--	0.6					23-09-2013			Bharath		function showLedgerDetails 
+added
+<!--	0.7					23-10-2013			Bharath		Account masking validation 
+added
+<!---0.8					31-10-2013			Vijaya V  		EAB validation 
+added
+<!---------------------------------------------------------------------------------------------------------------->*/
+function fnDenomscreen() {
+    if (frm.DenomEntered.value == "Y") {
+        return true;
+    }
+    var acctCrncyAmt = frm.acctCrncyAmt.value;
+    var pTranTypes1 = frm.pTranTypes.value;
+    var refCrncys1 = frm.refCrncys.value;
+    var refAmts1 = frm.refAmts.value;
+    var acctIds1 = frm.acctIds.value;
+    var usrLogIn = 0;
+
+
+    if ((funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T") && (tranSubType == "CR" || tranSubType == "CP")) {
+        if (pageSize < 2 || frm.refAmts.value == "") {
+            alert("Enter valid second part tran");
+            return false;
+        } else if (pageSize > 2) {
+            alert("This tran type can have only 2 part trans");
+            return false;
+        } else if (pageSize == 1) {
+            alert("This tran type should have 2 part trans");
+            return false;
+        }
+        var isCashAcct = frm.isCashAcct.value.split("@");
+        if (isCashAcct.length < 2) {
+            alert("This tran type should have 2 part trans");
+            return false;
+        }
+        var ind = isCashAcct.indexOf("Y");
+        if (ind == -1) {
+            alert("One cash account should be entered for this transaction");
+            return false;
+        }
+        pTranTypes1 = frm.pTranTypes.value.split("@")[ind];
+        (pTranTypes1 == "C") ? pTranTypes1 = "D": pTranTypes1 = "C";
+        refCrncys1 = frm.refCrncys.value.split("@")[ind];
+        refAmts1 = frm.refAmts.value.split("@")[ind];
+        acctIds1 = frm.acctIds.value.split("@")[ind];
+    }
+    if (tranSubType == 'CT') {
+        var arrPTranTypes = frm.pTranTypes.value.split("@");
+        for (var i = 0; i < arrPTranTypes.length; i++) {
+            (arrPTranTypes[i] == 'C') ? arrPTranTypes[i] = 'D': arrPTranTypes[i] = 'C';
+        }
+        frm.pTranTypes.value = arrPTranTypes.join("@");
+        pTranTypes1 = frm.pTranTypes.value;
+    }
+    var tmpFunc, referralFlg = "N";
+    if (refId == "" || funcCode == 'P') {
+        tmpFunc = funcCode;
+    } else {
+        tmpFunc = 'M';
+        if (fnTrim(tranId) == "") {
+            tranId = refId;
+            referralFlg = "Y";
+        } else
+            referralFlg = "Y";
+    }
+    var retVal = cust_fndenompopup(tmpFunc, tranType, tranSubType, acctIds1, refCrncys1, refAmts1, pTranTypes1, tranDate, tranId, "P", "Y", referralFlg);
+    if (retVal == "DISABLED")
+        return true;
+    if (funcCode == "I" || funcCode == "P" || funcCode == "D" || funcCode == "V") {
+        frm.DenomEntered.value = "Y";
+        return true;
+    }
+    if (retVal == "cancel" || retVal == false || retVal == "undefined") {
+        if (sReferralMode == "S") {
+            frm.refAmt.disabled = true;
+            frm.refNum.disabled = true;
+        }
+        return false;
+    }
+    if (retVal == true) return true;
+    var flag = retVal.split("|");
+    if (flag[0] == "N")
+        return false;
+    else
+        frm.DenomEntered.value = "Y";
+    if (retVal != null) {
+        frm.DenomEntered.value = "Y";
+        frm.DenomCount.value = retVal;
+    }
+    return true;
+}
+
+/*-----------------------------------------------------------------------------
+fnCalcTranDtls - Function to fetch the tran amount, part tran type and currency code
+of the current page and place it in the repsective positions of the "@" separated
+hidden field values : pTranTypes, refCrncys, refAmts, acctIds
+-----------------------------------------------------------------------------*/
+function fnCalcTranDtls(obj) {
+    if (frm.refAmt.value == "") {
+        frm.pTranTypes.value = pTranTypes;
+        frm.refCrncys.value = refCrncys;
+        frm.refAmts.value = refAmts;
+        frm.acctIds.value = acctIds;
+    }
+    if (frm.refAmt.value != "") {
+        if (obj != undefined && obj.id == "acctId")
+            frm.refAmt.value = "";
+        /* Fetching the java values formed via tmBean methods into JS array variables */
+        if (iTotalCount > 1) {
+            aPTranTypes = pTranTypes.split("@");
+            aRefCrncys = refCrncys.split("@");
+            aRefAmts = refAmts.split("@");
+            aAcctIds = acctIds.split("@");
+        }
+        var delCnt = "";
+        delCnt = sDelFlgs.split("Y");
+        delCnt = delCnt.length - 1;
+        var lastindexTmp = 0;
+        var lastindex = 0;
+        lastindexTmp = sDelFlgs.lastIndexOf("Y");
+        lastindex = (lastindexTmp / 2) + 1;
+        if (!(frm.chkdelFlg.checked)) {
+            if ((delCnt > 0) && (serialNum != 1)) {
+                if ((displayNo - 1) < delCnt) {
+                    (frm.pTranType[0].checked == true) ? aPTranTypes[displayNo - 1 - delCnt] = frm.pTranType[0].value: aPTranTypes[displayNo - 1 - delCnt] = frm.pTranType[1].value;
+                    aRefCrncys[displayNo - 1 - delCnt] = frm.refCrncy.value;
+                    aRefAmts[displayNo - 1 - delCnt] = frm.refAmt.value;
+                    aAcctIds[displayNo - 1 - delCnt] = frm.acctId.value;
+                }
+                if ((displayNo - 1) >= delCnt) {
+                    if (serialNum >= (lastindex + 1)) {
+                        (frm.pTranType[0].checked == true) ? aPTranTypes[displayNo - 1 - delCnt] = frm.pTranType[0].value: aPTranTypes[displayNo - 1 - delCnt] = frm.pTranType[1].value;
+                        aRefCrncys[displayNo - 1 - delCnt] = frm.refCrncy.value;
+                        aRefAmts[displayNo - 1 - delCnt] = frm.refAmt.value;
+                        aAcctIds[displayNo - 1 - delCnt] = frm.acctId.value;
+                    } else {
+                        (frm.pTranType[0].checked == true) ? aPTranTypes[displayNo - delCnt] = frm.pTranType[0].value: aPTranTypes[displayNo - delCnt] = frm.pTranType[1].value;
+                        aRefCrncys[displayNo - delCnt] = frm.refCrncy.value;
+                        aRefAmts[displayNo - delCnt] = frm.refAmt.value;
+                        aAcctIds[displayNo - delCnt] = frm.acctId.value;
+                    }
+                }
+            } else {
+                (frm.pTranType[0].checked == true) ? aPTranTypes[displayNo - 1] = frm.pTranType[0].value: aPTranTypes[displayNo - 1] = frm.pTranType[1].value;
+                aRefCrncys[displayNo - 1] = frm.refCrncy.value;
+                aRefAmts[displayNo - 1] = frm.refAmt.value;
+                aAcctIds[displayNo - 1] = frm.acctId.value;
+            }
+        }
+        frm.pTranTypes.value = aPTranTypes.join("@");
+        frm.refCrncys.value = aRefCrncys.join("@");
+        frm.refAmts.value = aRefAmts.join("@");
+        frm.acctIds.value = aAcctIds.join("@");
+        document.forms[0].varbiotest.value = getSValue("bioStatus");
+        setFieldsToCustomData("pTranTypes", "refCrncys", "refAmts", "acctIds", "cifInfo", "varbiotest","refNum","tranParticular","tranRmks","tranRmks2","refCrncy");
+	fnLocalSetCustomFields();
+        return true;
+    }
+fnLocalSetCustomFields();
+}
+
+function fxcnyValidations() {
+    if ((tranType == "C" || tranType == "T") && (tranSubType == "PI" || tranSubType == "RI" || tranSubType == "CI" || tranSubType == "BI") && (acctCrncy != frm.refCrncy.value) && frm.rateCode.value != "" && frm.rate.value != "" && fnTrim(frm.treaRefNum.value) == "") {
+        convertToCaps();
+        var inputname = "acctCrncy|" + frm.acctCrncy.value + "|rateCode|" + frm.rateCode.value + "|" + "refCrny|" + frm.refCrncy.value + "|refAmt|" + removeCommas(frm.refAmt.value) + "|acctId|" + frm.acctId.value + "|rate|" + frm.rate.value;
+        var outputname = "Status|Message";
+        var rVal = appFnExecuteScript(inputname, outputname, "fxcnymn001.scr", false);
+        var values = rVal.split("|");
+        if (values[0] == "S") {
+            var val1 = values[1].split("~");
+            if ((parseFloat(frm.rate.value) > parseFloat(val1[1])) || (parseFloat(frm.rate.value) < parseFloat(val1[2]))) 
+{
+                if (frm.treaRefNum.value == "") {
+                    alert("Exchange Rate Beyond the Tolerance Limit!.Please Enter the Treasury Ref Num Field..");
+                    frm.treaRefNum.focus();
+                    return false;
+                }
+            }
+            if ((parseFloat(val1[4])) > parseFloat(val1[3])) {
+                if (frm.treaRefNum.value == "") {
+                    alert("Transaction Amount is greater than the currency Threshold Limit!.Please Enter the Treasury RefNum Field..");
+                    frm.treaRefNum.focus();
+                    return false;
+                }
+            }
+        }
+        if (values[0] == "F") {
+            alert(values[1]);
+            frm.refCrncy.focus();
+            return false;
+        }
+    }
+}
+function tmdet_pre_ONLOAD(obj){
+        fnLocalGetCustomFields();
+	document.forms[0].natLity.disabled = true;
+	document.forms[0].issueCty.disabled = true;
+	var refAmt = document.forms[0].refAmt.value;
+	var accid = document.forms[0].acctId.value;
+	var refCrncy = document.forms[0].refCrncy.value;
+	//alert(refCrncy);
+	//alert(acctCrncyAmt);
+	if (funcCode =="A"){
+		//alert("vp " + tranSubType );
+		if ((tranSubType == "NR") ||  (tranSubType =="NP") ||  (tranSubType =="PI") ||  (tranSubType =="RI")||(tranSubType=="CP") ) {
+			document.getElementById('custom_table').style.display = "block";
+		}else{
+			document.getElementById('custom_table').style.display = "none";
+		}
+	}else{
+		if(document.forms[0].cfName.value ==""){
+		      document.getElementById('custom_table').style.display = "none";
+		}
+	}
+}
+
+function tmdet_pre_ONCLICK(obj) {
+	fnLocalSetCustomFields();
+        if ((funcCode == "A") && (obj.id != "Cancel")){
+		if ((tranSubType == "NR") ||  (tranSubType =="NP") ||  (tranSubType =="PI") ||  (tranSubType =="RI") ){
+		var refAmt = parseFloat(document.forms[0].refAmt.value.replace(/,/g, '')); 
+		var accid = document.forms[0].acctId.value;
+		var refCrncy = document.forms[0].refCrncy.value;
+                var acctCrncy = document.forms[0].acctLabelCrncy.value;
+		var ratecodein = document.forms[0].rateCode.value;
+            	var ratein = document.forms[0].rate.value;
+		//alert(refCrncy);
+		//alert("sys amt " + acctCrncyAmt);
+                var inputNames = "acctCrncy|" + acctCrncy + "|refCrncy|" + refCrncy + "|ratecodein|" + ratecodein +"|ratein|" + ratein + "|refAmt|" + refAmt;
+		var outputNames = "eqAmt";
+		var scr = "vpamltmval.scr";
+		var retVal = appFnExecuteScript(inputNames, outputNames, scr, false);
+		var result = retVal.split("|");
+		var eqAmt = result[1];
+		//alert("alert conv " + eqAmt);
+		//INCIDENT START----------------------->CHG0031284 BY Silvester M. Kisalu
+		if (eqAmt>=1000000)
+			{
+				if(acctCrncyAmt=="")
+				{
+				document.forms[0].acctCrncyAmt.value = eqAmt;
+				}
+                        if (document.forms[0].cfName.value == ""){
+                                alert("Enter First Name!");
+                                document.forms[0].cfName.focus();
+                                return false;
+                        }else{
+				var cfName = document.forms[0].cfName.value; 
+				var regExp = /^[a-zA-Z]*$/
+				if(!regExp.test(cfName)){
+					alert("Enter valid first name");
+					document.forms[0].cfName.value = '';
+					document.forms[0].cfName.focus();
+					return false;
+				}
+			}
+                        //if (document.forms[0].cmName.value == ""){
+                                //alert("Enter Middle Name");
+                                //document.forms[0].cmName.focus();
+                                //return false;
+                        //}
+                        if (document.forms[0].clName.value == ""){
+                                alert("Enter Last Name");
+                                document.forms[0].clName.focus();
+                                return false;
+                        }else{
+				var clName = document.forms[0].clName.value; 
+				var regExp = /^[a-zA-Z]*$/
+				if(!regExp.test(clName)){
+					alert("Enter valid last name");
+					document.forms[0].clName.value = '';
+					document.forms[0].clName.focus();
+					return false;
+				}
+			}
+                        if (document.forms[0].natLity.value == ""){
+                                alert("Enter Nationality");
+                                document.forms[0].natLity.focus();
+                                return false;
+                        }
+                        if (document.forms[0].idDocType.value == ""){
+                                alert("Enter Type Of Id  Value");
+                                document.forms[0].idDocType.focus();
+                                return false;
+                        }
+                        if (document.forms[0].issueCty.value == ""){
+                                alert("Enter Issue Country");
+                                document.forms[0].issueCty.focus();
+                                return false;
+                        }
+                        if (document.forms[0].srcPurp.value == ""){
+                                alert("Enter Source/Purpose");
+                                document.forms[0].srcPurp.focus();
+                                return false;
+                        }
+//-------------DOC START----->
+                        if (document.forms[0].idNuma.value == "")
+			{
+				alert("Enter Identification Number!");
+               			document.forms[0].idNuma.focus();
+                			return false;
+           		 }
+			else 
+			{
+				var docType = document.forms[0].idDocType.value
+				if (docType == "NIC")
+				{
+					var idNo = document.forms[0].idNuma.value;
+					var isNotNo = isNaN(idNo);
+					if(isNotNo)
+					{
+					alert("Identification Number allows numbers only!");
+					document.forms[0].idNuma.value = '';
+					document.forms[0].idNuma.focus();
+					return false;
+					}
+				}
+			}
+//-------------DOC END---->
+		}
+                }
+        }
+//INCIDENT END----------------------->CHG0031284 BY Silvester M. Kisalu
+
+	//alert("fraud");
+        var dftTranType = document.getElementById("pTranType").defaultChecked;
+	//alert(dftTranType);
+	var TranType = getRadioValue(document.forms[0].pTranType);
+		var acctId = document.forms[0].acctId.value;
+		var drCrInd = getRadioValue(document.forms[0].pTranType);
+		if((funcCode == "A") || (funcCode == "C") || (funcCode == "M")){
+			if (tranType == "T" || tranType == "C") {
+				if((acctId != "") && (drCrInd=="D") && (obj.id=="Post")){
+					//alert(obj.id);
+					//alert("in radio value" + TranType);
+					document.forms[0].varbiotest.value = getSValue("bioStatus");
+					alert(document.forms[0].varbiotest.value);
+					doLocalBioMetricVal();
+					setSValue("bioStatus|"+"Q");
+					varbiotest = getSValue("bioStatus");
+					document.forms[0].varbiotest.value = getSValue("bioStatus");
+					setFieldsToCustomData("varbiotest");
+					return true;
+				}
+			}
+		}
+if((document.forms[0].treaRefNum.value == "") && (document.forms[0].refCrncy.value != "") && (document.forms[0].acctLabelCrncy.value != ""))
+{
+        var inputNames = "";
+        var outputNames = "";
+        var scr = "workclassCheck.scr";
+        var retVal = appFnExecuteScript(inputNames, outputNames, scr, false);
+        var result = retVal.split("|");
+        var errFlg = result[1];
+        var errMsg = result[3];
+        var wrkclsFlg = result[5];
+
+        if(errFlg == "N")
+        {
+                if (wrkclsFlg == "Y")
+                {
+                        document.forms[0].rateCode.disabled = false;
+                        document.forms[0].rate.disabled = false;
+                        document.forms[0].treaRate.disabled = false;
+                        document.forms[0].treaRefNum.disabled = false;
+                        showImage("sLnk10");
+                }
+		else
+		{
+			fnAcctCrncyVal();
+		}
+        }
+        else
+        {
+                alert(errMsg);
+        }
+}
+    var str = document.forms[0].acctId.value;
+    var tranParticular = document.forms[0].tranParticular.value;
+    var res = str.substring(3, 13);
+    if ((res == "1100303904") || (str == "1481100304199") || (str == "0571100304080") || (str == "0571100304081") || (res == "1100303118") || (str == "1481100304198") || (str == "0571100304077") || (str == "0571100304078")) {
+        if (fnIsNull(tranParticular)) {
+            alert("Transaction Particulars field is mandatory");
+            document.forms[0].tranParticular.focus();
+            clearDescField("tranParticular");
+            return false;
+        }
+        if (!IsNumeric(document.forms[0].tranParticular.value)) {
+            alert("Transaction Particulars field  should contain only Numeric values");
+            document.forms[0].tranParticular.focus();
+            clearDescField("tranParticular");
+            return false;
+        }
+    }
+
+	//Edwin.Z_IM327195
+
+	var str = document.forms[0].acctId.value;
+    var tranParticular = document.forms[0].tranRmks.value;
+    var res = str.substring(3, 13);
+    if (res == "3000105951") {
+		if (document.forms[0].tranRmks.value == ""){
+        //if (fnIsNull(tranRmks)) {
+            alert("Capture Mpesa Till NO on tranRmks1 ");
+            document.forms[0].tranRmks.focus();
+            //clearDescField("tranRmks");
+            return false;
+        }  
+    }
+
+	var str = document.forms[0].acctId.value;
+    var tranParticular = document.forms[0].tranRmks2.value;
+    var res = str.substring(3, 13);
+    if (res == "3000105951") {
+		if (document.forms[0].tranRmks2.value == ""){
+        //if (fnIsNull(tranRmks)) {
+            alert("Capture Mpesa REF NO on tranRmks2 ");
+            document.forms[0].tranRmks2.focus();
+            //clearDescField("tranRmks");
+            return false;
+        }  
+    }
+//Vino Palani 30/01/2020 start
+//{
+                        if (profileId == 54){
+                                if (tranType == "C"){
+                                if ((tranSubType == "NR")){
+                                if (funcCode == "A" || funcCode == "M" || funcCode == "C"){
+                        if ((obj.id == "Post") || (obj.id == "Validate") || (obj.id == "Save")) {
+                                var acct = document.forms[0].acctId.value;
+                                var inputNameValues =  "acctNum|"+ acct;
+                                var outputNames = "SucYN|DealerDetails|DealerNAme|DealerLimit";
+                                var scrName = "ebSafaricomDealValTm.scr";
+                                var retVal = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+                                var ret = retVal.split("|");
+                                //alert(ret);
+                                if(ret[1] == "N") {
+                                        alert("Safaricom Agent Validation Failed - Agent does not exist");
+                                        return false;
+                                }else if (ret[1] == "NA"){
+                                        alert("Safaricom Agent Validation Failed - Agent does not exist");
+                                        return false;
+                                }else if (ret[1] == "NV"){
+                                      //return true;
+                                }else if (ret[1] == "Y"){
+                                        //Dealer Code
+                                        alert(ret[3]);
+                                        //Dealer Name
+                                        //alert(ret[5]);
+                                             if(confirm("Dealer Name: " +ret[5])){
+                                                        ///return true;
+                                                }else{
+                                                        return false;
+                                                }
+                                        //Dealer Limit
+                                        alert(ret[7]);
+                                        ///return true;
+                                }
+                                }
+                                }
+                                }
+                                }
+                       }
+//}
+//Vino Palani 30/01/2020 ends
+
+	//Edwin.Z_IM327195
+	//SOS_IM2005085
+        if (profileId==50){
+        if (funcCode == "A" || funcCode == "M"){
+                var refCrncy=document.forms[0].refCrncy.value;
+                        //alert("am in");
+                        //alert(amt);
+                        if (refCrncy!="RWF")
+                        {
+                                if((obj.id == "Post") || (obj.id == "Save")){
+                                       if (document.forms[0].tranRmks2.value == ""){
+                                          //if (fnIsNull(tranRmks)) {
+                                          alert("Capture Transaction Purpose on tranRmks2 ");
+                                          document.forms[0].tranRmks2.focus();
+                                          //clearDescField("tranRmks");
+                                          return false;
+                                        }
+                        }
+                        }
+
+        }
+        }
+//SOS_IM2005085
+
+
+    var ObjForm = document.forms[0];
+    if ((obj.id == "Post") || (obj.id == "Validate")) {
+        if ((tranType == "C") && (tranSubType == "NR")) {
+
+            if ((ObjForm.tranParticularsCode.value == "DROPB") && (ObjForm.refNum.value == "")) {
+                alert("Enter the Customers Phone Number in the REF. NO. Field");
+                ObjForm.refNum.focus();
+                return false;
+            }
+            if (!IsNumeric(document.forms[0].refNum.value)) {
+                alert("Enter a Valid Telephone Number");
+                ObjForm.refNum.focus();
+                clearDescField("refNum");
+                return false;
+            }
+			//if (profileId == 54)
+			//{
+				//if (ObjForm.tranRmks2.value =="") 
+				//{
+				//alert("Enter Customers details in the following format :- ID/PHONENO/CUSTOMERNAME");
+                //ObjForm.tranRmks2.focus();
+                //return false;
+				//}
+
+			//}
+        }
+//VP
+        if (profileId==54){
+        if (funcCode == "A" || funcCode == "M"){
+        if (tranType == "C"){
+			var amt=parseFloat(document.forms[0].refAmt.value.replace(/,/g, ''));
+			//alert("am in");
+			//alert(amt);
+			if (amt>=1000000)
+			{
+				if (tranSubType == "NR"){
+                                if((obj.id == "Post") || (obj.id == "Save")){
+                                        //alert("51 web");
+                                        var optVal = document.forms[0].option.value;
+                                        //alert(optVal);
+                                        if(optVal !="J"){
+                                                alert("Enter Additional details in J");
+                                                document.forms[0].option.focus();
+                                                return false;
+                                        }
+                        }
+                        }
+                        if (tranSubType == "NP"){
+                                if((obj.id == "Post") || (obj.id == "Save")){
+                                        //alert("51 web");
+                                        var optVal = document.forms[0].option.value;
+                                        if(optVal !="J"){
+                                                alert("Enter Additional details in J");
+                                                //document.forms[0].option.focus();
+                                              // return false;
+                                        }
+                        }
+                        }
+			}
+                        
+        }
+        }
+        }
+//VP
+
+    }
+    if (obj.id == "Validate") {
+        if ((tranType == "C") && (tranSubType == "NR")) {
+            if ((ObjForm.tranParticularsCode.value == "TCR") && (document.forms[0].refAmt.value == "")) {
+                alert("Enter the Amount");
+                ObjForm.refAmt.focus();
+                return false;
+            }
+            /*
+            if ((ObjForm.tranParticularsCode.value == "TCR") && (ObjForm.refNum.value == ""))
+            	{
+            	alert("Enter the Customers Phone Number in the REF. NO. Field");
+            	ObjForm.refNum.focus();
+            	return false;
+            	}
+            if((ObjForm.tranParticularsCode.value == "TCR") && (!IsNumeric(document.forms[0].refNum.value))) 
+            	{
+            	alert("Enter a Valid Telephone Number");
+            	ObjForm.refNum.focus();
+            	clearDescField("refNum");
+            	return false;
+            	}
+            	*/
+
+            var acctnum = document.forms[0].acctId.value;
+            var inputNameValues = "acctnum" + "|" + acctnum + "|" + "funcCode" + "|" + funcCode + "|" + "tranSubType" + "|" + tranSubType + "|" + "refAmt" + "|" + removeCommas(document.forms[0].refAmt.value) + "|" + "refCrncy" + "|" + document.forms[0].refCrncy.value;
+            var outputNames = "";
+            var scrName = "glory_outbound3.scr";
+            var retval = "|";
+            var retVal = appFnExecuteScript(inputNameValues, "output", scrName, false);
+            var retBuff = retVal.split("|");
+            var output = retBuff[0];
+            var value = retBuff[1];
+            var a = value;
+            //alert(a);
+            var retBuff = retVal.split("|");
+            var output = retBuff[2];
+            var value = retBuff[3];
+            var b = value;
+            //alert(b);
+        }
+    }
+    if (funcCode == "A") {
+        if (obj.id == "grantTodFlg") {
+            var grantTod = document.getElementsByName("grantTodFlg");
+            if (grantTod[0].checked) {
+                var inputNameValues = "";
+                var outputNames = "eventId";
+                var scrName = "odchrgcalcmn001.scr";
+                var retVal = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+                var ret = retVal.split("|");
+                if (ret[0] == "Error" && ret[1] != "dummy") {
+                    //alert(ret[1]);
+                }
+
+                if (ret[2] == "eventId" && ret[3] != "dummy") {
+                    document.forms[0].chrgEventId.value = ret[3];
+                }
+            }
+        }
+    }
+
+    if ((funcCode == "T") || (funcCode == "C")) {
+        if (obj.id == "Post" || obj.id == "Save" || obj.id == "Submit") {
+            enableFields("tranParticularsCode");
+        }
+    }
+    if (((funcCode == "M") && (frm.chkdelFlg.checked == true)) && (sReferralMode != "S")) {
+        if ((pageSize) == (parseInt(totPTranDeleted) + 1)) {
+            //if(obj.id !="Cancel")
+            //{
+            var var3455 = "";
+            //alert("Cannot delete all part tran,Kindly delete the whole transaction and Re-enter");
+            //frm.chkdelFlg.checked=false;
+            //return false;
+            //}
+        }
+        if (tranSubType != "CT") {
+            var preRefCurncy = refCrncys.split("@");
+            var apreCrncyUniq = preRefCurncy.unique();
+            var tmpUniqCrncys = apreCrncyUniq.join("!");
+            var position = tmpUniqCrncys.lastIndexOf("!");
+        } else {
+            var position = refCrncys.lastIndexOf("@");
+        }
+        if (position > 2) {
+            var var3455 = "";
+            //if(obj.id !="Cancel")
+            //{
+            //alert("Kindly delete the whole transaction and Re-enter");
+            //frm.chkdelFlg.disabled=true;
+            //if( (frm.AddNewPage != undefined) && (frm.AddNewPage != null) ){
+            //	frm.AddNewPage.disabled = true;
+            //}
+            //return false;
+            //}
+        }
+    }
+    if (obj.id == "Post" || obj.id == "Save") {
+        if (((mopId == "HCASHDEP" || menuParam == "CDEP") && (tranSubType != "NR" && tranSubType != "CR" && tranSubType != "RI")) || ((mopId == "HCASHWD" || menuParam == "CWDL") && (tranSubType != "NP" && tranSubType != "CP" && tranSubType != "PI")) || ((mopId == "HXFER" || menuParam == "XFER") && (tranSubType != "BI" && tranSubType != "CI"))) {
+            alert("Invalid Menu and Tran Sub Type Combination. Please re-invoke the menu option.");
+            return false;
+        }
+    }
+    if (funcCode == "T" || funcCode == "C" || funcCode == "V") {
+        if (tranType != "T") fnCalcTranDtls(obj);
+        document.forms[0].varbiotest.value = getSValue("bioStatus");
+        setFieldsToCustomData("pTranTypes", "refCrncys", "refAmts", "acctIds", "temp", "varbiotest");
+    }
+    if (tranType == "C")
+    //if(tranType=="C" && funcCode=="A")	{
+    {
+
+
+        var btnId = obj.id;
+        if (obj.id == 'Post' || obj.id == 'Submit')
+            frm.Event.value = "P";
+        else
+            frm.Event.value = "E";
+        if ((obj.id == "Save" || obj.id == "Post" || obj.id == "Ok" || obj.id == "endMenu" || obj.id == "Submit") && frm.DenomEntered.value != "Y") {
+            if (!fnValidateForm(btnId)) return false;
+            if ((tranSubType == "CR" || tranSubType == "CP") && (funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T")) {
+                var ret = appFnExecuteScript("acctId|" + frm.acctIds.value, "", "denomdp001.scr", false);
+                var val = ret.split("|");
+                var isCashAcct = val[1].split("@");
+                frm.isCashAcct.value = isCashAcct.join("@");
+                for (var cnt = 0, i = 0; i < isCashAcct.length; i++) {
+                    if (isCashAcct[i] == "Y") {
+                        cnt++;
+                        if (cnt > 1) {
+                            alert("Only one cash account allowed in this tran type");
+                            if (!frm.acctId.disabled && !frm.acctId.readOnly) {
+                                frm.acctId.value = "";
+                                frm.acctId.focus();
+                            }
+                            return false;
+                        }
+                    }
+                }
+            }
+            frm.refAmt.readOnly = true;
+            frm.refNum.readOnly = true;
+            var out = fnDenomscreen();
+            if (out == false) {
+                if (sReferralMode == "S") {
+                    frm.refAmt.readOnly = true;
+                    frm.refNum.readOnly = true;
+                } else {
+                    frm.refAmt.readOnly = false;
+                    frm.refNum.readOnly = false;
+                }
+                return false;
+            }
+            frm.refAmt.readOnly = true;
+            document.forms[0].varbiotest.value = getSValue("bioStatus");
+            setFieldsToCustomData("DenomEntered", "DenomCount", "Event", "cifInfo", "temp", "varbiotest");
+	    fnLocalSetCustomFields();
+            return true;
+        } else {
+            if (obj.id == "Go") {
+                if (tranType != "T") fnCalcTranDtls(obj);
+                document.forms[0].varbiotest.value = getSValue("bioStatus");
+                setFieldsToCustomData("pTranTypes", "refCrncys", "refAmts", "acctIds", "temp", "varbiotest");
+		fnLocalSetCustomFields();
+            }
+        }
+    } else {
+        return true;
+    }
+fnLocalSetCustomFields();
+}
+
+function IsNumeric(sText) {
+    var ValidChars = "0123456789",
+        IsNumber = true,
+        Char;
+    for (i = 0; i < sText.length && IsNumber == true; i++) {
+        Char = sText.charAt(i);
+        if (ValidChars.indexOf(Char) == -1)
+            IsNumber = false;
+    }
+    return IsNumber;
+}
+
+/*----------changes added as apart of TO/CR no : 348467----------------------------*/
+function showTellerDtls() {
+
+
+    var ObjForm = document.forms[0];
+    //alert(ObjForm.acctId.value);
+
+    var inputNameValues = "acctId|" + ObjForm.acctId.value;
+    var outputNameValues = "ccy|cashAc|tellerBalance";
+    var scriptName = "fetchTellerBalmn001.scr";
+    var listHeading = "Teller Balance Details";
+    var colHeader = "currency|cash A/c|Current GL Balance";
+    var hyper = "";
+    var retVal = fnExecuteScriptForList(inputNameValues, outputNameValues, scriptName, listHeading, colHeader, "20", true);
+    if (retVal != undefined) {
+
+        var value = retVal.split("|");
+        alert(value);
+
+    }
+
+
+}
+
+function post_ONLOAD(tmdet,obj) {
+       if (funcCode =="A"){
+                if ((tranSubType == "NR") ||  (tranSubType =="NP") ||  (tranSubType =="PI") ||  (tranSubType =="RI") ) {
+                        alert("block");
+                        document.getElementById('custom_table').style.display = "block";
+                }else{
+                        alert("nob");
+                        document.getElementById('custom_table').style.display = "none";
+                }
+        }else{
+                if(document.forms[0].cfName.value ==""){
+                      document.getElementById('custom_table').style.display = "none";
+                }
+        }
+        var retval=document.forms[0].customData.value.split("|");
+        if(retval[0] != "~tmdet1"){
+        var custval = document.forms[0].customData.value;
+        custval = custval.replace(new RegExp(',','g'),"");
+        document.forms[0].customData.value=custval;
+        var retval=document.forms[0].customData.value.split("~");
+        }else{
+        var retval=document.forms[0].customData.value.split(",");
+        }
+        for(i=0;i<retval.length;i++){
+        var temp=retval[i].split("|");
+        if ((temp[i]=="~tmdet1") || (temp[i]=="tmdet1")){
+                var num =i+1;
+                document.forms[0].cfName.value=temp[num];
+                document.forms[0].cmName.value=temp[num+1];
+                document.forms[0].clName.value=temp[num+2];
+                document.forms[0].natLity.value=temp[num+3];
+                document.forms[0].idDocType.value=temp[num+4];
+                document.forms[0].issueCty.value=temp[num+5];
+                document.forms[0].srcPurp.value=temp[num+6];
+                document.forms[0].idNuma.value=temp[num+7];
+        }
+        if ((temp[0]=="~tmdet1") || (temp[0]=="tmdet1")) {
+              if(temp[1] != "") {
+                       document.forms[0].cfName.value=temp[1];
+                       document.forms[0].cmName.value=temp[2];
+                       document.forms[0].clName.value=temp[3];
+                       document.forms[0].natLity.value=temp[4];
+                       document.forms[0].idDocType.value=temp[5];
+                       document.forms[0].issueCty.value=temp[6];
+                       document.forms[0].srcPurp.value=temp[7];
+                       document.forms[0].idNuma.value=temp[8];
+              }
+        }
+        }
+
+var temprefCrncy=document.forms[0].refCrncy.value;
+        hideImage("sLnk10");
+    //Added by Revathi for bio validation if the tran is withdrawn and modified from HRINBX
+    isParentRINBX = getSValue("isParentRINBX");
+    //alert("Is from HRINBX:" + isParentRINBX);
+    // Revathi - Changes end
+    if (workClass <= "060") {
+        var e = document.getElementById("Save")
+        if (e != undefined) {
+            (e.style.display == 'none') ? e.style.display = 'block': e.style.display = 'none';
+        }
+    }
+
+
+    if (tranType == "C") {
+        if ((tranSubType == "NP") || (tranSubType == "CP") || (tranSubType == "PI")) {
+            document.forms[0].option.selectedIndex = 7;
+            var radioButtons = document.getElementsByName('printAdvice');
+            radioButtons[0].checked = false;
+            radioButtons[1].checked = false;
+            radioButtons[2].checked = true;
+            document.forms[0].printAdvice.disabled = true;
+            fnEnableDisableRadioButtons(document.getElementsByName("printAdvice"), 'D');
+        }
+    }
+    if (workClass != "240") {
+        //alert(workClass);
+        //hideImage("sLnk11");
+        document.forms[0].rate.disabled = true;
+        document.forms[0].treaRate.disabled = true;
+    }
+
+
+    if (funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T") {
+        var e = document.getElementById("PostPartTran");
+        if (e != undefined)
+            if ((tranType == "T") && (tranSubType == "I")) {
+                (e.style.display == 'none') ? e.style.display = 'block': e.style.display = 'none';
+            }
+    }
+
+    if (funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T") {
+        var e = document.getElementById("PostPartTran");
+        if (e != undefined) {
+            if (tranType != "T") {
+                (e.style.display == 'none') ? e.style.display = 'block': e.style.display = 'none';
+            }
+
+        }
+
+        frm.pTranType[0].onclick = function() {
+            eventIdPop(this)
+        };
+        frm.pTranType[1].onclick = function() {
+            eventIdPop(this)
+        };
+        refAmtValidate(refAmt);
+        refAmtValidateCCY(refAmt);
+    }
+
+    fnDisableFieldsForPymtToAcctGL();
+    /*---------------------End of changes made for TO/CR no : 348467--------------------------------------------*/
+    //saby comment
+    //if (mopId == "HTM")
+    //{
+
+    //Changes done by Pankaj Gaur for TO 357639
+    //var radioButtons = document.getElementsByName('printAdvice');
+    //radioButtons[0].checked = true;
+    //radioButtons[1].checked = false;
+    //radioButtons[2].checked = false;
+    //}
+    //End Changes
+
+    if (funcCode == "A") {
+        if (tranSubType == "NR") {
+            element = document.getElementsByName("printAdvice");
+            element[0].checked = true;
+        }
+    }
+
+    /*if(document.forms[0].instrNum.value != "" )
+    {
+                document.forms[0].instrNum.readOnly=true;
+    }*/
+
+
+
+    ////comment
+
+
+
+    if (funcCode == "A" || funcCode == "M" || funcCode == "C") {
+        element = document.getElementsByName("pTranType");
+        if (element[0].checked == true) {
+            pTranType = "D"
+        } else {
+            pTranType = "C"
+        }
+
+        // --- MOdified for 357692
+        if (fnTrim(document.forms[0].acctId.value) != "") {
+            //if(document.forms[0].acctId.value != "") {
+            /*if(pTranType == "C")
+						{
+                        var acctvalue =  document.forms[0].acctId.value;
+                        //alert(acctvalue);
+						var     inputNameValues    = "acctid|"+acctvalue;
+                        var     outputNames        = "";
+                        var     scrName            = "shareorddp001.scr";
+                        var retval = "|";
+						var     retVal             = appFnExecuteScript(inputNameValues, "output", scrName, false);
+						var ret = retVal.split("|");
+                        if( ret[1] == "Y" )
+                        {
+                                str = document.getElementById('tranParticular').value;
+                                //alert(str);
+								if(str.indexOf(ret[3])==-1) {
+                                        var argsVariable;
+                                        var answer = window.showModalDialog("../custom/jsp/shareorddp001.jsp? tramt="+document.getElementById('refAmt').value,argsVariable, "dialogWidth:400px; dialogHeight:300px; center:yes");
+                                        if(answer != undefined) {
+	                                                document.getElementById('refAmt').value = answer.amt;
+                                                document.getElementById('tranParticular').value = answer.secrty + ret[3] +answer.prclmt;
+                                                document.getElementById('refNum').value = answer.crdno;
+                                                document.getElementById('tranRmks').value = answer.name;
+
+                                                element = document.getElementsByName("printAdvice");
+                                                if(element[0].checked != true ){
+                                                        //element[0].checked = true;
+                                                        document.forms[0].printAdvice.disabled = true;
+                                                        fnEnableDisableRadioButtons(document.getElementsByName("printAdvice"),'D');
+                                                }
+                                        }
+                                }
+                        }
+                }*/
+            //added for issue- share trading maintanence
+            /*if(pTranType == "D" ){
+                var inputNameValues = "acctNum|"+document.forms[0].acctId.value;
+						var outputNames     = "";
+				var scrName         = "safaricomipodp002.scr";
+				var retval = "|";
+				var retVal          = appFnExecuteScript(inputNameValues, "output", scrName, false);
+				var ret1 = retVal.split("|");
+						if(ret1[0] == "Error" )
+						{
+								alert(ret1[1]);
+						}
+						if(ret1[0] == "Sucess"){
+								shareTrade();
+						}
+				}*/
+        }
+    }
+
+    if (funcCode == "A" || funcCode == "M") {
+        if (document.forms[0].acctId.value != "") {
+            /*if(tranType == "C"){
+                if((tranSubType == "NP") || (tranSubType == "NR")){
+                         var inputNameValues = "acctNum|"+document.forms[0].acctId.value;
+                         var outputNames     = "scheme";
+                         var scrName         = "DDacctCheck.scr";
+                         var retVal          = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+                         var ret1 = retVal.split("|");
+                         if(ret1[0] == "S")
+                        {
+                                if(ret1[1] == "DDA")
+                                {
+                                        alert("Kindly Use HDDMI for Banker's cheque related transaction.");
+                                        document.forms[0].acctId.focus();
+										document.forms[0].acctId.value = "";
+                                        return false;
+                                }
+                        }
+                }
+        }*/
+            if ((tranType == "C") || (tranType == "T")) {
+                if ((tranSubType == "NP") || (tranSubType == "PI") || (tranSubType == "CP") || (tranSubType == "CI")) {
+                    if (pTranType == "D") {
+                        //Added by Revathi for bio validation if the tran comes from HRINBX
+                        if (isParentRINBX == "Y") {
+                            //alert("Bio Validation will be done by the system"); 
+                            doLocalBioMetricVal();
+                            //varbiotest = getSValue("bioStatus");
+                            //document.forms[0].varbiotest.value = getSValue("bioStatus");
+                            //setFieldsToCustomData("varbiotest");
+                            //delSValue("bioStatus");
+                            //return true;
+                            setSValue("isParentRINBX|" + "N");
+                        }
+                        // Revathi - Changes end
+                        varbiotest = getSValue("bioStatus");
+                        document.forms[0].varbiotest.value = getSValue("bioStatus");
+                        setFieldsToCustomData("varbiotest");
+                        //delSValue("bioStatus");
+                        //return true;
+                    }
+                }
+            }
+
+
+            /*var acctnum = document.forms[0].acctId.value;
+                        var inputNameValues = "acctnum"+"|"+acctnum+"|"+"funcCode"+"|" +funcCode +"|"+"tranSubType"+"|"+tranSubType;
+                        var outputNames     = "";
+                var scrName         = "formatacctdp002.scr";
+                var retval = "|";
+				var retVal          = appFnExecuteScript(inputNameValues, "output", scrName, false);
+                var ret = retVal.split("|");
+                if(ret[0] == "Error" )
+                {
+                        alert(ret[1]);
+						frm.acctId.value = "";
+						frm.acctId.focus();
+                        return false;
+                }*/
+        }
+    }
+
+    if (mopId == "HCASHDEP" || mopId == "HTM" || mopId == "HXFER" || mopId == "HCASHWD") {
+        if (funcCode == "A" && document.forms[0].partTranDetail_LowLimit.value == "1" && fnIsNull(document.forms[0].acctId.value)) {
+            if (!fnIsNull(document.forms[0].cardNum.value)) {
+                var input = "cardNum|" + document.forms[0].cardNum.value;
+                var scrName = "S_cardNumberdp002.scr";
+                var output = "";
+                var arrRetVal = appFnExecuteScript(input, "output", scrName, false);
+                var arrAccId = new Array();
+                arrAccId = arrRetVal.split("|");
+                if (arrAccId[0] != "F") {
+                    document.forms[0].acctId.value = arrAccId[0];
+                    document.forms[0].acctId.onchange();
+                }
+            }
+        }
+    }
+
+
+    document.getElementById("sLnk13").href = "javascript:getInstrTypeList(frm.instrType,'','ctrl','F');tmdet_ONCHANGE(frm.instrType,this)";
+    eventIdPop(frm.acctId);
+    if ((frm.chkdelFlg.checked == true)) {
+        frm.chkdelFlg.disabled = true;
+        frm.Go.disabled = true;
+        frm.Post.disabled = true;
+        frm.Save.disabled = true;
+        if (((funcCode == "M") && (frm.chkdelFlg.checked == true)) && (sReferralMode != "S")) {
+            frm.Post.disabled = true;
+            frm.Save.disabled = true;
+            frm.Go.disabled = true;
+            frm.Validate.disabled = true;
+            frm.ListXcpn.disabled = true;
+        }
+    }
+    if (refId != "" && serialNum == 1) {
+        var tmpRefCurncy = refCrncys.split("@");
+        var aTmpCrncyUniq = tmpRefCurncy.unique();
+        var tmpUniqCrncys = aTmpCrncyUniq.join("!");
+        if (tranType != "T") {
+            var vals = frm.customData.value.split("|");
+            var position = vals[2];
+            tNumPos = (position * 7) + 4
+            var tNum = vals[tNumPos];
+        } else {
+            var vals = frm.customData.value.split("|");
+            var tNum = vals[4];
+        }
+    }
+    if (funcCode == "I" || funcCode == "M" || funcCode == "V" || funcCode == "P" || funcCode == "D") {
+        if (option == "" && dispErrLLSize == 0 && serialNum == 1)
+            if (option == "" && dispErrLLSize == 0) {
+                if (serialNum == 1) {
+                    var RecSplit = frm.customData.value;
+                    position = RecSplit.lastIndexOf("|");
+                }
+            }
+    }
+    if (sPopUpExceptionWindow == "false") {
+        getCustomFieldValue("pTranTypes", "refCrncys", "refAmts", "acctIds", "temp", "varbiotest");
+        if (tranType != "T") fnCalcTranDtls(obj);
+        if (funcCode == "V" || funcCode == "M" || funcCode == "D" || funcCode == "P" || funcCode == "I") {
+            if (option != "") {
+                var recOption = frm.customData.value.split("|");
+            }
+        }
+        //frm.customData.value="";
+    } else {
+        frm.DenomEntered.value = "N";
+        frm.pTranTypes.value = pTranTypes;
+        frm.refCrncys.value = refCrncys;
+        frm.refAmts.value = refAmts;
+        frm.acctIds.value = acctIds;
+    }
+    frm.DenomEntered.value = "N";
+    if (frm.acctId.value == "") frm.printAdvice[0].click();
+    if (frm.instrNum.value != "") {
+        var chequeNum = frm.instrNum.value.toUpperCase().split("R");
+        frm.instrNum.value = chequeNum[0];
+    }
+    showImage("sLnk5");
+    /*Added for treasury reference number custom searcher*/
+    fnClearTreafRefNum();
+
+    if (funcCode == "A" && !fnIsNull(document.forms[0].cardNum.value) && document.forms[0].partTranDetail_LowLimit.value == "1") {
+        document.forms[0].acctId.disabled = true;
+        //document.forms[0].pTranType.disabled=true;
+        fnEnableDisableRadioButtons(document.forms[0].pTranType, 'D');
+    }
+
+    if (typeof fnSchoolFeeTempl == 'function') {
+        if (mopId == "HCASHDEP" || mopId == "HTM" || mopId == "HXFER") {
+            if (funcCode == "T") {
+                fnSchoolFeeTempl();
+            }
+        }
+    }
+document.forms[0].refCrncy.value=temprefCrncy;
+}
+/*function fnValidateForm(btnId)
+{
+
+
+	if(((funcCode=="M") && (frm.chkdelFlg.checked == true)) &&(sReferralMode  != "S"))
+	{
+		if(tranSubType !="CT"){
+			var preRefCurncy = refCrncys.split("@");
+			var apreCrncyUniq= preRefCurncy.unique();
+			var tmpUniqCrncys= apreCrncyUniq.join("!");
+			var position = tmpUniqCrncys.lastIndexOf("!");
+		}
+		else
+		{
+			var position = refCrncys.lastIndexOf("@");
+		}
+		if(position > 2)
+		{
+			var1234="";	
+			//alert("Kindly delete the whole transaction and Re-enter");
+			//frm.chkdelFlg.disabled=true;
+			// if( (frm.AddNewPage != undefined) && (frm.AddNewPage != null) ){
+                         //       frm.AddNewPage.disabled = true;
+                        //}
+			//return false;
+		}
+	}
+	frm.IsPageEmpty.value = false;
+	setFieldsAsMandatory();
+
+
+	//frm.refAmt.onblur();
+	if(tranType != "T")	fnCalcTranDtls();
+	if (btnId!='Validate' && btnId!='Go' && serialNo != 1) {
+		if (isPageEmpty(frm)) {
+			document.forms[0].varbiotest.value = getSValue("bioStatus");
+			setFieldsToCustomData("DenomEntered","DenomCount","Event","cifInfo","temp","varbiotest");
+			frm.IsPageEmpty.value = true;
+			return true;
+		}
+	}
+	if (!validatePTran()){ 	return false; }
+	if ((btnId == window[multiRecName].multiRecAction) ||
+                        (btnId == window[multiRecName].nextAction) ||
+                        (btnId == window[multiRecName].prevAction) ||
+                        (btnId == window[multiRecName].prevPageAction) ||
+                        (btnId == window[multiRecName].nextPageAction) ||
+                        (btnId == window[multiRecName].addNewAction) ||
+                        (btnId == window[multiRecName].selectAction) ||
+                        (btnId == window[multiRecName].jumpToAction))
+        {
+                if (signVerificationRqd(btnId))
+                        showSignature(btnId);
+                else
+                        return true;
+        }
+        else
+        {
+                if(btnId!="Go" && btnId!="Validate")
+                        //setFieldsToCustomData("DenomEntered","DenomCount","Event","TokenNumber");
+                       	document.forms[0].varbiotest.value = getSValue("bioStatus");
+			setFieldsToCustomData("DenomEntered","DenomCount","Event","varbiotest");
+                return true;
+        }
+
+}*/
+
+function fnValidateForm(btnId) {
+
+
+    if (((funcCode == "M") && (frm.chkdelFlg.checked == true)) && (sReferralMode != "S")) {
+        if (tranSubType != "CT") {
+            var preRefCurncy = refCrncys.split("@");
+            var apreCrncyUniq = preRefCurncy.unique();
+            var tmpUniqCrncys = apreCrncyUniq.join("!");
+            var position = tmpUniqCrncys.lastIndexOf("!");
+        } else {
+            var position = refCrncys.lastIndexOf("@");
+        }
+        if (position > 2) {
+            var12345 = "";
+            //alert("Kindly delete the whole transaction and Re-enter");
+            //frm.chkdelFlg.disabled=true;
+            // if( (frm.AddNewPage != undefined) && (frm.AddNewPage != null) ){
+            //       frm.AddNewPage.disabled = true;
+            //}
+            //return false;
+        }
+    }
+    frm.IsPageEmpty.value = false;
+    setFieldsAsMandatory();
+    /* Following changes made for ticket 270926 */
+    if (btnId == undefined) {
+        frm.IsPageEmpty.value = true;
+    }
+
+    //frm.refAmt.onblur();
+    if (tranType != "T") fnCalcTranDtls();
+    if (btnId != 'Validate' && btnId != 'Go' && serialNo != 1) {
+        if (isPageEmpty(frm)) {
+            document.forms[0].varbiotest.value = getSValue("bioStatus");
+            setFieldsToCustomData("DenomEntered", "DenomCount", "Event", "cifInfo", "temp", "varbiotest");
+            frm.IsPageEmpty.value = true;
+            return true;
+
+        }
+        if (locIsPageEmpty(frm)) {
+            frm.IsPageEmpty.value = true;
+            return true;
+        }
+    }
+    if (!validatePTran()) {
+        return false;
+    }
+
+    var prec = getPrec(frm.refCrncy.value);
+    if (!fnValidateAndFormatAmt(amtFmt, frm.refAmt, frm.refCrncy.value, 'N')) {
+        frm.refAmt.focus();
+        return false;
+    }
+    if (!fnValidateAmount(frm.refAmt.value, prec)) {
+        frm.refAmt.focus();
+        return false;
+    }
+    if ((btnId == window[multiRecName].addNewAction)) {
+        if (chkForAddingNewPartTrans() == false) {
+            return false;
+        }
+    }
+
+    if ((btnId == window[multiRecName].nextAction)) {
+        if (serialNo == (iTotalCount - 1)) {
+            if (chkForAddingNewPartTrans() == false) {
+                return false;
+            }
+        }
+        if (isModSinglePtran == 'Y') {
+            return false;
+        }
+    }
+
+    /**
+    Navigation between records now happen through New MRH.
+    Before submitting the request for "next", "prev" action, this validation gets called.
+    Signature Verification should happen here only if this gets called throgh MRH.
+    **/
+    if ((btnId == window[multiRecName].multiRecAction) ||
+        (btnId == window[multiRecName].nextAction) ||
+        (btnId == window[multiRecName].prevAction) ||
+        (btnId == window[multiRecName].prevPageAction) ||
+        (btnId == window[multiRecName].nextPageAction) ||
+        (btnId == window[multiRecName].addNewAction) ||
+        (btnId == window[multiRecName].selectAction) ||
+        (btnId == window[multiRecName].jumpToAction)) {
+        if (signVerificationRqd(btnId))
+            showSignature(btnId);
+        else
+            return true;
+    } else {
+        if (btnId != "Go" && btnId != "Validate")
+            //setFieldsToCustomData("DenomEntered","DenomCount","Event","TokenNumber");
+            document.forms[0].varbiotest.value = getSValue("bioStatus");
+        setFieldsToCustomData("DenomEntered", "DenomCount", "Event", "varbiotest");
+        return true;
+    }
+
+}
+
+/*function getAcctIdList()
+{
+	if(tranType=="C"&&(tranSubType=="CT"||tranSubType=="CR"||tranSubType=="CP")){
+		showAccountIdList(frm.acctId,null,null,'F');
+		//added by mandar for QC id 1362
+		frm.subaction.value = 'A';
+		frmSubmit("GETDETAILS");
+	}
+	else
+	{
+		var oldAcct = frm.acctId.value;
+		showAccountIdList(frm.acctId,null,null,'F');
+		if (oldAcct != frm.acctId.value) {
+			frm.subaction.value = 'A';
+			frmSubmit("GETDETAILS");
+		}
+	}
+
+}*/
+function cust_tm_locfndoRefSubmit(obj) {
+    var ret = tmdet_pre_ONCLICK(obj);
+    if (ret == true) return true;
+    else return false;
+}
+//function tmdet_post_ONCHANGE(obj)
+//{
+//	var f = eventIdPop(obj);
+//	/*Added for treasury reference number custom searcher*/
+//	if((obj.id=="acctId") || (obj.id == "refCrncy"))
+//	{
+//		fnClearTreafRefNum();
+//	}
+//
+//// Code added by Akansh for FCR-00453
+//	if(typeof fnSchoolFeeTempl == 'function')
+//	{
+//	if (mopId == "HCASHDEP" || mopId == "HTM" || mopId == "HXFER")
+//	{
+//		if(funcCode == "T")
+//		{
+//			fnSchoolFeeTempl();
+//		}
+//	}
+//                }
+//
+//
+//}
+
+
+
+function eventIdPop(obj) {
+    return true;
+}
+
+function tmdet_post_ONCLICK(obj) {
+    if ((funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T")) {
+        if (obj.id == "Post" || obj.id == "Save")
+            frm.refAmt.readOnly = true;
+        if ((obj.id == "chkdelFlg") && (frm.chkdelFlg.checked == true)) {
+            frm.Post.disabled = true;
+            frm.Save.disabled = true;
+            if ((frm.AddNewPage != undefined) && (frm.AddNewPage != null)) {
+                frm.AddNewPage.disabled = true;
+            }
+        }
+        if ((obj.id == "chkdelFlg") && (frm.chkdelFlg.checked == false)) {
+            frm.Post.disabled = false;
+            frm.Save.disabled = false;
+            if ((frm.AddNewPage != undefined) && (frm.AddNewPage != null)) {
+                frm.AddNewPage.disabled = true;
+            }
+
+        }
+    }
+}
+
+function custom_ONBLUR(tm, obj) {
+    var str = document.forms[0].acctId.value;
+    var tranParticular = document.forms[0].tranParticular.value;
+    var res = str.substring(3, 13);
+    var limitNum = 10;
+    if (obj.id == "tranParticular") {
+
+        if ((res == "1100303904") || (str == "1481100304199") || (str == "0571100304080") || (str == "0571100304081")) {
+
+            document.getElementById('tranParticular').value = document.getElementById('tranParticular').value.substring(0,limitNum);
+            if (tranParticular.length > limitNum) {
+                alert("Input maximum of 10 numeric characters")
+                clearDescField("tranParticular");
+                document.forms[0].tranParticular.focus();
+
+            }
+
+        }
+        if ((res == "1100303118") || (str == "1481100304198") || (str == "0571100304077") || (str == "0571100304078")) {
+            limitNum = 8;
+            document.getElementById('tranParticular').value = document.getElementById('tranParticular').value.substring(0,limitNum);
+            if (tranParticular.length > limitNum) {
+                alert("Input maximum of 8 numeric characters")
+                clearDescField("tranParticular");
+                document.forms[0].tranParticular.focus();
+
+            }
+
+        }
+    }
+
+    if (obj.id == "refCrncy") {
+        if (workClass != "240") {
+            //alert(workClass);
+            //hideImage("sLnk11");
+            document.forms[0].rate.disabled = true;
+            document.forms[0].treaRate.disabled = true;
+        }
+    }
+
+    if (((funcCode == 'A') || (funcCode == 'M')) && (obj.id == "instrType")) {
+        if ((fnTrim(frm.instrType.value.toUpperCase()) == "DEPSL")) {
+            frm.instrNum.value = "1";
+            frm.instrAlpha.value = "1";
+            frm.instrDate_ui.value = BODDate;
+            frm.instrDate.value = BODDate;
+        }
+    }
+}
+
+/*Added for treasury reference number custom searcher*/
+function fnClearTreafRefNum() {
+    if ((tranType == "C" || tranType == "T") && (tranSubType == "PI" || tranSubType == "RI" || tranSubType == "CI" || tranSubType == "BI") && (funcCode == "A" || funcCode == "M" || funcCode == "C" || funcCode == "T"))
+        if ((acctCrncy == document.forms[0].refCrncy.value) && (!fnIsNull(acctCrncy)) && (!fnIsNull(document.forms [0].refCrncy.value))) {
+            hideImage("treaSearcher");
+            if (!fnIsNull(document.forms[0].treaRefNum.value))
+                document.forms[0].treaRefNum.value = ""
+        }
+    else if ((acctCrncy != document.forms[0].refCrncy.value) && (!fnIsNull(acctCrncy)) && (!fnIsNull(document.forms[0].refCrncy.value))) {
+        showImage("treaSearcher");
+    }
+}
+
+/*function appFnExecuteScript(inputNameValues, outputNames, scrName, isPopulationReq)
+{
+        var sUrl = "../custom/jsp/cust_frm_fetch.jsp?";
+
+        if(!cust_fnIsNull(inputNameValues))
+                sUrl += "&inputs="+ encodeURIComponent(inputNameValues);
+
+
+        if(cust_fnIsNull(scrName))
+        {
+                alert("Script Name is mandatory");
+                return;
+        }
+
+        sUrl += "&scrName="+scrName;
+
+        if (isPopulationReq && cust_fnIsNull(outputNames))
+        {
+                alert("Output Names are mandatory");
+                return;
+        }
+
+        var xMax = screen.width, yMax = screen.height;
+        var xOffset = (xMax - 120), yOffset = (yMax - 150);
+        var params = "dialogWidth=0px;dialogHeight=0px;dialogLeft="+xOffset+"px;dialogTop="+yOffset+"px";
+        params += ";status=no;toolbar=no;menubar=no;resizable=yes;help=no;center=no";
+
+        var retVal = "";
+        if("Netscape" == browser_name)
+                window.open(sUrl,"title","width=10px,height=10px,modal=yes,top="+yOffset+"px,left="+xOffset+"px,scrollbars=yes,toolbar=no,menubar=no,help=no");
+        else
+        {
+                retVal = window.showModalDialog(sUrl,"",params);
+        }
+
+        if (retVal == null || retVal == undefined)
+                return retVal;
+        var retBuff = retVal.split("|");
+        var retBuffLen = retBuff.length;
+        if (retBuff[0] == 'Err')
+        {
+                var str = "";
+                for (var i=1; i<retBuffLen; i++)
+                {
+                        str += retBuff[i] + "\n";
+                }
+		if(str == "[Referral Generation Failed]\n\n")
+		{
+			return;
+		}
+		else
+		{
+			alert(str);
+			return;
+		}
+        }
+
+        if (!isPopulationReq)
+                return retVal;
+
+        var frm = document.forms[0];
+        var outBuff = outputNames.split("|");
+        var outBuffLen = outBuff.length;
+
+        for (var i=0; i<outBuffLen; i++)
+        {
+                for (var j=0; j<retBuffLen; j++)
+                {
+                        if (outBuff[i] == retBuff[j])
+                        {
+                                if ((eval("frm." + outBuff[i]) != undefined))
+                                {
+                                        eval("frm."+outBuff[i]+".value=\""+retBuff[j+1]+"\"");
+                                        break;
+                                }
+                        }
+                }
+        }
+}*/
+
+
+
+/*function getAcctIdList()
+{
+	memoPad();
+
+	   if(tranType=="C"&&(tranSubType=="CT"||tranSubType=="CR"||tranSubType=="CP")){
+                showAccountIdList(frm.acctId,null,null,'F');
+                //added by mandar for QC id 1362
+                frm.subaction.value = 'A';
+                frmSubmit("GETDETAILS");
+        }
+        else
+        {
+                var oldAcct = frm.acctId.value;
+                showAccountIdList(frm.acctId,null,null,'F');
+                if (oldAcct != frm.acctId.value) {
+                        frm.subaction.value = 'A';
+                        frmSubmit("GETDETAILS");
+                }
+        }
+
+}*/
+
+function showLedgerDetails() {
+//alert(document.forms[0].acctId.value);
+//alert(document.forms[0].refNum.value);
+    var ObjForm = document.forms[0];
+    if (ObjForm.acctId.value == "") {
+        alert("Enter a valid account ID.");
+    } else {
+        var inputNameValues = "acctId|" + ObjForm.acctId.value;
+        var outputNames = "";
+        var scrName = "fetchLedgerDtlsmn002.scr";
+        var retVal = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+        var ret = retVal.split("|");
+        if (ret[0] == "Error" && ret[1] != "") {
+            alert(ret[1]);
+        } else {
+            var inputNameValues = "acctId|" + ObjForm.acctId.value;
+            var outputNameValues = "tranDate|valueDate|instrmntNum|tranPart|crncyCode|debitAmt|creditAmt|balAmt";
+            var scriptName = "fetchLedgerDtlsmn001.scr";
+            var listHeading = "Account Ledger Inquiry";
+            var colHeader = "Tran. Date|Value Date|Instr. No.|Particulars|CCY|Debit Amt.|Credit Amt.|Bal.";
+            var hyper = "1";
+            appFnExecuteScriptForLedger(inputNameValues, outputNameValues, scriptName, listHeading, colHeader, "40",true);
+            //cust_appFnExecuteScriptForList(inputNameValues, outputNameValues, scriptName, listHeading, colHeader, hyper,true)
+        }
+    }
+}
+
+function appFnExecuteScriptForLedger(inputNameValues, outputNames, scrName, pageTitle, literalNames, hyperLnkCols,isPopulationReq) {
+    var sUrl = "../custom/jsp/cust_fetch_list.jsp?";
+    //var sUrl = "../custom/jsp/cust_ledgerDetails.jsp?";
+    if ((inputNameValues.indexOf("pageNumber") != -1) && (inputNameValues.indexOf("pageSize") == -1)) {
+        alert("Page Size is mandatory");
+        return;
+    }
+    if ((inputNameValues.indexOf("pageSize") != -1) && (inputNameValues.indexOf("pageNumber") == -1)) {
+        alert("Page Number is mandatory");
+        return;
+    }
+    if (!cust_fnIsNull(inputNameValues))
+        sUrl += "&inputs=" + encodeURIComponent(inputNameValues);
+    if (cust_fnIsNull(scrName)) {
+        alert("Script Name is mandatory");
+        return;
+    }
+    sUrl += "&scrName=" + scrName;
+    if (cust_fnIsNull(outputNames)) {
+        alert("List ouput field names are mandatory");
+        return;
+    }
+    sUrl += "&outputs=" + outputNames;
+    if (cust_fnIsNull(pageTitle)) {
+        pageTitle = finbranchResource.FHP000368;
+    }
+    sUrl += "&pageTitle=" + encodeURIComponent(pageTitle);
+    if (cust_fnIsNull(literalNames)) {
+        alert("Column Literal Names are mandatory");
+        return;
+    }
+    sUrl += "&literalNames=" + encodeURIComponent(literalNames);
+    if (cust_fnIsNull(hyperLnkCols)) {
+        hyperLnkCols = "1";
+    }
+    sUrl += "&hyperLnkCols=" + hyperLnkCols;
+    var retVal = cust_popModalWindowForLedger(sUrl, "Custom List");
+    if (retVal == null || retVal == undefined)
+        return retVal;
+    if (!isPopulationReq)
+        return retVal;
+    if ("Microsoft Internet Explorer" == browser_name) {
+        var frm = document.forms[0];
+        var outBuff = outputNames.split("|");
+        var outBuffLen = outBuff.length;
+        var retBuff = retVal.split("|");
+        for (var i = 0; i < outBuffLen; i++) {
+            if ((eval("frm." + outBuff[i]) != undefined)) {
+                eval("frm." + outBuff[i] + ".value=\"" + retBuff[i] + "\"");
+            }
+        }
+    }
+}
+
+function cust_popModalWindowForLedger(sUrl, wName) {
+    if ("Netscape" == browserName) {
+        window.open(sUrl, wName, "width=500,height=500,modal=yes,left=150,top=40,scrollbars=yes,toolbar=no,menubar=0");
+        return;
+    } else {
+        var retval = window.showModalDialog(sUrl, wName,"dialogWidth:65;dialogHeight:25;status=yes;toolbar=no;menubar=no;resizable=yes");
+        return (retval);
+    }
+}
+function fnPopulatePayGLCredit()
+{
+        var c = document.forms[0].partTranDetail_LowLimit.value;
+        var AcctNum = document.forms[0].acctId.value;
+        if(c == 2)
+        {
+		getFieldsFromCustomData("pTranTypes", "refCrncys", "refAmts", "acctIds", "cifInfo","varbiotest","refNum","tranParticular","tranRmks","tranRmks2","refCrncy","cfName","cmName","clName","natLity","idDocType","issueCty","srcPurp","idNuma");
+
+                var custDataTemp = document.forms[0].customData.value;
+		if(custDataTemp != "")
+		{
+                var retval = custDataTemp.split("~tmdet")[1].split("|");
+                var refCrncy = retval[11];
+                var refAmt = retval[3];
+                var refNum = retval[7];
+                var tranParticular = retval[8];
+                var tranRmks = retval[9];
+                var tranRmks2 = retval[10];
+
+                if((tranType == "C") && (tranSubType == "CP"))
+                {
+                        var inputNameValues = "refCrncy|" + refCrncy + "|refNum|" + refNum + "|AcctNum|" + AcctNum;
+                        var outputNames = "";
+                        var scrName = "cietxndp070.scr";
+                        var retVal = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+                        var ret1 = retVal.split("|");
+                        var errFlg = ret1[1];
+                        var errMsg = ret1[3];
+                        var acntNum = ret1[5];
+                        var acntCrncy = ret1[7];
+                        var acntName = ret1[9];
+                        var solId = ret1[11];
+                        var payglFlg = ret1[13];
+                        if (errFlg == "Y")
+                        {
+                                alert(errMsg);
+                                return false;
+                        }
+                        else
+                        {
+				if(payglFlg == "Y")
+				{
+                			document.forms[0].refAmt.value = refAmt;
+                			document.forms[0].acctCrncyAmt.value = refAmt;
+                			//document.forms[0].refNum.value = refNum;
+                			document.forms[0].tranParticular.value = tranParticular;
+                			document.forms[0].tranRmks.value = tranRmks;
+                			document.forms[0].tranRmks2.value = tranRmks2;
+                                	document.forms[0].acctId.value = acntNum;
+                                	document.forms[0].acctLabelCrncy.value = acntCrncy;
+                                	document.forms[0].acctCrncy.value = acntCrncy;
+                                	document.forms[0].acctSolId.value = solId;
+                                	document.forms[0].acctName.value = acntName;
+                                	var radioButtons = document.getElementsByName('pTranType');
+                                	radioButtons[0].checked = false;
+                                	radioButtons[1].checked = true;
+                			document.forms[0].rate.value = "1.00";
+                			document.forms[0].rate.disabled = true;
+					//hideImage(multiRecName+"_NextRec");
+					//hideImage(multiRecName+"_AddNew");							
+	
+					getAcctDetails();
+				}
+				return true;
+                        }
+                }
+		}
+        }
+}
+function fnLocalGetCustomFields(){
+        var pgno =document.forms[0].partTranDetail_LowLimit.value;
+        var temp   = document.forms[0].screenName.value;
+        document.forms[0].screenName.value = document.forms[0].screenName.value + pgno;
+        getFieldsFromCustomData("cfName","cmName","clName","natLity","idDocType","issueCty","srcPurp","idNuma");
+        document.forms[0].screenName.value = temp;
+
+}
+function fnLocalSetCustomFields(){
+        var pgno =document.forms[0].partTranDetail_LowLimit.value;
+        var temp   = document.forms[0].screenName.value;
+        document.forms[0].screenName.value = document.forms[0].screenName.value + pgno;
+        setFieldsToCustomData("cfName","cmName","clName","natLity","idDocType","issueCty","srcPurp","idNuma");
+        if (document.forms[0].customData.value != ""){
+                var cust = document.forms[0].customData.value;
+                var split = cust.split("|");
+
+        }
+        document.forms[0].screenName.value = document.forms[0].screenName.value + pgno;
+        document.forms[0].screenName.value = temp;
+}
+function postEventCall(tmdet,obj,ONCHANGE){
+//alert("event call");
+if((funcCode == "M") || (funcCode=="A") || (funcCode!="I") || (funcCode=="P") || (funcCode=="D") || (funcCode=="V")){
+fnLocalSetCustomFields();
+        return true;
+}
+}
+function fetchCnt(){
+        //alert("country");
+        var ObjForm = document.forms[0];
+    var inputNameValues = "funcCode|"+funcCode+"|nation|Y";
+    var outputNames  = "issueCty|nCountryDesc";
+    var pageTitle    = "List Country Code";
+    var literalNames = "Country Code|Country Desc";
+    var scrName      = "ebTmCountyPop.scr";
+    var hyperLnkCols = "1";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+        //alert(retVal);
+   if (retVal != null && retVal != undefined){
+        var vals = retVal.split("|");
+        if(vals[0] != ""){
+            document.forms[0].issueCty.value = vals[0];
+        }
+    }
+}
+function fetchRemarks(){
+        //alert("country");
+        var ObjForm = document.forms[0];
+    var inputNameValues = "funcCode|"+funcCode+"|nation|N";
+    var outputNames  = "natLity|CountryDesc";
+    var pageTitle    = "List Country Code";
+    var literalNames = "Country Code|Country Desc";
+    var scrName      = "ebTmCountyPop.scr";
+    var hyperLnkCols = "1";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+        //alert(retVal);
+    if (retVal != null && retVal != undefined){
+        var vals = retVal.split("|");
+        if(vals[0] != ""){
+            document.forms[0].natLity.value = vals[0];
+        }
+    }
+}
+//Fraud Vino 10-dec-2025 
+function custom_ONCLICKD(obj){
+        var dftTranType = document.getElementById("pTranType").defaultChecked;
+	var TranType = getRadioValue(document.forms[0].pTranType);
+	var acctId = document.forms[0].acctId.value;
+	var drCrInd = getRadioValue(document.forms[0].pTranType);
+	if((funcCode == "A") || (funcCode == "C") || (funcCode == "M")){
+	if (tranType == "T" || tranType == "C") {
+	if((acctId != "") && (drCrInd=="D")){ 
+		document.forms[0].varbiotest.value = getSValue("bioStatus"); 
+		alert(document.forms[0].varbiotest.value); 
+		doLocalBioMetricVal(); 
+		setSValue("bioStatus|"+"Q"); 
+		varbiotest = getSValue("bioStatus"); 
+		document.forms[0].varbiotest.value = getSValue("bioStatus"); 
+		setFieldsToCustomData("varbiotest"); 
+		return true; 
+	} 
+	} 
+	}
+	return true;
+}
+with (document) {
+write('<html>');
+write('<input type="hidden" id="isudate" fdt="fdate" mneb1="N" vFldId="isudate_ui" name="isudate">');
+write('<table width="98.5%" align="center" border="0" cellpadding="0" cellspacing="0"  id="custom_table"  class="tableborder">');
+write('<tr>');
+write('<td>');
+write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+write('<tr>');
+write('<td>');
+write('<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+write('<tr>');
+write('<td>');
+write('</td>');
+write('</tr>');
+write('<tr class="innertabletop1">');
+write('<td colspan="5" align="right">');
+write('<table border="0" cellspacing="0" cellpadding="0">');
+write('<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+write('</tr>');
+write('<tr class="subhdrbg">');
+write('<td colspan="5"><h1 class="subhdr" style="font-size:12">Customer Details For AML</h1></td>');
+write('</tr>');
+
+write('<tr>');
+write('<td class="textlabel" style="height: 15px">First Name </td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="cfName" id="cfName" size=30 maxlength=25>');
+write('<td class="textlabel" style="height: 15px">Middle Name</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="cmName" id="cmName" size=20 maxlength=25>');
+write('</tr>');
+
+write('<tr>');
+write('<td class="textlabel" style="height: 15px">Last Name</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="clName" id="clName" size=30 maxlength=25>');
+write('<td class="textlabel" style="height: 15px">Nationality</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="natLity" id="natLity" onChange="javascript:return fetchCnt();" size=20 maxlength=25>');
+write('<a href="javascript:fetchRemarks();">');
+write('<img border="0" id="Search" height="17" hotKeyId="search1" src="../Renderer/images/INFENG/search_icon.gif" width= "16" maxlength="6">');
+write('</a>');
+write('</tr>');
+
+write('<tr>');
+write('<td class="textlabel" style="height: 15px">Identification Doc Type</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<select name="idDocType" id="idDocType" style="width: 218px">');
+write('<option value="">Select</option>');
+write('<option value="PP">PP-Passport</option>');
+write('<option value="NIC">NIC-National Identity Card</option>');
+write('<option value="AL">AL-Alien Card</option>');
+write('<option value="DL">DL-Driver Licence</option>');
+write('<option value="ML">ML-Military Card</option>');
+write('<option value="OT">OT-Others</option>');
+write('<option value="URC">URC-UNHCR Refugee Card</option>');
+write('</select>');
+write('<td class="textlabel" style="height: 15px">Issue Country</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="issueCty" id="issueCty" onChange="javascript:return fetchCnt();" size=20 maxlength=25>');
+write('<a href="javascript:fetchCnt();">');
+write('<img border="0" id="Search" height="17" hotKeyId="search1" src="../Renderer/images/INFENG/search_icon.gif" width= "16" maxlength="6">');
+write('</a>');
+write('</tr>');
+
+write('<tr>');
+write('<td class="textlabel" style="height: 15px">Source/Purpose</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<select name="srcPurp" id="srcPurp" style="width: 218px">');
+
+//--------------------CHG0031780 -------------- START------->
+if (tranType == "C" && ((tranSubType == "NR") || (tranSubType == "RI")))
+{
+	write('<option value="">Select</option>');
+	write('<option value="SP">Sales of Property</option>');
+	write('<option value="CS">Cash Sales/Business Proceeds</option>');
+	write('<option value="MB">Mobile Money Float</option>');
+	write('<option value="RI">Rental Income</option>');
+	write('<option value="SG">Sales of Agricultural Products/Livestock</option>');
+	write('<option value="FO">Forex Operation/Trading</option>');
+	write('<option value="DF">Donations/Fundsdrive/Gifts</option>');
+	write('<option value="CC">Church Collections/Offerings</option>');
+	write('<option value="IO">Investment</option>');
+	write('<option value="CR">Compensation/Refunds/Pension</option>');
+	write('</select>');
+}
+
+if (tranType == "C" && ((tranSubType == "NP") || (tranSubType == "PI")))
+{
+	write('<option value="">Select</option>');
+	write('<option value="PS">Payment to Suppliers and Workers</option>');
+	write('<option value="BS">Purchase Business Stock</option>');
+	write('<option value="CM">Construction Materials</option>');
+	write('<option value="BU">Business Use/Petty Cash</option>');
+	write('<option value="PP">Property Purchase</option>');
+	write('<option value="PL">Purchase of Livestock</option>');
+	write('<option value="FO">Forex Operation/Trading</option>');
+	write('<option value="TD">Tax/Duty Payment</option>');
+	write('<option value="MS">Members Savings</option>');
+	write('<option value="LP">Loan Repayment</option>');
+	write('<option value="CP">Campaign/Political Party Activity</option>');
+	write('<option value="IM">Imprest</option>');
+	write('<option value="OT">Own Transfer</option>');
+	write('<option value="DF">Donations/Fundsdrive/Gifts</option>');
+	write('<option value="SW">Social Work/Community Support</option>');
+	write('<option value="CB">Court Bail</option>');
+	write('<option value="GO">Government Operations/Coordinations</option>');
+	write('<option value="ES">Exam/School/Legal Fees</option>');
+	write('<option value="CI">CIT</option>');
+	write('<option value="MT">Money Transfer</option>');
+	write('<option value="IO">Investment</option>');
+	write('</select>');
+
+}
+
+//--------------------CHG0031780 -------------- END------->
+write('<td class="textlabel" style="height: 15px">Identification Number</td>');
+write('<td class="textfield" style="width: 526px">');
+write('<input type="text" class="textfieldfont" name="idNuma" id="idNuma" size=30 maxlength=80>');
+write('</tr>');
+
+write('<td>');
+write('</td>');
+write('</tr>');
+write('<tr>');
+write('</table>');
+write('<tr class="rowspacing">');
+write('<td colspan="2"><spacer type="block" height="1" width="1"></spacer></td>');
+write('</tr>');
+write('</table>');
+write('</td>');
+write('</tr>');
+write('</table>');
+write('</td>');
+write('</tr>');
+write('</table>');
+write('</td>');
+write('</tr>');
+write('</table>');
+
+write('</html>');
+
+}
+

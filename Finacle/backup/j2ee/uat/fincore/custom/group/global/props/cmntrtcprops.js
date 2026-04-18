@@ -1,0 +1,25 @@
+var cmntrtcLocObj ={
+	Clear_ENABLED:"enabled", 
+	fromCrncy_MANDATORY:"N", 
+	Go_ENABLED:"enabled", 
+	fromCrncy_ENABLED:"enabled", 
+	rateCodeTransfer_ENABLED:"enabled", 
+	Submit_ENABLED:"enabled", 
+	Go_MANDATORY:"N", 
+	Validate_ENABLED:"enabled", 
+	Submit_MANDATORY:"N", 
+	rateCodeCash_MANDATORY:"N", 
+	Ok_MANDATORY:"N", 
+	Cancel_ENABLED:"enabled", 
+	rateCodeCash_ENABLED:"enabled", 
+	Clear_MANDATORY:"N", 
+	toCrncy_MANDATORY:"N", 
+	toCrncy_ENABLED:"enabled", 
+	Cancel_MANDATORY:"N", 
+	rateCodeTransfer_MANDATORY:"N", 
+	funcCode_ENABLED:"enabled", 
+	Ok_ENABLED:"enabled", 
+	Validate_MANDATORY:"N", 
+	funcCode_MANDATORY:"N"
+	};
+var cmntrtcProps =  new Properties(cmntrtcLocObj);

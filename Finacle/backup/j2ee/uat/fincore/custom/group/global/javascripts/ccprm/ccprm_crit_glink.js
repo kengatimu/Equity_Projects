@@ -1,0 +1,302 @@
+function printBlock()
+{
+	writeCustomHeader("ccprm_crit");
+	with (document){
+         write('<input id="evtTypeDesc" type="hidden" value=" ">');
+	write('<input id="subheadCode" type="hidden" value=" ">');
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">' + jspResArr.get("FLT032043") + '</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="tableborder">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+	write('<a href="javascript:showHelpFile(\'crit_help.htm\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" width="17" height="17" vspace="1" border="0" />');
+	write('</a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT006657") + '</td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.funcCode" id="funcCode"  fdt="String" ' + ccprmProps.get("funcCode_ENABLED") + '   style="width: 151px;">');
+	write('<option value="">--select--</option>');
+	write('<option value="A">' + jspResArr.get("FLT031874") + '</option>');
+	write('<option value="M">' + jspResArr.get("FLT031882") + '</option>');
+	write('<option value="V">' + jspResArr.get("FLT031876") + '</option>');
+	write('<option value="I">' + jspResArr.get("FLT031877") + '</option>');
+	write('<option value="X">' + jspResArr.get("FLT031883") + '</option>');
+	write('<option value="D">' + jspResArr.get("FLT032031") + '</option>');
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+//	write('<td class="textlabel"> </td>');
+	//write('<td class="textfield">    </td>');
+	//write('</tr>');
+	//write('<tr>');
+	write('<tr>');
+        write('<td class="textlabel">Event Type</td>');
+        write('<td class="textfield">');
+                write('<input hotKeyId="search3" type="text" class="textfieldfont" name="' + subGroupName + '.evntType" id="evntType" fdt="String" ' + ccprmProps.get("evntType_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_crit_ONCHANGE1(this);">');
+ 
+	write('<a target=_self id ="sLnk3" href="Javascript:fnShowEventType(document.forms[0].funcCode)">');
+
+        write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="textlabel" style="height: 15px">Event Id</td>');
+        write('<td class="textfield">');
+       write('<input hotKeyId="search4" type="text" class="textfieldfont" name="' + subGroupName + '.evntId" id="evntId"  fdt="String" ' + ccprmProps.get("evntId_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_crit_ONCHANGE2(this);">');
+        write('<a target=_self id="sLnk4"  href="javascript:fnShowEvtIDList(document.forms[0].funcCode)">');
+        write('<img border="0" height="17" hotKeyId="search4" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('</tr>');
+	
+	write('<tr>');
+        write('<td class="textlabel">Scheme Code</td>');
+        write('<td class="textfield">');
+        write('<input hotKeyId="search1" type="text" class="textfieldfont" name="' + subGroupName + '.schmCode" id="schmCode"  fdt="String" ' + ccprmProps.get("schmCode_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_crit_ONCHANGE3(this);">');
+         write('<a target=_self id ="sLnk2" href="javascript:showSchmCodes(document.forms[0].schmCode,document.forms[0].subheadCode,\'\')">');
+
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+	write('<td class="columnwidth"> </td>');
+        write('<td class="textlabel" style="height: 15px">Currency Code</td>');
+        write('<td class="textfield">');
+       write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.crncy" id="crncy"  fdt="String" ' + ccprmProps.get("crncy_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_crit_ONCHANGE4(this);">');
+        write('<a target=_self id="sLnk2"  href="javascript:showCurrencyList(document.forms[0].crncy)">');
+        write('<img border="0" height="17" hotKeyId="search2" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+	write('</tr>');
+
+        write('<tr>');
+        write('<td class="textlabel">Serial Number</td>');
+        write('<td class="textfield">');
+        write('<input hotKeyId="search3" type="text" class="textfieldfont" name="' + subGroupName + '.srlNum" id="srlNum"  fdt="String" ' + ccprmProps.get("srlNum_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_crit_ONCHANGE5(this);">');
+         write('<a target=_self id ="sLnk5" href="javascript:showsrlNum()">');
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="columnwidth"> </td>');
+       write('<td class="columnwidth"> </td>');
+/*        write('<td class="textlabel" style="height: 15px">Charge Type</td>');
+        write('<td class="textfield">');
+        write('<select name="' + subGroupName + '.chrgType" id="chrgType"  fdt="String" ' + ccprmProps.get("chrgType_ENABLED") + '   style="width: 151px;" >');
+        write('<option value="">--select--</option>');
+        write('<option value="F">F - Fixed Amount</option>');
+        write('<option value="P">P - Percentage</option>');
+        write('<option value="S">S - Slab Based</option>');
+        write('</select>');
+        write('</td>'); */
+        write('</tr>');
+
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT001721")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	write('<div class="ctable">');
+	write('<input id="Accept" name="Go" type="button" class="button"	onClick="javascript:return ccprm_crit_ONCLICK1(this,this);"" value="' + jspResArr.get("FLT004977") + '" hotKeyId="Go">');
+	write('<input id="Clear" name="Clear" type="button" class="button" value="' + jspResArr.get("FLT001439") + '"	onClick="javascript:return ccprm_crit_ONCLICK2(this);"">');
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+
+	initFocusHandler();
+
+	pre_ONLOAD('ccprm_crit',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+
+	post_ONLOAD('ccprm_crit',this);
+}
+
+function fnCheckMandatoryFields()
+{
+	var ObjForm = document.forms[0];
+
+	return true;
+}
+
+function fnPopulateControlValues() 
+{
+	var ObjForm = document.forms[0];
+
+	ObjForm.funcCode.value = funcCode;
+	//ObjForm.modName.value = modName;
+}
+
+
+function ccprm_crit_ONCLICK1(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('ccprm_crit',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('ccprm_crit',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ccprm_crit_ONCLICK2(obj)
+{
+	document.forms[0].funcCode.value = "";
+	document.forms[0].evntId.value = "";
+	document.forms[0].evntType.value="";
+	document.forms[0].schmCode.value = "";
+	document.forms[0].crncy.value = "";
+	document.forms[0].srlNum.value = "";
+	var retVal = "";
+	if (preEventCall('ccprm_crit',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnClearFields()) == false) {
+		return false;
+	}
+	if (postEventCall('ccprm_crit',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function ccprm_crit_ONCHANGE1(obj)
+{
+        var retVal = "";
+        if (preEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = fnGetEvtTypVal(obj)) == false) {
+                return false;
+        }
+        if (postEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+
+function ccprm_crit_ONCHANGE2(obj)
+{
+        var retVal = "";
+        if (preEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = fnGetEvtIdVal(obj)) == false) {
+                return false;
+        }
+        if (postEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function ccprm_crit_ONCHANGE3(obj)
+{
+        var retVal = "";
+        if (preEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = fnGetSchmVal(obj)) == false) {
+                return false;
+        }
+        if (postEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+
+}
+function ccprm_crit_ONCHANGE4(obj)
+{
+        var retVal = "";
+        if (preEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = fnGetCrncyVal(obj)) == false) {
+                return false;
+        }
+        if (postEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+
+function ccprm_crit_ONCHANGE5(obj)
+{
+        var retVal = "";
+        if (preEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        if ((retVal = fnGetsrlNumVal(obj)) == false) {
+                return false;
+        }
+        if (postEventCall('ccprm_crit',obj,'ONBLUR') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}

@@ -1,0 +1,169 @@
+with (document)
+{
+        write('<input type="hidden" name="custNumOfDocRecs" id="custNumOfDocRecs" >');
+        write('<input type="hidden" name="custDocDetailsRecData" id="custDocDetailsRecData" >');
+        write('<input type="hidden"        name="'+ sGroupName +'".pageVisited"                  id="pageVisited">');
+
+        write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+        write("<tr>");
+        write('<td>     <table border="0" cellspacing="0" cellpadding="0">');
+        write("<tr>");
+        write('<td class="page-heading"></td>');
+        write("</tr>");
+        write("</table>");
+        write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+        write("<tr>");
+        write('<td valign="top">        <table width="100%" border="0" cellpadding="0" cellspacing="0" class="tableborder">');
+        write("<tr>");
+        write('<td>     <table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+        write("<tr>");
+        write('<td>     <table name="TABLE1" width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop">');
+        write('<tr class="innertabletop1">');
+        write('<td colspan="5" align="right">   <table border="0" cellspacing="0" cellpadding="0">');
+        write("</table>");
+        write("</td>");
+        write("</tr>");
+
+        write('<tr >');
+        write('<td class="textlabel">&nbsp;</td>');
+        write('<td class="textfield">&nbsp;</td>');
+        write('<td class="columnwidth">&nbsp;</td>');
+        write('<td class="textlabel">&nbsp;</td>');
+        write('<td class="textfield">&nbsp;</td>');
+        write("</tr>");
+		
+	//Management Fee Field
+	write('<tr >');
+	write('<td class="textlabel">Management Fee<script>setMandatory("Y")</script></td>');
+        write('<td class="textfield">');
+        write('<input id="managementFee" name="' + sGroupName + '.managementFee" type="number" class="textfieldfont" size="25" maxlength="25" fmb="N" fdt="default" fblk="defaultFblk1" value="0.1" >');
+        write("</td>");
+        write("</tr>");
+		
+	write('<tr >');
+        write('<td class="textlabel">&nbsp;</td>');
+        write('<td class="textfield">&nbsp;</td>');
+        write('<td class="columnwidth">&nbsp;</td>');
+        write('<td class="textlabel">&nbsp;</td>');
+        write('<td class="textfield">&nbsp;</td>');
+        write("</tr>");
+
+        write('<tr class="rowspacing">');
+        write('<td colspan="5"><spacer type="block" width="1" height="1"></spacer></td>');
+        write("</tr>");
+        write("</table>");
+        write("</td>");
+        write("</tr>");
+        write("</table>");
+        write("</td>");
+        write("</tr>");
+        write("</table>");
+        write("</td>");
+        write("</tr>");
+        write("</table>");
+        write("</td>");
+        write("</tr>");
+        write("</table>")
+}
+
+function lachrg_details_pre_ONLOAD(obj)
+{
+        var objForm = document.forms[0];
+
+	if((mopId == "HOAACMLA") || (mopId == "HOAACVLA"))
+	{
+		getFieldsFromCustomData("tempForacid");
+
+		var res = document.forms[0].customData.value.split("|")
+		var foracid = res[1];
+	}
+	
+	if(mopId == "HACMLA")
+	{
+		getFieldsFromCustomData("acctNo","mode");
+
+		var res = document.forms[0].customData.value.split("|")
+		var foracid = res[1];
+		var funcCode = res[2];
+	}
+
+	if(mopId == "HACLINQ")
+	{
+		var objForm = document.forms[0];
+		getFieldsFromCustomData("acctNum");
+
+		var res = document.forms[0].customData.value.split("|")
+		alert(res)
+		var foracid = res[1];
+		alert(foracid);
+	}
+
+	if((mopId == "HOAACMLA") || (mopId == "HOAACVLA") || (mopId == "HACLINQ"))
+        {	
+		var inputNameValues  = "foracid|"+ foracid ;
+		var outputNames      = "managementFee";
+		var scrName          = "EQBR_feechgpopulate.scr";
+		var result           =  fnExecuteScript(inputNameValues,outputNames,scrName,true);
+
+		setCustomDataCust();
+
+		if(mopId == "HOAACVLA")
+		{
+			objForm.managementFee.disabled = true;
+		}
+		else
+		{
+			objForm.managementFee.disabled = false;
+		}
+	}
+
+	if((mopId == "HACMLA") || (mopId == "HACILA"))
+	{
+		var inputNameValues  = "foracid|"+ foracid +"|funcCode|"+ funcCode;
+		var outputNames      = "managementFee";
+		var scrName          = "EQBR_feechgpopulate.scr";
+		var result           =  fnExecuteScript(inputNameValues,outputNames,scrName,true);
+
+		setCustomDataCust();
+	}
+	
+	getFieldsFromCustomData("managementFee");
+}
+
+function setCustomDataCust()
+{
+       setFieldsToCustomData("managementFee");
+}
+
+function lachrg_details_post_ONLOAD(obj)
+{
+	var objForm = document.forms[0];
+
+	if(objForm.managementFee.value == "")
+        {
+                objForm.managementFee.value = "0.1"; 
+                setCustomDataCust();
+        }
+        else
+        {
+                getFieldsFromCustomData("managementFee");
+        }
+}
+
+function lachrg_details_pre_ONCLICK(obj)
+{
+	if(obj.id != "Cancel")
+	{
+		setCustomDataCust();
+	}
+}
+
+function lachrg_details_pre_HDR_SWITCH()
+{
+     setCustomDataCust();
+}
+
+function lachrg_details_pre_TAB_SWITCH()
+{
+	setCustomDataCust();
+}

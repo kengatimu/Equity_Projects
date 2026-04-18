@@ -1,0 +1,527 @@
+function printBlock() {
+    writeCustomHeader("hcashdx_det");
+    with(document) {
+        write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+        write('<tr>');
+        write('<td>');
+        write('<table border="0" cellspacing="0" cellpadding="0">');
+        write('<tr>');
+        write('<td class="page-heading">' + jspResArr.get("FLT028900") + '</td>');
+        write('</tr>');
+        write('</table>');
+        write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+        write('<tr>');
+        write('<td class="textlabel"> </td>');
+        write('<td class="textfielddisplaylabel"> </td>');
+        write('<td class="columnwidth">&nbsp; </td>');
+        write('<td class="textlabel"> </td>');
+        write('<td class="textfielddisplaylabel"> </td>');
+        write('</tr>');
+        write('</table>');
+        write('<br />');
+        write('<!-- DETAILSBLOCK-BEGIN -->');
+        write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+        write('<tr>');
+        write('<td valign="top">');
+        write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+        write('<tr>');
+        write('<td>');
+        write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+        write('<tr>');
+        write('<td>');
+        write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+        write('<tr>');
+        write('<td height="25" colspan="5" align="right">');
+        write('<table border="0" cellspacing="0" cellpadding="0">');
+        write('<tr>');
+        write('<td align="right">');
+        write('<a href="javascript:showHelpFile(\'hcashdxdet_help.htm\');" id="sLnk1">');
+        write('<img  hotKeyId="finHelp" src="../Renderer/images/' + applangcode + '/help.gif" width="50" height="25" vspace="1" border="0" />');
+        write('</a>');
+        write('</td>');
+        write('</tr>');
+        write('</table>');
+        write('</td>');
+        write('</tr>');
+
+
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 110px">' + jspResArr.get("FLT030311") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 708px">');
+        write('<input hotKeyId="search1" type="text" class="textfieldfont" onChange="javascript:fnDfltRC(this)" name="' + subGroupName + '.acctCrncy" id="acctCrncy" ' + hcashdxProps.get("acctCrncy_ENABLED") + ' style="width: 191px" maxlength="3">');
+        write('<a id="sLnk6" href="javascript: showCurrcy1(this)">');
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth" style="width: 105px"></td>');
+        write('<td class="textlabel" style="width: 184px">' + jspResArr.get("FLT030541") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 234px">');
+        write('<input hotKeyId="search2" type="text" class="textfieldfont" onChange="javascript: fnchk_invld_chr(this);fnDfltRC(this)" onblur="javascript: fnSetAmtFrnCry(this)" name="' + subGroupName + '.refCrncy" id="refCrncy" ' + hcashdxProps.get("refCrncy_ENABLED") + ' style="width: 191px"  maxlength="3">');
+        write('<a id="sLnk2" href="javascript: showCurrcy2(this)">');
+        write('<img border="0" height="17" hotKeyId="search2" src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">' + jspResArr.get("FLT030647") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" onChange="javascript: fnch_Amt(this)"  onblur="javascript: fnamt_Chng(this)" name="' + subGroupName + '.receivedAmt" id="receivedAmt" ' + hcashdxProps.get("receivedAmt_ENABLED") + ' style="width: 191px" size="30" fmnd="Y" fmb="N" fdt="amount" fblk="defaultFblk2">');
+        write('</td>');
+        write('<td class="columnwidth" style="width: 105px"></td>');
+        write('<td class="textlabel">Treasury Ref. No./Rate</td>');
+        write('<td class="textfield">');
+        write('<input name="' + subGroupName + '.treaRefNum" id="treaRefNum" ' + hcashdxProps.get("treaRefNum_ENABLED") + ' hotKeyId="search1" type="text" class="twotextfieldsearchicon" size="9" maxlength="16" fdt="default">');
+        write('&nbsp;<a id="treaRefNumImg" href="javascript:cust_callTrRefNoSearcher(this)">');
+        write('<img src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" alt="Search list" hotKeyId="search4"></a>');
+        write('&nbsp;<input id="treaRate" name="' + subGroupName + '.treaRate" ' + hcashdxProps.get("treaRate_ENABLED") + ' type="text" class="twotextfieldsearchicon" size="9" maxlength="20" fdt="default">');
+        write('</td>');
+        write('</tr>');
+
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">' + jspResArr.get("FLT030726") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text"  class="textfieldfont" name="' + subGroupName + '.amtFrmCcy" id="amtFrmCcy" ' + hcashdxProps.get("amtFrmCcy_ENABLED") + ' style="width: 191px" READONLY>');
+        write('</td>');
+        write('<td class="columnwidth"></td>');
+        write('<td class="textlabel"></td>');
+        write('<td class="textfield"></td>');
+        write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">' + jspResArr.get("FLT031293") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input hotKeyId="search3" type="text" class="textfieldfont" onChange="javascript: fnChgRateCode(this)"  name="' + subGroupName + '.rateCode" id="rateCode" ' + hcashdxProps.get("rateCode_ENABLED") + ' style="width: 100px" size="30" maxlength="5">');
+        write('<a id="sLnk3" href="javascript:getRateCodeList()">');
+        write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16">');
+        write('</a>');
+        write('<input type="text" class="textfieldfont" onChange="javascript: fnrate_chng(this)" name="' + subGroupName + '.rate" id="rate" ' + hcashdxProps.get("rate_ENABLED") + ' style="width: 73px" size="30">');
+        write('</td>');
+        write('<td class="columnwidth"></td>');
+        write('<td class="textlabel"></td>');
+        write('<td class="textfield"></td>');
+        write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">' + jspResArr.get("FLT031294") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input explodeId="explode1" type="text" class="textfieldfont" onChange="javascript: fnget_chrg(this)"  name="' + subGroupName + '.chrgEvntId" id="chrgEvntId" ' + hcashdxProps.get("chrgEvntId_ENABLED") + ' style="width: 191px">');
+        write('<a href="javascript:fnShowEvtIDList()" id="Rsearch4">');
+        write('<img border="0" height="17" hotKeyId="search4" src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16">');
+        write('</a>');
+        write('<a href="javascript:getChargeDetails()" id="Rexplode1">');
+        write('<img border="0" height="17" explodeId="explode1" src="../Renderer/images/' + applangcode + '/explode.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth"></td>');
+        write('<td class="textlabel">' + jspResArr.get("FHP000241") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield">');
+        write('<input type="text" class="textfieldfont" onblur="javascript: chrgAmtBlur(this)" name="' + subGroupName + '.chrgAmt" id="chrgAmt" ' + hcashdxProps.get("chrgAmt_ENABLED") + ' style="width: 191px">');
+        write('</td>');
+        write('</tr>');
+
+
+        //write('<tr>');
+        //write('<td style="height: 5px"></td>');
+        //write('<td>');
+        //write('<div onclick="javascript:fnValidate();" onMouseOver="displayHand(this)" class="topnavi">');
+        //write('<U>');
+        //write('<font color="blue">CCY Converter');
+        //write('</font>');
+        //write('</U>');
+        //write('</div>');
+        //write('</td>');
+        //write('<td></td>');
+        //write('<td></td>');
+        //write('<td></td>');
+        //write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">' + jspResArr.get("FLT030897") + '<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.acctCrncyAmt" id="acctCrncyAmt" ' + hcashdxProps.get("acctCrncyAmt_ENABLED") + ' style="width: 191px" READONLY size="30">');
+        write('</td>');
+        write('<td class="columnwidth"></td>');
+        write('<td class="textlabel"></td>');
+        write('<td class="textfield"></td>');
+        write('</tr>');
+
+        write('<tr>');
+        write('<td class="textlabel">First Name<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.custName" id="custName" ' + hcashdxProps.get("custName_ENABLED") + ' style="width: 191px" size="30">');
+        write('<td class="columnwidth" style="width: 105px"></td>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">ID/Passport Number<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.idNum" id="idNum" ' + hcashdxProps.get("idNum_ENABLED") + ' style="width: 191px" size="25" fmnd="Y" fmb="N" fdt="amount" fblk="defaultFblk2">');
+        write('</td>');
+        write('</td>');
+        write('</tr>');
+        if (profileId == 54) {
+            write('<tr>');
+            write('<td class="textlabel" style="height: 15px; width: 228px">Middle Name<script>setMandatory("Y");</script></td>');
+            write('<td class="textfield" style="width: 534px">');
+            write('<input type="text" class="textfieldfont" name="' + subGroupName + '.MiddleName" id="MiddleName" ' + hcashdxProps.get("MiddleName_ENABLED") + ' style="width: 191px" size="30">');
+            write('<td class="columnwidth" style="width: 105px"></td>');
+            write('<td class="textlabel" style="height: 15px; width: 228px">Last Name<script>setMandatory("Y");</script></td>');
+            write('<td class="textfield" style="width: 534px">');
+            write('<input type="text" class="textfieldfont" name="' + subGroupName + '.LastName" id="LastName" ' + hcashdxProps.get("LastName_ENABLED") + ' style="width: 191px" size="30">');
+            write('</td>');
+            write('</td>');
+            write('</tr>');
+        }
+
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">Phone Number<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" onChange="javascript: CheckNumberOrNot();" name="' + subGroupName + '.phoneNo" id="phoneNo" ' + hcashdxProps.get("phoneNo_ENABLED") + ' style="width: 191px" size="30" maxlength="15">');
+        write('<td class="columnwidth" style="width: 105px"></td>');
+        //write('<td class="textlabel" style="height: 15px; width: 228px">Supporting Document Details<script>setMandatory("Y");</script></td>');
+        write('<td class="textlabel" style="height: 15px; width: 228px">Source/Purpose: Supporting Document Details<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.docDetails" id="docDetails" ' + hcashdxProps.get("docDetails_ENABLED") + ' style="width: 191px" size="25" fmnd="Y" fmb="N" fdt="amount" fblk="defaultFblk2">');
+        write('</td>');
+        write('</td>');
+        write('</tr>');
+
+        write('<tr>');
+        write('<td class="textlabel">Nationality<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield" style="width: 534px">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.nationDet" id="nationDet" ' + hcashdxProps.get("nationDet_ENABLED") + ' style="width: 191px" size="30">');
+        write('<td class="columnwidth" style="width: 105px"></td>');
+        write('<td class="textlabel">Transaction Particulars Code<script>setMandatory("Y");</script></td>');
+        write('<td class="textfield"><input id="tranParticularsCode" name="' + subGroupName + '.tranParticularsCode" hotKeyId="search5" ' + hcashdxProps.get("tranParticularsCode_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="5">');
+        write('&nbsp;<a id="sLnk12" href="javascript:fnShowRefCodeTranCode(document.forms[0].tranParticularsCode,\'DD\',\'N\',\'F\')">');
+        write('<img src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" alt="Search list" hotKeyId="search5"></a>');
+        write('</td>');
+        write('</td>');
+        write('</tr>');
+
+        write('<tr>');
+        write('<td></td>');
+        write('<td></td>');
+        write('<td class="columnwidth"></td>');
+        write('<input type="hidden" id="retValue" name="' + subGroupName + '.retValue">');
+        write('<td class="textlabel"></td>');
+        write('<td class="textfield"></td>');
+        write('</tr>');
+        write('</table>');
+        write('</td>');
+        write('</tr>');
+        write('</table>');
+        write('</td>');
+        write('</tr>');
+        write('</table>');
+        write('</td>');
+        write('</tr>');
+        write('</table>');
+        write('<!-- DETAILSBLOCK-END -->');
+        write('</td>');
+        write('</tr>');
+        write('</table>');
+    } //End with()
+} //End function
+
+function printFooterBlock() {
+    with(document) {
+        if ((sReferralMode == 'I') || (sReferralMode == 'S')) {
+            write('<div align="left" class="ctable">');
+            if (sReferralMode == 'S') {
+                write('<input type="button" class="Button" id="Submit" value="SUBMIT" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+            }
+            writeRefFooter();
+            write('<input type="button" class="Button" id="_BackRef_" value="CANCEL" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+            write('</div>');
+        } else {
+            if (funcCode != 'I') {
+                write('<div class="ctable">');
+                write('<input id="Submit" name="Submit" type="button" class="button"    onClick="javascript:return hcashdx_det_ONCLICK1(this,this);"" value="Submit" hotKeyId="Submit">');
+                write('<input id="Clear" name="Clear" type="button" class="button" value="Clear"        onClick="javascript:return hcashdx_det_ONCLICK2(this);"">');
+            } else {
+                write('<div class="ctable">');
+                write('<input class="button" type="button" id="Back" value="OK" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+            }
+            writeFooter();
+            write('</div>');
+        }
+    } //End with()
+} //End function
+
+
+function fnOnLoad() {
+    var ObjForm = document.forms[0];
+
+    if (funcCode == 'V' || funcCode == 'I' || funcCode == 'D' || funcCode == 'U' || funcCode == 'X' || sReferralMode == 'I' || sReferralMode == 'S') {
+        ObjForm.acctCrncyAmt.disabled = true;
+        ObjForm.acctCrncyAmt.value = acctCrncyAmt;
+        ObjForm.acctCrncy.disabled = true;
+        ObjForm.acctCrncy.value = acctCrncy;
+        ObjForm.refCrncy.disabled = true;
+        ObjForm.refCrncy.value = refCrncy;
+        ObjForm.receivedAmt.disabled = true;
+        ObjForm.receivedAmt.value = receivedAmt;
+        ObjForm.treaRefNum.disabled = true;
+        ObjForm.treaRefNum.value = treaRefNum;
+        ObjForm.treaRate.disabled = true;
+        ObjForm.treaRate.value = treaRate;
+        ObjForm.amtFrmCcy.disabled = true;
+        ObjForm.amtFrmCcy.value = amtFrmCcy;
+        ObjForm.rateCode.disabled = true;
+        ObjForm.rateCode.value = rateCode;
+        ObjForm.rate.disabled = true;
+        ObjForm.rate.value = rate;
+        ObjForm.chrgEvntId.disabled = true;
+        ObjForm.chrgEvntId.value = chrgEvntId;
+        ObjForm.chrgAmt.disabled = true;
+        ObjForm.chrgAmt.value = chrgAmt;
+        ObjForm.custName.disabled = true;
+        ObjForm.custName.value = custName;
+        ObjForm.idNum.disabled = true;
+        ObjForm.idNum.value = idNum;
+        ObjForm.phoneNo.disabled = true;
+        ObjForm.phoneNo.value = phoneNo;
+        ObjForm.docDetails.disabled = true;
+        ObjForm.docDetails.value = docDetails;
+        ObjForm.nationDet.disabled = true;
+        ObjForm.nationDet.value = nationDet;
+        ObjForm.tranParticularsCode.disabled = true;
+        ObjForm.tranParticularsCode.value = tranParticularsCode;
+        ObjForm.MiddleName.disabled = true;
+        ObjForm.MiddleName.value = MiddleName;
+        ObjForm.LastName.disabled = true;
+        ObjForm.LastName.value = LastName;
+        document.getElementById('sLnk6').style.visibility = "hidden";
+        document.getElementById('sLnk2').style.visibility = "hidden";
+        document.getElementById('treaRefNumImg').style.visibility = "hidden";
+        document.getElementById('sLnk3').style.visibility = "hidden";
+        document.getElementById('Rsearch4').style.visibility = "hidden";
+        document.getElementById('Rexplode1').style.visibility = "hidden";
+    }
+
+    var inputNameValues = "";
+    var outputNames = "output";
+    var scrName = "cietxnRate.scr";
+    var retVal = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+    var strMesg1 = retVal.split("|");
+    if ((profileId == 54) && (sReferralMode == "I")) {
+        var frm = document.forms[0];
+        var input = "acctCrncy|" + frm.acctCrncy.value + "|refCrncy|" + frm.refCrncy.value + "|receivedAmt|" + frm.receivedAmt.value + "|MiddleName|" + frm.MiddleName.value + "|" + "custName|" + frm.custName.value + "|idNum|" + frm.idNum.value + "|" + "acctCrncyAmt|" + frm.acctCrncyAmt.value + "|LastName|" + frm.LastName.value + "|" + "phoneNo|" + frm.phoneNo.value + "|docDetails|" + frm.docDetails.value + "|nationDet|" + frm.nationDet.value + "|treaRefNum|" + frm.treaRefNum.value;
+        var outputNames = "";
+        var outputNames = "isWatchBlack|isEqCust|isLimit|isExistTran|isCumm";
+        var scrName = "vpcashdxVal.scr";
+        var retVal = appFnExecuteScript(input, outputNames, scrName, false);
+        var ret = retVal.split("|");
+        if (ret[1] == "W") {
+            alert("Exchange Not Allowed for WatchList ID Number");
+            return false;
+        } else if (ret[1] == "B") {
+            alert("Exchange Not Allowed for Blacklisted ID Number");
+            return false;
+        } else if (ret[3] == "Y") {
+            alert("Exchange Not Allowed for Equity Customer");
+            return false;
+        } else if (ret[5] == "L") {
+            alert("Exchange Limit Exceeded");
+            return false;
+        } else if (ret[7] != "N") {
+            alert(ret[7]);
+            alert(ret[9]);
+            return true;
+        } else {
+            return true;
+        }
+    }
+    if (strMesg1[0] == "err") {
+        ObjForm.rate.disabled = true;
+        ObjForm.treaRate.disabled = true;
+    }
+
+
+    pre_ONLOAD('hcashdx_det', this);
+
+    var funcName = "this." + "locfnOnLoad";
+    if (eval(funcName) != undefined) {
+        eval(funcName).call(this);
+    }
+
+    fnPopulateControlValues();
+
+    if (funcCode == 'V' || funcCode == 'I' || funcCode == 'D' || funcCode == 'U' || funcCode == 'X' || sReferralMode == 'I' || sReferralMode == 'S') {
+        fnDisableFormControls(ObjForm);
+    }
+
+    fnPopUpExceptionWindow(ObjForm.actionCode);
+    if ((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")) {
+        checkCustErrExecNextStep(Message);
+    }
+
+    post_ONLOAD('hcashdx_det', this);
+
+    ObjForm.acctCrncy.focus();
+
+}
+
+function fnCheckMandatoryFields() {
+    var ObjForm = document.forms[0];
+
+    if (fnIsNull(ObjForm.acctCrncy.value)) {
+        alert("From Currency is mandatory");
+        ObjForm.acctCrncy.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.refCrncy.value)) {
+        alert("To Currency is mandatory");
+        ObjForm.refCrncy.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.receivedAmt.value)) {
+        alert("Amount Received is mandatory");
+        ObjForm.receivedAmt.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.amtFrmCcy.value)) {
+        alert("Amount in From Currency is mandatory");
+        ObjForm.amtFrmCcy.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.acctCrncyAmt.value)) {
+        alert("Amount in To Currency is mandatory");
+        ObjForm.acctCrncyAmt.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.rateCode.value)) {
+        alert("Rate Code is mandatory");
+        ObjForm.rateCode.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.rate.value)) {
+        alert("Rate is mandatory");
+        ObjForm.rate.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.chrgEvntId.value)) {
+        alert("Charge Event is mandatory");
+        ObjForm.chrgEvntId.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.chrgAmt.value)) {
+        alert("Charge Amount is mandatory");
+        ObjForm.chrgEvntId.focus();
+        return false;
+    }
+
+
+    if (fnIsNull(ObjForm.custName.value)) {
+        alert("Customer Name is mandatory");
+        ObjForm.custName.focus();
+        return false;
+    }
+
+    if (fnIsNull(ObjForm.idNum.value)) {
+        alert("Identification Number is mandatory");
+        ObjForm.idNum.focus();
+        return false;
+    }
+    if(profileId == 54) {
+	    if (fnIsNull(ObjForm.MiddleName.value)) {
+		alert("Middle Name is mandatory");
+		ObjForm.idNum.focus();
+		return false;
+	    }
+	    if (fnIsNull(ObjForm.LastName.value)) {
+		alert("Last Name is mandatory");
+		ObjForm.LastName.focus();
+		return false;
+	    }
+    }	
+
+    if (fnIsNull(ObjForm.phoneNo.value)) {
+        alert("Phone Number is mandatory");
+        ObjForm.phoneNo.focus();
+        return false;
+    }
+    if (profileId == 50) {
+        if (fnIsNull(ObjForm.tranParticularsCode.value)) {
+            alert("Enter Transaction Particulars Code");
+            ObjForm.tranParticularsCode.focus();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function fnPopulateControlValues() {
+    var ObjForm = document.forms[0];
+
+    ObjForm.acctCrncy.value = acctCrncy;
+    ObjForm.refCrncy.value = refCrncy;
+    ObjForm.receivedAmt.value = receivedAmt;
+    ObjForm.amtFrmCcy.value = amtFrmCcy;
+    ObjForm.acctCrncyAmt.value = acctCrncyAmt;
+    ObjForm.rateCode.value = rateCode;
+    ObjForm.rate.value = rate;
+    ObjForm.chrgEvntId.value = chrgEvntId;
+    ObjForm.chrgAmt.value = chrgAmt;
+    ObjForm.retValue.value = retValue;
+    ObjForm.treaRefNum.value = treaRefNum;
+    ObjForm.treaRate.value = treaRate;
+    ObjForm.custName.value = custName;
+    ObjForm.idNum.value = idNum;
+    ObjForm.phoneNo.value = phoneNo;
+    ObjForm.docDetails.value = docDetails;
+    ObjForm.nationDet.value = nationDet;
+    ObjForm.tranParticularsCode.value = tranParticularsCode;
+    if(profileId == 54) {
+	    ObjForm.MiddleName.value = MiddleName;
+	    ObjForm.LastName.value = LastName;
+    }
+
+}
+
+
+function hcashdx_det_ONCLICK1(obj, p1) {
+    var retVal = "";
+
+    if (pre_ONCLICK('hcashdx_det', obj) == false) {
+        return false;
+    }
+    if ((retVal = fnValAndSubmit(p1)) == false) {
+        return false;
+    }
+    if (post_ONCLICK('hcashdx_det', obj) == false) {
+        return false;
+    }
+
+    return (retVal == undefined) ? true : retVal;
+
+}
+
+function hcashdx_det_ONCLICK2(obj) {
+    var retVal = "";
+    if (pre_ONCLICK('hcashdx_det', obj) == false) {
+        return false;
+    }
+    if ((retVal = fnClearFields()) == false) {
+        return false;
+    }
+    if (post_ONCLICK('hcashdx_det', obj) == false) {
+        return false;
+    }
+    return (retVal == undefined) ? true : retVal;
+}
+
+function fnShowRefCodeTranCode() {
+    var ObjForm = document.forms[0];
+    showRefCode(ObjForm.tranParticularsCode, 'DD', 'N', 'F');
+    var tranParticularsCode = ObjForm.tranParticularsCode.value;
+    if (!fnIsNull(tranParticularsCode)) {
+        //ObjForm.tranParticular.focus();
+    } else {
+        ObjForm.tranParticularsCode.focus();
+    }
+}

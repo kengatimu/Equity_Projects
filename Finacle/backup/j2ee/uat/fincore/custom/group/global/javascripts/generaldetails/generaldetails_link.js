@@ -1,0 +1,518 @@
+var err = new ErrObject("", "");
+var objForm = null;
+var AmountCrncyMap = {
+	cashXpnLimitDr: "ctxCrncy|N",
+	cashXpnLimitCr: "ctxCrncy|N",
+	clgXpnLimitDr: "ctxCrncy|N",
+	clgXpnLimitCr: "ctxCrncy|N",
+	xferXpnLimitDr: "ctxCrncy|N",
+	xferXpnLimitCr: "ctxCrncy|N"
+};
+
+function fnOnLoad() {
+	objForm = document.forms[0];
+	initFocusHandler();
+	pbPsFlg = (pbPsFlg == " ") ? "" : pbPsFlg;
+	fnPopulateControlValues();
+	if ("Y" == dualFlg) {
+		objForm.alt1_acctName.value = alt1_acctName;
+		objForm.alt1_acctShortName.value = alt1_acctShortName
+	}
+	checkRadio(objForm.ecsEnabled, ecsEnabled);
+	checkRadio(objForm.allowSweep, allowSweep);
+	if (objForm.allowSweep.value == "N") {
+		disableFields("allowSweep")
+	}
+	checkRadio(objForm.collectCharges, collectCharges);
+	checkRadio(objForm.turoverDtls, turoverDtls);
+	checkRadio(objForm.localCalendar, localCalendar);
+	checkRadio(objForm.relativeToStaff, relativeToStaff);
+	checkRadio(objForm.psAtRelPartyFlg, psAtRelPartyFlg);
+	checkRadio(objForm.addtnlCalBase, addtnlCalBase);
+	objForm.prefCalBase.value = prefCalBase;
+	setDefault();
+	fnOnChangeMain();
+	fnSetCheckboxCtrl(objForm);
+	objForm.acctManager.readOnly = true;
+	hideImage("sLnk5");
+	if (parentGroup == "sbacop") {
+		objForm.applicationRefId.disabled = false
+	}
+	if (sMode == "A" && fnIsNull(getRadioValue(objForm.ecsEnabled))) {
+		ecsEnabled = "N";
+		checkRadio(objForm.ecsEnabled, ecsEnabled)
+	}
+	if (natLangCode != "" || natLangTitle != "" || natLangName != "") {
+		fnToggleTextDisplay("1", "N")
+	}
+	if (typeOfAcct == "T") {
+		objForm.acctOpenDate.value = BODDate
+	}
+	if (!fnIsNull(masterAcctNum)) {
+		objForm.acctOpenDate.readOnly = true;
+		hideImage("sLnk6");
+		hideImage("sLnk8");
+		hideImage("sLnk9");
+		hideImage("sLnk10");
+		hideImage("sLnk11");
+		hideImage("sLnk12");
+		disableFields("acctName", "acctShortName", "modeOfOperCode", "acctMgrAtAcct", "pbPsFlg", "pbPsFreqType", "pbPsFreqWeek", "pbPsFreqStartDD", "pbPsFreqDay", "pbPsFreqHldyStat", "despatchMode", "nextPrntDate", "natLangCode", "natLangTitle", "natLangName");
+		if ("Y" == dualFlg) {
+			disableFields("alt1_acctName", "alt1_acctShortName")
+		}
+		fnEnableDisableRadioButtons(objForm.psAtRelPartyFlg, "D")
+	}
+	fnEnableDisableRadioButtons(objForm.addtnlCalBase, "D");
+	fnEnableDisablerelativeStaffId();
+	if ((tempFuncCode == "V") || (tempFuncCode == "X") || (tempFuncCode == "D") || (tempFuncCode == "U") || (tempFuncCode == "I")) {
+		fnDisableFormControls(tempFuncCode, objForm, 100)
+	}
+	if (objForm.productType.value == "N") {
+		objForm.productType.value = "Notice Savings"
+	}
+	if (profileId == "43")
+	{
+		objForm.despatchMode.value = "N"
+	}
+	objForm.acctName.focus()
+}
+
+function setDesc(strSource, strTarget) {
+	objForm = document.forms[0];
+	var objSource = eval("objForm." + strSource);
+	var objTarget = eval("objForm." + strTarget);
+	objTarget.value = "Desc for " + objSource.value
+}
+
+function validatePbPsCode() {
+	s = objForm.pbPsFlg.value;
+	if (("P" == s) || ("R" == s) || ("N" == s)) {
+		if (!fnIsNull(objForm.nextPrntDate.value)) {
+			err.setErr(objForm.nextPrntDate, finbranchResArr.get("FAT000196"));
+			return false
+		}
+		if ((!fnIsNull(objForm.pbPsFreqType.value)) || (!fnIsNull(objForm.pbPsFreqWeek.value)) || (!fnIsNull(objForm.pbPsFreqDay.value)) || (!fnIsNull(objForm.pbPsFreqStartDD.value)) || (!fnIsNull(objForm.pbPsFreqHldyStat.value))) {
+			err.setErr(objForm.pbPsFreqType, finbranchResArr.get("FAT000163"));
+			return false
+		}
+		if (!fnIsNull(getRadioValue(objForm.localCalendar))) {
+			checkRadio(objForm.localCalendar, "N")
+		}
+		if (!fnIsNull(objForm.despatchMode.value)) {
+			err.setErr(objForm.despatchMode, finbranchResArr.get("FAT000165"));
+			return false
+		}
+	}
+	return true
+}
+
+function fnValidateForm() {
+	objForm = document.forms[0];
+	if (sMode == "V") {
+		fnEnableFormDataControls(objForm);
+		return true
+	}
+	if (templateMode != "Y") {
+		if (fnValidateMandatoryFields()) {
+			if (!validateTypes(objForm)) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+	else {
+		if (!validateTypes(objForm)) {
+			return false
+		}
+	}
+	/*if (!fnIsNull(objForm.acctShortName.value)) {
+		if (fnValidateAlphaNumeric(objForm.acctShortName)) {
+			alert(finbranchResArr.get("FAT004119"));
+			objForm.acctShortName.focus();
+			return false
+		}
+	}*/
+	
+	//Function modified by Anuya to include character dot (.)
+	if (profileId != "43")
+        {
+	
+		if (!fnIsNull(objForm.acctShortName.value)) {
+			if (fnValidateAlphaNumeric1(objForm.acctShortName)) {
+				alert(finbranchResArr.get("FAT004119"));
+				objForm.acctShortName.focus();
+				return false
+			}
+		}
+	}
+
+
+	//end of modification
+
+	if (false == valReq) {
+		return true
+	}
+	if ((getRadioValue(objForm.relativeToStaff) == "Y") && (fnIsNull(objForm.relativeStaffId))) {
+		alert(finbranchResArr.get("FAT000924"));
+		objForm.relativeStaffId.focus();
+		return false
+	}
+	if (!fnCheckNegativeAmt(objForm.cashXpnLimitDr) || !fnCheckNegativeAmt(objForm.cashXpnLimitCr) || !fnCheckNegativeAmt(objForm.clgXpnLimitDr) || !fnCheckNegativeAmt(objForm.clgXpnLimitCr) || !fnCheckNegativeAmt(objForm.xferXpnLimitDr) || !fnCheckNegativeAmt(objForm.xferXpnLimitCr)) {
+		return false
+	}
+	if ((!fnValidateNumberFields(objForm.ledgerNo, objForm.pbPsFreqStartDD)) || (!validatePbpsForScheme())) {
+		err.displayErr();
+		return false
+	}
+	disableHyperLnks(10);
+	if (bMnemonic) {
+		disableMnicsHyperLnks(2)
+	}
+	enableFields("allowSweep", "pbPsFreqType", "pbPsFreqWeek", "pbPsFreqStartDD", "pbPsFreqDay", "pbPsFreqHldyStat", "despatchMode", "nextPrntDate", "pbPsFreqCalBase");
+	return true
+}
+
+function validateGenDetForm(a) {
+	objForm = document.forms[0];
+	if (("Cancel" != a) && !fnValidateForm()) {
+		return false
+	}
+	objForm.submitform.value = a;
+	objForm.actionCode.value = a;
+	convertToCaps();
+	disableButtons();
+	fnEnableDescFields(objForm);
+	doSubmit(a)
+}
+
+function fnValidateAlphaNumeric(a) {
+	var b = /[^A-Za-z0-9 ]/;
+	if (b.test(a.value)) {
+		return true
+	}
+	return false
+}
+
+//Added by Anuya
+function fnValidateAlphaNumeric1(a) {
+	var b = /[^A-Za-z0-9 .]/;
+	if (b.test(a.value)) {
+		return true
+	}
+	return false
+}
+
+
+
+
+function fnChangeStmtFreqBasedOnAcctStmt() {
+	objForm = document.forms[0];
+	if (objForm.pbPsFlg.value == "S" || objForm.pbPsFlg.value == "B") {
+		objForm.localCalendar[0].disabled = false;
+		objForm.localCalendar[1].disabled = false;
+		showImage("sLnk10");
+		if (localCalendar != "Y") {
+			objForm.localCalendar[1].checked = true
+		}
+		objForm.pbPsFreqType.value = pbPsFreqType;
+		if (fnIsNull(pbPsFreqType)) {
+			objForm.pbPsFreqType.value = ""
+		}
+		objForm.pbPsFreqWeek.value = pbPsFreqWeek;
+		if (pbPsFreqWeek == 0 || fnIsNull(pbPsFreqWeek)) {
+			objForm.pbPsFreqWeek.value = ""
+		}
+		objForm.pbPsFreqDay.value = pbPsFreqDay;
+		if (pbPsFreqDay == 0) {
+			objForm.pbPsFreqDay.value = ""
+		}
+		if (pbPsFreqStartDD != "0") {
+			objForm.pbPsFreqStartDD.value = pbPsFreqStartDD
+		}
+		else {
+			objForm.pbPsFreqStartDD.value = ""
+		}
+		objForm.pbPsFreqHldyStat.value = pbPsFreqHldyStat;
+		objForm.pbPsFreqCalBase.value = pbPsFreqCalBase;
+		if (fnIsNull(pbPsFreqHldyStat)) {
+			objForm.pbPsFreqHldyStat.value = ""
+		}
+		objForm.despatchMode.value = despatchMode;
+		objForm.nextPrntDate.value = nextPrntDate;
+		fnEnableDisableRadioButtons(objForm.psAtRelPartyFlg, "E");
+		if (sMode != "V" && sMode != "X") {
+			objForm.pbPsFreqType.disabled = false;
+			objForm.pbPsFreqWeek.disabled = false;
+			objForm.pbPsFreqDay.disabled = false;
+			objForm.pbPsFreqStartDD.disabled = false;
+			objForm.pbPsFreqHldyStat.disabled = false;
+			objForm.despatchMode.disabled = false;
+			enableFields("nextPrntDate");
+			showImage("sLnk7");
+			objForm.pbPsFreqCalBase.disabled = false
+		}
+		if (sMode == "V" || sMode == "X") {
+			fnEnableDisableRadioButtons(objForm.psAtRelPartyFlg, "D");
+			fnEnableDisableRadioButtons(objForm.localCalendar, "D");
+			disableFields("nextPrntDate");
+			hideImage("sLnk10")
+		}
+	}
+	else {
+		objForm.pbPsFreqType.value = "";
+		objForm.pbPsFreqType.disabled = true;
+		objForm.pbPsFreqWeek.value = "";
+		objForm.pbPsFreqWeek.disabled = true;
+		objForm.pbPsFreqDay.value = "";
+		objForm.pbPsFreqDay.disabled = true;
+		objForm.pbPsFreqStartDD.value = "";
+		objForm.pbPsFreqStartDD.disabled = true;
+		objForm.pbPsFreqHldyStat.value = "";
+		objForm.pbPsFreqHldyStat.disabled = true;
+		objForm.pbPsFreqCalBase.disabled = true;
+		objForm.pbPsFreqCalBase.value = "";
+		objForm.despatchMode.value = "";
+		objForm.despatchMode.disabled = true;
+		objForm.nextPrntDate.value = "";
+		disableFields("nextPrntDate");
+		hideImage("sLnk10");
+		objForm.localCalendar[0].checked = false;
+		objForm.localCalendar[1].checked = false;
+		objForm.localCalendar[0].disabled = true;
+		objForm.localCalendar[1].disabled = true;
+		fnEnableDisableRadioButtons(objForm.psAtRelPartyFlg, "D");
+		if (sMode != "V" && sMode != "X") {
+			showImage("sLnk7")
+		}
+	}
+}
+
+function fnBack() {
+	objForm = document.forms[0];
+	if (sTmplFuncCode == "null" || (sTmplFuncCode == "T")) {
+		if ((bRefInq == "true") || (sRefSubmit == "true")) {
+			formReset(objForm);
+			objForm.submitform.value = "Cancel";
+			doSubmit("Cancel")
+		}
+		else {
+			if (!((templateMode == "Y") && (sMode == "I" || sMode == "V"))) {
+				if (!(confirm(finbranchResArr.get("FAT000925")) == true)) {
+					return false
+				}
+			}
+			formReset(objForm);
+			doSubmit("Cancel");
+			return true
+		}
+	}
+	else {
+		if (sTmplFuncCode == "I") {
+			formReset(objForm);
+			objForm.submitform.value = "Back";
+			objForm.actionCode.value = "Cancel";
+			doSubmit("Back")
+		}
+		else {
+			if (bShowBack == "true") {
+				if (!(confirm(finbranchResArr.get("FAT000925")) == true)) {
+					return false
+				}
+				formReset(objForm);
+				objForm.submitform.value = "Back";
+				objForm.actionCode.value = "Cancel";
+				doSubmit("Cancel")
+			}
+		}
+	}
+}
+
+function fnToggleTextDisplay(b, a) {
+	switch (a) {
+		case "C":
+			if (b == "1") {
+				hideImage("dispText0");
+				showImage("hideText0");
+				showImage("sT1")
+			}
+			else {
+				showImage("dispText0");
+				hideImage("hideText0");
+				hideImage("sT1")
+			}
+			break;
+		case "N":
+			if (b == "1") {
+				hideImage("dispText1");
+				showImage("hideText1");
+				showImage("sT2")
+			}
+			else {
+				showImage("dispText1");
+				hideImage("hideText1");
+				hideImage("sT2")
+			}
+			break;
+		default:
+			return false
+	}
+}
+
+function fnChkAcctOpnAndTopupDate() {
+	objForm = document.forms[0];
+	if (typeOfAcct == "T") {
+		if (fnCompareDates(topupDate, objForm.acctOpenDate.value) == false) {
+			alert(finbranchResArr.get("FAT001508"));
+			fnSetFocusForDate(objForm.acctOpenDate);
+			return false
+		}
+		return true
+	}
+	return true
+}
+
+function fnOnChangeMain() {
+	fnChangeStmtFreqBasedOnAcctStmt();
+	fnEnableDisableNxtPrintDate()
+}
+
+function fnEnableDisableNxtPrintDate() {
+	objForm = document.forms[0];
+	if (sMode != "V" && sMode != "X") {
+		if (objForm.pbPsFlg.value == "S" || objForm.pbPsFlg.value == "B" || objForm.pbPsFlg.value == "P" || objForm.pbPsFlg.value == "R") {
+			if (fnIsNull(objForm.nextPrntDate.value)) {
+				objForm.nextPrntDate.value = BODDate
+			}
+			else {
+				objForm.nextPrntDate.value = nextPrntDate
+			}
+			fnAssignUIDate(objForm.nextPrntDate);
+			fnSetPropertyValue(objForm.nextPrntDate, "readOnly", false);
+			showImage("sLnk15")
+		}
+	}
+	else {
+		if (objForm.pbPsFlg.value == "" || objForm.pbPsFlg.value == "N") {
+			objForm.nextPrntDate.value = "";
+			fnAssignUIDate(objForm.nextPrntDate);
+			fnSetPropertyValue(objForm.nextPrntDate, "readOnly", true);
+			hideImage("sLnk15")
+		}
+	}
+}
+
+function fnEnableDisablerelativeStaffId() {
+	if (sMode != "V" && sMode != "X") {
+		if (objForm.relativeToStaff[1].checked == true) {
+			clearDescField("relativeStaffId");
+			objForm.relativeStaffId.disabled = true;
+			hideImage("sLnk8")
+		}
+		else {
+			objForm.relativeStaffId.disabled = false;
+			showImage("sLnk8")
+		}
+	}
+}
+
+function setDefault() {
+	objForm = document.forms[0];
+	if (lShowLImage == "true") {
+		disableHyperLnks(Number(9))
+	}
+	if (("D" == sTmplFuncCode) || ("V" == sTmplFuncCode) || ("X" == sTmplFuncCode) || ("U" == sTmplFuncCode)) {
+		fnDisableFormControls("V", objForm, 12)
+	}
+	else {
+		if ("I" == sTmplFuncCode) {
+			fnDisableFormControls("I", objForm, 12)
+		}
+	}
+	if (("I" == sTmplMode) || ("D" == sTmplMode) || ("V" == sTmplMode)) {
+		fnDisableFormControls("I", objForm, 10)
+	}
+	else {
+		if (bRefInq == "true") {
+			fnDisableFormDataControls("I", objForm, 10)
+		}
+		else {
+			if (sRefSubmit == "true") {
+				fnDisableFormDataControls("V", objForm, 10)
+			}
+			else {
+				fnDisableFormControls(sMode, objForm, 12)
+			}
+		}
+	}
+	if (parentGroup == "laacop" || parentGroup == "laacopmod" || parentGroup == "bpacop" || parentGroup == "bpacopmod") {
+		disableFields("allowSweep")
+	}
+	setValue("pbPsFreqType", pbPsFreqType);
+	setValue("pbPsFreqWeek", pbPsFreqWeek);
+	setValue("pbPsFreqDay", pbPsFreqDay);
+	setValue("pbPsFreqHldyStat", pbPsFreqHldyStat);
+	setValue("pbPsFreqCalBase", pbPsFreqCalBase);
+	setValue("despatchMode", despatchMode);
+	setNumVal("pbPsFreqStartDD", pbPsFreqStartDD);
+	newformatAmt(format, objForm.cashXpnLimitDr, critCrncy, "N");
+	newformatAmt(format, objForm.cashXpnLimitCr, critCrncy, "N");
+	newformatAmt(format, objForm.clgXpnLimitDr, critCrncy, "N");
+	newformatAmt(format, objForm.clgXpnLimitCr, critCrncy, "N");
+	newformatAmt(format, objForm.xferXpnLimitDr, critCrncy, "N");
+	newformatAmt(format, objForm.xferXpnLimitCr, critCrncy, "N")
+}
+
+function validateAccountOpenDate() {
+	objForm = document.forms[0];
+	if (!fnIsNull(objForm.acctOpenDate.value)) {
+		if (!fnIsValidDate(objForm.acctOpenDate)) {
+			if (calbase == "00") {
+				err.setErr(objForm.acctOpenDate, finbranchResArr.get("FAT000188"))
+			}
+			else {
+				if (calbase == "01") {
+					err.setErr(objForm.acctOpenDate, finbranchResArr.get("FAT002594"))
+				}
+				else {
+					if (calbase == "02") {
+						err.setErr(objForm.acctOpenDate, finbranchResArr.get("FAT000188"))
+					}
+				}
+			}
+			return false
+		}
+		if (valReq && !fnCompareDates(objForm.acctOpenDate.value, bodDate)) {
+			err.setErr(objForm.acctOpenDate, finbranchResArr.get("FAT000193"));
+			return false
+		}
+	}
+	return true
+}
+
+function validatePsnextprintDate() {
+	objForm = document.forms[0];
+	if (!fnIsNull(objForm.nextPrntDate.value)) {
+		if (!fnIsValidDate(objForm.nextPrntDate)) {
+			err.setErr(objForm.nextPrntDate, finbranchResArr.get("FAT000188"));
+			return false
+		}
+		if (valReq && !fnCompareDates(bodDate, objForm.nextPrntDate.value)) {
+			err.setErr(objForm.nextPrntDate, finbranchResArr.get("FAT000195"));
+			return false
+		}
+	}
+	return true
+}
+
+function validatePbpsForScheme() {
+	objForm = document.forms[0];
+	if (objForm.pbPsFlg.value == "R") {
+		if ("TDA" != schemeType) {
+			err.setErr(objForm.pbPsFlg, finbranchResArr.get("FAT000166"));
+			return false
+		}
+	}
+	return true
+};

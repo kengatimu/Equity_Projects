@@ -1,0 +1,1605 @@
+function printBlock()
+{
+	writeCustomHeader("cimtm_det");
+	with (document){
+	write('<input type="hidden" id="BenDOB" fdt="fdate" mneb1="N" vFldId="BenDOB_ui" name="' + subGroupName + '.BenDOB">');			
+	write('<input type="hidden" id="RecvBusDtInc" fdt="fdate" mneb1="N" vFldId="RecvBusDtInc_ui" name="' + subGroupName + '.RecvBusDtInc">');
+	write('<input type="hidden" id="SendBusDtInc" fdt="fdate" mneb1="N" vFldId="SendBusDtInc_ui" name="' + subGroupName + '.SendBusDtInc">');
+	write('<input type="hidden" id="RecVerifyType" name="' + subGroupName + '.RecVerifyType">');
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">'+menuTitle+'</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006657") + '</td>');
+	funcCodeDesc = "";
+	if(funcCode == "AP")
+	{
+		funcCodeDesc = "Add/Post IMT Transaction";
+	}
+	if(funcCode == "A")
+	{
+		funcCodeDesc = "Add Transaction";
+	}
+	if(funcCode == "I")
+	{
+		funcCodeDesc = "Inquire";
+	}
+	if(funcCode == "X")
+	{
+		funcCodeDesc = "Cancel";
+	}
+	if(funcCode == "P")
+	{
+		funcCodeDesc = "Post Transaction";
+	}
+	if(funcCode == "P")
+	{
+		//<script>	
+		//document.addEventListener('contextmenu', event => event.preventDefault());
+		document.onkeydown = function (e) {
+		// disable F12 key
+		if(e.keyCode == 123) {
+		    return false;
+		}
+		// disable I key
+		if(e.ctrlKey && e.shiftKey && e.keyCode == 73){
+		    return false;
+		}
+		// disable J key
+		if(e.ctrlKey && e.shiftKey && e.keyCode == 74) {
+		    return false;
+		}
+		// disable U key
+		if(e.ctrlKey && e.keyCode == 85) {
+		    return false;
+		}
+    		}
+		//</script>
+	}
+	write('<td class="textfielddisplaylabel">');
+	write('<label id="compField">' + funcCodeDesc + '</label>');
+	write('</td>');
+	write('<td class="textfielddisplaylabel"> </td>');
+	write('<td class="columnwidth">&nbsp; </td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT031859") + '</td>');
+	write('<td class="textfielddisplaylabel">');
+	write('<label id="compField">' + PymntRefNum + '</label>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('</tr>');
+	write('</table>');
+	write('<br />');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+    write('<a id="sLnk1" href="javascript:showHelpFile(\'ormgendtl_help.htm\');">');
+    write('<img src="../Renderer/images/' + applangcode + '/help.gif" width="47" height="21" vspace="1" border="0" hotKeyId="finHelp"></a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	
+//header 1
+	write('<tr valign="middle" class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">' + jspResArr.get("FLT031878") + '</td>');
+	write('<td colspan="3" align="right" valign="middle">&nbsp;&nbsp;</td>');
+	write('</tr>');
+	
+//debit account and account details
+  	write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT026339") + '<font color=red size=2>*</font></td>');
+    write('<td><input name="' + subGroupName + '.Dracno" id="Dracno" ' + cimtmProps.get("Dracno_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16" onChange="javascript:return cimtm_det_ONCHANGE1(this);" >');
+    write('&nbsp; <a href="javascript:getAcctIdList1()" id="sLnk2" >');
+    write('<img hotKeyId="search1" src="../Renderer/images/search_icon.gif" width="16" height="17" border="0"></img>');
+    write('</td>');
+	write('<td class="textlabel">');
+    write('<input name="' + subGroupName + '.drAcctNumEntityId" id="drAcctNumEntityId" ' + cimtmProps.get("drAcctNumEntityId_ENABLED") + ' hotKeyId="search1" type="text" class="label" size="4" maxlength="8" >&nbsp;');
+    write('<input name="' + subGroupName + '.drAcctNumSolId" id="drAcctNumSolId" ' + cimtmProps.get("drAcctNumSolId_ENABLED") + ' hotKeyId="search1" type="text" class="label" size="4" maxlength="8" >&nbsp;');
+    write('<input name="' + subGroupName + '.drAcctNumCcy" id="drAcctNumCcy" ' + cimtmProps.get("drAcctNumCcy_ENABLED") + ' hotKeyId="search1" type="text" class="label" size="2" maxlength="3" >');
+    write('</td>');
+    write('<td class="textfield">');
+    write('<input name="' + subGroupName + '.drAcctName" id="drAcctName" ' + cimtmProps.get("drAcctName_ENABLED") + ' hotKeyId="search1" type="text" class="label" size="40" maxlength="80" >');
+    write('</td>');
+  	write('</tr>');
+	
+//Ref currency and ref amount details
+    write('<tr id="refCrncyRow">');
+    write('<td class="textlabel">' + jspResArr.get("FLT000703") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfielddisplaylabel">');
+    write('<input name="' + subGroupName + '.refCrncy" id="refCrncy" ' + cimtmProps.get("refCrncy_ENABLED") + ' hotKeyId="search1" type="text" class="textfieldcode" disabled size="2" maxlength="3" fdt="currency" >&nbsp;');
+    write('<input name="' + subGroupName + '.refAmt" id="refAmt" ' + cimtmProps.get("refAmt_ENABLED") + ' hotKeyId="search1" type="text" class="textfieldamount" size="23" maxlength="23" fdt="amount" onChange="javascript:return cimtm_ONCHANGE7(this);" onBlur="javascript:return cimtm_det_ONBLUR7(this);">&nbsp;');
+    write('<td class="textlabel">' + jspResArr.get("FLT031949") + '</td>');
+    write('<td width="29%" class="textfielddisplaylabel"><input id="rateCode" name="' + subGroupName + '.rateCode" hotKeyId="search1" ' + cimtmProps.get("rateCode_ENABLED") + ' type="text" disabled class="twotextfieldsearchicon" size="9" maxlength="5" onBlur="javascript:return cimtm_det8_ONBLUR6(this);" >');
+    write('&nbsp;<input id="rate" name="' + subGroupName + '.rate" ' + cimtmProps.get("rate_ENABLED")+ ' type="text" class="twotextfieldsearchicon" disabled size="9" maxlength="20" onBlur="javascript:return cimtm_det8_ONBLUR5(this);" >');
+    write('</td>');
+	write('</tr>');
+
+//treasury rate
+	write("<tr>");
+    write('<td class="textlabel">' + jspResArr.get("FLT014278") + "");
+    write('<script>setMandatory("' + cimtmProps.get("treaRefNum_MANDATORY") + '");<\/script></td>');
+    write('<td class="textfield">');
+    write('<input onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="treaRefNum" name="' + subGroupName + '.treaRefNum" disabled hotKeyId="search4" ' + cimtmProps.get("treaRefNum_ENABLED") + ' type="TEXT" class="twotextfieldsearchicon" size="9" maxlength="16" onChange="javascript:return cimtm_ONCHANGE10(this);" fmnd="' + cimtmProps.get("treaRefNum_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk2">');
+    write("&nbsp;");
+    write("&nbsp;");
+    write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" disabled id="treaRate" name="' + subGroupName + '.treaRate" ' + cimtmProps.get("treaRate_ENABLED") + ' type="TEXT" class="twotextfieldsearchicon" size="9" maxlength="20" fmnd="' + cimtmProps.get("treaRate_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk2">');
+    write("</td>");
+    write('<td class="textlabel">' + jspResArr.get("FLT002650") + "</td>");
+    write('<td class="textfielddisplaylabel">');
+    write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="acctCrncy" name="' + subGroupName + '.acctCrncy" type="text" class="labelwithoutwidth" size="3" maxlength="3" disabled fdt="default" fblk="defaultFblk2" fds="Y">');
+    write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="acctCrncyAmt" name="' + subGroupName + '.acctCrncyAmt" type="text" class="labelwithoutwidth" size="25" maxlength="17" disabled fdt="default" fblk="defaultFblk2" fds="Y">');
+    write("</td>");
+	write('</tr>');
+	
+//charge details
+    write('<tr id="crefCrncyRow">');
+    write('<td class="textlabel">' + jspResArr.get("FLT090703") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfielddisplaylabel">');
+    write('<input name="' + subGroupName + '.ChrgCrncy" id="ChrgCrncy" ' + cimtmProps.get("ChrgCrncy_ENABLED") + ' hotKeyId="search1" type="text" class="textfieldcode" disabled size="2" maxlength="3" fdt="currency" >&nbsp;');
+    write('<input name="' + subGroupName + '.ChrgAmt" id="ChrgAmt" ' + cimtmProps.get("ChrgAmt_ENABLED") + ' hotKeyId="search1" type="text" class="textfieldamount" size="23" maxlength="23" fdt="amount" onChange="javascript:return cimtm_ONCHANGE7(this);" onBlur="javascript:return cimtm_det_ONBLUR7(this);">&nbsp;');
+    write('<td class="textlabel">' + jspResArr.get("FLT093703") + '</td>');
+    write('<td width="29%" class="textfielddisplaylabel"><input id="ChrgrateCode" name="' + subGroupName + '.ChrgrateCode" hotKeyId="search1" ' + cimtmProps.get("ChrgrateCode_ENABLED") + ' type="text" disabled class="twotextfieldsearchicon" size="9" maxlength="5" onBlur="javascript:return cimtm_det8_ONBLUR6(this);" >');
+    write('&nbsp;<input id="Chrgrate" name="' + subGroupName + '.Chrgrate" ' + cimtmProps.get("Chrgrate_ENABLED")+ ' type="text" class="twotextfieldsearchicon" size="9" maxlength="20" disabled onBlur="javascript:return cimtm_det8_ONBLUR5(this);" >');
+    write('</td>');
+    write('</tr>');
+
+//tran remarks and tran particular
+/*
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT003837") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.TranRemarks" id="TranRemarks" fdt="String" ' + cimtmProps.get("TranRemarks_ENABLED") + ' maxlength="30" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031880") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.TranParticulars" id="TranParticulars" fdt="String" ' + cimtmProps.get("TranParticulars_ENABLED") + ' maxlength="50" >');
+    write('</td>');
+    write('</tr>');
+*/
+//header 2
+	write('<tr valign="middle" class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">' + jspResArr.get("FLT031881") + '</td>');
+	write('<td colspan="3" align="right" valign="middle">&nbsp;&nbsp;</td>');
+	write('</tr>');
+		
+//Transfer to and customer tran type
+	write('<tr>');
+	write('<td class="textlabel" style="height: 25px">' + jspResArr.get("FLT033221") + '<font color=red size=2>*</font></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.custtranmode" id="custtranmode" style="width: 218px" onchange="javascript:return funcCodeOnchange();" fdt="String" ' + cimtmProps.get("funcCode_ENABLED") + '>');
+	write('<option value="">'    + jspResArr.get("FLT031311") + '</option>');
+	write('<option value="BANK">' + jspResArr.get("FLT033222") + '</option>');
+	write('<option value="WALLET">' + jspResArr.get("FLT033223") + '</option>');
+	write('</select>');
+	write('</td>');
+	write('<td class="textlabel" style="height: 25px">' + jspResArr.get("FLT033220") + '<font color=red size=2>*</font></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.custtrantype" id="custtrantype" style="width: 218px" onchange="javascript:return funcCodeOnchange();" fdt="String" ' + cimtmProps.get("funcCode_ENABLED") + '>');
+	write('<option value="">'    + jspResArr.get("FLT031311") + '</option>');
+	//write('<option value="P2P">' + jspResArr.get("FLT012900") + '</option>');
+	write('<option value="C2C">' + jspResArr.get("FLT012900") + '</option>');
+	write('<option value="C2C">' + jspResArr.get("FLT012350") + '</option>');
+	write('<option value="C2B">' + jspResArr.get("FLT013170") + '</option>');
+	write('<option value="P2B">' + jspResArr.get("FLT033219") + '</option>');
+	write('<option value="B2B">' + jspResArr.get("FLT033235") + '</option>');
+	write('</select>');
+	write('</td>');		
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfield"> </td>');
+	write('</tr>');
+
+//Bic code fetch
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031942") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+	write('<input onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="benefCntry" name="' + subGroupName + '.benefCntry" hotKeyId="search6" ' + cimtmProps.get("benefCntry_ENABLED") + ' type="text" class="textfieldfont" maxlength="5" onChange="javascript:return cimtm_ONCHANGE18(this,this,\'validatebenefCntry\',\'benefCntryDesc\');" fmnd="Y" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write("&nbsp;");
+	write("<a id=\"sLnk7\" href=\"javascript:showDynSearcher('HREFCDL','refRecType=03|refDesc=:benefCntry|delFlg=N',':benefCntry=refCode|:benefCntryDesc=refDesc')\">");
+	write('<img src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search6"></a>');
+	write("<br>");
+	write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="benefCntryDesc" name="' + subGroupName + '.benefCntryDesc" type="text" disabled="true" class="label" size="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+    write('</td>');
+
+    // Harrison - Destination currency change
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT077223") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefCrncy" id="benefCrncy" fdt="String" ' + cimtmProps.get("benefCrncy_ENABLED") + ' maxlength="4" >');
+   	write('&nbsp;<a href="javascript:showDestCrncy();" id="sLnk3" >');
+    write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+    write('</td>');
+
+     // Harrison - Destination currency end
+
+	write('</tr>');
+	
+	write('<tr>');
+    //write('<td class="textlabel">' + jspResArr.get("FLT033224") + '<script>setMandatory("Y");</script></td>');
+    write('<td class="textlabel">' + jspResArr.get("FLT033224") + '</td>');
+    write('<td class="textfield">');
+    write('<input  type="text" class="normal" name="' + subGroupName + '.bicWallet" id="bicWallet" ' + cimtmProps.get("bicWallet_ENABLED") + ' maxlength="16" size="32">');
+    write('&nbsp;<a href="javascript:showbicWallet();" id="sLnk3" >');
+    write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+    write('</td>');
+	 //write('<td class="textlabel" style="height: 10px">' + jspResArr.get("FLT033229") + '<font color=red size=1.5>Note:Additional Fields For B2B Transaction</font></td>');
+	write('<td class="textlabel" style="height: 25px">' + jspResArr.get("FLT033229") + '<font color=red size=2>System Mode*</font></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.APIMode" id="APIMode" style="width: 218px" fdt="String" ' + cimtmProps.get("APIMode_ENABLED") + '>');
+	write('<option value="">'    + jspResArr.get("FLT031311") + '</option>');
+	write('<option value="GAG">' + jspResArr.get("FLT077221") + '</option>');
+	write('<option value="GAGC">' + jspResArr.get("FLT077222") + '</option>');
+	write('</select>');
+	write('</td>');		
+	write('<td class="columnwidth"> </td>');
+    write('</tr>');	
+	
+//bank code and branch code details
+	write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT031883") + '</td>');
+    write('<td class="textfield">');
+    write('<input  class="normal" type="text" name="' + subGroupName + '.bbankCode" id="bbankCode" ' + cimtmProps.get("bbankCodet_ENABLED") + ' maxlength="16" size="32">');
+    write('&nbsp;<a href="javascript:showbicBank();" id="sLnk5" >');
+    write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+    write('</td>');
+    write('<td class="textlabel">' + jspResArr.get("FLT077224") + '</td>');
+    write('<td class="textfield">');
+    write('<input  class="textfieldfont" type="text" name="' + subGroupName + '.bankName" id="bankName" ' + cimtmProps.get("bankName_ENABLED") + ' maxlength="16" size="25">');
+    write('</td>');
+    write('</tr>');	
+
+    write('<tr>');
+		write('<td class="textlabel">' + jspResArr.get("FLT033239") + '</td>');
+	    write('<td class="textfield">');
+	    write('<input  class="textfieldfont" type="text" name="' + subGroupName + '.BrnIfscBsbn" id="BrnIfscBsbn" ' + cimtmProps.get("BrnIfscBsbn_ENABLED") + ' maxlength="16" size="25">');
+	    write('</td>');
+	write('</tr>');	
+
+    //write('<tr>');
+    //write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031883") + '</td>');
+    //write('<td class="textfield"><input id="bbankCode" name="' + subGroupName + '.bbankCode" hotKeyId="search8" ' + cimtmProps.get("bbankCode_ENABLED") + ' type="text" class="textfieldfont" maxlength="6" fmnd="' + cimtmProps.get("bbankCode_MANDATORY") + '" fdt="default" fblk="DFBLK" onChange="javascript:return cimtm_det_ONCHANGE12(this,\'bankCodeDesc\');">');
+    //write('&nbsp;   <a id="sLnk9" href="Javascript:fnGetDraweeBankList()">');
+    //write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search8"></a>');
+    //write('</td>');
+    //write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT041910") + '</td>');
+    //write('<td class="textfield"><input id="bbrCode" name="' + subGroupName + '.bbrCode" hotKeyId="search9" ' + cimtmProps.get("bbrCode_ENABLED") + ' type="text" class="textfieldfont" maxlength="6" fmnd="' + cimtmProps.get("bbrCode_MANDATORY") + '" fmb="N" fdt="default" fblk="DFBLK" onChange="javascript:return cimtm_det_ONCHANGE10(this);">');
+    //write('&nbsp;   <a id="sLnk10" href="Javascript:fnGetDraweeBranchCode()">');
+    //write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search9"></a>');
+    //write('</td>');
+    //write('</tr>');
+
+//Organization details
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033225") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.orgpin" id="orgpin" fdt="String" ' + cimtmProps.get("orgpin_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033226") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.orgregnum" id="orgregnum" fdt="String" ' + cimtmProps.get("orgregnum_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+	
+//Beneficiary first name and last name 
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT030541") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefFName" id="benefFName" fdt="String" ' + cimtmProps.get("benefFName_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT036541") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefLName" id="benefLName" fdt="String" ' + cimtmProps.get("benefLName_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+	
+//beneficiary account details
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031882") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input name="' + subGroupName + '.benefAcctNum" id="benefAcctNum" ' + cimtmProps.get("benefAcctNum_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="100";" >');
+    //write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefAcctNum" id="benefAcctNum" fdt="String" ' + cimtmProps.get("benefAcctNum_ENABLED") + ' maxlength="80" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031892") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefMobileNum" id="benefMobileNum" fdt="String" ' + cimtmProps.get("benefMobileNum_ENABLED") + ' maxlength="80" >');
+    write('</td>');
+    write('</tr>');
+//beneficiary Account Type & beneficiary Id Type
+    write('<tr>');
+	write('<td class="textlabel" style="height: 25px">' + jspResArr.get("FLT033236") + '<font color=red size=2>*</font></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.benefAcctType" id="benefAcctType" style="width: 218px" fdt="String" ' + cimtmProps.get("benefAcctType_ENABLED") + '>');
+	write('<option value="">'    + jspResArr.get("FLT031311") + '</option>');
+	write('<option value="Checking">' + jspResArr.get("FLT033248") + '</option>');
+	write('<option value="Savings">' + jspResArr.get("FLT033249") + '</option>');
+	write('<option value="Deposit">' + jspResArr.get("FLT033250") + '</option>');
+	write('<option value="Others">' + jspResArr.get("FLT033251") + '</option>');
+	write('</select>');
+	write('</td>');
+	write('<td class="textlabel" style="height: 25px">' + jspResArr.get("FLT033237") + '<font color=red size=2>*</font></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.benefIdType" id="benefIdType" style="width: 218px" fdt="String" ' + cimtmProps.get("benefIdType_ENABLED") + '>');
+	write('<option value="">'    + jspResArr.get("FLT031311") + '</option>');
+	write('<option value="PASSPORT">' + jspResArr.get("FLT033252") + '</option>');
+	write('<option value="NATIONAL_ID">' + jspResArr.get("FLT033253") + '</option>');
+	write('<option value="DRIVING_LICENSE">' + jspResArr.get("FLT033254") + '</option>');
+	write('<option value="SOCIAL_SECURITY">' + jspResArr.get("FLT033255") + '</option>');
+	write('<option value="TAX_ID">' + jspResArr.get("FLT033256") + '</option>');
+	write('<option value="SENIOR_CITIZEN_ID">' + jspResArr.get("FLT033257") + '</option>');
+	write('<option value="BIRTH_CERTIFICATE">' + jspResArr.get("FLT033258") + '</option>');
+	write('<option value="VILLAGE_ELDER_ID">' + jspResArr.get("FLT033259") + '</option>');
+	write('<option value="RESIDENT_CARD">' + jspResArr.get("FLT033260") + '</option>');
+	write('<option value="ALIEN_REGISTRATION">' + jspResArr.get("FLT033261") + '</option>');
+	write('<option value="PAN_CARD">' + jspResArr.get("FLT033262") + '</option>');
+	write('<option value="VOTERS_ID">' + jspResArr.get("FLT033263") + '</option>');
+	write('<option value="HEALTH_CARD">' + jspResArr.get("FLT033264") + '</option>');
+	write('<option value="EMPLOYER_ID">' + jspResArr.get("FLT033265") + '</option>');
+	write('<option value="OTHER">' + jspResArr.get("FLT033266") + '</option>');
+	write('</select>');
+	write('</td>');		
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfield"> </td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 10px">' + jspResArr.get("FLT033229") + '<font color=red size=1.5>Note:Mobile Number used for Wallet Transfer </font></td>');
+    write('</tr>');
+	
+//beneficiary bank details and country
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031884") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benefBnkTel" id="benefBnkTel" fdt="String" ' + cimtmProps.get("benefBnkTel_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+	
+//Beneficiary DOB and ID
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033227") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input  hotKeyId="calender1"  type="text" class="textfieldfont" fdt="uidate"  mnebl="false" onBlur="javascript:return cimtm_crit_ONBLUR1(this,this,this);" name="' + subGroupName + '.benDOB_ui" id="benDOB_ui" >');
+    write('<a  href="javascript:openDate(document.forms[0].benDOB_ui,BODDate)"   id="sLnk2"><img alt="Date picker" border="0" height="19"  hotKeyId="calender1" src="../Renderer/images/'+applangcode+'/calender.gif" width="24" class="img" >');
+    write('</a>');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033228") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.benID" id="benID" fdt="String" ' + cimtmProps.get("BenefAddress2_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');	
+	
+//Purpose of remittance and state
+    write('<tr>');
+    //write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031902") + '<font color=red size=2>*</font></td>');
+    //write('<td class="textfield">');
+    //write('<input onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="purOfRemit" name="' + subGroupName + '.purOfRemit" hotKeyId="search7" ' + cimtmProps.get("purOfRemit_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="25" fmnd="' + cimtmProps.get("purOfRemit_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onChange="javascript:return cimtm_ONCHANGE12(this,\'purOfRemitDesc\');">');
+    //write("&nbsp;");
+    //write("<a id=\"sLnk10\" href=\"javascript:showDynSearcher('HREFCDL','refRecType=81|refCode=:purOfRemit|delFlg=N',':purOfRemit=refCode|:purOfRemitDesc=refDesc')\">");
+    //write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search7"></a>');
+    //write("<br>");
+    //write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="purOfRemitDesc" name="' + subGroupName + '.purOfRemitDesc" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+    //write("</td>");
+    write('<td class="textlabel">' + jspResArr.get("FLT031902") + '<script>setMandatory("Y");</script></td>');
+    write('<td class="textfield">');
+    write('<input  class="textfieldfont" type="text" name="' + subGroupName + '.purOfRemit" id="purOfRemit" ' + cimtmProps.get("purOfRemit_ENABLED") + ' maxlength="16" size="25">');
+    write('&nbsp;<a href="javascript:showPurOfPayment();" id="sLnk4" >');
+    write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+    write('</td>');	
+	
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT931902") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="benefState" name="' + subGroupName + '.benefState" hotKeyId="search6" ' + cimtmProps.get("benefState_ENABLED") + ' type="text" class="textfieldfont" maxlength="5" onChange="javascript:return cimtm_ONCHANGE18(this,this,\'validatebenefState\',\'benefStateDesc\');" fmnd="Y" fmb="N" fdt="default" fblk="defaultFblk1">');
+    write("&nbsp;");
+    write("<a id=\"sLnk7\" href=\"javascript:showDynSearcher('HREFCDL','refRecType=02|refDesc=:benefState|delFlg=N',':benefState=refCode|:benefStateDesc=refDesc')\">");
+    write('<img src="../Renderer/images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search6"></a>');
+    write("<br>");
+    write('<input onChange="javascript:return custom_ONCHANGE(\'cimtm\',this);" onBlur="javascript:return custom_ONBLUR(\'cimtm\',this);" id="benefStateDesc" name="' + subGroupName + '.benefStateDesc" type="text" disabled="true" class="label" size="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+    write('</td>');
+    write('</tr>');
+	
+//Beneficiary address details
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT931992") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.BenefAddress1" id="BenefAddress1" fdt="String" ' + cimtmProps.get("BenefAddress1_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT931993") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.BenefAddress2" id="BenefAddress2" fdt="String" ' + cimtmProps.get("BenefAddress2_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+	
+////Beneficiary address details and postal code
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT931994") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.BenefAddress3" id="BenefAddress3" fdt="String" ' + cimtmProps.get("BenefAddress3_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT931995") + '<font color=red size=2>*</font></td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.PostalCode" onChange="javascript:return ValidatePostalcode();" id="PostalCode" fdt="String" ' + cimtmProps.get("PostalCode_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+
+
+
+//Additional Fields For B2B Transaction
+    write('<tr>');
+    write('<td class="textlabel" style="height: 10px">' + jspResArr.get("FLT033229") + '<font color=red size=1.5>Note:Additional Fields For B2B Transaction</font></td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033238") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="RecvBusName" type="text" class="textfieldfont" name="' + subGroupName + '.RecvBusName" id="RecvBusName" fdt="String" ' + cimtmProps.get("RecvBusName_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033240") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="RecvBusRegNum" type="text" class="textfieldfont" name="' + subGroupName + '.RecvBusRegNum" id="RecvBusRegNum" fdt="String" ' + cimtmProps.get("RecvBusRegNum_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033241") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="RecvBusAddr" type="text" class="textfieldfont" name="' + subGroupName + '.RecvBusAddr" id="RecvBusAddr" fdt="String" ' + cimtmProps.get("RecvBusAddr_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033242") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="RecvBusCity" type="text" class="textfieldfont" name="' + subGroupName + '.RecvBusCity" id="RecvBusCity" fdt="String" ' + cimtmProps.get("RecvBusCity_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033243") + '</td>');
+    write('<td class="textfield">');
+    //write('<input hotKeyId="RecvBusDtInc" type="text" class="textfieldfont" name="' + subGroupName + '.RecvBusDtInc" id="RecvBusDtInc" fdt="String" ' + cimtmProps.get("RecvBusDtInc_ENABLED") + ' maxlength="100" >');
+    write('<input  hotKeyId="calender1"  type="text" class="textfieldfont" fdt="uidate"  mnebl="false" onBlur="javascript:return cimtm_det_ONBLUR1(this,this,this);" name="' + subGroupName + '.RecvBusDtInc_ui" id="RecvBusDtInc_ui" >');
+    write('<a  href="javascript:openDate(document.forms[0].RecvBusDtInc_ui,BODDate)"   id="sLnk2"><img alt="Date picker" border="0" height="19"  hotKeyId="calender1" src="../Renderer/images/'+applangcode+'/calender.gif" width="24" class="img" >');
+    write('</a>');
+    write('</td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033244") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="SendBusName" type="text" class="textfieldfont" name="' + subGroupName + '.SendBusName" id="SendBusName" fdt="String" ' + cimtmProps.get("SendBusName_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033245") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="SendBusRegNum" type="text" class="textfieldfont" name="' + subGroupName + '.SendBusRegNum" id="SendBusRegNum" fdt="String" ' + cimtmProps.get("SendBusRegNum_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033246") + '</td>');
+    write('<td class="textfield">');
+    //write('<input hotKeyId="SendBusDtInc" type="text" class="textfieldfont" name="' + subGroupName + '.SendBusDtInc" id="SendBusDtInc" fdt="String" ' + cimtmProps.get("SendBusDtInc_ENABLED") + ' maxlength="100" >');
+    write('<input  hotKeyId="calender1"  type="text" class="textfieldfont" fdt="uidate"  mnebl="false" onBlur="javascript:return cimtm_det_ONBLUR1(this,this,this);" name="' + subGroupName + '.SendBusDtInc_ui" id="SendBusDtInc_ui" >');
+    write('<a  href="javascript:openDate(document.forms[0].SendBusDtInc_ui,BODDate)"   id="sLnk2"><img alt="Date picker" border="0" height="19"  hotKeyId="calender1" src="../Renderer/images/'+applangcode+'/calender.gif" width="24" class="img" >');
+    write('</a>');
+    write('</td>');
+    write('</tr>');
+//Quote Currency & quote amount 
+    write('<tr>');
+    write('<td class="textlabel" style="height: 10px">' + jspResArr.get("FLT033229") + '<font color=red size=1.5>Quote Details</font></td>');
+    write('</tr>');
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033232") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.Quotecrncy" id="Quotecrncy" fdt="String" ' + cimtmProps.get("Quotecrncy_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033231") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.quoteamtquoteamt" id="quoteamt" fdt="String" ' + cimtmProps.get("quoteamt_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+//IMT REF NUMER
+    write('<tr>');
+    write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033230") + '</td>');
+    write('<td class="textfield">');
+    write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.imtrefnum" id="imtrefnum" fdt="String" ' + cimtmProps.get("imtrefnum_ENABLED") + ' maxlength="100" >');
+    write('</td>');
+    write('</tr>');
+
+//Beneficiary address details and postal code
+	if(funcCode=='I') {
+		write('<tr>');
+		write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033233") + '</td>');
+		write('<td class="textfield">');
+		write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.tranststuscode" id="tranststuscode" fdt="String" ' + cimtmProps.get("tranststuscode_ENABLED") + ' maxlength="100" >');
+		write('</td>');
+		write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033234") + '</td>');
+		write('<td class="textfield">');
+		write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.tranststusdesc" id="tranststusdesc" fdt="String" ' + cimtmProps.get("tranststusdesc_ENABLED") + ' maxlength="100" >');
+		write('</td>');
+		write('</tr>');
+	}
+		
+	
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT001721")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	if(funcCode !='I'){
+	write('<div class="ctable">');
+	write('<input id="Getquote" name="Getquote" type="button" class="button" value="' + jspResArr.get("FLT000194") + '"	onClick="javascript:return cimtm_det_ONCLICK4(this,this);"" hotKeyId="Validate">');
+	write('<input id="Submit" name="Submit" type="button" class="button"	onClick="javascript:return cimtm_det_ONCLICK1(this,this);"" value="' + jspResArr.get("FLT000193") + '" hotKeyId="Submit">');
+	write('<input id="Cancel" name="Cancel" type="button" class="button" value="' + jspResArr.get("FLT001721") + '"	onClick="javascript:return cimtm_det_ONCLICK3(this,this.id);"" hotKeyId="Cancel">');
+	}else{
+	write('<div class="ctable">');
+	write('<input class="button" type="button" id="Back" value="'+jspResArr.get("FLT026526")+ '" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+	}
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+
+
+function showDestCrncy(){
+	var ObjForm = document.forms[0];
+	var benefCntryCode = ObjForm.benefCntry.value;
+	var status = "F";
+
+	if(fnIsNull(document.forms[0].benefCntry.value)){
+        alert("Select Country Code First");
+        document.forms[0].benefCntry.focus();
+        status = "F";
+    }else{
+    	status = "S";
+    }
+
+    if(status == "S"){
+	    alert("When no record fetched, enter the country code manually");
+
+		var FuncCode = "AP";
+	    var inputNameValues = "funcCode|"+FuncCode+"|benefCntryCode|"+benefCntryCode;
+	    var outputNames  = "CurrencyCode|CurrencyName|CountryCode";
+	    var pageTitle    = "Country Currency Code List";
+	    var literalNames = "Currency Code|Currency Name|Country Code";
+	    var scrName      = "ebcimtmDestCrncy.scr";
+	    var hyperLnkCols = "1";
+	    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+		var dataSplit = retVal.split("|");
+		var destCrncy =dataSplit[0];
+		var ObjForm = document.forms[0];
+	    ObjForm.benefCrncy.value = destCrncy;
+    }
+
+}
+
+
+function fnOnLoad()
+{
+	//alert(funcCode);
+	if(funcCode=='I'){
+
+		var bnkName = "";
+		var inputNameValues = "PymntRefNum|"+PymntRefNum;
+	    var outputNames = "errorFlg|bankName";
+	    var scriptName = "ebcimtInq.scr";
+	    var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+	    var token = retVal.split("|");
+	    if(token != undefined){
+	    	bnkName = token[3];
+	    }
+		//alert(benID);
+		var ObjForm = document.forms[0];
+		ObjForm.benefCrncy.value = Quotecrncy;
+		ObjForm.bankName.value = bnkName;
+		ObjForm.APIMode.value = APIMode;
+		ObjForm.Dracno.value = Dracno;
+		ObjForm.drAcctNumEntityId.value = drAcctNumEntityId;
+		ObjForm.drAcctNumEntityId.value = drAcctNumEntityId;
+		ObjForm.drAcctNumSolId.value = drAcctNumSolId;
+		ObjForm.drAcctNumCcy.value = drAcctNumCcy;
+		ObjForm.drAcctName.value = drAcctName;
+		ObjForm.refCrncy.value = refCrncy;
+		ObjForm.refAmt.value = refAmt;
+		ObjForm.rateCode.value = rateCode;
+		ObjForm.rate.value = rate;
+		ObjForm.treaRate.value = treaRate;
+		ObjForm.acctCrncy.value = acctCrncy;
+		ObjForm.acctCrncyAmt.value = acctCrncyAmt;
+		ObjForm.ChrgCrncy.value = ChrgCrncy;
+		ObjForm.ChrgAmt.value = ChrgAmt;
+		ObjForm.ChrgrateCode.value =ChrgrateCode;
+		ObjForm.Chrgrate.value =Chrgrate;
+		ObjForm.benefFName.value = benefFName;
+		ObjForm.benefLName.value = benefLName;
+		ObjForm.benefAcctNum.value = benefAcctNum;
+		ObjForm.benefMobileNum.value = benefMobileNum;	
+		ObjForm.bbankCode.value = bbankCode;
+		//ObjForm.bbrCode.value = bbrCode;
+		ObjForm.benefBnkTel.value = benefBnkTel;
+		ObjForm.benefCntry.value = benefCntry;
+		ObjForm.purOfRemit.value = purOfRemit;
+		ObjForm.benefState.value = benefState;
+		ObjForm.BenefAddress1.value = BenefAddress1;
+		ObjForm.BenefAddress2.value = BenefAddress2;
+		ObjForm.BenefAddress3.value = BenefAddress3;
+		ObjForm.bicWallet.value = bicWallet;
+		ObjForm.custtrantype.value = custtrantype;
+		ObjForm.custtranmode.value = custtranmode;
+		ObjForm.PostalCode.value = PostalCode;
+		ObjForm.orgpin.value = orgpin;
+		ObjForm.orgregnum.value = orgregnum;
+		ObjForm.imtrefnum.value = imtrefnum;
+		ObjForm.quoteamt.value = quoteamt;
+		ObjForm.Quotecrncy.value = Quotecrncy;
+		ObjForm.benDOB_ui.value = benDOB;
+		ObjForm.benID.value = benID;
+		ObjForm.tranststuscode.value = tranststuscode;
+		ObjForm.tranststusdesc.value = tranststusdesc;
+		ObjForm.BrnIfscBsbn.value = BrnIfscBsbn;
+		ObjForm.benefAcctType.value = benefAcctType;
+		ObjForm.benefIdType.value = benefIdType;
+		ObjForm.RecvBusName.value = RecvBusName;
+		ObjForm.RecvBusRegNum.value = RecvBusRegNum;
+		ObjForm.RecvBusAddr.value = RecvBusAddr;
+		ObjForm.RecvBusCity.value = RecvBusCity;
+		ObjForm.RecvBusDtInc.value = RecvBusDtInc;
+		ObjForm.SendBusName.value = SendBusName;
+		ObjForm.SendBusRegNum.value = SendBusRegNum;
+		ObjForm.SendBusDtInc.value = SendBusDtInc;
+
+		ObjForm.BrnIfscBsbn.readOnly = true;
+		ObjForm.BrnIfscBsbn.disabled = true;
+		ObjForm.benefAcctType.readOnly = true;
+		ObjForm.benefAcctType.disabled = true;
+		ObjForm.benefIdType.readOnly = true;
+		ObjForm.benefIdType.disabled = true;
+		ObjForm.RecvBusName.readOnly = true;
+		ObjForm.RecvBusName.disabled = true;
+		ObjForm.RecvBusRegNum.readOnly = true;
+		ObjForm.RecvBusRegNum.disabled = true;
+		ObjForm.RecvBusAddr.readOnly = true;
+		ObjForm.RecvBusAddr.disabled = true;
+		ObjForm.RecvBusCity.readOnly = true;
+		ObjForm.RecvBusCity.disabled = true;
+		ObjForm.RecvBusDtInc.readOnly = true;
+		ObjForm.RecvBusDtInc.disabled = true;
+		ObjForm.SendBusName.readOnly = true;
+		ObjForm.SendBusName.disabled = true;
+		ObjForm.SendBusRegNum.readOnly = true;
+		ObjForm.SendBusRegNum.disabled = true;
+		ObjForm.SendBusDtInc.readOnly = true;
+		ObjForm.SendBusDtInc.disabled = true;
+			
+		ObjForm.Dracno.readOnly = true;
+		ObjForm.Dracno.disabled = true;
+		ObjForm.refAmt.readOnly = true;
+		ObjForm.refAmt.disabled = true;
+		ObjForm.custtranmode.readOnly = true;
+		ObjForm.custtranmode.disabled = true;
+		ObjForm.custtrantype.readOnly = true;
+		ObjForm.custtrantype.disabled = true;
+		ObjForm.bicWallet.readOnly = true;
+		ObjForm.bicWallet.disabled = true;
+		ObjForm.bbankCode.readOnly = true;
+		ObjForm.bbankCode.disabled = true;
+		//ObjForm.bbrCode.readOnly = true;
+		//ObjForm.bbrCode.disabled = true;
+		ObjForm.orgpin.readOnly = true;
+		ObjForm.orgpin.disabled = true;
+		ObjForm.orgregnum.readOnly = true;
+		ObjForm.orgregnum.disabled = true;
+		ObjForm.benefFName.readOnly = true;
+		ObjForm.benefFName.disabled = true;
+		ObjForm.benefLName.readOnly = true;
+		ObjForm.benefLName.disabled = true;
+		ObjForm.benefAcctNum.readOnly = true;
+		ObjForm.benefAcctNum.disabled = true;
+		ObjForm.benefMobileNum.readOnly = true;
+		ObjForm.benefMobileNum.disabled = true;
+		ObjForm.benefBnkTel.readOnly = true;
+		ObjForm.benefBnkTel.disabled = true;
+		ObjForm.benefCntry.readOnly = true;
+		ObjForm.benefCntry.disabled = true;
+		ObjForm.benDOB_ui.readOnly = true;
+		ObjForm.benDOB_ui.disabled = true;
+		ObjForm.benID.readOnly = true;
+		ObjForm.benID.disabled = true;
+		ObjForm.purOfRemit.readOnly = true;
+		ObjForm.purOfRemit.disabled = true;
+		ObjForm.benefState.readOnly = true;
+		ObjForm.benefState.disabled = true;
+		ObjForm.BenefAddress1.readOnly = true;
+		ObjForm.BenefAddress1.disabled = true;
+		ObjForm.BenefAddress2.readOnly = true;
+		ObjForm.BenefAddress2.disabled = true;
+		ObjForm.BenefAddress3.readOnly = true;
+		ObjForm.BenefAddress3.disabled = true;
+		ObjForm.PostalCode.readOnly = true;
+		ObjForm.PostalCode.disabled = true;	
+		ObjForm.imtrefnum.readOnly =true;
+		ObjForm.imtrefnum.disabled =true;
+		ObjForm.quoteamt.readOnly =true;
+		ObjForm.quoteamt.disabled =true;
+		ObjForm.Quotecrncy.readOnly =true;
+		ObjForm.Quotecrncy.disabled =true;
+		ObjForm.ChrgAmt.readOnly =true;		
+		ObjForm.ChrgAmt.disabled =true;			
+		ObjForm.tranststusdesc.readOnly =true;			
+		ObjForm.tranststusdesc.disabled =true;			
+		ObjForm.tranststuscode.readOnly =true;			
+		ObjForm.tranststuscode.disabled =true;			
+	}
+	var ObjForm = document.forms[0];
+	if(funcCode=='P' || funcCode =='I' || funcCode =='X' ||funcCode =='i'){
+
+		ObjForm.benefCrncy.readOnly = true;
+		ObjForm.benefCrncy.disabled = true;
+
+		ObjForm.bankName.readOnly = true;
+		ObjForm.bankName.disabled = true;
+
+		ObjForm.APIMode.readOnly = true;
+		ObjForm.APIMode.disabled = true;
+		ObjForm.Submit.disabled = false;
+		ObjForm.Getquote.disabled = true;	
+		ObjForm.Dracno.readOnly = true;
+		ObjForm.Dracno.disabled = true;
+		ObjForm.refAmt.readOnly = true;
+		ObjForm.refAmt.disabled = true;
+		ObjForm.custtranmode.readOnly = true;
+		ObjForm.custtranmode.disabled = true;
+		ObjForm.custtrantype.readOnly = true;
+		ObjForm.custtrantype.disabled = true;
+		ObjForm.bicWallet.readOnly = true;
+		ObjForm.bicWallet.disabled = true;
+		ObjForm.bbankCode.readOnly = true;
+		ObjForm.bbankCode.disabled = true;
+		//ObjForm.bbrCode.readOnly = true;
+		//ObjForm.bbrCode.disabled = true;
+		ObjForm.orgpin.readOnly = true;
+		ObjForm.orgpin.disabled = true;
+		ObjForm.orgregnum.readOnly = true;
+		ObjForm.orgregnum.disabled = true;
+		ObjForm.benefFName.readOnly = true;
+		ObjForm.benefFName.disabled = true;
+		ObjForm.benefLName.readOnly = true;
+		ObjForm.benefLName.disabled = true;
+		ObjForm.benefAcctNum.readOnly = true;
+		ObjForm.benefAcctNum.disabled = true;
+		ObjForm.benefMobileNum.readOnly = true;
+		ObjForm.benefMobileNum.disabled = true;
+		ObjForm.benefBnkTel.readOnly = true;
+		ObjForm.benefBnkTel.disabled = true;
+		ObjForm.benefCntry.readOnly = true;
+		ObjForm.benefCntry.disabled = true;
+		ObjForm.benDOB_ui.readOnly = true;
+		ObjForm.benDOB_ui.disabled = true;
+		ObjForm.benID.readOnly = true;
+		ObjForm.benID.disabled = true;
+		ObjForm.purOfRemit.readOnly = true;
+		ObjForm.purOfRemit.disabled = true;
+		ObjForm.benefState.readOnly = true;
+		ObjForm.benefState.disabled = true;
+		ObjForm.BenefAddress1.readOnly = true;
+		ObjForm.BenefAddress1.disabled = true;
+		ObjForm.BenefAddress2.readOnly = true;
+		ObjForm.BenefAddress2.disabled = true;
+		ObjForm.BenefAddress3.readOnly = true;
+		ObjForm.BenefAddress3.disabled = true;
+		ObjForm.PostalCode.readOnly = true;
+		ObjForm.PostalCode.disabled = true;
+
+		ObjForm.BrnIfscBsbn.readOnly = true;
+		ObjForm.BrnIfscBsbn.disabled = true;
+		ObjForm.benefAcctType.readOnly = true;
+		ObjForm.benefAcctType.disabled = true;
+		ObjForm.benefIdType.readOnly = true;
+		ObjForm.benefIdType.disabled = true;
+		ObjForm.RecvBusName.readOnly = true;
+		ObjForm.RecvBusName.disabled = true;
+		ObjForm.RecvBusRegNum.readOnly = true;
+		ObjForm.RecvBusRegNum.disabled = true;
+		ObjForm.RecvBusAddr.readOnly = true;
+		ObjForm.RecvBusAddr.disabled = true;
+		ObjForm.RecvBusCity.readOnly = true;
+		ObjForm.RecvBusCity.disabled = true;
+		ObjForm.RecvBusDtInc.readOnly = true;
+		ObjForm.RecvBusDtInc.disabled = true;
+		ObjForm.SendBusName.readOnly = true;
+		ObjForm.SendBusName.disabled = true;
+		ObjForm.SendBusRegNum.readOnly = true;
+		ObjForm.SendBusRegNum.disabled = true;
+		ObjForm.SendBusDtInc.readOnly = true;
+		ObjForm.SendBusDtInc.disabled = true;
+	}
+	else{
+		ObjForm.Submit.disabled = true;
+		ObjForm.Getquote.disabled = false;
+	}
+	///alert("onload");
+	ObjForm.imtrefnum.readOnly =true;
+	ObjForm.imtrefnum.disabled =true;
+	ObjForm.quoteamt.readOnly =true;
+	ObjForm.quoteamt.disabled =true;
+	ObjForm.Quotecrncy.readOnly =true;
+	ObjForm.Quotecrncy.disabled =true;
+	ObjForm.ChrgAmt.readOnly =true;		
+	ObjForm.ChrgAmt.disabled =true;	
+	initFocusHandler();
+
+	pre_ONLOAD('cimtm_det',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+		//ObjForm.Submit.disabled = true;
+		ObjForm.refCrncy.readOnly = true;
+		ObjForm.refCrncy.disabled = true;
+		ObjForm.rateCode.readOnly = true;
+		ObjForm.rate.readOnly = true;
+		ObjForm.treaRate.readOnly = true;
+		ObjForm.rateCode.disabled = true;
+		ObjForm.rate.disabled = true;
+		ObjForm.treaRate.disabled = true;
+		ObjForm.ChrgCrncy.readOnly =true;
+		ObjForm.ChrgCrncy.disabled =true;
+		ObjForm.ChrgrateCode.readOnly =true;
+		ObjForm.Chrgrate.readOnly =true;
+		ObjForm.ChrgrateCode.disabled =true;
+		ObjForm.Chrgrate.disabled =true;
+		ObjForm.ChrgAmt.readOnly =true;		
+		ObjForm.ChrgAmt.disabled =true;
+		ObjForm.benDOB_ui.readOnly =true;
+		ObjForm.benDOB_ui.disabled =true;
+		ObjForm.imtrefnum.readOnly =true;
+		ObjForm.imtrefnum.disabled =true;
+		ObjForm.quoteamt.readOnly =true;
+		ObjForm.quoteamt.disabled =true;
+		
+	if(funcCode=='P' || funcCode =='I' || funcCode =='X' ||funcCode =='i'){
+		//alert(funcCode);
+		ObjForm.benefCrncy.readOnly = true;
+		ObjForm.bankName.readOnly = true;
+		ObjForm.APIMode.readOnly = true;
+		ObjForm.Dracno.readOnly = true;
+		ObjForm.refCrncy.readOnly = true;
+		ObjForm.refAmt.readOnly = true;
+		ObjForm.rateCode.readOnly = true;
+		ObjForm.rate.readOnly = true;
+		ObjForm.treaRate.readOnly = true;
+		ObjForm.ChrgCrncy.readOnly =true;
+		ObjForm.ChrgAmt.readOnly =true;
+		ObjForm.ChrgrateCode.readOnly =true;
+		ObjForm.Chrgrate.readOnly =true;
+		ObjForm.benefFName.readOnly = true;
+		ObjForm.benefLName.readOnly = true;
+		ObjForm.benefAcctNum.readOnly = true;
+		ObjForm.benefMobileNum.readOnly = true;
+		ObjForm.bbankCode.readOnly = true;
+		//ObjForm.bbrCode.readOnly = true;
+		ObjForm.benefBnkTel.readOnly = true;
+		ObjForm.benefCntry.readOnly = true;
+		ObjForm.purOfRemit.readOnly = true;
+		ObjForm.benefState.readOnly = true;
+		ObjForm.BenefAddress1.readOnly = true;
+		ObjForm.BenefAddress2.readOnly = true;
+		ObjForm.BenefAddress3.readOnly = true;
+		ObjForm.PostalCode.readOnly = true;
+		ObjForm.benefCrncy.disabled = true;
+		ObjForm.bankName.disabled = true;
+		ObjForm.APIMode.disabled = true;
+		ObjForm.Dracno.disabled = true;
+		ObjForm.refCrncy.disabled = true;
+		ObjForm.refAmt.disabled = true;
+		ObjForm.rateCode.disabled = true;
+		ObjForm.rate.disabled = true;
+		ObjForm.treaRate.disabled = true;
+		ObjForm.ChrgCrncy.disabled =true;
+		ObjForm.ChrgAmt.disabled =true;
+		ObjForm.ChrgrateCode.disabled =true;
+		ObjForm.Chrgrate.disabled =true;
+		ObjForm.benefFName.disabled = true;
+		ObjForm.benefLName.disabled = true;
+		ObjForm.benefAcctNum.disabled = true;
+		ObjForm.benefMobileNum.disabled = true;
+		ObjForm.benefAcctNum.disabled = true;
+		ObjForm.bbankCode.disabled = true;
+		//ObjForm.bbrCode.disabled = true;
+		ObjForm.benefBnkTel.disabled = true;
+		ObjForm.benefCntry.disabled = true;
+		ObjForm.purOfRemit.disabled = true;
+		ObjForm.benefState.disabled = true;
+		ObjForm.BenefAddress1.disabled = true;
+		ObjForm.BenefAddress2.disabled = true;
+		ObjForm.BenefAddress3.disabled = true;
+		ObjForm.PostalCode.disabled = true;
+		ObjForm.imtrefnum.readOnly =true;
+		ObjForm.imtrefnum.disabled =true;
+		ObjForm.quoteamt.readOnly =true;
+		ObjForm.quoteamt.disabled =true;		
+
+		ObjForm.BrnIfscBsbn.readOnly = true;
+		ObjForm.BrnIfscBsbn.disabled = true;
+		ObjForm.benefAcctType.readOnly = true;
+		ObjForm.benefAcctType.disabled = true;
+		ObjForm.benefIdType.readOnly = true;
+		ObjForm.benefIdType.disabled = true;
+		ObjForm.RecvBusName.readOnly = true;
+		ObjForm.RecvBusName.disabled = true;
+		ObjForm.RecvBusRegNum.readOnly = true;
+		ObjForm.RecvBusRegNum.disabled = true;
+		ObjForm.RecvBusAddr.readOnly = true;
+		ObjForm.RecvBusAddr.disabled = true;
+		ObjForm.RecvBusCity.readOnly = true;
+		ObjForm.RecvBusCity.disabled = true;
+		ObjForm.RecvBusDtInc.readOnly = true;
+		ObjForm.RecvBusDtInc.disabled = true;
+		ObjForm.SendBusName.readOnly = true;
+		ObjForm.SendBusName.disabled = true;
+		ObjForm.SendBusRegNum.readOnly = true;
+		ObjForm.SendBusRegNum.disabled = true;
+		ObjForm.SendBusDtInc.readOnly = true;
+		ObjForm.SendBusDtInc.disabled = true;
+	}
+	if(funcCode =='I' || funcCode =='P' || funcCode =='X' || sReferralMode =='I' || sReferralMode =='S'){
+		fnDisableFormDataControls('P',ObjForm,0);
+	}
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+
+	post_ONLOAD('cimtm_det',this);
+}
+
+function fnCheckMandatoryFields(){
+	var ObjForm = document.forms[0];
+	return true;
+}
+function fnPopulateControlValues(){
+
+	var bnkName = "";
+	
+	if(funcCode =='I' || funcCode =='P' || funcCode =='X' || sReferralMode =='I'){
+		var inputNameValues = "PymntRefNum|"+PymntRefNum;
+	    var outputNames = "errorFlg|bankName";
+	    var scriptName = "ebcimtInq.scr";
+	    var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+	    var token = retVal.split("|");
+	    if(token != undefined){
+	    	bnkName = token[3];
+	    }
+	}
+
+
+	var ObjForm = document.forms[0];
+	ObjForm.bankName.value = bnkName;
+	ObjForm.benefCrncy.value = Quotecrncy;
+	ObjForm.APIMode.value = APIMode;
+	ObjForm.Dracno.value = Dracno;
+	ObjForm.drAcctNumEntityId.value = drAcctNumEntityId;
+	ObjForm.drAcctNumSolId.value = drAcctNumSolId;
+	ObjForm.drAcctNumCcy.value = drAcctNumCcy;
+	ObjForm.drAcctName.value = drAcctName;
+	ObjForm.refCrncy.value = refCrncy;
+	ObjForm.refAmt.value = refAmt;
+	ObjForm.rateCode.value = rateCode;
+	ObjForm.rate.value = rate;
+	ObjForm.treaRate.value = treaRate;
+	ObjForm.acctCrncy.value = acctCrncy;
+	ObjForm.acctCrncyAmt.value = acctCrncyAmt;
+	ObjForm.ChrgCrncy.value = ChrgCrncy;
+	ObjForm.ChrgAmt.value = ChrgAmt;
+	ObjForm.ChrgrateCode.value =ChrgrateCode;
+	ObjForm.Chrgrate.value =Chrgrate;
+	ObjForm.benefFName.value = benefFName;
+	ObjForm.benefLName.value = benefLName;
+	ObjForm.benefAcctNum.value = benefAcctNum;
+	ObjForm.benefMobileNum.value = benefMobileNum;
+	ObjForm.bbankCode.value = bbankCode;
+	//ObjForm.bbrCode.value = bbrCode;
+	ObjForm.benefBnkTel.value = benefBnkTel;
+	ObjForm.benefCntry.value = benefCntry;
+	ObjForm.purOfRemit.value = purOfRemit;
+	ObjForm.benefState.value = benefState;
+	ObjForm.BenefAddress1.value = BenefAddress1;
+	ObjForm.BenefAddress2.value = BenefAddress2;
+	ObjForm.BenefAddress3.value = BenefAddress3;
+	ObjForm.bicWallet.value = bicWallet;
+	ObjForm.custtrantype.value = custtrantype;
+	ObjForm.custtranmode.value = custtranmode;
+	ObjForm.PostalCode.value = PostalCode;
+	ObjForm.orgpin.value = orgpin;
+	ObjForm.orgregnum.value = orgregnum;
+	ObjForm.imtrefnum.value = imtrefnum;
+	ObjForm.quoteamt.value = quoteamt;
+	ObjForm.Quotecrncy.value = Quotecrncy;
+	ObjForm.benDOB_ui.value = benDOB;
+	ObjForm.benID.value = benID;	
+	//ObjForm.RecVerifyType.value = RecVerifyType;
+		ObjForm.BrnIfscBsbn.value = BrnIfscBsbn;
+		ObjForm.benefAcctType.value = benefAcctType;
+		ObjForm.benefIdType.value = benefIdType;
+		ObjForm.RecvBusName.value = RecvBusName;
+		ObjForm.RecvBusRegNum.value = RecvBusRegNum;
+		ObjForm.RecvBusAddr.value = RecvBusAddr;
+		ObjForm.RecvBusCity.value = RecvBusCity;
+		ObjForm.RecvBusDtInc.value = RecvBusDtInc;
+		ObjForm.SendBusName.value = SendBusName;
+		ObjForm.SendBusRegNum.value = SendBusRegNum;
+		ObjForm.SendBusDtInc.value = SendBusDtInc;
+}
+function cimtm_det_ONCLICK1(obj,p1){
+	var retVal = "";
+	if (preEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function cimtm_det_ONCLICK2(obj,p1){
+	var retVal = "";
+	if (preEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function cimtm_det_ONCLICK4(obj,p1){
+	var retVal = "";
+	var ObjForm = document.forms[0];
+
+	if ((retVal =  fnValidateData(p1)) == false) {
+		return false;
+	}
+	
+    if ((retVal = fnGetQuoteDetails()) == false) {
+        return false;
+    }
+		
+	ObjForm.Submit.disabled = false;
+	ObjForm.Getquote.disabled = true;
+	//return false;
+	if (preEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function cimtm_det_ONCLICK3(obj,p1){
+	var retVal = "";
+	if (preEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  doSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('cimtm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function fnshowAccountIdList(obj){
+
+        showAccountIdList(obj,null,null,'F');
+}
+function cimtm_det_ONBLUR7(obj){
+        var retVal = "";
+        if (preEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        if ((retVal = fnGetAmt()) == false) {
+                return false;
+        }
+        if (postEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function showChargeType(){
+    var inputNameValues = "type|C";
+    var outputNames  = "ChargeType|ChargeEvent|ChargeAmt|ChargeInd|ChargeCrncy|ChargeRmks";
+    var pageTitle    = "Charge Event Details";
+    var literalNames = "Event Id|Event Type|Charge Amount|Charge Ind|Charge Currency|Charge Remarks";
+    var scrName      = "ebcpluplChargePop.scr";
+    var hyperLnkCols = "1";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,true);
+}
+
+function showbicWallet(){
+	var ObjForm = document.forms[0];
+	var FuncCode = "AP";
+    var inputNameValues = "funcCode|"+FuncCode;
+    var outputNames  = "CountryCode|BicWalletCode";
+    var pageTitle    = "BicWallet Code Details";
+    var literalNames = "Country Code|Bic Wallet Code";
+    var scrName      = "ebcimtmBICWalletcode.scr";
+    var hyperLnkCols = "1";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+	var bicsplit = retVal.split("|");
+	var bicsplitval=bicsplit[1];
+	//alert(bicsplitval);
+	var ObjForm = document.forms[0];
+    ObjForm.bicWallet.value = bicsplitval;
+}
+
+function showbicBank(){
+	var ObjForm = document.forms[0];
+	if(fnIsNull(document.forms[0].benefCntry.value)){
+		alert("Select Country to display specific country list");
+		document.forms[0].benefCntry.focus();
+	}	
+	var FuncCode = "AP";
+	var tempCountry = ObjForm.benefCntry.value;
+    var inputNameValues = "funcCode|"+FuncCode+"|"+"tempCountry|"+tempCountry;
+    var outputNames  = "Paysysid|Identifier|BankCode|BranchCode|BankName|Bkey";
+    var pageTitle    = "Bank Bic Code Details";
+    var literalNames = "Paysys Id|Identifier|Bank Code|Branch Code|Bank Name|Bkey";
+    var scrName      = "ebcimtmBICBankcode.scr";
+    var hyperLnkCols = "2";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+	var bicsplit = retVal.split("|");
+	var bicsplitval=bicsplit[1];
+	//alert(bicsplitval);
+	var ObjForm = document.forms[0];
+    ObjForm.bbankCode.value = bicsplitval;
+}
+
+function showPurOfPayment(){
+	var ObjForm = document.forms[0];
+	var FuncCode = "AP";
+    var inputNameValues = "funcCode|"+FuncCode;
+    //var outputNames  = "S_No|Purpose_of_Remittance";
+    var outputNames  = "PurpId|Purpose_of_Remittance";
+    var pageTitle    = "Purpose of Payment Code Details";
+    var literalNames = "Purpose ID|Purpose of Payment";
+    var scrName      = "ebcimtmPurpOfPymnt.scr";
+    var hyperLnkCols = "1";
+    var retVal       = fnExecuteScriptForList(inputNameValues,outputNames,scrName,pageTitle,literalNames,hyperLnkCols,false);
+	var purpaysplit = retVal.split("|");
+	var purpaysplitval=purpaysplit[1];
+	//alert(purpaysplitval);
+	var ObjForm = document.forms[0];
+    ObjForm.purOfRemit.value = purpaysplitval;
+}
+
+function cimtm_det_ONCHANGE10(obj){
+	var retVal = "";
+        if (pre_ONCHANGE('cimtm_det',obj) == false) {
+                return false;
+        }    
+        if ((retVal = fnFetchDraweeBranchDetails()) == false) {
+                return false;
+        }                   
+	if (post_ONCHANGE('cimtm_det',obj) == false) {
+                return false;
+        }
+	return (retVal == undefined) ? true : retVal;
+}
+function fnDisableFormDataControls(b, f, d) {
+    ADD = "A";
+    POST = "P";
+    COPY = "C";
+    MODIFY = "M";
+    VERIFY = "V";
+    INQUIRY = "I";
+    DELETE = "D";
+    UNDELETE = "U";
+    CANCEL = "X";
+    REVERSAL = "E";
+    CLOSE = "O";
+    if (b == VERIFY || b == INQUIRY || b == DELETE || b == UNDELETE || b == CANCEL || b == REVERSAL || b == CLOSE || b == POST) {
+        alert(b);
+        var c = f.elements;
+        var a = c.length;
+        var e = arguments.length;
+        if (Number(d) > 0) {
+            disableHyperLnks(Number(d))
+        } else {
+            if (Number(d) == 0) {
+                hideAnchors()
+            }
+        }
+        for (i = 0; i < a; i++) {
+            if ((c[i].type == "text") || (c[i].type == "textarea")) {
+                c[i].readOnly = true;
+                if (c[i].getAttribute("hotKeyId") == "LowLimit") {
+                    c[i].readOnly = false
+                }
+            } else {
+                if (c[i].type == "select-one") {
+                    c[i].disabled = true
+                } else {
+                    if (c[i].type == "checkbox") {
+                        c[i].disabled = true;
+                        c[i].setAttribute("fds", "Y")
+                    } else {
+                        if (c[i].type == "radio") {
+                            c[i].disabled = true
+                        }
+                    }
+                }
+            }
+            if (f.menuName != null && f.menuName != undefined) {
+                f.menuName.readOnly = false
+            }
+        }
+        if ((f.Validate != undefined) && (f.Validate != null)) {
+            f.Validate.disabled = true
+        }
+        if ((f.Cancel != undefined) && (f.Cancel != null)) {
+            f.Cancel.disabled = true
+        }
+    }
+    if (b != ADD && b != MODIFY && b != COPY) {
+        if ((f.AddNew != undefined) && (f.AddNew != null)) {
+            f.AddNew.disabled = true
+        }
+        if ((f.AddNewPage != undefined) && (f.AddNewPage != null)) {
+            f.AddNewPage.disabled = true
+        }
+    }
+}
+function cimtm_det_ONCHANGE1(obj){
+	//alert("in");
+        var retVal = "";
+        if (preEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        if ((retVal = fnGetDrAcctDetails()) == false) {
+                return false;
+        }
+        if (postEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function cimtm_ONCHANGE7(obj){
+        //alert("in");
+        var retVal = "";
+        if (preEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        if ((retVal = fnGetAmt()) == false) {
+                return false;
+        }
+        if (postEventCall('cimtm_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function fnGetDrAcctDetails(){
+        var ObjForm = document.forms[0];
+        var drAcctNum = ObjForm.Dracno.value;
+        if(!fnIsNull(drAcctNum)){
+                fnGetAcctDetails1();
+        }else{
+                fnClearAcctDetails1();
+	}
+        return true;
+}
+function fnGetAcctDetails1(){
+        var ObjForm = document.forms[0];
+        fnEnableAcctDetails1();
+        var drAcctNum = ObjForm.Dracno.value;
+		var inputNameValues = "acctNum|"+drAcctNum;
+        var outputNames = "errorFlg|errorMsg|acctNumEntityId|acctNumSolId|acctNumCcy|acctName|acctNum|refCrncy|rateCode|rate|ChrgCrncy|ChrgrateCode|Chrgrate|treaRate|chargamt";
+        var scriptName = "ebcimtmAcctGet.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+            var errorFlg = token[1];
+            var errorMsg = token[3];
+            var drAcctNumEntityId = token[5];
+            var drAcctNumSolId = token[7];
+            var drAcctNumCcy = token[9];
+            var drAcctName = token[11];
+            var drAcctNum = token[13];
+            var refCrncy = token[15];
+            var rateCode = token[17];
+            var rate = token[19];
+            var ChrgCrncy = token[21];
+            var ChrgrateCode = token[23];
+            var Chrgrate = token[25];
+            var treaRate = token[27];
+            var chargamt = token[29];
+            if(errorFlg == "Y"){
+                alert(errorMsg);
+                fnClearAcctDetails1();
+                setFieldFocus(ObjForm.Dracno);
+                return false;
+            }else{
+                ObjForm.drAcctNumEntityId.value = drAcctNumEntityId;
+                ObjForm.drAcctNumSolId.value = drAcctNumSolId;
+                ObjForm.drAcctNumCcy.value = drAcctNumCcy;
+                ObjForm.drAcctName.value = drAcctName;
+				ObjForm.Dracno.value = drAcctNum;
+                ObjForm.refCrncy.value = refCrncy;
+                ObjForm.rateCode.value = rateCode;
+                ObjForm.rate.value = rate;
+                ObjForm.ChrgCrncy.value = ChrgCrncy;
+                ObjForm.ChrgrateCode.value = ChrgrateCode;
+                ObjForm.Chrgrate.value = Chrgrate;
+                ObjForm.treaRate.value = treaRate;
+                ObjForm.acctCrncy.value = "KES";
+                ObjForm.ChrgAmt.value = chargamt;
+
+                }
+        }
+        return true;
+}
+
+function fnGetQuoteDetails(){
+        var ObjForm = document.forms[0];
+        //fnEnableAcctDetails1();
+        //var drAcctNum = ObjForm.Dracno.value;
+        var drAcctNum 		= ObjForm.Dracno.value;
+        var refCrncy  		= ObjForm.refCrncy.value;
+        var refAmt    		= ObjForm.refAmt.value;
+        var rateCode  		= ObjForm.rateCode.value;
+        var treaRefNum		= ObjForm.treaRefNum.value;
+        var ChrgCrncy 		= ObjForm.ChrgCrncy.value;
+        var ChrgAmt		 	= ObjForm.ChrgAmt.value;
+        var ChrgrateCode	= ObjForm.ChrgrateCode.value;
+        var custtranmode	= ObjForm.custtranmode.value;
+        var custtrantype	= ObjForm.custtrantype.value;
+        var bicWallet		= ObjForm.bicWallet.value;
+        var bbankCode 		= ObjForm.bbankCode.value;
+        //var bbrCode 		= ObjForm.bbrCode.value;
+        var orgpin 			= ObjForm.orgpin.value;
+        var orgregnum 		= ObjForm.orgregnum.value;
+        var benefFName 		= ObjForm.benefFName.value;
+        var benefLName 		= ObjForm.benefLName.value;
+        var benefAcctNum 	= ObjForm.benefAcctNum.value;
+        var benefMobileNum  = ObjForm.benefMobileNum.value;
+        var benefBnkTel 	= ObjForm.benefBnkTel.value;
+        var benefCntry	 	= ObjForm.benefCntry.value;
+        var benDOB_ui 		= ObjForm.benDOB_ui.value;
+        var benID 			= ObjForm.benID.value;
+        var purOfRemit 		= ObjForm.purOfRemit.value;
+        var benefState 		= ObjForm.benefState.value;
+        var BenefAddress1 	= ObjForm.BenefAddress1.value;
+        var BenefAddress2 	= ObjForm.BenefAddress2.value;
+        var BenefAddress3 	= ObjForm.BenefAddress3.value;
+        var PostalCode 		= ObjForm.PostalCode.value;	
+	var BrnIfscBsbn = ObjForm.BrnIfscBsbn.value;
+	var benefAcctType = ObjForm.benefAcctType.value;
+	var benefIdType = ObjForm.benefIdType.value;
+	var RecvBusName = ObjForm.RecvBusName.value;
+	//var RecvBusRegNum= ObjForm.BrnIfscBsbn.value;
+	var RecvBusRegNum= ObjForm.RecvBusRegNum.value;
+	var RecvBusAddr = ObjForm.RecvBusAddr.value;
+	var RecvBusCity = ObjForm.RecvBusCity.value;
+	var RecvBusDtInc = ObjForm.RecvBusDtInc_ui.value; 
+	var SendBusName = ObjForm.SendBusName.value;
+	var SendBusRegNum = ObjForm.SendBusRegNum.value;
+	var SendBusDtInc = ObjForm.SendBusDtInc_ui.value; 
+	var APIMode = ObjForm.APIMode.value; 
+	var benefCrncy = ObjForm.benefCrncy.value;
+	var bankName = ObjForm.bankName.value;
+		//alert(funcCode);
+		//var inputNameValues = "acctNum|"+drAcctNum;
+		var inputNameValues = "funcCode|"+funcCode+"|"+"drAcctNum|"+drAcctNum+"|"+"refCrncy|"+refCrncy+"|"+"refAmt|"+refAmt+"|"+"rateCode|"+rateCode+"|"+"treaRefNum|"+treaRefNum+"|"+"ChrgCrncy|"+ChrgCrncy+"|"+"ChrgAmt|"+ChrgAmt+"|"+"ChrgrateCode|"+ChrgrateCode+"|"+"custtranmode|"+custtranmode+"|"+"custtrantype|"+custtrantype+"|"+"bicWallet|"+bicWallet+"|"+"bbankCode|"+bbankCode+"|"+"orgpin|"+orgpin+"|"+"orgregnum|"+orgregnum+"|"+"benefFName|"+benefFName+"|"+"benefLName|"+benefLName+"|"+"benefAcctNum|"+benefAcctNum+"|"+"benefMobileNum|"+benefMobileNum+"|"+"benefBnkTel|"+benefBnkTel+"|"+"benefCntry|"+benefCntry+"|"+"benDOB_ui|"+benDOB_ui+"|"+"benID|"+benID+"|"+"purOfRemit|"+purOfRemit+"|"+"benefState|"+benefState+"|"+"BenefAddress1|"+BenefAddress1+"|"+"BenefAddress2|"+BenefAddress2+"|"+"BenefAddress3|"+BenefAddress3+"|"+"PostalCode|"+PostalCode+"|" +"BrnIfscBsbn|"+BrnIfscBsbn+"|"+"benefAcctType|"+benefAcctType+"|"+"benefIdType|"+benefIdType+"|"+"RecvBusName|"+RecvBusName+"|"+"RecvBusRegNum|"+RecvBusRegNum+"|"+"RecvBusAddr|"+RecvBusAddr+"|"+"RecvBusCity|"+RecvBusCity+"|"+"RecvBusDtInc|"+RecvBusDtInc+"|"+"SendBusName|"+SendBusName+"|"+"SendBusRegNum|"+SendBusRegNum+"|"+"SendBusDtInc|"+SendBusDtInc+"|"+"APIMode|"+APIMode+"|"+"benefCrncy|"+benefCrncy+"|"+"bankName|"+bankName;
+        //var outputNames = "errorFlg|errorMsg|acctNumEntityId|acctNumSolId|acctNumCcy|acctName|acctNum|refCrncy|rateCode|rate|ChrgCrncy|ChrgrateCode|Chrgrate|treaRate|chargamt";
+		var outputNames = "errorFlg|errorMsg|acctNumEntityId|acctNumSolId|acctNumCcy|acctName|acctNum|refCrncy|rateCode|rate|ChrgCrncy|ChrgrateCode|Chrgrate|treaRate|chargamt|imtrefnum|benconvertamt|BenConvertedcncy";		
+        var scriptName = "ebcimtmGetQuoteCall.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+		alert("token:"+token);
+        if(token != undefined){
+            var errorFlg = token[1];
+            var errorMsg = token[3];
+            var drAcctNumEntityId = token[5];
+            var drAcctNumSolId = token[7];
+            var drAcctNumCcy = token[9];
+            var drAcctName = token[11];
+            var drAcctNum = token[13];
+            var refCrncy = token[15];
+            var rateCode = token[17];
+            var rate = token[19];
+            var ChrgCrncy = token[21];
+            var ChrgrateCode = token[23];
+            var Chrgrate = token[25];
+            var treaRate = token[27];
+            var chargamt = token[29];
+            var quoterefnum = token[31];
+            var quoteconvtamt = token[33];			
+            var BenConvertedcncy = token[35];			
+            if(errorFlg == "Y"){
+                alert(errorMsg);
+                //fnClearAcctDetails1();
+                //setFieldFocus(ObjForm.Dracno);
+                ObjForm.imtrefnum.value = "";
+                ObjForm.quoteamt.value = "";				
+                ObjForm.Quotecrncy.value = "";				
+                return false;
+            }else{
+			var iChrgCrncy 		= ObjForm.ChrgCrncy.value;
+			var iChrgAmt		 	= ObjForm.ChrgAmt.value;
+				//alert("Your Charge Amount is: " + chargamt +  " " + ChrgCrncy) ;
+				alert("Your Charge Amount is: " + iChrgAmt +  " " + iChrgCrncy) ;
+                ObjForm.drAcctNumEntityId.value = drAcctNumEntityId;
+                ObjForm.drAcctNumSolId.value = drAcctNumSolId;
+                ObjForm.drAcctNumCcy.value = drAcctNumCcy;
+                ObjForm.drAcctName.value = drAcctName;
+				ObjForm.Dracno.value = drAcctNum;
+                ObjForm.refCrncy.value = refCrncy;
+                ObjForm.rateCode.value = rateCode;
+                ObjForm.rate.value = rate;
+                //ObjForm.ChrgCrncy.value = ChrgCrncy;
+                ObjForm.ChrgrateCode.value = ChrgrateCode;
+                ObjForm.Chrgrate.value = Chrgrate;
+                ObjForm.treaRate.value = treaRate;
+                ObjForm.acctCrncy.value = "KES";
+                //ObjForm.ChrgAmt.value = chargamt;
+                ObjForm.imtrefnum.value = quoterefnum;
+                ObjForm.quoteamt.value = quoteconvtamt;
+                ObjForm.Quotecrncy.value = BenConvertedcncy;
+                }
+        }
+        return true;
+}		
+
+function fnClearAcctDetails1(){
+        var ObjForm = document.forms[0];
+        ObjForm.drAcctNumEntityId.value = "";
+        ObjForm.drAcctNumSolId.value = "";
+        ObjForm.drAcctNumCcy.value = "";
+        ObjForm.drAcctName.value = "";
+        ObjForm.refCrncy.value = "";
+		ObjForm.rateCode.value = "";
+		ObjForm.rate.value = "";
+		ObjForm.ChrgCrncy.value = "";
+		ObjForm.ChrgrateCode.value = "";
+		ObjForm.Chrgrate.value = "";
+		ObjForm.treaRate.value = "";
+		ObjForm.acctCrncy.value = ""; 
+
+}
+function fnEnableAcctDetails1(){
+        var ObjForm = document.forms[0];
+        ObjForm.drAcctNumEntityId.disabled = false;
+        ObjForm.drAcctNumSolId.disabled = false;
+        ObjForm.drAcctNumCcy.disabled = false;
+        ObjForm.drAcctName.disabled = false;
+        ObjForm.refCrncy.disabled = true;
+		ObjForm.rateCode.disabled = true;
+		ObjForm.rate.disabled = true;
+		ObjForm.ChrgCrncy.disabled = true;
+		ObjForm.ChrgrateCode.disabled = true;
+		ObjForm.Chrgrate.disabled = true;
+		ObjForm.treaRate.disabled = true;
+}
+function fnDisableAcctDetails1(){
+        var ObjForm = document.forms[0];
+        ObjForm.drAcctNumEntityId.disabled = true;
+        ObjForm.drAcctNumSolId.disabled = true;
+        ObjForm.drAcctNumCcy.disabled = true;
+        ObjForm.drAcctName.disabled = true;
+        ObjForm.refCrncy.disabled = true;
+		ObjForm.rateCode.disabled = true;
+		ObjForm.rate.disabled = true;
+		ObjForm.ChrgCrncy.disabled = true;
+		ObjForm.ChrgrateCode.disabled = true;
+		ObjForm.Chrgrate.disabled = true;
+		ObjForm.treaRate.disabled = true;
+}
+function getAcctIdList1() {
+        var ObjForm = document.forms[0];
+        showAccountIdList(ObjForm.Dracno,null,null,'F');
+        var drAcctNum = ObjForm.Dracno.value;
+        if(!fnIsNull(drAcctNum)){
+                fnGetAcctDetails1();
+        }
+}
+function fnGetAmt(){
+var ObjForm = document.forms[0];
+	var ChrgAmt = '0';
+	var refAmt = '0';
+	var rateCode = ObjForm.rateCode.value;
+    var rate = ObjForm.rate.value;
+    var chrgCnrcy = ObjForm.ChrgCrncy.value;
+    var chrgRateCode = ObjForm.ChrgrateCode.value;
+    var chrgRate = ObjForm.Chrgrate.value;
+    //var ChrgAmt = ObjForm.ChrgAmt.value;
+    var refAmt = ObjForm.refAmt.value;
+	if((!fnIsNull(ChrgAmt)) && (!fnIsNull(refAmt))){
+		var totrefAmt = parseFloat(refAmt) + parseFloat(ChrgAmt);
+	}else if (!fnIsNull(ChrgAmt)){
+		var totrefAmt = parseFloat(ChrgAmt);
+	}else if (!fnIsNull(refAmt)){
+		var totrefAmt = parseFloat(refAmt);
+	}else{
+		var totrefAmt = "0"; 
+	}
+	var totAmt = parseFloat(totrefAmt) * rate ;
+	ObjForm.acctCrncyAmt.value = totAmt; 
+	if(totAmt<=50000){
+	//ObjForm.ChrgAmt.value = "300"; 
+	ObjForm.ChrgAmt.value = "500"; 
+	}else if((totAmt>=50001) && (totAmt<=100000)){
+	//ObjForm.ChrgAmt.value = "500"; 
+	ObjForm.ChrgAmt.value = "700"; 
+	}else if(totAmt>=100001){
+	ObjForm.ChrgAmt.value = "1000"; 
+	}else{
+	ObjForm.ChrgAmt.value = "500"; 
+	}
+	
+}
+function ValidatePostalcode()
+{
+var ObjForm = document.forms[0];
+if(isNaN(ObjForm.PostalCode.value))
+{
+alert("Non Numeric Not Allowed.");
+ObjForm.PostalCode.value ="";
+ObjForm.PostalCode.focus();
+}
+}
+
+
+
+
+
+

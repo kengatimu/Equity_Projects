@@ -1,0 +1,232 @@
+trigger:
+  branches:
+    include:
+      - release
+
+  paths:
+    include:
+      - crm/*
+
+variables:
+  vmImageName: 'devops-ubuntu'
+
+stages:
+  - stage: BuildCRM
+    displayName: CRM UAT BUILD
+
+    jobs:
+      - job: Build
+        displayName: 'CRM UAT Build Stage'
+
+        pool:
+          name: $(vmImageName)
+
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          # ------------------------------------------------------------------
+          # STEP 1: Determine Deployment Tag
+          # Checks the triggering branch and applies the correct CI build tag
+          # so downstream CD stages know which environment to target.
+          # The release branch maps to UAT — no other branches are expected here.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Determine Deployment Tag'
+            inputs:
+              script: |
+                echo "Evaluating branch for deployment tagging..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                BRANCH="$(Build.SourceBranch)"
+                echo "Detected branch: $BRANCH"
+
+                if [[ "$BRANCH" == "refs/heads/release" ]]; then
+                    echo "Branch is RELEASE: UAT deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CRM-UAT
+
+                else
+                    echo "Branch not mapped for deployment. Skipping tagging."
+                fi
+
+          # ------------------------------------------------------------------
+          # STEP 2: Check Modified Files
+          # Runs check-modified-files-uat.sh to diff the latest commit against
+          # the release branch baseline. Produces:
+          #   - deployment-manifest.txt  (list of changed J2EE files)
+          #   - deployment-audit.txt     (human-readable change summary)
+          #   - metadata.json            (per-server routing flags)
+          # ------------------------------------------------------------------
+          - task: Bash@3
+            displayName: 'Check Modified Files'
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files-uat.sh
+              arguments: '--app crm'
+
+          # ------------------------------------------------------------------
+          # STEP 3: Determine Routing Tags
+          # Reads the 5 per-server deployment flags written to metadata.json by
+          # check-modified-files-uat.sh and adds the corresponding routing tags:
+          #
+          #   deploy_group : J2EE-group  (Group server (EQUAT): banks 11, 54, 99)
+          #   deploy_43    : J2EE-43     (DRC dedicated server)
+          #   deploy_50    : J2EE-50     (Rwanda dedicated server)
+          #   deploy_55    : J2EE-55     (Tanzania dedicated server — EQTZPPROD)
+          #   deploy_56    : J2EE-56     (Uganda dedicated server)
+          #
+          # Each tag gates a separate CD stage so only the affected servers are
+          # updated. If no flags are true the build is a no-op for deployment.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Determine Routing Tags'
+            inputs:
+              script: |
+                echo "Reading deployment routing flags from metadata.json..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                # Parse all 5 per-server flags — grep the field name, extract true or false
+                DEPLOY_GROUP=$(grep '"deploy_group"' metadata.json | grep -o 'true\|false')
+                DEPLOY_43=$(grep '"deploy_43"'    metadata.json | grep -o 'true\|false')
+                DEPLOY_50=$(grep '"deploy_50"'    metadata.json | grep -o 'true\|false')
+                DEPLOY_55=$(grep '"deploy_55"'    metadata.json | grep -o 'true\|false')
+                DEPLOY_56=$(grep '"deploy_56"'    metadata.json | grep -o 'true\|false')
+
+                echo "deploy_group (EQUAT — banks 11, 54, 99) : $DEPLOY_GROUP"
+                echo "deploy_43    (DRC)                       : $DEPLOY_43"
+                echo "deploy_50    (Rwanda)                    : $DEPLOY_50"
+                echo "deploy_55    (Tanzania — EQTZPPROD)      : $DEPLOY_55"
+                echo "deploy_56    (Uganda)                    : $DEPLOY_56"
+                echo
+
+                TAGS_ADDED=0
+
+                if [ "$DEPLOY_GROUP" == "true" ]; then
+                    echo "Group server files detected — adding routing tag: J2EE-group"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-group"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_43" == "true" ]; then
+                    echo "DRC server files detected — adding routing tag: J2EE-43"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-43"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_50" == "true" ]; then
+                    echo "Rwanda server files detected — adding routing tag: J2EE-50"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-50"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_55" == "true" ]; then
+                    echo "Tanzania server files detected — adding routing tag: J2EE-55"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-55"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$DEPLOY_56" == "true" ]; then
+                    echo "Uganda server files detected — adding routing tag: J2EE-56"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-56"
+                    TAGS_ADDED=$((TAGS_ADDED + 1))
+                fi
+
+                if [ "$TAGS_ADDED" -eq 0 ]; then
+                    echo "No deployment targets detected — no routing tags added."
+                else
+                    echo "$TAGS_ADDED routing tag(s) added."
+                fi
+
+          # ------------------------------------------------------------------
+          # STEP 4: Copy Files To Staging Directory
+          # Collects only the deployment artefacts (changed file trees +
+          # manifest/audit/metadata). Source control files and pipeline
+          # definitions are intentionally excluded from the archive.
+          # ------------------------------------------------------------------
+          - task: CopyFiles@2
+            displayName: 'Copy Files To Staging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/newFiles/**
+                **/modifiedFiles/**
+                **/deletedFiles/**
+                **/deployment-manifest.txt
+                **/deployment-audit.txt
+                **/metadata.json
+                !**/*.git*
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          # ------------------------------------------------------------------
+          # STEP 5: Archive CRM Files
+          # Tarballs the staging directory so it can be transferred as a single
+          # file to the Finacle UAT server via SCP in the CD stage.
+          # The archive is also copied back into the staging directory so it is
+          # included in the published artefact.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Archive CRM Files'
+            inputs:
+              script: |
+                echo "Archiving CRM UAT files from staging directory..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                tar -vzcf $(Build.SourcesDirectory)/j2ee-scripts.tar.gz .
+
+                echo "Copying archive into staging directory..."
+                cp -r $(Build.SourcesDirectory)/j2ee-scripts.tar.gz $(Build.ArtifactStagingDirectory)/
+
+          # ------------------------------------------------------------------
+          # STEP 6: List Items Of The Archive
+          # Prints every entry inside j2ee-scripts.tar.gz for build traceability.
+          # Makes it easy to confirm exactly what will land on the UAT server.
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'List Items Of The Archive'
+            inputs:
+              script: |
+                cd $(Build.ArtifactStagingDirectory)
+                echo "Listing contents of j2ee-scripts.tar.gz"
+                tar -ztvf j2ee-scripts.tar.gz
+
+          # ------------------------------------------------------------------
+          # STEP 7: Create Publishing Directory
+          # Assembles the final publish package:
+          #   - j2ee-scripts.tar.gz  (the payload archive)
+          #   - deploy-j2ee.sh       (deploy-j2ee-uat.sh renamed to the standard
+          #                           name that suScript.sh calls)
+          #   - suScript.sh          (SSH entry point invoked by the CD agent)
+          # ------------------------------------------------------------------
+          - task: CmdLine@2
+            displayName: 'Create Publishing Directory'
+            inputs:
+              script: |
+                echo "Creating publish directory for CRM UAT..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                mkdir -v publishCRMDir
+
+                echo "Copying archive to publish directory..."
+                cp -vr j2ee-scripts.tar.gz publishCRMDir/
+
+                echo "Copying deployment scripts..."
+                cp -vr $(Build.SourcesDirectory)/deploy-j2ee-uat.sh publishCRMDir/deploy-j2ee-uat.sh
+                cp -vr $(Build.SourcesDirectory)/suScript.sh publishCRMDir/
+
+          # ------------------------------------------------------------------
+          # STEP 8: Publish CRM UAT Artifacts
+          # Publishes the assembled package as the crm_drop artefact.
+          # The CD pipeline picks this up and SCP-transfers it to each UAT
+          # server that received a J2EE routing tag in STEP 3.
+          # ------------------------------------------------------------------
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish CRM UAT Artifacts'
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)/publishCRMDir
+              ArtifactName: crm_drop
+              publishLocation: Container

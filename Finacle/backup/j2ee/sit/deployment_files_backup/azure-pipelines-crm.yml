@@ -1,0 +1,149 @@
+trigger:
+  branches:
+    include:
+      - develop
+      - release
+      - main
+
+  paths:
+    include:
+      - crm/*
+
+variables:
+  vmImageName: 'devops-ubuntu'
+
+stages:
+  - stage: BuildCRM
+    displayName: CRM BUILD
+
+    jobs:
+      - job: Build
+        displayName: 'CRM Build Stage'
+
+        pool:
+          name: $(vmImageName)
+
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          - task: CmdLine@2
+            displayName: 'Determine Deployment Tag'
+            inputs:
+              script: |
+                echo "Evaluating branch for deployment tagging..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                BRANCH="$(Build.SourceBranch)"
+                echo "Detected branch: $BRANCH"
+
+                if [[ "$BRANCH" == "refs/heads/develop" ]]; then
+                    echo "Branch is DEVELOP: SIT deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CRM-SIT
+
+                elif [[ "$BRANCH" == "refs/heads/release" ]]; then
+                    echo "Branch is RELEASE: UAT deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CRM-UAT
+
+                elif [[ "$BRANCH" == "refs/heads/main" ]]; then
+                    echo "Branch is MAIN: PROD deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CRM-PROD
+
+                else
+                    echo "Branch not mapped for deployment. Skipping tagging."
+                fi
+
+          - task: Bash@3
+            displayName: 'Check Modified Files'
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files.sh
+
+          - task: CmdLine@2
+            displayName: 'Determine Routing Tags'
+            inputs:
+              script: |
+                echo "Reading deployment routing flags from metadata.json..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                # Parse boolean flag — grep the field name, extract true or false
+                DEPLOY_DEDICATED=$(grep '"deploy_dedicated_servers"' metadata.json | grep -o 'true\|false')
+
+                # Parse dedicated bank IDs array — strip brackets, quotes, spaces → space-separated IDs
+                DEDICATED_BANK_IDS=$(sed -n 's/.*"dedicated_bank_ids"[[:space:]]*:[[:space:]]*\[\(.*\)\].*/\1/p' \
+                    metadata.json | tr -d '" ' | tr ',' ' ')
+
+                echo "deploy_dedicated_servers: $DEPLOY_DEDICATED"
+                echo "dedicated_bank_ids      : ${DEDICATED_BANK_IDS:-none}"
+                echo
+
+                if [ "$DEPLOY_DEDICATED" == "true" ]; then
+                    for bank_id in $DEDICATED_BANK_IDS; do
+                        echo "Bank $bank_id affected — adding tag: J2EE-$bank_id"
+                        az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-$bank_id"
+                    done
+                else
+                    echo "No deployment targets detected — no routing tags added."
+                fi
+
+          - task: CopyFiles@2
+            displayName: 'Copy Files To Staging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/newFiles/**
+                **/modifiedFiles/**
+                **/deletedFiles/**
+                **/deployment-manifest.txt
+                **/deployment-audit.txt
+                **/metadata.json
+                !**/*.git*
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: CmdLine@2
+            displayName: 'Archive CRM Files'
+            inputs:
+              script: |
+                echo "Archiving CRM files from staging directory..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                tar -vzcf $(Build.SourcesDirectory)/j2ee-scripts.tar.gz .
+
+                echo "Copying archive into staging directory..."
+                cp -r $(Build.SourcesDirectory)/j2ee-scripts.tar.gz $(Build.ArtifactStagingDirectory)/
+
+          - task: CmdLine@2
+            displayName: 'List Items Of The Archive'
+            inputs:
+              script: |
+                cd $(Build.ArtifactStagingDirectory)
+                echo "Listing contents of j2ee-scripts.tar.gz"
+                tar -ztvf j2ee-scripts.tar.gz
+
+          - task: CmdLine@2
+            displayName: 'Create Publishing Directory'
+            inputs:
+              script: |
+                echo "Creating publish directory for CRM..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                mkdir -v publishCRMDir
+
+                echo "Copying archive to publish directory..."
+                cp -vr j2ee-scripts.tar.gz publishCRMDir/
+
+                echo "Copying deployment scripts..."
+                cp -vr $(Build.SourcesDirectory)/deploy-j2ee.sh publishCRMDir/
+                cp -vr $(Build.SourcesDirectory)/suScript.sh publishCRMDir/
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish CRM Artifacts'
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)/publishCRMDir
+              ArtifactName: crm_drop
+              publishLocation: Container

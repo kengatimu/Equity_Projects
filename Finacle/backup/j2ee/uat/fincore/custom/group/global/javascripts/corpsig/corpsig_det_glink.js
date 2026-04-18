@@ -1,0 +1,243 @@
+function printBlock()
+{
+	writeCustomHeader("corpsig_det");
+	with (document){
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">' + jspResArr.get("FLT031869") + '</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfielddisplaylabel"> </td>');
+	write('<td class="columnwidth">&nbsp; </td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfielddisplaylabel"> </td>');
+	write('</tr>');
+	write('</table>');
+	write('<br />');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+	write('<a href="javascript:showHelpFile(\'default_help.htm\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" width="17" height="17" vspace="1" border="0" />');
+	write('</a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT031872") + '</td>');
+	write('<td class="textfield"></td>');
+	write('<td class="columnwidth"></td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfield"> </td>');
+	write('</tr>');
+
+        /*Text Field for Upload Entry*/
+        write('<tr>');
+	write('<tr>');
+        write('<td class="textlabel">' + jspResArr.get("FLT026331") + '<font color=red size=2>*</font></td>');
+        write('<td class="textfield"><input type="file" name="' + subGroupName + '.fileName" id="fileName" ' + catodappProps.get("fileName_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="100" /></td>');
+	write('<td>&nbsp;</td>');
+        write('<td>&nbsp;</td>');
+        write('<td>&nbsp;</td>');
+        write('</tr>');
+        write('</tr>');
+
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px"> </td>');
+	write('<td class="textfield"> </td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfield"> </td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+        with (document) {
+        if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+        write('<div align="left" class="ctable">');
+        if (sReferralMode == 'S'){
+        write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit">');
+        }
+        writeRefFooter();
+        write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT001721")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+        write('</div>');
+        }else{
+        if(funcCode !='I'){
+        write('<div class="ctable">');
+        write('<input id="upload" name="Upload" type="button" class="button"    onClick="javascript:return corpsig_det_ONCLICK1(this,this);"" value="Upload">');
+        write('<input id="Cancel" name="Cancel" type="button" class="button" value="' + jspResArr.get("FLT001721") + '" onClick="javascript:return corpsig_det_ONCLICK2(this,this.id);"" hotKeyId="Cancel">');
+        }else{
+        write('<div class="ctable">');
+        write('<input class="button" type="button" id="Back" value="'+jspResArr.get("FLT026526")+ '" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+        }
+        writeFooter();
+        write('</div>');
+        }
+        } //End with()
+}//End function
+
+function fnOnLoad() {
+	var ObjForm = document.forms[0];
+	pre_ONLOAD('corpsig_det', this);
+	var funcName = "this." + "locfnOnLoad";
+	if (eval(funcName) != undefined) {
+		eval(funcName).call(this);
+	}
+	fnPopulateControlValues();
+	if (funcCode == 'V' || funcCode == 'I' || funcCode == 'D' || funcCode == 'U' || funcCode == 'X' || sReferralMode == 'I' || sReferralMode == 'S') {
+		fnDisableFormDataControls(ObjForm);
+	}
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if ((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")) {
+		checkCustErrExecNextStep(Message);
+	}
+	post_ONLOAD('corpsig_det', this);
+}
+
+function fnCheckMandatoryFields() {
+	var ObjForm = document.forms[0];
+	return true;
+}
+
+function fnPopulateControlValues() {
+	var ObjForm = document.forms[0];
+}
+
+function corpsig_det_ONCLICK1(obj, p1) {
+	var retVal = "";
+	if (document.forms[0].fileName.value == "") {
+		alert("Please Enter the File Name.");
+		document.forms[0].period.focus();
+		return false;
+	} else if (document.forms[0].fileName.value != "") {
+		var file = document.getElementById("fileName").value;
+		if (!(file == "C\:\\SVS\\tools\\svsuplfile.txt")) {
+			alert("path and file should be C\:\\SVS\\tools\\svsuplfile.txt");
+			return false;
+		}
+		var index = file.lastIndexOf(".");
+		var ext = file.substring(index + 1);
+		ext = ext.toUpperCase();
+		if (ext != "TXT") {
+			alert("Please enter only txt extension file for uploading");
+			return false;
+		}
+	}
+	fnUpload(p1);
+	if (preEventCall('corpsig_det', obj, 'ONCLICK') == false) {
+		return false;
+	}
+	if ((retVal = fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('corpsig_det', obj, 'ONCLICK') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+
+
+function fnUpload(p1)
+{
+
+        //var ObjForm = document.forms[0];
+        var ObjForm = document.getElementById("detform");
+        if(ObjForm != null)
+        {
+                ObjForm.encoding = "multipart/form-data";
+                var qrystr ="";
+                for (var i = 0;i < ObjForm.elements.length; i++)
+                {
+                        var locVal = ObjForm.elements[i].value;
+                        if(ObjForm.elements[i].name == "actionCode")
+                        {
+                                ObjForm.elements[i].value = "upload";
+                        }
+
+						
+                        if (locVal != null && locVal.length > 0 && locVal != "" && locVal != " ")
+                        {
+                                if(ObjForm.elements[i].name == "undefined" || (ObjForm.elements[i].value != null && ObjForm.elements[i].value == "undefined" ))
+                                        continue;
+                                if(qrystr.length == 0)
+                                {
+                                        qrystr = ObjForm.elements[i].name + "=" + ObjForm.elements[i].value;
+                                }
+                                else
+                                {
+                                        qrystr = qrystr + "&" + ObjForm.elements[i].name +"=" + ObjForm.elements[i].value;
+                                }
+                 	}
+                }
+			
+  		//if(qrystr.indexOf("actionCode")==-1)
+    		//{
+				qrystr = qrystr + "&actionCode=upload";
+      		//}
+                if(qrystr.indexOf("?")==-1 || qrystr.indexOf("?")!=0)
+   		{
+                        qrystr = "?" + qrystr;
+                }
+		//alert("qrystr-->"+qrystr);
+                ObjForm.action = ObjForm.action + qrystr;
+		//alert(ObjForm.action);
+
+                ObjForm.submit();
+		//doSubmit(ObjForm);
+		alert("after submit");
+		return true;	
+       }
+
+}
+
+function corpsig_det_ONCLICK2(obj, p1) {
+	var retVal = "";
+	if (preEventCall('corpsig_det', obj, 'ONCLICK') == false) {
+		return false;
+	}
+	if ((retVal = doSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('corpsig_det', obj, 'ONCLICK') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}

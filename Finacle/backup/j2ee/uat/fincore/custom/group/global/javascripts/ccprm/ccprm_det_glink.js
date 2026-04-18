@@ -1,0 +1,339 @@
+function printBlock()
+{
+	writeCustomHeader("ccprm_det");
+	with (document){
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">' + jspResArr.get("FLT032043") + '</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006657") + '</td>');
+	write('<td class="textfielddisplaylabel">');
+	write('<label id="compField">' + funcCode + '</label>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp; </td>');
+        //write('<td class="textlabel"> </td>');
+        //write('<td class="textfielddisplaylabel"> </td>');
+	write('<td class="textlabel">Serial Number</td>');
+	write('<td class="textfielddisplaylabel">');
+	write('<label id="compField">' + srlNum + '</label>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<br />');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+	write('<a href="javascript:showHelpFile(\'det_help.htm\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" width="17" height="17" vspace="1" border="0" />');
+	write('</a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT001602") + '</td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.evntId" id="evntId"  fdt="String" ' + ccprmProps.get("evntId_ENABLED") + ' style="width: 151px;">');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT001456") + '</td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.evntType" id="evntType"  fdt="String" ' + ccprmProps.get("evntType_ENABLED") + ' style="width: 151px;">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT012932") + '</td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.schmCode" id="schmCode"  fdt="String" ' + ccprmProps.get("schmCode_ENABLED") + ' style="width: 151px;">');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT032119") + '</td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.crncy" id="crncy"  fdt="String" ' + ccprmProps.get("crncy_ENABLED") + ' style="width: 151px;">');
+	write('</td>');
+	write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px">Charge Type</td>');
+        write('<td class="textfield">');
+        write('<select name="' + subGroupName + '.chrgType" id="chrgType"  fdt="String" ' + ccprmProps.get("chrgType_ENABLED") + '   style="width: 151px;" onChange="javascript:return ccprm_det_ONCHANGE4(this);">');
+        write('<option value="">--select--</option>');
+        write('<option value="F">Fixed Amount</option>');
+        write('<option value="P">Percentage</option>');
+        write('<option value="S">Slab Based</option>');
+        write('</select>');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+//      write('<td class="textlabel"> </td>');
+        //write('<td class="textfield">    </td>');
+        //write('</tr>');
+        //write('<tr>');
+        write('<tr>');
+        write('<tr id="prcnt row">');
+        write('<td class="textlabel" style="height: 15px">Percentage</td>');
+        write('<td class="textfield">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.prcnt" id="prcnt"  fdt="String" ' + ccprmProps.get("prcnt_ENABLED") + ' style="width: 151px;">');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="columnwidth"> </td>');
+        write('</tr>');
+
+        write('<tr id="prcnt row1">');
+        write('<td class="textlabel" style="height: 15px">Minimum Amount</td>');
+        write('<td class="textfield">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.minAmt" id="minAmt"  fdt="String" ' + ccprmProps.get("minAmt_ENABLED") + ' style="width: 151px;">');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="textlabel">Maximum Amount</td>');
+        write('<td class="textfield">');
+        write('<input type="text" class="textfieldfont" name="' + subGroupName + '.maxAmt" id="maxAmt"  fdt="String" ' + ccprmProps.get("maxAmt_ENABLED") + ' style="width: 151px;">');
+        write('</td>');
+        write('</tr>');
+
+        write('<tr id="slab row">');
+        write('<td class="textlabel">Slab Table Code</td>');
+        write('<td class="textfield">');
+        write('<input hotKeyId="search1" type="text" class="textfieldfont" name="' + subGroupName + '.slabCode" id="slabCode"  fdt="String" ' + ccprmProps.get("slabCode_ENABLED") + ' style="width: 151px;" onChange="javascript:return ccprm_det_ONCHANGE3(this);">');
+         write('<a target=_self id ="sLnk2" href="javascript:fnSlabCodeList()">');
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('</td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="columnwidth"> </td>');
+        write('<td class="columnwidth"> </td>');
+        write('</tr>');
+
+	write('<tr id="Amt row">');
+	write('<td class="textlabel" style="height: 15px">');
+	write('<br>Charge Amount');
+	write('</td>');
+	write('<td class="textfield">');
+	write('<br>');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.chrgAmt" id="chrgAmt"  fdt="String" ' + ccprmProps.get("chrgAmt_ENABLED") + ' style="width: 151px;">');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel">');
+	write('<br>');
+	write('</td>');
+	write('<td class="textfield">');
+	write('<br>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT001721")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	if(funcCode !='I'){
+	write('<div class="ctable">');
+	write('<input id="Submit" name="Submit" type="button" class="button"	onClick="javascript:return ccprm_det_ONCLICK1(this,this);"" value="' + jspResArr.get("FLT000193") + '" hotKeyId="Submit">');
+	write('<input id="Validate" name="Validate" type="button" class="button" value="' + jspResArr.get("FLT000194") + '"	onClick="javascript:return ccprm_det_ONCLICK2(this,this);"" hotKeyId="Validate">');
+	write('<input id="Cancel" name="Cancel" type="button" class="button" value="' + jspResArr.get("FLT001721") + '"	onClick="javascript:return ccprm_det_ONCLICK3(this,this.id);"" hotKeyId="Cancel">');
+	}else{
+	write('<div class="ctable">');
+	write('<input class="button" type="button" id="Back" value="'+jspResArr.get("FLT026526")+ '" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+	}
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+
+	initFocusHandler();
+
+	pre_ONLOAD('ccprm_det',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+
+	if( funcCode =='I' ||  funcCode =='U' ||   sReferralMode =='I' || sReferralMode =='S'){
+		fnDisableFormDataControls('V',ObjForm,0);
+	}
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+
+	post_ONLOAD('ccprm_det',this);
+}
+
+function fnCheckMandatoryFields()
+{
+	var ObjForm = document.forms[0];
+
+	return true;
+}
+
+function fnPopulateControlValues() 
+{
+	var ObjForm = document.forms[0];
+
+	ObjForm.evntId.value = evntId;
+	ObjForm.evntType.value = evntType;
+	ObjForm.schmCode.value = schmCode;
+	ObjForm.crncy.value = crncy;
+	ObjForm.chrgAmt.value = chrgAmt;
+	ObjForm.chrgType.value = chrgType;
+	ObjForm.minAmt.value = minAmt;
+	ObjForm.maxAmt.value = maxAmt;
+	ObjForm.prcnt.value = prcnt;
+	ObjForm.slabCode.value = slabCode;
+}
+
+
+function ccprm_det_ONCLICK1(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ccprm_det_ONCLICK2(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ccprm_det_ONCLICK3(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  doSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('ccprm_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function ccprm_det_ONCHANGE4()
+{
+	var chrgType=document.forms[0].chrgType.value;
+	if(chrgType == "F")
+	{
+		hideImage("prcnt row");
+		hideImage("prcnt row1");
+		hideImage("slab row");
+		showImage("Amt row");
+		document.forms[0].prcnt.value = "";
+		document.forms[0].minAmt.value = "";
+		document.forms[0].maxAmt.value = "";
+		document.forms[0].slabCode.value = "";
+	}
+	if(chrgType == "P")
+	{
+		showImage("prcnt row");
+		showImage("prcnt row1");
+		hideImage("slab row");
+		hideImage("Amt row");
+		document.forms[0].slabCode.value = "";
+		document.forms[0].chrgAmt.value = "";
+	}
+	if(chrgType == "S")
+	{
+		hideImage("prcnt row");
+		hideImage("prcnt row1");
+		showImage("slab row");
+		hideImage("Amt row");
+		document.forms[0].prcnt.value = "";
+		document.forms[0].minAmt.value = "";
+		document.forms[0].maxAmt.value = "";
+		document.forms[0].chrgAmt.value = "";
+	}
+}
+function ccprm_det_ONCHANGE3()
+{
+        var slabCode = document.forms[0].slabCode.value;
+	if(fnIsNull(slabCode))
+	{
+		return true;
+	}	
+        var inputNameValues = "slabCode|"+slabCode;
+        var outputNames = "errorFlg|errorMsg";
+        var scriptName = "ccprmdp008.scr"
+        var retVal = appFnExecuteScript(inputNameValues, outputNames, scriptName, false);
+        var token = retVal.split("|");
+        if( (token != null))
+        {
+            var errorFlg = token[1];
+            var errorMsg = token[3];
+            if (errorFlg == "Y")
+            {
+                alert(errorMsg);
+                document.forms[0].slabCode.value = "";
+                setFieldFocus(document.forms[0].srlNum);
+                return false;
+            }
+        }
+}

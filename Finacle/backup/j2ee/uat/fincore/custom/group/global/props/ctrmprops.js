@@ -1,0 +1,25 @@
+var ctrmLocObj ={
+	userId_MANDATORY:"N", 
+	Clear_ENABLED:"enabled", 
+	Clear_MANDATORY:"N", 
+	funcCode_MANDATORY:"N", 
+	Go_ENABLED:"enabled", 
+	Cancel_ENABLED:"enabled", 
+	Ok_MANDATORY:"N", 
+	expDate_ENABLED:"enabled", 
+	tempRolId_ENABLED:"enabled", 
+	Cancel_MANDATORY:"N", 
+	currRolId_ENABLED:"enabled", 
+	Validate_ENABLED:"enabled", 
+	expDate_MANDATORY:"N", 
+	funcCode_ENABLED:"enabled", 
+	Validate_MANDATORY:"N", 
+	Submit_ENABLED:"enabled", 
+	Go_MANDATORY:"N", 
+	currRolId_MANDATORY:"N", 
+	tempRolId_MANDATORY:"N", 
+	userId_ENABLED:"enabled", 
+	Ok_ENABLED:"enabled", 
+	Submit_MANDATORY:"N"
+	};
+var ctrmProps =  new Properties(ctrmLocObj);

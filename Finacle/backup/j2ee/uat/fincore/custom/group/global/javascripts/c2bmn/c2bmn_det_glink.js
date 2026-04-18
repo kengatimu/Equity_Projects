@@ -1,0 +1,475 @@
+function printBlock()
+{
+	writeCustomHeader("c2bmn_det");
+	with (document){
+	write('<input type="hidden" id="JoinDate" fdt="fdate" mneb="N" vFldId="JoinDate_ui" name="' + subGroupName + '.JoinDate">');
+	write('<input type="hidden" id="RecVerifyType" name="' + subGroupName + '.RecVerifyType">');
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">'+menuTitle+'</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td class="textlabel">'+jspResArr.get("FLT006657") + '</td>');
+	funcCodeDesc = "";
+	if(funcCode == "I")
+	{
+		funcCodeDesc = "Inquire";
+	}
+	write('<td class="textlabel">'+ funcCode + '</td>');
+	write('<td class="textfielddisplaylabel">');
+	write('<label id="compField">Function Desc</label>');
+	write('</td>');
+	write('<td class="textlabel">'+funcCodeDesc+'</td>');
+	write('</tr>');
+	write('<tr>');
+	write('</tr>');
+	write('</table>');
+	write('<br />');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+    write('<a id="sLnk1" href="javascript:showHelpFile(\'ormgendtl_help.htm\');">');
+    write('<img src="../Renderer/images/' + applangcode + '/help.gif" width="47" height="21" vspace="1" border="0" hotKeyId="finHelp"></a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	
+//header 1
+
+	write('<tr valign="middle" class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">' + jspResArr.get("FLT031878") + '</td>');
+	write('<td colspan="3" align="right" valign="middle">&nbsp;&nbsp;</td>');
+	write('</tr>');
+
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033225") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.TranId" id="TranId" fdt="String"  maxlength="100" >');
+	write('</td>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033226") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.MobileNo" id="MobileNo"  onChange="javascript:return Validatefield(this);"  fdt="String"  maxlength="100" >');
+	write('<td class="textfield">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033227") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.Amount" id="Amount" onChange="javascript:return Validatefield(this);" fdt="String" maxlength="100" >');
+	write('</td>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT033228") + '</td>');
+        write('<td class="textfield"><input type="text" class="textfieldfont" name="' + subGroupName + '.AccountNo" id="AccountNo" onChange="javascript:return Validate_foracid();"  fdt="String" hotKeyId="search1">');
+        write('&nbsp; <a id="accountIdSearcher" href="javascript:showAccountIdList(document.forms[0].AccountNo,null,null,\'F\')";>');
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="14">');
+        write('</a>');
+	write('<input class="label" name="' + subGroupName + '.Custname" id="Custname" fds="Y" size="25" disabled>');
+        write('</td>');
+	write('</td>');
+	write('</tr>');
+        write('<tr>');
+        write('<td class="textlabel" style="height: 15px">Wallet Name</td>');
+	write('<td class="textfield">');
+        write('<input type="text" class="textfieldfont"  name="' + subGroupName + '.walletname" id="walletname"  maxlength="100" >');
+        write('</td>');
+        write('</tr>');
+
+//Header2
+
+        write('<tr id="trandet"  style="height: 15px"  valign="middle" class="subhdrbg">');
+        write('<td  colspan="3" class="subhdr">MPesa Transaction Inquire Response Details</td>');
+        write('<td colspan="3" align="right" valign="middle">&nbsp;&nbsp;</td>');
+        write('</tr>');
+        write('<tr id="trandet1">');
+        write('<td class="textlabel" style="height: 15px">Response Message</td>');
+	write('<td colSpan=3 class="textfield"><input  readonly  name="'+subGroupName+'.responsemsg" style="border:1px solid #1a8cff" id="responsemsg"  fmb="N" fdt="default" fblk="fblk1" fmnd="Y" type="text" size="155" maxlength="200">');
+	//write('<td class="textfield">');
+	//write('<input  type="text" class="textfieldfont" name="' + subGroupName + '.responsemsg" id="responsemsg" fdt="String"  maxlength="100" >');
+	write('<input class="label" name="' + subGroupName + '.responsecode" id="responsecode" fds="Y" size="25" disabled>');
+	write('</td>');
+        write('</tr>');
+        write('<tr id="trandet5">');
+        write('<td class="textlabel" style="height: 15px">Sender Name</td>');
+        write('<td colSpan=3 class="textfield"><input  readonly  name="'+subGroupName+'.custname" style="border:1px solid #1a8cff" id="custname"  fmb="N" fdt="default" fblk="fblk1" fmnd="Y" type="text" size="155" maxlength="200">');
+        write('</td>');
+        write('</tr>');
+
+
+//Fincle Tran Details
+        write('<tr id="trandet2"  style="height: 15px"  valign="middle" class="subhdrbg">');
+        write('<td  colspan="3" class="subhdr">Finacle Transaction  Details</td>');
+        write('<td colspan="3" align="right" valign="middle">&nbsp;&nbsp;</td>');
+        write('</tr>');
+        write('<tr id="trandet3">');
+        write('<td class="textlabel" style="height: 15px">Finacle Detail for the account </td>');
+	write('<td colSpan=3 class="textfield"><input  readonly  name="'+subGroupName+'.finaclemsg" style="border:1px solid #1a8cff" id="finaclemsg"  fmb="N" fdt="default" fblk="fblk1" fmnd="Y" type="text" size="155" maxlength="200">');
+        //write('<input class="label" name="' + subGroupName + '.finaclemsg" id="finaclemsg"  size="150" enabled>');
+        write('</td>');
+        write('</tr>');
+	write('&nbsp');
+	write('&nbsp');
+        write('<tr id="trandet4">');
+        write('<td class="textlabel" style="height: 15px">Post Manual Transaction</td>');
+        write('<td class="textfield">');
+        write('<select name="' + subGroupName + '.postmantran" id="postmantran" style="width: 218px" fdt="String" >');
+        write('<option value="">Select</option>');
+        write('<option value="Y">Yes</option>');
+        write('<option value="N">No</option>');
+        write('</select>');
+        write('</td>');
+        write('</tr>');
+
+
+	
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+
+
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT001721")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	if(funcCode =='I'){
+	write('<div class="ctable">');
+	write('<input id="getres" name="getres" type="button" class="button" value="' + jspResArr.get("FLT033229") + '"	onClick="javascript:return c2bmn_det_ONCLICK4(this,this);"" hotKeyId="Validate">');
+	write('<input id="Submit" name="Submit" type="button" class="button"	onClick="javascript:return c2bmn_det_ONCLICK1(this,this);"" value="' + jspResArr.get("FLT000193") + '" hotKeyId="Submit">');
+	write('<input id="Cancel" name="Cancel" type="button" class="button" value="' + jspResArr.get("FLT001721") + '"	onClick="javascript:return c2bmn_det_ONCLICK3(this,this.id);"" hotKeyId="Cancel">');
+	}else{
+	write('<div class="ctable">');
+	write('<input class="button" type="button" id="Back" value="'+jspResArr.get("FLT026526")+ '" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+	}
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+	ObjForm.walletname.value = walletname;
+	ObjForm.Amount.value = Amount;
+	ObjForm.AccountNo.value = AccountNo;
+	ObjForm.MobileNo.value = MobileNo;
+	ObjForm.TranId.value = TranId;
+	ObjForm.finaclemsg.value= finaclemsg;
+	ObjForm.responsemsg.value = responsemsg;
+	ObjForm.responsecode.value = responsecode;
+	ObjForm.custname.value = custname;
+
+	if(ObjForm.walletname.value=="")
+	{
+		ObjForm.walletname.value="M-Pesa";
+	}
+	if(ObjForm.finaclemsg.value =="")
+	{
+		document.getElementById("trandet").style.display="none";
+		document.getElementById("trandet1").style.display="none";
+		document.getElementById("trandet2").style.display="none";
+		document.getElementById("trandet3").style.display="none";
+		document.getElementById("trandet4").style.display="none";
+		document.getElementById("trandet5").style.display="none";
+		ObjForm.Submit.disabled = true;
+		ObjForm.getres.disabled = false;
+	}
+}
+
+function fnCheckMandatoryFields(){
+	var ObjForm = document.forms[0];
+	return true;
+}
+function c2bmn_det_ONCLICK1(obj,p1){
+	var retVal = "";
+
+	var ObjForm = document.forms[0];
+	if(ObjForm.postmantran.value=="Y")
+	{
+		if(confirm("Sure Want to proceed mannual Transaction "+ObjForm.Amount.value+" For the Account "+ObjForm.AccountNo.value)==false)
+		{
+			return false;
+		}
+	}
+	else
+	{
+                if(confirm("Sure Want to proceed without Transaction..?")==false)
+                {
+                        return false;
+                }
+	}
+	if (preEventCall('c2bmn_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('c2bmn_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function c2bmn_det_ONCLICK4(obj,p1)
+{
+	var retVal = "";
+	var ObjForm = document.forms[0];
+        var phoneno = /[^\s0-9]/;
+        //var phoneno =/^\+?[0-9]{3}\?[0-9]{10}$/;
+        var inputtxt = ObjForm.MobileNo.value;
+        if(inputtxt.match(phoneno))
+	{
+                alert("Enter Valid Phone Number Value");
+		ObjForm.MobileNo.focus();
+                return false;
+        }
+	if(fnValidateData()==false)
+	{
+		return false;
+	}
+	if(Validate_foracid()=="false")
+	{
+		return false;
+	}
+
+	var temp=outboundcall();
+	var retMsg      = temp.split("|");
+        var status      = retMsg[0];
+        var resmessage  = retMsg[1];
+        if (status == "Y")
+        {
+                var temp = retMsg[1].split("!");
+                var respmsg = temp[0];
+                var rescode = temp[1];
+		if(rescode=="00")
+		{
+			var sendername = temp[2];
+			var Resamount = temp[3];
+			var ResmobileNumber = temp[4];
+			var ResmpesaAccountReference = temp[5];
+			if(ResmobileNumber!=ObjForm.MobileNo.value)
+			{
+				alert("Entered Mobile Number mismatch with M-Pesa Tran Mobile Number");
+				return false;
+			}
+			if(ResmpesaAccountReference!=ObjForm.AccountNo.value)
+			{
+				alert("Entered Account Number Mismatched with  M-Pesa Tran Account Number");
+				return false;
+			}
+			if(parseFloat(Resamount)!=parseFloat(ObjForm.Amount.value))
+			{
+				alert("Entered Amount mismatch with Mpesa Tran Amount");
+				return false;
+			}
+		}
+        }
+	else 
+	{
+		alert(resmessage);
+		return false;
+	}
+	finaclevalidation();
+	if(document.forms[0].responsecode.value=="01")
+	{
+		alert("Response Is Pending.Initiating Outbound call");
+		outboundcall();
+	}
+	document.getElementById("trandet").style.display="block";
+	document.getElementById("trandet1").style.display="block";
+	document.getElementById("trandet2").style.display="block";
+	document.getElementById("trandet3").style.display="block";
+	document.getElementById("trandet4").style.display="block";
+	document.getElementById("trandet5").style.display="block";
+	if (document.forms[0].finaclemsg.value != "NO Finacle Transaction Found")
+        {         
+		ObjForm.Submit.disabled = true; 
+		ObjForm.getres.disabled = true;
+		 
+        }
+	if((document.forms[0].responsecode.value=="00")&&(document.forms[0].finaclemsg.value == "NO Finacle Transaction Found"))
+	{
+		ObjForm.postmantran.disabled = true;
+		ObjForm.TranId.disabled = true;
+		ObjForm.MobileNo.disabled = true;
+		ObjForm.Amount.disabled = true;
+		ObjForm.AccountNo.disabled = true;
+		ObjForm.walletname.disabled = true;
+		ObjForm.custname.disabled = true;
+		ObjForm.postmantran.value = "Y";
+		ObjForm.Submit.disabled = false;
+		ObjForm.getres.disabled = true;
+	}
+	//ObjForm.getres.disabled = true;
+}
+function c2bmn_det_ONCLICK3(obj,p1){
+	var retVal = "";
+	if (preEventCall('c2bmn_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal =  doSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('c2bmn_det',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function outboundcall()
+{
+
+        var ObjForm     =       document.forms[0];
+	if(fnValidateData()==false)
+	{
+		return false;
+	}
+        var inputNameValues ="TranId|"+ObjForm.TranId.value+"|MobileNo|"+ObjForm.MobileNo.value+"|AccountNo|"+ObjForm.AccountNo.value+"|Amount|"+ObjForm.Amount.value+"|walletname|"+ObjForm.walletname.value
+        var outputNames = "";
+        var output      =""
+        var scrName     = "c2b_Inquire.scr";
+        var retVal      = appFnExecuteScript(inputNameValues,output,scrName,false);
+        var retMsg      = retVal.split("|");
+        var status        = retMsg[0];
+        if (status == "Y")
+        {
+		var temp = retMsg[1].split("!");
+		var respmsg = temp[0];
+		var rescode = temp[1];
+		var sendername = temp[2];
+		var Resamount = temp[3];
+		var ResmobileNumber = temp[4];
+		var ResmpesaAccountReference = temp[5];
+		var NOTIFICATIONPHONENUMBER = temp[6];
+	
+		var message= "[ Response Message : "+respmsg+"] [ Response Code : "+rescode+" ]";
+		document.forms[0].responsemsg.value    =  message;
+		document.forms[0].responsecode.value    =  rescode;
+		if(rescode=="00")		{
+			document.forms[0].custname.value    =  sendername +"|" + NOTIFICATIONPHONENUMBER ;
+			document.forms[0].Amount.value    =  Resamount;
+			document.forms[0].MobileNo.value    =  ResmobileNumber;
+			document.forms[0].AccountNo.value    =  ResmpesaAccountReference;
+		}
+        }
+	
+	return retVal;
+}
+function Validate_foracid()
+{
+
+        var ObjForm     =       document.forms[0]
+        var inputNameValues ="foracid|" + ObjForm.AccountNo.value ;
+        var outputNames = "";
+        var output      =""
+        var scrName     = "Account_Validate.scr";
+        var retVal      = appFnExecuteScript(inputNameValues,output,scrName,false);
+        var retMsg      = retVal.split("|");
+        var status        = retMsg[0];
+        var Name         = retMsg[1];
+		var state	= "ture";
+        if (status == "Y")
+        {
+			document.forms[0].Custname.value =  Name;
+        }
+        else
+        {
+                //alert("Not a customer Acct. Invalid Accout Number");
+                document.forms[0].AccountNo.focus();
+				//state	= "false";
+                //return state;
+        }
+	return state;
+
+}
+function finaclevalidation()
+{
+        var ObjForm     =       document.forms[0];
+        var inputNameValues ="AccountNo|"+ObjForm.AccountNo.value+"|Amount|"+ObjForm.Amount.value+"|TranId|"+ObjForm.TranId.value;
+        var outputNames = "";
+        var output      ="";
+        var scrName     = "c2b_TranValidate.scr";
+        var retVal      = appFnExecuteScript(inputNameValues,output,scrName,false);
+        var retMsg      = retVal.split("|");
+        var status      = retMsg[0];
+        var temp1      = retMsg[1];
+        if (status == "Y")
+        {
+                var temp = retMsg[1].split("!");
+                var tranid = temp[0];
+                var date = temp[1];
+                var tranrmks = temp[2];
+                var pstdflg = temp[3];
+		var message = "[ TranID= "+tranid+"] [ Tran Date ="+date+" ] [ Tran Particular = "+tranrmks+"] [ Posted Flag = "+pstdflg +" ]";
+		document.forms[0].finaclemsg.value    =  message;
+        }
+	else
+	{
+		document.forms[0].finaclemsg.value    =  "NO Finacle Transaction Found";
+	}
+}
+function Validatefield(obj)
+{
+	var ObjForm     =       document.forms[0];
+	if(obj.id=="MobileNo")
+	{
+		var mblno = ObjForm.MobileNo.value;	
+		if((isNaN(mblno))||(mblno.length>12)||(mblno.length<9))
+		{
+			alert("Please Enter Valid Mobile Number");
+			ObjForm.MobileNo.focus();
+			return false;
+		}	
+	}
+        if(obj.id=="Amount")
+        {
+                var amt = ObjForm.Amount.value;
+                if((isNaN(amt))||(Number(ObjForm.Amount.value)==0))
+                {
+                        alert("Please Enter Valid Amount");
+                        ObjForm.Amount.focus();
+			return false;
+                }
+        }
+
+}

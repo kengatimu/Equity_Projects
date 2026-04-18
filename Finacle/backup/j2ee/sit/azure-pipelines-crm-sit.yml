@@ -1,0 +1,134 @@
+trigger:
+  branches:
+    include:
+      - develop
+
+  paths:
+    include:
+      - crm/*
+
+variables:
+  vmImageName: 'devops-ubuntu'
+
+stages:
+  - stage: BuildCRM
+    displayName: CRM SIT BUILD
+
+    jobs:
+      - job: Build
+        displayName: 'CRM SIT Build Stage'
+
+        pool:
+          name: $(vmImageName)
+
+        steps:
+          - checkout: self
+            fetchDepth: 200
+
+          - task: CmdLine@2
+            displayName: 'Determine Deployment Tag'
+            inputs:
+              script: |
+                echo "Evaluating branch for deployment tagging..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                BRANCH="$(Build.SourceBranch)"
+                echo "Detected branch: $BRANCH"
+
+                if [[ "$BRANCH" == "refs/heads/develop" ]]; then
+                    echo "Branch is DEVELOP: SIT deployment"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags CRM-SIT
+
+                else
+                    echo "Branch not mapped for deployment. Skipping tagging."
+                fi
+
+          - task: Bash@3
+            displayName: 'Check Modified Files'
+            inputs:
+              targetType: 'filePath'
+              filePath: check-modified-files-sit.sh
+              arguments: '--app crm'
+
+          - task: CmdLine@2
+            displayName: 'Determine Routing Tags'
+            inputs:
+              script: |
+                echo "Reading deployment routing flags from metadata.json..."
+
+                export AZURE_DEVOPS_EXT_PAT=$(System.AccessToken)
+
+                # Parse deploy_group flag — grep the field name, extract true or false
+                DEPLOY_GROUP=$(grep '"deploy_group"' metadata.json | grep -o 'true\|false')
+
+                echo "deploy_group: $DEPLOY_GROUP"
+                echo
+
+                if [ "$DEPLOY_GROUP" == "true" ]; then
+                    echo "J2EE files detected — adding routing tag: J2EE-group"
+                    az pipelines build tag add --build-id $(Build.BuildId) --tags "J2EE-group"
+                else
+                    echo "No deployment targets detected — no routing tags added."
+                fi
+
+          - task: CopyFiles@2
+            displayName: 'Copy Files To Staging Directory'
+            inputs:
+              SourceFolder: '$(Build.SourcesDirectory)'
+              Contents: |
+                **/newFiles/**
+                **/modifiedFiles/**
+                **/deletedFiles/**
+                **/deployment-manifest.txt
+                **/deployment-audit.txt
+                **/metadata.json
+                !**/*.git*
+                !**/*.yaml
+                !**/*.yml
+                !**/*.md
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: CmdLine@2
+            displayName: 'Archive CRM Files'
+            inputs:
+              script: |
+                echo "Archiving CRM SIT files from staging directory..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                tar -vzcf $(Build.SourcesDirectory)/j2ee-scripts.tar.gz .
+
+                echo "Copying archive into staging directory..."
+                cp -r $(Build.SourcesDirectory)/j2ee-scripts.tar.gz $(Build.ArtifactStagingDirectory)/
+
+          - task: CmdLine@2
+            displayName: 'List Items Of The Archive'
+            inputs:
+              script: |
+                cd $(Build.ArtifactStagingDirectory)
+                echo "Listing contents of j2ee-scripts.tar.gz"
+                tar -ztvf j2ee-scripts.tar.gz
+
+          - task: CmdLine@2
+            displayName: 'Create Publishing Directory'
+            inputs:
+              script: |
+                echo "Creating publish directory for CRM SIT..."
+                cd $(Build.ArtifactStagingDirectory)
+
+                mkdir -v publishCRMDir
+
+                echo "Copying archive to publish directory..."
+                cp -vr j2ee-scripts.tar.gz publishCRMDir/
+
+                echo "Copying deployment scripts..."
+                # deploy-j2ee-sit.sh is copied as deploy-j2ee.sh so suScript.sh can call it by its standard name
+                cp -vr $(Build.SourcesDirectory)/deploy-j2ee-sit.sh publishCRMDir/deploy-j2ee.sh
+                cp -vr $(Build.SourcesDirectory)/suScript.sh publishCRMDir/
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish CRM SIT Artifacts'
+            inputs:
+              PathtoPublish: $(Build.ArtifactStagingDirectory)/publishCRMDir
+              ArtifactName: crm_drop
+              publishLocation: Container

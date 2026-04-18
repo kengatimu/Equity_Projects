@@ -1,0 +1,27 @@
+ var cucsLocObj ={
+	paidAmt_MANDATORY:"N", 
+	Submit_MANDATORY:"N", 
+	Ok_MANDATORY:"N", 
+	chqAmt_MANDATORY:"N", 
+	chqAmt_ENABLED:"enabled", 
+	Clear_MANDATORY:"N", 
+	Clear_ENABLED:"enabled", 
+	status_ENABLED:"enabled", 
+	Cancel_ENABLED:"enabled", 
+	Go_MANDATORY:"N", 
+	Cancel_MANDATORY:"N", 
+	status_MANDATORY:"N", 
+	Validate_MANDATORY:"N", 
+	Validate_ENABLED:"enabled", 
+	chqNo_MANDATORY:"N", 
+	funcCode_ENABLED:"enabled", 
+	funcCode_MANDATORY:"N", 
+	acctNo_ENABLED:"enabled", 
+	acctNo_MANDATORY:"N", 
+	Ok_ENABLED:"enabled", 
+	paidAmt_ENABLED:"enabled", 
+	chqNo_ENABLED:"enabled", 
+	Submit_ENABLED:"enabled", 
+	Go_ENABLED:"enabled"
+	};
+var cucsProps =  new Properties(cucsLocObj);

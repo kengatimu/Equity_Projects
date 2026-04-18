@@ -1,0 +1,2817 @@
+// Generated from spec file 
+
+
+function printBlock1()
+{
+	writeHeader("pordmpod");
+	with (document) {
+	write('<input type="hidden" id="reqExecutionDate" fmnd="Y" fdt="fdate" mneb1="N" vFldId="reqExecutionDate_ui" name="' + groupName + '.reqExecutionDate">');
+	write('<input type="hidden" id="instrDate" fmnd="' + pordmProps.get("instrDate_MANDATORY") + '" fdt="fdate" mneb1="N" vFldId="instrDate_ui" name="' + groupName + '.instrDate">');
+	write('<input type="hidden" id="drExecutionDate" fmnd="Y" fdt="fdate" mneb1="N" vFldId="drExecutionDate_ui" name="' + groupName + '.drExecutionDate">');
+	write('<input type="hidden" id="drValueDate" fmnd="Y" fdt="fdate" mneb1="N" vFldId="drValueDate_ui" name="' + groupName + '.drValueDate">');
+	write('<input type="hidden" id="crExecutionDate" fmnd="Y" fdt="fdate" mneb1="N" vFldId="crExecutionDate_ui" name="' + groupName + '.crExecutionDate">');
+	write('<input type="hidden" id="crValueDate" fmnd="Y" fdt="fdate" mneb1="N" vFldId="crValueDate_ui" name="' + groupName + '.crValueDate">');
+	write('<input type="hidden" name="targetBankId" >');
+	write('<input type="hidden" name="' + groupName + '.submitform" id="submitform" value="">');
+	write('<input type="hidden" name="' + groupName + '.OrideDrExecDate" id="OrideDrExecDate" value="">');
+	write('<input type="hidden" name="' + groupName + '.OrideDrValueDate" id="OrideDrValueDate" value="">');
+	write('<input type="hidden" name="' + groupName + '.OrideCrExecDate" id="OrideCrExecDate" value="">');
+	write('<input type="hidden" name="' + groupName + '.OrideCrValueDate" id="OrideCrValueDate" value="">');
+	write('<input type="hidden" name="' + groupName + '.crncyCodeDesc" id="crncyCodeDesc" value="">');
+	write('<input type="hidden" name="' + groupName + '.status" id="status" value="">');
+	write('<input type="hidden" name="' + groupName + '.reserveRefNum" id="reserveRefNum" value="">');
+	write('<input type="hidden" name="' + groupName + '.origPaysysId" id="origPaysysId" value="">');
+	write('<input type="hidden" name="' + groupName + '.origPaysysRefNum" id="origPaysysRefNum" value="">');
+	write('<input type="hidden" name="' + groupName + '.origEntityId" id="origEntityId" value="">');
+	write('<input type="hidden" name="' + groupName + '.origEntityType" id="origEntityType" value="">');
+	write('<input type="hidden" name="' + groupName + '.slaCategory" id="slaCategory" value="">');
+	write('<input type="hidden" name="' + groupName + '.inMesgType" id="inMesgType" >');
+	write('<input type="hidden" name="' + groupName + '.hRemarks" id="hRemarks" value="">');
+	write('<input type="hidden" name="' + groupName + '.hFreeText" id="hFreeText" value="">');
+	write('<input type="hidden" name="' + groupName + '.srlNum" id="srlNum" value="">');
+	write('<input type="hidden" name="' + groupName + '.routedPaysysRefNum" id="routedPaysysRefNum" value="">');
+	write('<input type="hidden" name="' + groupName + '.recvrBic" id="recvrBic" value="">');
+	write('<input type="hidden" name="' + groupName + '.recvrBankCode" id="recvrBankCode" value="">');
+	write('<input type="hidden" name="' + groupName + '.recvrBranchCode" id="recvrBranchCode" value="">');
+	write('<input type="hidden" name="' + groupName + '.outwardMappingEqn" id="outwardMappingEqn" value="">');
+	write('<input type="hidden" name="' + groupName + '.routedPaysysIdDesc" id="routedPaysysIdDesc" value="">');
+	write('<input type="hidden" name="' + groupName + '.solId" id="solId" value="">');
+	write('<input type="hidden" name="' + groupName + '.tranDate" id="tranDate" >');
+	write('<input type="hidden" name="' + groupName + '.tranId" id="tranId" >');
+	write('<input type="hidden" name="' + groupName + '.crTranDate" id="crTranDate" >');
+	write('<input type="hidden" name="' + groupName + '.crTranId" id="crTranId" >');
+	write('<input type="hidden" name="' + groupName + '.displayMesg" id="displayMesg" >');
+	write('<input type="hidden" name="' + groupName + '.chrgEventType" id="chrgEventType" >');
+	write('<input type="hidden" name="' + groupName + '.followUpEnabled" id="followUpEnabled" >');
+	write('<input type="hidden" name="' + groupName + '.isPageVisited" id="isPageVisited" >');
+	write('<input type="hidden" name="' + groupName + '.totChrgAmt" id="totChrgAmt" >');
+	write('<input type="hidden" name="benefAcctCrncy" >');
+	write('<input type="hidden" name="benefAcctSol" >');
+	write('<input type="hidden" name="poInOutInd" >');
+	write('<input type="hidden" name="pgNum" value="1" >');
+	write('<input type="hidden" name="FocusField" >');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">	<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>	<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>	<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+	write('<tr>');
+	write('<td id="toggleDisplay" width="10%" valign="top" class="msgtext">	<div>');
+	write('<textarea id="data" name="' + groupName + '.data" ' + pordmProps.get("data_ENABLED") + ' class="msgtext" style="width:240px;height:555px;border:0px;" readonly fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</textarea>');
+	write('</div>');
+	write('</td>');
+	write('<td width="90%" valign="top" style="padding-left:2px">	<div id="data" style="width:100%;height:555px;z-index:1;visibility: visible;left: 2px;">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+	write('<tr>');
+	write('<td id="hideMessage" colspan="4">&nbsp;	<a id="sLnk1" href="Javascript:fnToggleInwMesg()">');
+	write('<img src="../images/' + applangcode + '/hide_arrow.gif" alt="' + jspResArr.get("FLT015364") + '" border="0"></a>');
+	write('</td>');
+	write('<td id="showMessage" colspan="4">&nbsp;	<a id="sLnk2" href="Javascript:fnToggleInwMesg()">');
+	write('<img src="../images/' + applangcode + '/show_arrow.gif" alt="' + jspResArr.get("FLT015365") + '" border="0"></a>');
+	write('</td>');
+	write('<td align="right">	<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">	<a id="sLnk0" href="javascript:showHelpFile(\'pordm_help_paymentorder.htm\');">');
+	write('<img src="../Renderer/images/' + applangcode + '/help.gif" width="47" height="21" vspace="1" border="0" hotKeyId="finHelp"></a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT001992") + '</td>');
+	write('</tr>');
+	write('<tr align="right" class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer>&nbsp;	<a id="sLnk4" href="javascript:fnOnFormSubmit(\'viewDrTranDet\')" class="url">');
+	write('Debit Tran. Details</a>');
+	write('&nbsp;</td>');
+	write('</tr>');
+	write('<tr align="right" class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer>&nbsp;	<a id="sLnk53" href="javascript:fnOnFormSubmit(\'viewCrTranDet\')" class="url">');
+	write('Credit Tran. Details</a>');
+	write('&nbsp;</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008777") + '</td>');
+	write('<td class="textfielddisplaylabel">	<label id="compField" cmpfldCount="cmpfld0">');
+	write('' + jsUtil.encodeChar(pymtRefNum) + '	</label>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008778") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield"><select id="orderType" name="' + groupName + '.orderType" ' + pordmProps.get("orderType_ENABLED") + ' class="listboxfont" fmnd="Y" fmb="Y" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE5(this,objForm.orderType.value);" >');
+	writeComboFunction("writePaymentProductType");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT029853") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="hTranRefNum" name="' + groupName + '.hTranRefNum" ' + pordmProps.get("hTranRefNum_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("hTranRefNum_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010398") + '');
+	write('<script>setMandatory("' + pordmProps.get("relatedRefNum_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="relatedRefNum" name="' + groupName + '.relatedRefNum" ' + pordmProps.get("relatedRefNum_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("relatedRefNum_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010399") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="reqExecutionDate_ui" name="' + groupName + '.reqExecutionDate_ui" hotKeyId="calender1" ' + pordmProps.get("reqExecutionDate_ENABLED") + ' type="text" class="textfieldfont1" size="18" maxlength="10" fmnd="Y" mnebl="false" fmb="N" fdt="uidate" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR6(this,this,this);">');
+	write('&nbsp;	<a id="sLnk5" href="javascript:openDate(document.forms[0].reqExecutionDate_ui,BODDate)">');
+	write('<img id="daysOfMonth1Pos" width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" style="cursor:hand" hotKeyId="calender1"></a>');
+	write('<div id="daysOfMonth1" style="position:absolute;">');
+	write('</div>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010400") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td colspan="4" class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drAcct" name="' + groupName + '.drAcct" hotKeyId="search1" ' + pordmProps.get("drAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" onChange="javascript:return pordmpod_ONCHANGE7(this);" fmnd="Y" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk6" href="javascript:showAcctIdList()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search1"></a>');
+	write('&nbsp;	<a id="sLnk7" href="javascript:showAcctDtls(document.forms[0].drAcct)">');
+	write('<img src="../images/' + applangcode + '/explode.gif" width="16" height="16" border="0" explodeId="explode0"></a>');
+	write('&nbsp;	<a id="sLnk64" href="javascript:showFinacleSignature()">');
+	write('<img src="../images/' + applangcode + '/sig_new1.gif" width="16" height="16" border="0"></a>');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drAcctCrncy" name="' + groupName + '.drAcctCrncy" type="text" disabled="true" class="labelwithoutwidth" size="3" maxlength="3" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drAcctSol" name="' + groupName + '.drAcctSol" type="text" disabled="true" class="labelwithoutwidth" size="8" maxlength="8" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drAcctName" name="' + groupName + '.drAcctName" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002010") + '');
+	write('<script>setMandatory("' + pordmProps.get("instrType_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="instrType" name="' + groupName + '.instrType" hotKeyId="search2" type="text" class="textfieldfont1" maxlength="5" fmnd="' + pordmProps.get("instrType_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">');
+	write('&nbsp;	<a id="sLnk59" href="javascript:getInstrTypeList(objForm.instrType,\'\',\'ctrl\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search2"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT026328") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="instrAlpha" name="' + groupName + '.instrAlpha" type="text" class="textfieldinsidemultirec2" maxlength="5" fmnd="' + pordmProps.get("instrAlpha_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="instrNum" name="' + groupName + '.instrNum" type="text" class="textfieldinsidemultirec2" maxlength="16" fmnd="' + pordmProps.get("instrNum_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002013") + '');
+	write('<script>setMandatory("' + pordmProps.get("instrDate_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="instrDate_ui" name="' + groupName + '.instrDate_ui" hotKeyId="calender2" type="text" class="textfieldfont1" maxlength="10" fmnd="' + pordmProps.get("instrDate_MANDATORY") + '" mnebl="false" fmb="N" fdt="uidate" fblk="fblk1" onblur="javascript:return pordmpod_ONBLUR8(this,this,this);">');
+	write('&nbsp;	<a id="sLnk63" href="javascript:openDate(document.forms[0].instrDate_ui,BODDate)">');
+	write('<img width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" alt="Date picker" hotKeyId="calender2"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">&nbsp;</td>');
+	write('<td class="textfield">&nbsp;</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010401") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitCrncy" name="' + groupName + '.remitCrncy" hotKeyId="search3" ' + pordmProps.get("remitCrncy_ENABLED") + ' type="text" class="textfieldcode" size="2" maxlength="3" onChange="javascript:return pordmpod_ONCHANGE9(this);" fmnd="Y" fmb="N" fdt="currency" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk8" href="javascript:showCurrencyListForPO();calculateConvertedAmt();">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search3"></a>');
+	write('<input id="remitAmt" name="' + groupName + '.remitAmt" explodeId="explode1" ' + pordmProps.get("remitAmt_ENABLED") + ' type="TEXT" class="textfieldamount1" size="22" maxlength="17" fmnd="Y" fmb="N" fdt="amount" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR10(this,\'' + format + '\',document.forms[0].remitAmt,document.forms[0].remitCrncy.value,\'N\');" onchange="javascript:return pordmpod_ONCHANGE11(this);">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">TOD</td>');
+	write('<td class="textfielddisplaylabel"><input id="todGrantedFlg" name="' + groupName + '.todGrantedFlg" ' + pordmProps.get("todGrantedFlg_ENABLED") + ' type="radio" value="Y" fmnd="' + pordmProps.get("todGrantedFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onclick="javascript:return pordmpod_ONCLICK12(this);">' + jspResArr.get("FLT002964") + '<input id="todGrantedFlg" name="' + groupName + '.todGrantedFlg" ' + pordmProps.get("todGrantedFlg_ENABLED") + ' type="radio" value="N" checked fmnd="' + pordmProps.get("todGrantedFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onclick="fnTODHandler()">' + jspResArr.get("FLT002965") + '	<a id="sLnk9" href="Javascript:invokeTODDtlScreen()">');
+	write('<img src="../images/' + applangcode + '/explode.gif" width="16" height="16" border="0" explodeId="explode1"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">Lien Flg</td>');
+	write('<td class="textfielddisplaylabel"><input id="lienMarkedFlg" name="' + groupName + '.lienMarkedFlg" ' + pordmProps.get("lienMarkedFlg_ENABLED") + ' type="radio" value="Y" checked fmnd="' + pordmProps.get("lienMarkedFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002964") + '<input id="lienMarkedFlg" name="' + groupName + '.lienMarkedFlg" ' + pordmProps.get("lienMarkedFlg_ENABLED") + ' type="radio" value="N" fmnd="' + pordmProps.get("lienMarkedFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002965") + '</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008779") + '');
+	write('<script>setMandatory("' + pordmProps.get("chkOrideDrExecDate_MANDATORY") + '");</script>	<script>setMandatory("Y");</script>');
+	write('</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="drExecutionDate_ui" name="' + groupName + '.drExecutionDate_ui" hotKeyId="calender3" ' + pordmProps.get("drExecutionDate_ENABLED") + ' type="text" class="textfieldfont1" size="18" maxlength="10" fmnd="Y" mnebl="false" fmb="N" fdt="uidate" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR13(this,this,this);">');
+	write('&nbsp;	<a id="sLnk10" href="javascript:openDate(document.forms[0].drExecutionDate_ui,BODDate)">');
+	write('<img id="daysOfMonth1Pos" width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" style="cursor:hand" hotKeyId="calender3"></a>');
+	write('<div id="daysOfMonth1" style="position:absolute;">');
+	write('</div>');
+	write('<input id="chkOrideDrExecDate" name="' + groupName + '.chkOrideDrExecDate" ' + pordmProps.get("chkOrideDrExecDate_ENABLED") + ' type="checkbox" onClick="javascript:return pordmpod_ONCLICK14(this,this);" fmnd="' + pordmProps.get("chkOrideDrExecDate_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003168") + '');
+	write('<script>setMandatory("' + pordmProps.get("frwrdCntrctNo_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="frwrdCntrctNo" name="' + groupName + '.frwrdCntrctNo" hotKeyId="search4" ' + pordmProps.get("frwrdCntrctNo_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("frwrdCntrctNo_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE15(this);">');
+	write('&nbsp;	<a id="sLnk11" href="javascript:showFwdList()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search4"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011729") + '');
+	write('<script>setMandatory("' + pordmProps.get("frwrdCntrctSolId_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="frwrdCntrctSolId" name="' + groupName + '.frwrdCntrctSolId" hotKeyId="search5" ' + pordmProps.get("frwrdCntrctSolId_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="8" fmnd="' + pordmProps.get("frwrdCntrctSolId_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE16(this);">');
+	write('&nbsp;	<a id="sLnk12" href="javascript:showSolId(document.forms[0].frwrdCntrctSolId,\'ctrl\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search5"></a>');
+	write('</td>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008780") + '');
+	write('<script>setMandatory("' + pordmProps.get("chkOrideDrValueDate_MANDATORY") + '");</script>	<script>setMandatory("Y");</script>');
+	write('</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="drValueDate_ui" name="' + groupName + '.drValueDate_ui" hotKeyId="calender4" ' + pordmProps.get("drValueDate_ENABLED") + ' type="text" class="textfieldfont1" size="18" maxlength="10" fmnd="Y" mnebl="false" fmb="N" fdt="uidate" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR17(this,this,this);">');
+	write('&nbsp;	<a id="sLnk13" href="javascript:openDate(document.forms[0].drValueDate_ui,BODDate)">');
+	write('<img id="daysOfMonth1Pos" width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" style="cursor:hand" hotKeyId="calender4"></a>');
+	write('<div id="daysOfMonth1" style="position:absolute;">');
+	write('</div>');
+	write('<input id="chkOrideDrValueDate" name="' + groupName + '.chkOrideDrValueDate" ' + pordmProps.get("chkOrideDrValueDate_ENABLED") + ' type="checkbox" onClick="javascript:return pordmpod_ONCLICK18(this,this);" fmnd="' + pordmProps.get("chkOrideDrValueDate_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010402") + '');
+	write('<script>setMandatory("' + pordmProps.get("exchRateCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="exchRateCode" name="' + groupName + '.exchRateCode" ' + pordmProps.get("exchRateCode_ENABLED") + ' type="text" class="twotextfieldnoicon" onChange="javascript:return pordmpod_ONCHANGE19(this);" maxlength="5" fmnd="' + pordmProps.get("exchRateCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;<input onChange="javascript:custom_ONCHANGE(\'pordmpod\',this);calculateConvertedAmt();" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="exchRate" name="' + groupName + '.exchRate" hotKeyId="search6" ' + pordmProps.get("exchRate_ENABLED") + ' type="text" class="twotextfieldnoicon" maxlength="12" fmnd="' + pordmProps.get("exchRate_MANDATORY") + '" fmb="N" fdt="frate" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk14" href="Javascript:showExchRateCode();calculateConvertedAmt();">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search6"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000995") + '');
+	write('<script>setMandatory("' + pordmProps.get("tresExchRate_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="tresExchRate" name="' + groupName + '.tresExchRate" type="text" class="textfieldfont" maxlength="16" fmnd="' + pordmProps.get("tresExchRate_MANDATORY") + '" fmb="Y" fdt="frate" fblk="fblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT023990") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="tresExchRefNo" name="' + groupName + '.tresExchRefNo" hotKeyId="search7" type="text" class="textfieldfont" maxlength="16" fmb="Y" fdt="default" fblk="fblk1">');
+	write('&nbsp;	<a id="sLnk65" href="javascript:callExchTrRefNoSearcher()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search7"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010403") + '');
+	write('<script>setMandatory("' + pordmProps.get("chrgAcct_MANDATORY") + '");</script></td>');
+	write('<td colspan="4" class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="chrgAcct" name="' + groupName + '.chrgAcct" hotKeyId="search8" ' + pordmProps.get("chrgAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" onChange="javascript:return pordmpod_ONCHANGE20(this,document.forms[0].chrgAcct,document.forms[0].chrgAcctCrncy,document.forms[0].chrgAcctSol,document.forms[0].chrgAcctName);" fmnd="' + pordmProps.get("chrgAcct_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk15" href="Javascript:showAccountIdList(document.forms[0].chrgAcct,document.forms[0].chrgAcctSol,document.forms[0].chrgAcctName,\'F\',document.forms[0].chrgAcctCrncy)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search8"></a>');
+	write('&nbsp;	<a id="sLnk16" href="javascript:showAcctDtls(document.forms[0].chrgAcct)">');
+	write('<img src="../images/' + applangcode + '/explode.gif" width="16" height="16" border="0" explodeId="explode1"></a>');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="chrgAcctCrncy" name="' + groupName + '.chrgAcctCrncy" type="text" disabled="true" class="labelwithoutwidth" size="3" maxlength="3" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="chrgAcctSol" name="' + groupName + '.chrgAcctSol" type="text" disabled="true" class="labelwithoutwidth" size="8" maxlength="8" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="chrgAcctName" name="' + groupName + '.chrgAcctName" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT004684") + '');
+	write('<script>setMandatory("' + pordmProps.get("deptNum_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="deptNum" name="' + groupName + '.deptNum" hotKeyId="search9" ' + pordmProps.get("deptNum_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="5" fmnd="' + pordmProps.get("deptNum_MANDATORY") + '" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk18" href="javascript:showRefCode(document.forms[0].deptNum,\'DP\',\'N\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search9"></a>');
+	write('&nbsp;</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT001384") + '');
+	write('<script>setMandatory("' + pordmProps.get("pRemarks_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="pRemarks" name="' + groupName + '.pRemarks" ' + pordmProps.get("pRemarks_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="70" fmnd="' + pordmProps.get("pRemarks_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT001228") + '');
+	write('<script>setMandatory("' + pordmProps.get("remitFreeText_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitFreeText" name="' + groupName + '.remitFreeText" ' + pordmProps.get("remitFreeText_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="500" fmnd="' + pordmProps.get("remitFreeText_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class = "textlabel">Converted Amount</td>');
+        write('<td class="textfield">');
+	write('<input type="text"  class="textfieldamount2" name="convertedAmt"  id="convertedAmt" maxlength="50" readOnly="readOnly">');
+        write('&nbsp;<input type="text" class="textfieldcode" size="2" maxlength="3" name="convertedCrncy"  id="convertedCrncy" readOnly="readOnly">');
+        write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT003378") + '</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT026160") + '');
+	write('<script>setMandatory("' + pordmProps.get("pTranRefNum_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="pTranRefNum" name="' + groupName + '.pTranRefNum" ' + pordmProps.get("pTranRefNum_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("pTranRefNum_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010407") + '');
+	write('<script>setMandatory("' + pordmProps.get("settlementMode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><select id="settlementMode" name="' + groupName + '.settlementMode" ' + pordmProps.get("settlementMode_ENABLED") + ' class="listboxfont" fmnd="' + pordmProps.get("settlementMode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE21(this);" >');
+	writeComboFunction("writeSettlementModes");
+	write('</select>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010408") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="instructedCrncy" name="' + groupName + '.instructedCrncy" hotKeyId="search10" disabled type="TEXT" class="textfieldcode" size="2" maxlength="3" fmnd="' + pordmProps.get("instructedCrncy_MANDATORY") + '" fmb="N" fdt="currency" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk17" href="javascript:showCurrency(document.forms[0].instructedCrncy,\'ctrl\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search10"></a>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="instructedAmt" name="' + groupName + '.instructedAmt" disabled type="TEXT" class="textfieldamount1" size="22" maxlength="17" onBlur="javascript:return pordmpod_ONBLUR22(this,\'' + format + '\',document.forms[0].instructedAmt,document.forms[0].instructedCrncy.value,\'N\');" fmnd="' + pordmProps.get("instructedAmt_MANDATORY") + '" fmb="N" fdt="amount" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT004153") + '');
+	write('<script>setMandatory("' + pordmProps.get("suspendFlg_MANDATORY") + '");</script></td>');
+	write('<td class="textfielddisplaylabel"><input id="suspendFlg" name="' + groupName + '.suspendFlg" ' + pordmProps.get("suspendFlg_ENABLED") + ' type="radio" value="Y" fmnd="' + pordmProps.get("suspendFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002964") + '<input id="suspendFlg" name="' + groupName + '.suspendFlg" ' + pordmProps.get("suspendFlg_ENABLED") + ' type="radio" value="N" checked fmnd="' + pordmProps.get("suspendFlg_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002965") + '</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008781") + '');
+	write('<script>setMandatory("' + pordmProps.get("chkOrideCrExecDate_MANDATORY") + '");</script>	<script>setMandatory("Y");</script>');
+	write('</td>');
+	write('<td class="textfield"><input id="crExecutionDate_ui" name="' + groupName + '.crExecutionDate_ui" hotKeyId="calender5" ' + pordmProps.get("crExecutionDate_ENABLED") + ' type="text" class="textfieldfont1" size="18" maxlength="10" fmnd="Y" mnebl="false" fmb="N" fdt="uidate" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR23(this,this,this);" onchange="javascript:return pordmpod_ONCHANGE24(this,\'crAcct\');">');
+	write('&nbsp;	<a id="sLnk57" href="javascript:openDate(document.forms[0].crExecutionDate_ui,BODDate)">');
+	write('<img id="daysOfMonth1Pos" width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" style="cursor:hand" hotKeyId="calender5"></a>');
+	write('<div id="daysOfMonth1" style="position:absolute;">');
+	write('</div>');
+	write('<input id="chkOrideCrExecDate" name="' + groupName + '.chkOrideCrExecDate" ' + pordmProps.get("chkOrideCrExecDate_ENABLED") + ' type="checkbox" onClick="javascript:return pordmpod_ONCLICK25(this,this);" fmnd="' + pordmProps.get("chkOrideCrExecDate_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008782") + '');
+	write('<script>setMandatory("' + pordmProps.get("chkOrideCrValueDate_MANDATORY") + '");</script>	<script>setMandatory("Y");</script>');
+	write('</td>');
+	write('<td class="textfield"><input id="crValueDate_ui" name="' + groupName + '.crValueDate_ui" hotKeyId="calender6" ' + pordmProps.get("crValueDate_ENABLED") + ' type="text" class="textfieldfont1" size="18" maxlength="10" fmnd="Y" mnebl="false" fmb="N" fdt="uidate" fblk="defaultFblk1" onblur="javascript:return pordmpod_ONBLUR26(this,this,this);" onchange="javascript:return pordmpod_ONCHANGE27(this,\'crAcct\');">');
+	write('&nbsp;	<a id="sLnk19" href="javascript:openDate(document.forms[0].crValueDate_ui,BODDate)">');
+	write('<img id="daysOfMonth1Pos" width="24" height="19" src="../images/' + applangcode + '/calender.gif" align="absmiddle" border="0" style="cursor:hand" hotKeyId="calender6"></a>');
+	write('<div id="daysOfMonth1" style="position:absolute;">');
+	write('</div>');
+	write('<input id="chkOrideCrValueDate" name="' + groupName + '.chkOrideCrValueDate" ' + pordmProps.get("chkOrideCrValueDate_ENABLED") + ' type="checkbox" onClick="javascript:return pordmpod_ONCLICK28(this,this);" fmnd="' + pordmProps.get("chkOrideCrValueDate_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT010576") + '</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008200") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefCifId_MANDATORY") + '");</script></td>');
+	write('<td colspan="4" class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefCifId" name="' + groupName + '.benefCifId" hotKeyId="search11" type="text" class="textfieldfont1" maxlength="32" fmnd="' + pordmProps.get("benefCifId_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">');
+	write('&nbsp;	<a id="sLnk60" href="javascript:showDynCritSearcher(\'HNONCUST\',\'party_code=:document.forms[0].benefCifId\',\':document.forms[0].benefCifId=party_code\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search11"></a>');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="Input4" name="' + groupName + '.Input4" type="text" disabled="true" class="label1" size="25" maxlength="25" fmb="N" fdt="default" fblk="fblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000462") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield"><select id="benefPartyAddrInd" name="' + groupName + '.benefPartyAddrInd" ' + pordmProps.get("benefPartyAddrInd_ENABLED") + ' class="listboxfont" onChange="javascript:return pordmpod_ONCHANGE29(this,document.forms[0].benefPartyAddrInd.value,benefAddrConst);" fmnd="Y" fmb="N" fdt="default" fblk="defaultFblk1" >');
+	writeComboFunction("writeAddressTypes");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008350") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyBic_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyBic" name="' + groupName + '.benefPartyBic" hotKeyId="search12" ' + pordmProps.get("benefPartyBic_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="12" fmnd="' + pordmProps.get("benefPartyBic_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE30(this,benefAddrConst);">');
+	write('&nbsp;	<a id="sLnk20" href="javascript:fnShowBankBicDetails(benefAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search12"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006623") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyBankCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyBankCode" name="' + groupName + '.benefPartyBankCode" hotKeyId="search13" ' + pordmProps.get("benefPartyBankCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE31(this,benefAddrConst);" fmnd="' + pordmProps.get("benefPartyBankCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk21" href="javascript:fnLocalListBankCodes(benefAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search13"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT009907") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyBranchCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyBranchCode" name="' + groupName + '.benefPartyBranchCode" hotKeyId="search14" ' + pordmProps.get("benefPartyBranchCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE32(this,benefAddrConst);" fmnd="' + pordmProps.get("benefPartyBranchCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk22" href="javascript:fnLocalShowBranchCodes(benefAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search14"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008776") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyLBC_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyLBC" name="' + groupName + '.benefPartyLBC" hotKeyId="search15" ' + pordmProps.get("benefPartyLBC_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("benefPartyLBC_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk23" href="javascript:fnShowLBCDetails(benefAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search15"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002745") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyAcct_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyAcct" name="' + groupName + '.benefPartyAcct" hotKeyId="search16" ' + pordmProps.get("benefPartyAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("benefPartyAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE33(this);">');
+	write('&nbsp	<a id="sLnk54" href="javascript:fnLocalShowBenefPartyAccId();">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search16"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000450") + '');
+	write('<script>setMandatory("' + pordmProps.get("benefPartyName_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyName" name="' + groupName + '.benefPartyName" ' + pordmProps.get("benefPartyName_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("benefPartyName_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014293") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyAddress1" name="' + groupName + '.benefPartyAddress1" ' + pordmProps.get("benefPartyAddress1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("benefPartyAddress1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014294") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyAddress2" name="' + groupName + '.benefPartyAddress2" ' + pordmProps.get("benefPartyAddress2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("benefPartyAddress2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014295") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyAddress3" name="' + groupName + '.benefPartyAddress3" ' + pordmProps.get("benefPartyAddress3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("benefPartyAddress3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000092") + '</td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyCntryCode" name="' + groupName + '.benefPartyCntryCode" hotKeyId="search17" ' + pordmProps.get("benefPartyCntryCode_ENABLED") + ' type="text" class="textfieldfont1" size="5" maxlength="5" fmnd="' + pordmProps.get("benefPartyCntryCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE34(this,\'benefPartyCntryName\');">');
+	write('&nbsp;	<a id="sLnk24" href="Javascript:showRefCode(document.forms[0].benefPartyCntryCode,\'03\',\'N\',\'F\',document.forms[0].benefPartyCntryName)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search17"></a>');
+	write('<br>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="benefPartyCntryName" name="' + groupName + '.benefPartyCntryName" class="label" type="text" disabled="true" size="30" maxlength="30" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT029574") + '</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000462") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiAddrInd_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><select id="awiAddrInd" name="' + groupName + '.awiAddrInd" ' + pordmProps.get("awiAddrInd_ENABLED") + ' class="listboxfont" onChange="javascript:return pordmpod_ONCHANGE35(this,document.forms[0].awiAddrInd.value,awiAddrConst);" fmnd="' + pordmProps.get("awiAddrInd_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" >');
+	writeComboFunction("writeAddressTypes");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008350") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiBic_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiBic" name="' + groupName + '.awiBic" hotKeyId="search18" ' + pordmProps.get("awiBic_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="12" fmnd="' + pordmProps.get("awiBic_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE36(this,awiAddrConst);">');
+	write('&nbsp;	<a id="sLnk25" href="javascript:fnLocShowBankBicDetails(awiAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search18"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006623") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiBankCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiBankCode" name="' + groupName + '.awiBankCode" hotKeyId="search19" ' + pordmProps.get("awiBankCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE37(this,awiAddrConst);" fmnd="' + pordmProps.get("awiBankCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk26" href="javascript:fnLocalListBankCodes(awiAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search19"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT009907") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiBranchCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiBranchCode" name="' + groupName + '.awiBranchCode" hotKeyId="search20" ' + pordmProps.get("awiBranchCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE38(this,awiAddrConst);" fmnd="' + pordmProps.get("awiBranchCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk27" href="javascript:fnLocalShowBranchCodes(awiAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search20"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008776") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiLBC_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiLBC" name="' + groupName + '.awiLBC" hotKeyId="search21" ' + pordmProps.get("awiLBC_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("awiLBC_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk28" href="javascript:fnShowLBCDetails(awiAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search21"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002745") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiAcct_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiAcct" name="' + groupName + '.awiAcct" ' + pordmProps.get("awiAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("awiAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000450") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiName_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiName" name="' + groupName + '.awiName" ' + pordmProps.get("awiName_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("awiName_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014293") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiAddress1" name="' + groupName + '.awiAddress1" ' + pordmProps.get("awiAddress1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("awiAddress1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014294") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiAddress2" name="' + groupName + '.awiAddress2" ' + pordmProps.get("awiAddress2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("awiAddress2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014295") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiAddress3" name="' + groupName + '.awiAddress3" ' + pordmProps.get("awiAddress3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("awiAddress3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000092") + '</td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiCntryCode" name="' + groupName + '.awiCntryCode" hotKeyId="search22" ' + pordmProps.get("awiCntryCode_ENABLED") + ' type="text" class="textfieldfont1" size="5" maxlength="5" fmnd="' + pordmProps.get("awiCntryCode_MANDATORY") + '" fmb="N" fdt="refCode" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE39(this,\'awiCntryName\');">');
+	write('&nbsp;	<a id="sLnk29" href="Javascript:showRefCode(document.forms[0].awiCntryCode,\'03\',\'N\',\'F\',document.forms[0].awiCntryName)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search22"></a>');
+	write('<br>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="awiCntryName" name="' + groupName + '.awiCntryName" class="label" type="text" disabled="true" size="30" maxlength="30" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">' + jspResArr.get("FLT010578") + '</td>');
+	write('<td colspan="2" align="right">	<div id="interInstnDispText">');
+	write('<img id="expand1" align="right" border="0" src="../Renderer/images/' + applangcode + '/expand.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK40(this,"interInstnShow");\'></img>	</div>');
+	write('<div id="interInstnHideText" style="display: none">');
+	write('<img id="collapse1" align="right" border="0" src="../Renderer/images/' + applangcode + '/collapse.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK41(this,"interInstnHide");\'></img>	</div>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td colspan="5">	<table id="interInstnTable" style="display: none" cellspacing="0" width="100%" cellpadding="0">');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000462") + '');
+	write('<script>setMandatory("' + pordmProps.get("awiAddress1_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><select id="interInstnAddrInd" name="' + groupName + '.interInstnAddrInd" ' + pordmProps.get("interInstnAddrInd_ENABLED") + ' class="listboxfont" onChange="javascript:return pordmpod_ONCHANGE42(this,document.forms[0].interInstnAddrInd.value,interInstnAddrConst);" fmnd="' + pordmProps.get("interInstnAddrInd_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" >');
+	writeComboFunction("writeAddressTypes");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008350") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnBic_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnBic" name="' + groupName + '.interInstnBic" hotKeyId="search23" ' + pordmProps.get("interInstnBic_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="12" fmnd="' + pordmProps.get("interInstnBic_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE43(this,interInstnAddrConst);">');
+	write('&nbsp;	<a id="sLnk30" href="javascript:fnShowBankBicDetails(interInstnAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search23"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006623") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnBankCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnBankCode" name="' + groupName + '.interInstnBankCode" hotKeyId="search24" ' + pordmProps.get("interInstnBankCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE44(this,interInstnAddrConst);" fmnd="' + pordmProps.get("interInstnBankCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk31" href="javascript:fnLocalListBankCodes(interInstnAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search24"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT009907") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnBranchCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnBranchCode" name="' + groupName + '.interInstnBranchCode" hotKeyId="search25" ' + pordmProps.get("interInstnBranchCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE45(this,interInstnAddrConst);" fmnd="' + pordmProps.get("interInstnBranchCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk32" href="javascript:fnLocalShowBranchCodes(interInstnAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search25"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008776") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnLBC_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnLBC" name="' + groupName + '.interInstnLBC" hotKeyId="search26" ' + pordmProps.get("interInstnLBC_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("interInstnLBC_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk33" href="javascript:fnShowLBCDetails(interInstnAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search26"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002745") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnAcct_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnAcct" name="' + groupName + '.interInstnAcct" ' + pordmProps.get("interInstnAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("interInstnAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000450") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnName_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnName" name="' + groupName + '.interInstnName" ' + pordmProps.get("interInstnName_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("interInstnName_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014293") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnAddress1" name="' + groupName + '.interInstnAddress1" ' + pordmProps.get("interInstnAddress1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("interInstnAddress1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014294") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnAddress2" name="' + groupName + '.interInstnAddress2" ' + pordmProps.get("interInstnAddress2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("interInstnAddress2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014295") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnAddress3" name="' + groupName + '.interInstnAddress3" ' + pordmProps.get("interInstnAddress3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("interInstnAddress3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000092") + '</td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnCntryCode" name="' + groupName + '.interInstnCntryCode" hotKeyId="search27" ' + pordmProps.get("interInstnCntryCode_ENABLED") + ' type="text" class="textfieldfont1" size="5" maxlength="5" fmnd="' + pordmProps.get("interInstnCntryCode_MANDATORY") + '" fmb="N" fdt="refCode" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE46(this,\'interInstnCntryName\');">');
+	write('&nbsp;	<a id="sLnk34" href="Javascript:showRefCode(document.forms[0].interInstnCntryCode,\'03\',\'N\',\'F\',document.forms[0].interInstnCntryName)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search27"></a>');
+	write('<br>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="interInstnCntryName" name="' + groupName + '.interInstnCntryName" class="label" type="text" disabled="true" size="30" maxlength="30" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">Receivers Correspondent</td>');
+	write('<td colspan="2" align="right">	<div id="recvrCorrespDispText">');
+	write('<img id="expand2" align="right" border="0" src="../Renderer/images/' + applangcode + '/expand.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK47(this,"recvrCorrespShow");\'></img>	</div>');
+	write('<div id="recvrCorrespHideText" style="display: none">');
+	write('<img id="collapse2" align="right" border="0" src="../Renderer/images/' + applangcode + '/collapse.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK48(this,"recvrCorrespHide");\'></img>	</div>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td colspan="5">	<table id="recvrCorrespTable" style="display: none" cellspacing="0" width="100%" cellpadding="0">');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000462") + '');
+	write('<script>setMandatory("' + pordmProps.get("interInstnAddrInd_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><select id="recvrCorrespAddrInd" name="' + groupName + '.recvrCorrespAddrInd" ' + pordmProps.get("recvrCorrespAddrInd_ENABLED") + ' class="listboxfont" onChange="javascript:return pordmpod_ONCHANGE49(this,document.forms[0].recvrCorrespAddrInd.value,recvrCorrespAddrConst);" fmnd="' + pordmProps.get("recvrCorrespAddrInd_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" >');
+	writeComboFunction("writeAddressTypes");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008350") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespBic_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespBic" name="' + groupName + '.recvrCorrespBic" hotKeyId="search28" ' + pordmProps.get("recvrCorrespBic_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="12" fmnd="' + pordmProps.get("recvrCorrespBic_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE50(this,recvrCorrespAddrConst);">');
+	write('&nbsp;	<a id="sLnk35" href="Javascript:fnShowBankBicDetails(recvrCorrespAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search28"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT006623") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespBankCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespBankCode" name="' + groupName + '.recvrCorrespBankCode" hotKeyId="search29" ' + pordmProps.get("recvrCorrespBankCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE51(this,recvrCorrespAddrConst);" fmnd="' + pordmProps.get("recvrCorrespBankCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk36" href="javascript:fnLocalListBankCodes(recvrCorrespAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search29"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT009907") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespBranchCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespBranchCode" name="' + groupName + '.recvrCorrespBranchCode" hotKeyId="search30" ' + pordmProps.get("recvrCorrespBranchCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE52(this,recvrCorrespAddrConst);" fmnd="' + pordmProps.get("recvrCorrespBranchCode_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk37" href="javascript:fnLocalShowBranchCodes(recvrCorrespAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search30"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT008776") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespLBC_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespLBC" name="' + groupName + '.recvrCorrespLBC" hotKeyId="search31" ' + pordmProps.get("recvrCorrespLBC_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("recvrCorrespLBC_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk38" href="javascript:fnShowLBCDetails(recvrCorrespAddrConst)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search31"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT002745") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespAcct_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespAcct" name="' + groupName + '.recvrCorrespAcct" ' + pordmProps.get("recvrCorrespAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="34" fmnd="' + pordmProps.get("recvrCorrespAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000450") + '');
+	write('<script>setMandatory("' + pordmProps.get("recvrCorrespName_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespName" name="' + groupName + '.recvrCorrespName" ' + pordmProps.get("recvrCorrespName_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("recvrCorrespName_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014293") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespAddress1" name="' + groupName + '.recvrCorrespAddress1" ' + pordmProps.get("recvrCorrespAddress1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("recvrCorrespAddress1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014294") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespAddress2" name="' + groupName + '.recvrCorrespAddress2" ' + pordmProps.get("recvrCorrespAddress2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("recvrCorrespAddress2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT014295") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespAddress3" name="' + groupName + '.recvrCorrespAddress3" ' + pordmProps.get("recvrCorrespAddress3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("recvrCorrespAddress3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000092") + '</td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespCntryCode" name="' + groupName + '.recvrCorrespCntryCode" hotKeyId="search32" ' + pordmProps.get("recvrCorrespCntryCode_ENABLED") + ' type="text" class="textfieldfont1" size="5" maxlength="5" fmnd="' + pordmProps.get("recvrCorrespCntryCode_MANDATORY") + '" fmb="N" fdt="refCode" fblk="defaultFblk1" onChange="javascript:return pordmpod_ONCHANGE53(this,\'recvrCorrespCntryName\');">');
+	write('&nbsp;	<a id="sLnk39" href="Javascript:showRefCode(document.forms[0].recvrCorrespCntryCode,\'03\',\'N\',\'F\',document.forms[0].recvrCorrespCntryName)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search32"></a>');
+	write('<br>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="recvrCorrespCntryName" name="' + groupName + '.recvrCorrespCntryName" class="label" type="text" disabled="true" size="30" maxlength="30" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT004555") + '</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">Method of Payment Derivation</td>');
+	write('<td align="center" valign="top" class="textfielddisplaylabel"><input id="pymtDerivationMethod" name="' + groupName + '.pymtDerivationMethod" type="radio" value="M" checked fmnd="' + pordmProps.get("pymtDerivationMethod_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">' + jspResArr.get("FLT002091") + '<input id="pymtDerivationMethod" name="' + groupName + '.pymtDerivationMethod" type="radio" value="S" fmnd="' + pordmProps.get("pymtDerivationMethod_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">&nbsp');
+	write('System &nbsp;&nbsp;&nbsp;<input id="fetchPaysysId" name="fetchPaysysId" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK54(this,this);" value="' + jspResArr.get("FLT000041") + '">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">Method of Payment</td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="routedPaysysId" name="' + groupName + '.routedPaysysId" hotKeyId="search33" ' + pordmProps.get("routedPaysysId_ENABLED") + ' type="text" class="textfieldfont1" maxlength="5" fmnd="' + pordmProps.get("routedPaysysId_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE55(this,\'chrgEventId\');">');
+	write('&nbsp;	<a id="sLnk62" href="javascript:showRefCode(document.forms[0].routedPaysysId,\'CK\',\'N\',\'B\',document.forms[0].routedPaysysIdDesc)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search33"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011730") + '');
+	write('<script>setMandatory("' + pordmProps.get("ourCorrespBic_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="ourCorrespBic" name="' + groupName + '.ourCorrespBic" hotKeyId="search34" ' + pordmProps.get("ourCorrespBic_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="12" fmnd="' + pordmProps.get("ourCorrespBic_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk42" href="javascript:showLocalCrncyCorresList()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search34"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">&nbsp;</td>');
+	write('<td class="textfield">&nbsp;</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011731") + '');
+	write('<script>setMandatory("' + pordmProps.get("ourCorrespBankCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="ourCorrespBankCode" name="' + groupName + '.ourCorrespBankCode" hotKeyId="search35" ' + pordmProps.get("ourCorrespBankCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE56(this);" fmnd="' + pordmProps.get("ourCorrespBankCode_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk43" href="javascript:fnLocalListOurCorrespBankCodes()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search35"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011733") + '');
+	write('<script>setMandatory("' + pordmProps.get("ourCorrespBranchCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="ourCorrespBranchCode" name="' + groupName + '.ourCorrespBranchCode" hotKeyId="search36" ' + pordmProps.get("ourCorrespBranchCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" onChange="javascript:return pordmpod_ONCHANGE57(this);" fmnd="' + pordmProps.get("ourCorrespBranchCode_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk44" href="javascript:fnLocalListOurCorrespBranchCodes()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search36"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT020932") + '');
+	write('<script>setMandatory("' + pordmProps.get("crAcct_MANDATORY") + '");</script></td>');
+	write('<td colspan="4" class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crAcct" name="' + groupName + '.crAcct" hotKeyId="search37" ' + pordmProps.get("crAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" onChange="javascript:return pordmpod_ONCHANGE58(this,document.forms[0].crAcct,document.forms[0].crAcctCrncy,document.forms[0].crAcctSol,document.forms[0].crAcctName);" fmnd="' + pordmProps.get("crAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk45" href="javascript:showCreditAccount()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search37"></a>');
+	write('&nbsp;	<a id="sLnk46" href="javascript:showAcctDtls(document.forms[0].crAcct)">');
+	write('<img src="../images/' + applangcode + '/explode.gif" width="16" height="16" border="0" explodeId="explode1"></a>');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crAcctCrncy" name="' + groupName + '.crAcctCrncy" type="text" disabled="true" class="labelwithoutwidth" size="3" maxlength="3" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crAcctSol" name="' + groupName + '.crAcctSol" type="text" disabled="true" class="labelwithoutwidth" size="8" maxlength="8" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crAcctName" name="' + groupName + '.crAcctName" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003168") + '');
+	write('<script>setMandatory("' + pordmProps.get("crFrwrdCntrctNo_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crFrwrdCntrctNo" name="' + groupName + '.crFrwrdCntrctNo" hotKeyId="search38" ' + pordmProps.get("crFrwrdCntrctNo_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("crFrwrdCntrctNo_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE59(this);">');
+	write('&nbsp;	<a id="sLnk58" href="javascript:crShowFwdList()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search38"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011729") + '');
+	write('<script>setMandatory("' + pordmProps.get("crFrwrdCntrctSolId_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crFrwrdCntrctSolId" name="' + groupName + '.crFrwrdCntrctSolId" hotKeyId="search39" ' + pordmProps.get("crFrwrdCntrctSolId_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" fmnd="' + pordmProps.get("crFrwrdCntrctSolId_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1" onchange="javascript:return pordmpod_ONCHANGE60(this);">');
+	write('&nbsp;	<a id="sLnk48" href="javascript:showSolId(document.forms[0].crFrwrdCntrctSolId,\'ctrl\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search39"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010402") + '');
+	write('<script>setMandatory("' + pordmProps.get("exchRate_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drexchRateCode" name="' + groupName + '.drexchRateCode" ' + pordmProps.get("drexchRateCode_ENABLED") + ' type="text" class="textfieldinsidemultirec2" size="25" maxlength="5" onChange="javascript:return pordmpod_ONCHANGE61(this);" fmnd="' + pordmProps.get("drexchRateCode_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="drexchRate" name="' + groupName + '.drexchRate" hotKeyId="search40" ' + pordmProps.get("drexchRate_ENABLED") + ' type="text" class="textfieldinsidemultirec2" size="25" maxlength="12" fmnd="' + pordmProps.get("drexchRate_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk49" href="Javascript:showDrExchRateCode()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search40"></a>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">&nbsp;</td>');
+	write('<td class="textfield">&nbsp;</td>');
+	write('</tr>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT000995") + '');
+	write('<script>setMandatory("' + pordmProps.get("tresDrRate_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="tresDrRate" name="' + groupName + '.tresDrRate" type="text" class="textfieldfont" maxlength="16" fmnd="' + pordmProps.get("tresDrRate_MANDATORY") + '" fmb="Y" fdt="frate" fblk="fblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT023990") + '</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="tresDrRefNo" name="' + groupName + '.tresDrRefNo" hotKeyId="search41" type="text" class="textfieldfont" maxlength="16" fmb="Y" fdt="default" fblk="fblk1">');
+	write('&nbsp;	<a id="sLnk66" href="javascript:callDrTrRefNoSearcher()">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search41"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010403") + '');
+	write('<script>setMandatory("' + pordmProps.get("crchrgAcct_MANDATORY") + '");</script></td>');
+	write('<td colspan="4" class="textfield"><input onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crchrgAcct" name="' + groupName + '.crchrgAcct" hotKeyId="search42" ' + pordmProps.get("crchrgAcct_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="16" onChange="javascript:return pordmpod_ONCHANGE62(this,document.forms[0].crchrgAcct,document.forms[0].crchrgAcctCrncy,document.forms[0].crchrgAcctSol,document.forms[0].crchrgAcctName);" fmnd="' + pordmProps.get("crchrgAcct_MANDATORY") + '" fmb="N" fdt="account" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk50" href="Javascript:showAccountIdList(document.forms[0].crchrgAcct,document.forms[0].crchrgAcctSol,document.forms[0].crchrgAcctName,\'F\',document.forms[0].crchrgAcctCrncy)">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search42"></a>');
+	write('&nbsp;	<a id="sLnk51" href="javascript:showAcctDtls(document.forms[0].crchrgAcct)">');
+	write('<img src="../images/' + applangcode + '/explode.gif" width="16" height="16" border="0" explodeId="explode1"></a>');
+	write('&nbsp;<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crchrgAcctCrncy" name="' + groupName + '.crchrgAcctCrncy" type="text" disabled="true" class="labelwithoutwidth" size="3" maxlength="3" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crchrgAcctSol" name="' + groupName + '.crchrgAcctSol" type="text" disabled="true" class="labelwithoutwidth" size="8" maxlength="8" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="crchrgAcctName" name="' + groupName + '.crchrgAcctName" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT010584") + '</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010412") + '');
+	write('<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield"><select onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" id="chargeOption" name="' + groupName + '.chargeOption" ' + pordmProps.get("chargeOption_ENABLED") + ' class="listboxfont" fmnd="Y" fmb="N" fdt="default" fblk="defaultFblk1" >');
+	writeComboFunction("writeRemitTranFeeDtls");
+	write('</select>');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT001610") + '');
+	write('<script>setMandatory("' + pordmProps.get("chrgEventId_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="chrgEventId" name="' + groupName + '.chrgEventId" hotKeyId="search43" ' + pordmProps.get("chrgEventId_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="25" fmnd="' + pordmProps.get("chrgEventId_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk52" href="javascript:showDynCritSearcher(\'HPOCHG\',\'event_id=:chrgEventId|event_type=:chrgEventType|in_out_ind=:poInOutInd\',\':document.forms[0].chrgEventId=event_id|:document.forms[0].chrgEventType=event_type\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search43"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010405") + '');
+	write('<script>setMandatory("' + pordmProps.get("netCharges_MANDATORY") + '");</script></td>');
+	write('<td class="textfielddisplaylabel"><input id="netCharges" name="' + groupName + '.netCharges" ' + pordmProps.get("netCharges_ENABLED") + ' type="radio" value="Y" onClick="javascript:return pordmpod_ONCLICK63(this);" fmnd="' + pordmProps.get("netCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002964") + '<input id="netCharges" name="' + groupName + '.netCharges" ' + pordmProps.get("netCharges_ENABLED") + ' type="radio" value="N" onClick="fnChangeofNetChargeFlg()" CHECKED fmnd="' + pordmProps.get("netCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002965") + '</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT010413") + '');
+	write('<script>setMandatory("' + pordmProps.get("repairCharges_MANDATORY") + '");</script></td>');
+	write('<td class="textfielddisplaylabel"><input id="repairCharges" name="' + groupName + '.repairCharges" ' + pordmProps.get("repairCharges_ENABLED") + ' type="radio" value="Y" fmnd="' + pordmProps.get("repairCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002964") + '<input id="repairCharges" name="' + groupName + '.repairCharges" ' + pordmProps.get("repairCharges_ENABLED") + ' type="radio" value="N" CHECKED fmnd="' + pordmProps.get("repairCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1">' + jspResArr.get("FLT002965") + '</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT011086") + '');
+	write('<script>setMandatory("' + pordmProps.get("waiverCharges_MANDATORY") + '");</script></td>');
+	write('<td class="textfielddisplaylabel"><input id="waiverCharges" name="' + groupName + '.waiverCharges" ' + pordmProps.get("waiverCharges_ENABLED") + ' type="radio" value="Y" fmnd="' + pordmProps.get("waiverCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onClick="javascript:return pordmpod_ONCLICK64(this);">' + jspResArr.get("FLT002964") + '<input id="waiverCharges" name="' + groupName + '.waiverCharges" ' + pordmProps.get("waiverCharges_ENABLED") + ' type="radio" value="N" CHECKED fmnd="' + pordmProps.get("waiverCharges_MANDATORY") + '" fmb="N" fdt="default" fblk="defaultFblk1" onClick="fnOnChangeWaiveCharges()">' + jspResArr.get("FLT002965") + '</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td width="39" align="right"><input id="ViewCharges" name="ViewCharges" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK65(this,this);" value="' + jspResArr.get("FLT015366") + '">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">Senders to Receiver Info.</td>');
+	write('<td colspan="2" align="right">	<div id="senderToRecvrInfoDispText">');
+	write('<img id="expand3" align="right" border="0" src="../Renderer/images/' + applangcode + '/expand.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK66(this,"senderToRecvrInfoShow");\'></img>	</div>');
+	write('<div id="senderToRecvrInfoHideText" style="display: none">');
+	write('<img id="collapse3" align="right" border="0" src="../Renderer/images/' + applangcode + '/collapse.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK67(this,"senderToRecvrInfoHide");\'></img>	</div>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td colspan="5">	<table id="senderToRecvrInfoTable" style="display: none" cellspacing="0" width="100%" cellpadding="0">');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003343") + '');
+	write('<script>setMandatory("' + pordmProps.get("purposeCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="purposeCode" name="' + groupName + '.purposeCode" hotKeyId="search44" type="text" class="textfieldfont1" maxlength="5" fmnd="' + pordmProps.get("purposeCode_MANDATORY") + '" fmb="N" fdt="default" fblk="fblk1">');
+	write('&nbsp;	<a id="sLnk61" href="javascript:showRefCode(document.forms[0].purposeCode,81,\'N\',\'F\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search44"></a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	//write('<td class="textlabel">' + jspResArr.get("FLT003370") + '');
+	write('<td class="textlabel">Fed Wire Number/Sort Code');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo1_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo1" name="' + groupName + '.senderToRecvrInfo1" ' + pordmProps.get("senderToRecvrInfo1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003371") + '');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo2_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo2" name="' + groupName + '.senderToRecvrInfo2" ' + pordmProps.get("senderToRecvrInfo2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003372") + '');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo3_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo3" name="' + groupName + '.senderToRecvrInfo3" ' + pordmProps.get("senderToRecvrInfo3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003373") + '');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo4_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo4" name="' + groupName + '.senderToRecvrInfo4" ' + pordmProps.get("senderToRecvrInfo4_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo4_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003374") + '');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo5_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo5" name="' + groupName + '.senderToRecvrInfo5" ' + pordmProps.get("senderToRecvrInfo5_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo5_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003375") + '');
+	write('<script>setMandatory("' + pordmProps.get("senderToRecvrInfo6_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="senderToRecvrInfo6" name="' + groupName + '.senderToRecvrInfo6" ' + pordmProps.get("senderToRecvrInfo6_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("senderToRecvrInfo6_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="3" class="subhdr">Remittance Info.</td>');
+	write('<td colspan="2" align="right">	<div id="remitInfoDispText">');
+	write('<img id="expand4" align="right" border="0" src="../Renderer/images/' + applangcode + '/expand.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK68(this,"remitInfoShow");\'></img>	</div>');
+	write('<div id="remitInfoHideText" style="display: none">');
+	write('<img id="collapse4" align="right" border="0" src="../Renderer/images/' + applangcode + '/collapse.gif" onMouseOver="displayHand(this)" onClick=\'javascript:return pordmpod_ONCLICK69(this,"remitInfoHide");\'></img>	</div>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td colspan="5">	<table id="remitInfoTable" style="display: none" cellspacing="0" width="100%" cellpadding="0">');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003370") + '');
+	write('<script>setMandatory("' + pordmProps.get("remitInfo1_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitInfo1" name="' + groupName + '.remitInfo1" ' + pordmProps.get("remitInfo1_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("remitInfo1_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003371") + '');
+	write('<script>setMandatory("' + pordmProps.get("remitInfo2_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitInfo2" name="' + groupName + '.remitInfo2" ' + pordmProps.get("remitInfo2_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("remitInfo2_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003372") + '');
+	write('<script>setMandatory("' + pordmProps.get("remitInfo3_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitInfo3" name="' + groupName + '.remitInfo3" ' + pordmProps.get("remitInfo3_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("remitInfo3_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003373") + '');
+	write('<script>setMandatory("' + pordmProps.get("remitInfo4_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="remitInfo4" name="' + groupName + '.remitInfo4" ' + pordmProps.get("remitInfo4_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="35" fmnd="' + pordmProps.get("remitInfo4_MANDATORY") + '" fmb="Y" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('<tr class="subhdrbg">');
+	write('<td colspan="5" class="subhdr">' + jspResArr.get("FLT002219") + '</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td colspan="5" class="rowspacing"><spacer type="block" width="1" height="1"></spacer></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT003067") + '');
+	write('<script>setMandatory("' + pordmProps.get("rejectionCode_MANDATORY") + '");</script></td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="rejectionCode" name="' + groupName + '.rejectionCode" ' + pordmProps.get("rejectionCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" fmnd="' + pordmProps.get("rejectionCode_MANDATORY") + '" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="textlabel">Rejection Desc</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="rejectionDesc" name="' + groupName + '.rejectionDesc" ' + pordmProps.get("rejectionDesc_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" fmnd="' + pordmProps.get("rejectionDesc_MANDATORY") + '" fdt="default" fblk="defaultFblk1">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">MIS reason code</td>');
+	write('<td class="textfield"><input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="misReasonCode" name="' + groupName + '.misReasonCode" hotKeyId="search45" ' + pordmProps.get("misReasonCode_ENABLED") + ' type="text" class="textfieldfont1" size="25" maxlength="6" fmnd="' + pordmProps.get("misReasonCode_MANDATORY") + '" fdt="default" fblk="defaultFblk1">');
+	write('&nbsp;	<a id="sLnk56" href="javascript:showDynSearcher(\'HRISPRC\',\'paysys_id=:routedPaysysId|type_of_system=H\',\':misReasonCode=reason_code|:misReasonCodeDesc=remarks\')">');
+	write('<img src="../images/' + applangcode + '/search_icon.gif" width="16" height="17" border="0" hotKeyId="search45"></a>');
+	write('<br>');
+	write('<input onChange="javascript:return custom_ONCHANGE(\'pordmpod\',this);" onBlur="javascript:return custom_ONBLUR(\'pordmpod\',this);" id="misReasonCodeDesc" name="' + groupName + '.misReasonCodeDesc" type="text" disabled="true" class="label" size="25" maxlength="25" fdt="default" fblk="defaultFblk1" fds="Y">');
+	write('</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('<td class="columnwidth">&nbsp;</td>');
+	write('</tr>');
+	write('</table>');
+	write('</div>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table>');
+	write('<tr class="rowspacing">');
+	write('<td colspan="5"><spacer type="block" height="1" width="1"></spacer></td>');
+	write('</tr>');
+	write('</table>');
+
+	} 
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="' + jspResArr.get("FLT000193") + '" onClick="javascript:return doRefSubmit(this);"	hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="' + jspResArr.get("FLT000192") + '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	if(funcCode=="I")
+	{
+	write('<input id="Back" name="Back" class="button" type="button" onclick="javascript:return pordmpod_ONCLICK70(this,this);" value="' + jspResArr.get("FLT003170") + '" hotKeyId="Go">');
+	} else {
+	write('<input id="Submit" name="Submit" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK71(this,this);" value="' + jspResArr.get("FLT000193") + '" hotKeyId="Submit">');
+	write('<input id="Validate" name="Validate" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK72(this,this);" value="' + jspResArr.get("FLT000194") + '" hotKeyId="Validate">');
+	write('<input id="Cancel" name="Cancel" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK73(this,this);" value="' + jspResArr.get("FLT001721") + '" hotKeyId="Cancel">');
+	}
+	if ((funcCode=="B") && (status=='P' || status=='C' || (status=='N' && poInOutInd=='I')) &&
+	(followUpEnabled=='Y')){
+	write('<input id="CreateFollowUpMessage" name="CreateFollowUpMessage" type="button" class="button" onClick="javascript:return pordmpod_ONCLICK74(this,this);" value="' + jspResArr.get("FLT021883") + '">');
+	}
+	}
+	} //End with()
+} //End function
+
+function fnPopulateControlValues()
+{
+	var frm = document.forms[0];
+
+	frm.hTranRefNum.value = hTranRefNum;
+	frm.relatedRefNum.value = relatedRefNum;
+	frm.reqExecutionDate.value = reqExecutionDate;
+	frm.drAcct.value = drAcct;
+	frm.drAcctCrncy.value = drAcctCrncy;
+	frm.drAcctSol.value = drAcctSol;
+	frm.drAcctName.value = drAcctName;
+	frm.remitCrncy.value = remitCrncy;
+	frm.remitAmt.value = remitAmt;
+	frm.drExecutionDate.value = drExecutionDate;
+	frm.OrideDrExecDate.value = OrideDrExecDate;
+	frm.exchRateCode.value = exchRateCode;
+	frm.tresExchRefNo.value = tresExchRefNo;
+	frm.tresExchRate.value = tresExchRate;
+	frm.tresDrRefNo.value = tresDrRefNo;
+	frm.tresDrRate.value = tresDrRate;
+	frm.drValueDate.value = drValueDate;
+	frm.OrideDrValueDate.value = OrideDrValueDate;
+	frm.netCharges.value = netCharges;
+	frm.pRemarks.value = pRemarks;
+	frm.pTranRefNum.value = pTranRefNum;
+	frm.settlementMode.value = settlementMode;
+	frm.instructedCrncy.value = instructedCrncy;
+	frm.instructedAmt.value = instructedAmt;
+	frm.crExecutionDate.value = crExecutionDate;
+	frm.OrideCrExecDate.value = OrideCrExecDate;
+	frm.crValueDate.value = crValueDate;
+	frm.OrideCrValueDate.value = OrideCrValueDate;
+	frm.benefPartyBic.value = benefPartyBic;
+	frm.benefPartyBankCode.value = benefPartyBankCode;
+	frm.benefPartyBranchCode.value = benefPartyBranchCode;
+	frm.benefPartyLBC.value = benefPartyLBC;
+	frm.benefPartyAcct.value = benefPartyAcct;
+	frm.benefPartyName.value = benefPartyName;
+	frm.benefPartyAddress1.value = benefPartyAddress1;
+	frm.benefPartyAddress2.value = benefPartyAddress2;
+	frm.benefPartyAddress3.value = benefPartyAddress3;
+	frm.awiAddrInd.value = awiAddrInd;
+	frm.awiBic.value = awiBic;
+	frm.awiBankCode.value = awiBankCode;
+	frm.awiBranchCode.value = awiBranchCode;
+	frm.awiLBC.value = awiLBC;
+	frm.awiAcct.value = awiAcct;
+	frm.awiName.value = awiName;
+	frm.awiAddress1.value = awiAddress1;
+	frm.awiAddress2.value = awiAddress2;
+	frm.awiAddress3.value = awiAddress3;
+	frm.interInstnAddrInd.value = interInstnAddrInd;
+	frm.interInstnBic.value = interInstnBic;
+	frm.interInstnBankCode.value = interInstnBankCode;
+	frm.interInstnBranchCode.value = interInstnBranchCode;
+	frm.interInstnLBC.value = interInstnLBC;
+	frm.interInstnAcct.value = interInstnAcct;
+	frm.interInstnName.value = interInstnName;
+	frm.interInstnAddress1.value = interInstnAddress1;
+	frm.interInstnAddress2.value = interInstnAddress2;
+	frm.interInstnAddress3.value = interInstnAddress3;
+	frm.recvrCorrespAddrInd.value = recvrCorrespAddrInd;
+	frm.recvrCorrespBic.value = recvrCorrespBic;
+	frm.recvrCorrespBankCode.value = recvrCorrespBankCode;
+	frm.recvrCorrespBranchCode.value = recvrCorrespBranchCode;
+	frm.recvrCorrespLBC.value = recvrCorrespLBC;
+	frm.recvrCorrespAcct.value = recvrCorrespAcct;
+	frm.recvrCorrespName.value = recvrCorrespName;
+	frm.recvrCorrespAddress1.value = recvrCorrespAddress1;
+	frm.recvrCorrespAddress2.value = recvrCorrespAddress2;
+	frm.recvrCorrespAddress3.value = recvrCorrespAddress3;
+	frm.crAcct.value = crAcct;
+	frm.crAcctCrncy.value = crAcctCrncy;
+	frm.crAcctSol.value = crAcctSol;
+	frm.crAcctName.value = crAcctName;
+	frm.chargeOption.value = chargeOption;
+	frm.repairCharges.value = repairCharges;
+	frm.waiverCharges.value = waiverCharges;
+	frm.senderToRecvrInfo1.value = senderToRecvrInfo1;
+	frm.senderToRecvrInfo2.value = senderToRecvrInfo2;
+	frm.senderToRecvrInfo3.value = senderToRecvrInfo3;
+	frm.senderToRecvrInfo4.value = senderToRecvrInfo4;
+	frm.senderToRecvrInfo5.value = senderToRecvrInfo5;
+	frm.senderToRecvrInfo6.value = senderToRecvrInfo6;
+	frm.remitInfo1.value = remitInfo1;
+	frm.remitInfo2.value = remitInfo2;
+	frm.remitInfo3.value = remitInfo3;
+	frm.remitInfo4.value = remitInfo4;
+	frm.exchRate.value = exchRate;
+	frm.remitFreeText.value = remitFreeText;
+	frm.routedPaysysId.value = routedPaysysId;
+	frm.chrgAcct.value = chrgAcct;
+	frm.chrgAcctCrncy.value = chrgAcctCrncy;
+	frm.chrgAcctSol.value = chrgAcctSol;
+	frm.crchrgAcct.value = crchrgAcct;
+	frm.crchrgAcctCrncy.value = crchrgAcctCrncy;
+	frm.crchrgAcctSol.value = crchrgAcctSol;
+	frm.crchrgAcctName.value = crchrgAcctName;
+	frm.chrgEventId.value = chrgEventId;
+	frm.benefPartyAddrInd.value = benefPartyAddrInd;
+	frm.frwrdCntrctNo.value = frwrdCntrctNo;
+	frm.frwrdCntrctSolId.value = frwrdCntrctSolId;
+	frm.crFrwrdCntrctNo.value = crFrwrdCntrctNo;
+	frm.crFrwrdCntrctSolId.value = crFrwrdCntrctSolId;
+	frm.chrgAcctName.value = chrgAcctName;
+	frm.todGrantedFlg.value = todGrantedFlg;
+	frm.lienMarkedFlg.value = lienMarkedFlg;
+	frm.suspendFlg.value = suspendFlg;
+	frm.ourCorrespBic.value = ourCorrespBic;
+	frm.ourCorrespBankCode.value = ourCorrespBankCode;
+	frm.ourCorrespBranchCode.value = ourCorrespBranchCode;
+	frm.drexchRateCode.value = drexchRateCode;
+	frm.drexchRate.value = drexchRate;
+	frm.orderType.value = orderType;
+	frm.benefPartyCntryCode.value = benefPartyCntryCode;
+	frm.benefPartyCntryName.value = benefPartyCntryName;
+	frm.awiCntryCode.value = awiCntryCode;
+	frm.awiCntryName.value = awiCntryName;
+	frm.interInstnCntryCode.value = interInstnCntryCode;
+	frm.interInstnCntryName.value = interInstnCntryName;
+	frm.recvrCorrespCntryCode.value = recvrCorrespCntryCode;
+	frm.recvrCorrespCntryName.value = recvrCorrespCntryName;
+	frm.deptNum.value = deptNum;
+	frm.rejectionCode.value = rejectionCode;
+	frm.rejectionDesc.value = rejectionDesc;
+	frm.misReasonCode.value = misReasonCode;
+	frm.misReasonCodeDesc.value = misReasonCodeDesc;
+	frm.instrType.value = instrType;
+	frm.instrAlpha.value = instrAlpha;
+	frm.instrNum.value = instrNum;
+	frm.instrDate.value = instrDate;
+	frm.benefCifId.value = benefCifId;
+	frm.Input4.value = Input4;
+	frm.pymtDerivationMethod.value = pymtDerivationMethod;
+	frm.purposeCode.value = purposeCode;
+	frm.status.value = status;
+	frm.origPaysysId.value = origPaysysId;
+	frm.origPaysysRefNum.value = origPaysysRefNum;
+	frm.origEntityId.value = origEntityId;
+	frm.origEntityType.value = origEntityType;
+	frm.solId.value = solId;
+	frm.tranId.value = tranId;
+	frm.tranDate.value = tranDate;
+	frm.crTranId.value = crTranId;
+	frm.crTranDate.value = crTranDate;
+	frm.poInOutInd.value = poInOutInd;
+	if ((sReferralMode == 'I') || (sReferralMode == 'S')){
+		fnDisableFormDataControls('V',frm,0);
+	}
+}
+
+
+function pordmpod_ONKEYDOWN1(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONKEYDOWN') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONKEYDOWN') == false) { 
+		return false;
+	}
+	if ((retVal = fnKeyDownProcessor(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONKEYDOWN') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONKEYDOWN') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONKEYUP2(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONKEYUP') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONKEYUP') == false) { 
+		return false;
+	}
+	if ((retVal = fnKeyUpProcessor(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONKEYUP') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONKEYUP') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONLOAD3(obj,p1)
+{
+	var retVal = "";
+	var frmObj = document.forms[0];
+	if (pre_ONLOAD('pordmpod',obj) == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONLOAD') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnLoad()) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnLoad(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONLOAD') == false) { 
+		return false;
+	}
+	fnPopUpExceptionWindow(frmObj.actionCode);
+	if (post_ONLOAD('pordmpod',obj) == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONSUBMIT4(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONSUBMIT') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONSUBMIT') == false) { 
+		return false;
+	}
+	if ((retVal = false)) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONSUBMIT') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONSUBMIT') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE5(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeOrderType(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR6(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE7(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = OnchangeDrAcctId()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR8(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE9(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = OnchangeRemitAmt()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR10(obj,p1,p2,p3,p4)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = newformatAmt(p1,p2,p3,p4)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE11(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = OnchangeRemitAmt()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK12(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnTODHandler()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR13(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK14(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnSetCheckboxFld(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE15(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeOffrwrdCntrctNoandSolid()) == false) {
+		return false;
+	}
+	if ((retVal = disableRates()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE16(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeOffrwrdCntrctNoandSolid()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR17(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK18(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnSetCheckboxFld(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function pordmpod_ONCHANGE19(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = callExchTranRateDtls()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE20(obj,p1,p2,p3,p4)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnCallSendToServerForAccountId(p1,p2,p3,p4)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE21(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnchangeSettlementMode()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR22(obj,p1,p2,p3,p4)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = newformatAmt(p1,p2,p3,p4)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR23(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE24(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK25(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnSetCheckboxFld(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONBLUR26(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if ((retVal = onBlurFormatDate(p1)) == false) {
+		return false;
+	}
+	if ((retVal = fnAssignDateOnEnter(p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONBLUR') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE27(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK28(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnSetCheckboxFld(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE29(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeofAddrType(p1,p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE30(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankBICDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE31(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE32(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE33(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeofbenefPartyAcct()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE34(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE35(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeofAddrType(p1,p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE36(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnLocFetchBankBICDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE37(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE38(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE39(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK40(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK41(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE42(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeofAddrType(p1,p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE43(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankBICDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE44(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE45(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE46(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK47(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK48(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE49(obj,p1,p2)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeofAddrType(p1,p2)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE50(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankBICDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE51(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE52(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchBankDtls(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE53(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK54(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE55(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = clearDescField(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE56(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchOCBankDtls()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE57(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnFetchOCBankDtls()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE58(obj,p1,p2,p3,p4)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnCallSendToServerForAccountId(p1,p2,p3,p4)) == false) {
+		return false;
+	}
+	if ((retVal = callDrExchTranRateDtls()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE59(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeOfCrFrwrdCntrctNoandSolid()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE60(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeOfCrFrwrdCntrctNoandSolid()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE61(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = callDrExchTranRateDtls()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCHANGE62(obj,p1,p2,p3,p4)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if ((retVal = fnCallSendToServerForAccountId(p1,p2,p3,p4)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCHANGE') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK63(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnChangeofNetChargeFlg()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK64(obj)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnChangeWaiveCharges()) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK65(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK66(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK67(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK68(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK69(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnToggleTextDisplay(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK70(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK71(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK72(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK73(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function pordmpod_ONCLICK74(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (preEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if ((retVal = fnOnButtonClick(p1)) == false) {
+		return false;
+	}
+	if (postEventCallForLocale('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	if (postEventCall('pordmpod',obj,'ONCLICK') == false) { 
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+function writePaymentProductType()
+{
+with(document) {
+write('<OPTION VALUE="">'+jspResArr.get("FLT012410")+'</OPTION>');
+write('<OPTION VALUE="CT">'+jspResArr.get("FLT013722")+'</OPTION>');
+write('<OPTION VALUE="BT">'+jspResArr.get("FLT013841")+'</OPTION>');
+write('<OPTION VALUE="OT">'+jspResArr.get("FLT024597")+'</OPTION>');
+}
+}
+
+
+function writeSettlementModes()
+{
+with(document) {
+write('<OPTION VALUE="">'+jspResArr.get("FLT012410")+'</OPTION>');
+write('<OPTION VALUE="D">'+jspResArr.get("FLT013772")+'</OPTION>');
+write('<OPTION VALUE="C">'+jspResArr.get("FLT013728")+'</OPTION>');
+write('<OPTION VALUE="W">'+jspResArr.get("FLT022106")+'</OPTION>');
+}
+}
+
+
+function writeAddressTypes()
+{
+with(document) {
+write('<OPTION VALUE="">'+jspResArr.get("FLT012410")+'</OPTION>');
+write('<OPTION VALUE="B">'+jspResArr.get("FLT013700")+'</OPTION>');
+write('<OPTION VALUE="L">'+jspResArr.get("FLT013870")+'</OPTION>');
+write('<OPTION VALUE="F">'+jspResArr.get("FLT013816")+'</OPTION>');
+write('<OPTION VALUE="A">'+jspResArr.get("FLT013679")+'</OPTION>');
+}
+}
+
+
+function writeRemitTranFeeDtls()
+{
+with(document)
+{
+write('<OPTION VALUE="">'+jspResArr.get("FLT012410")+'</OPTION>');
+write('<OPTION VALUE="OUR">'+jspResArr.get("FLT012764")+'</OPTION>');
+write('<OPTION VALUE="BEN">'+jspResArr.get("FLT011979")+'</OPTION>');
+write('<OPTION VALUE="SHA">'+jspResArr.get("FLT012942")+'</OPTION>');
+}
+}
+
+

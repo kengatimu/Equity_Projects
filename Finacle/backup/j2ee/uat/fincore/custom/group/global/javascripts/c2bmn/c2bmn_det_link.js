@@ -1,0 +1,45 @@
+function fnValidateData() 
+{
+	var ObjForm     =       document.forms[0];
+	if(ObjForm.TranId.value=="")
+	{
+		alert("Please Enter Mpesa TranID");
+		ObjForm.TranId.focus();
+		return false;
+	}
+        if(ObjForm.MobileNo.value=="")
+        {
+                alert("Please Enter MobileNo");
+                ObjForm.MobileNo.focus();
+                return false;
+        }
+        /*
+		if(ObjForm.AccountNo.value=="")
+        {
+                alert("Please Enter AccountNo");
+                ObjForm.AccountNo.focus();
+                return false;
+        }
+		*/
+        if(ObjForm.Amount.value=="")
+        {
+                alert("Please Enter Amount");
+                ObjForm.Amount.focus();
+                return false;
+        }
+        if(ObjForm.walletname.value=="")
+        {
+                alert("Please Enter walletname");
+                ObjForm.walletname.focus();
+                return false;
+        }
+	if(isNaN(ObjForm.Amount.value))
+	{
+                alert("Please Enter Numeric Value");
+		ObjForm.Amount.focus();
+                return false;
+	}
+
+	return true;
+
+}

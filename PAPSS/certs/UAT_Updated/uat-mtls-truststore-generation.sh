@@ -1,0 +1,301 @@
+Mtls truststore generation
+
+Step 1: Get the certs using openssl command
+
+===========================================================================================================================================================
+
+openssl s_client -connect pm.test.papssnet.papss.com:443 -showcerts
+
+
+CONNECTED(00000003)
+depth=3 C = US, ST = Arizona, L = Scottsdale, O = "Starfield Technologies, Inc.", CN = Starfield Services Root Certificate Authority - G2
+verify return:1
+depth=2 C = US, O = Amazon, CN = Amazon Root CA 1
+verify return:1
+depth=1 C = US, O = Amazon, CN = Amazon RSA 2048 M04
+verify return:1
+depth=0 CN = pm.test.papssnet.papss.com
+verify return:1
+140164665141136:error:14094410:SSL routines:ssl3_read_bytes:sslv3 alert handshake failure:s3_pkt.c:1493:SSL alert number 40
+140164665141136:error:140790E5:SSL routines:ssl23_write:ssl handshake failure:s23_lib.c:177:
+---
+Certificate chain
+ 0 s:/CN=pm.test.papssnet.papss.com
+   i:/C=US/O=Amazon/CN=Amazon RSA 2048 M04
+-----BEGIN CERTIFICATE-----
+MIIF1DCCBLygAwIBAgIQB3gHln54aV6rjL8/Dd3c/zANBgkqhkiG9w0BAQsFADA8
+MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRwwGgYDVQQDExNBbWF6b24g
+UlNBIDIwNDggTTA0MB4XDTI2MDQwMjAwMDAwMFoXDTI2MTAxNjIzNTk1OVowJTEj
+MCEGA1UEAxMacG0udGVzdC5wYXBzc25ldC5wYXBzcy5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQCk85hVRaEIIm0r61SB3E7wo2EtdF8WQ81a+wpb
+auOPdoTYfYnaHvFiAsiExAYVnYNoKGuXMjyyliREKTN7WFzzDVOc+j5K2/p4p/lb
+jr9iaq1OIIG/K8fiOwlhvPKbYav1UqnrTTzmxaNAHFoZKhdKHyRLPjF6XYlmVkZ7
+o5ztDOuy8QbOe0Q1RmGuyuWVx37ZIBFhdLkOq9s1s2CwbMZUZXNWoYqZGVZgfs/m
+E9tllCrkpWUD0dyzGv6+iBxXiV1oGNzkIjUzmpQNPASqeGR5rLJI9Y1nX2gAaA1R
+AlvGcDdigAiwzQ+SitPFZIMTNuxspmZr/7OP5qCAJ8NhCzQZAgMBAAGjggLnMIIC
+4zAfBgNVHSMEGDAWgBQfUpJhVoJUf4Fm2B09CqoyXIfdCDAdBgNVHQ4EFgQUiGtV
+JkQ2KfjIUEYijaSM5gNxRvwwJQYDVR0RBB4wHIIacG0udGVzdC5wYXBzc25ldC5w
+YXBzcy5jb20wEwYDVR0gBAwwCjAIBgZngQwBAgEwDgYDVR0PAQH/BAQDAgWgMBMG
+A1UdJQQMMAoGCCsGAQUFBwMBMDsGA1UdHwQ0MDIwMKAuoCyGKmh0dHA6Ly9jcmwu
+cjJtMDQuYW1hem9udHJ1c3QuY29tL3IybTA0LmNybDB1BggrBgEFBQcBAQRpMGcw
+LQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLnIybTA0LmFtYXpvbnRydXN0LmNvbTA2
+BggrBgEFBQcwAoYqaHR0cDovL2NydC5yMm0wNC5hbWF6b250cnVzdC5jb20vcjJt
+MDQuY2VyMAwGA1UdEwEB/wQCMAAwggF8BgorBgEEAdZ5AgQCBIIBbASCAWgBZgB2
+AMIxfldFGaNF7n843rKQQevHwiFaIr9/1bWtdprZDlLNAAABnU8Cw/IAAAQDAEcw
+RQIhAPnk2hscpuUuTsSCyy2Hnvypc+0Kb+hYqRo3cqb1AwHmAiB/CigbIeyjoMQe
+YnG3spcoAsOhGvtHyzEZKk57B5tgKQB1ANdtfRDRp/V3wsfpX9cAv/mCyTNaZeHQ
+swFzF8DIxWl3AAABnU8Cw+UAAAQDAEYwRAIgTENeDD75Wk96K5H/fIuaVowKxiit
+A2yGzmOHZoF8B8kCIFkChdOLfC575ilgQ46AtvSV7b4ncDe3ur7djxOf9Ft7AHUA
+lE5Dh/rswe+B8xkkJqgYZQHH0184AgE/cmd9VTcuGdgAAAGdTwLEAwAABAMARjBE
+AiAaJJ5jNB7d8jXX3zBNho9PyduayYEt1reLZvqZ35u3mwIgfKntb0WmcFA2apu+
+zLMnkwVM50Nudug5y+o7jlW+bm8wDQYJKoZIhvcNAQELBQADggEBAKzwWTtvdSho
+3N24jewuAx8yPKS6e7Q932nVwFWdjRfLhLgly9Lu4dh5XVkin6CuaNmRzpiS0e7H
+DbZZIc//BcLnVeQh/JjkLelR9hHMIKl1wNmriCnIKhFcQttXHudYxYAUQ5sDZF2q
+TyAtk0VL1Xzb4Y983Y4Am7gWZqARWp6rHielFC8cihXBNA2HDkPEGO1Vv7Auuc7d
+pMLF/uWshbSaV7UxMw1HvzJJSQ4ZWF2XVdmPtn7d+nbkacKoIvAVNwepxzFwtt29
+tkxnXLG5koPBDM6ol+VQok8mqx5aJ6wA+9hyQKWOSvf1aLiTkGhhBHuTE9CaDXYx
+crwktJgL4D8=
+-----END CERTIFICATE-----
+ 1 s:/C=US/O=Amazon/CN=Amazon RSA 2048 M04
+   i:/C=US/O=Amazon/CN=Amazon Root CA 1
+-----BEGIN CERTIFICATE-----
+MIIEXjCCA0agAwIBAgITB3MSTyqVLj7Rili9uF0bwM5fJzANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTIyMDgyMzIyMjYzNVoXDTMwMDgyMzIyMjYzNVowPDEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEcMBoGA1UEAxMTQW1hem9uIFJT
+QSAyMDQ4IE0wNDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM3pVR6A
+lQOp4xe776FdePXyejgA38mYx1ou9/jrpV6Sfn+/oqBKgwhY6ePsQHHQayWBJdBn
+v4Wz363qRI4XUh9swBFJ11TnZ3LqOMvHmWq2+loA0QPtOfXdJ2fHBLrBrngtJ/GB
+0p5olAVYrSZgvQGP16Rf8ddtNyxEEhYm3HuhmNi+vSeAq1tLYJPAvRCXonTpWdSD
+xY6hvdmxlqTYi82AtBXSfpGQ58HHM0hw0C6aQakghrwWi5fGslLOqzpimNMIsT7c
+qa0GJx6JfKqJqmQQNplO2h8n9ZsFJgBowof01ppdoLAWg6caMOM0om/VILKaa30F
+9W/r8Qjah7ltGVkCAwEAAaOCAVowggFWMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYD
+VR0PAQH/BAQDAgGGMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAdBgNV
+HQ4EFgQUH1KSYVaCVH+BZtgdPQqqMlyH3QgwHwYDVR0jBBgwFoAUhBjMhTTsvAyU
+lC4IWZzHshBOCggwewYIKwYBBQUHAQEEbzBtMC8GCCsGAQUFBzABhiNodHRwOi8v
+b2NzcC5yb290Y2ExLmFtYXpvbnRydXN0LmNvbTA6BggrBgEFBQcwAoYuaHR0cDov
+L2NydC5yb290Y2ExLmFtYXpvbnRydXN0LmNvbS9yb290Y2ExLmNlcjA/BgNVHR8E
+ODA2MDSgMqAwhi5odHRwOi8vY3JsLnJvb3RjYTEuYW1hem9udHJ1c3QuY29tL3Jv
+b3RjYTEuY3JsMBMGA1UdIAQMMAowCAYGZ4EMAQIBMA0GCSqGSIb3DQEBCwUAA4IB
+AQA+1O5UsAaNuW3lHzJtpNGwBnZd9QEYFtxpiAnIaV4qApnGS9OCw5ZPwie7YSlD
+ZF5yyFPsFhUC2Q9uJHY/CRV1b5hIiGH0+6+w5PgKiY1MWuWT8VAaJjFxvuhM7a/e
+fN2TIw1Wd6WCl6YRisunjQOrSP+unqC8A540JNyZ1JOE3jVqat3OZBGgMvihdj2w
+Y23EpwesrKiQzkHzmvSH67PVW4ycbPy08HVZnBxZ5NrlGG9bwXR3fNTaz+c+Ej6c
+5AnwI3qkOFgSkg3Y75cdFz6pO/olK+e3AqygAcv0WjzmkDPuBjssuZjCHMC56oH3
+GJkV29Di2j5prHJbwZjG1inU
+-----END CERTIFICATE-----
+ 2 s:/C=US/O=Amazon/CN=Amazon Root CA 1
+   i:/C=US/ST=Arizona/L=Scottsdale/O=Starfield Technologies, Inc./CN=Starfield Services Root Certificate Authority - G2
+-----BEGIN CERTIFICATE-----
+MIIEkjCCA3qgAwIBAgITBn+USionzfP6wq4rAfkI7rnExjANBgkqhkiG9w0BAQsF
+ADCBmDELMAkGA1UEBhMCVVMxEDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcTClNj
+b3R0c2RhbGUxJTAjBgNVBAoTHFN0YXJmaWVsZCBUZWNobm9sb2dpZXMsIEluYy4x
+OzA5BgNVBAMTMlN0YXJmaWVsZCBTZXJ2aWNlcyBSb290IENlcnRpZmljYXRlIEF1
+dGhvcml0eSAtIEcyMB4XDTE1MDUyNTEyMDAwMFoXDTM3MTIzMTAxMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaOCATEwggEtMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/
+BAQDAgGGMB0GA1UdDgQWBBSEGMyFNOy8DJSULghZnMeyEE4KCDAfBgNVHSMEGDAW
+gBScXwDfqgHXMCs4iKK4bUqc8hGRgzB4BggrBgEFBQcBAQRsMGowLgYIKwYBBQUH
+MAGGImh0dHA6Ly9vY3NwLnJvb3RnMi5hbWF6b250cnVzdC5jb20wOAYIKwYBBQUH
+MAKGLGh0dHA6Ly9jcnQucm9vdGcyLmFtYXpvbnRydXN0LmNvbS9yb290ZzIuY2Vy
+MD0GA1UdHwQ2MDQwMqAwoC6GLGh0dHA6Ly9jcmwucm9vdGcyLmFtYXpvbnRydXN0
+LmNvbS9yb290ZzIuY3JsMBEGA1UdIAQKMAgwBgYEVR0gADANBgkqhkiG9w0BAQsF
+AAOCAQEAYjdCXLwQtT6LLOkMm2xF4gcAevnFWAu5CIw+7bMlPLVvUOTNNWqnkzSW
+MiGpSESrnO09tKpzbeR/FoCJbM8oAxiDR3mjEH4wW6w7sGDgd9QIpuEdfF7Au/ma
+eyKdpwAJfqxGF4PcnCZXmTA5YpaP7dreqsXMGz7KQ2hsVxa81Q4gLv7/wmpdLqBK
+bRRYh5TmOTFffHPLkIhqhBGWJ6bt2YFGpn6jcgAKUj6DiAdjd4lpFw85hdKrCEVN
+0FE6/V1dN2RMfjCyVSRCnTawXZwXgWHxyvkQAiSr6w10kY17RSlQOYiypok1JR4U
+akcjMS9cmvqtmg5iUaQqqcT5NJ0hGA==
+-----END CERTIFICATE-----
+---
+Server certificate
+subject=/CN=pm.test.papssnet.papss.com
+issuer=/C=US/O=Amazon/CN=Amazon RSA 2048 M04
+---
+Acceptable client certificate CA names
+/C=US/O=Amazon/CN=Amazon RSA 2048 M04
+/C=US/O=Amazon/CN=Amazon Root CA 1
+/CN=AFXM CA
+Client Certificate Types: RSA sign, ECDSA sign
+Requested Signature Algorithms: ECDSA+SHA256:ECDSA+SHA384:ECDSA+SHA512:0x07+0x08:0x08+0x08:0x09+0x08:0x04+0x08:0x0A+0x08:0x05+0x08:0x0B+0x08:0x06+0x08:RSA+SHA256:RSA+SHA384:RSA+SHA512:ECDSA+SHA224:RSA+SHA224:ECDSA+SHA1:RSA+SHA1
+Shared Requested Signature Algorithms: ECDSA+SHA256:ECDSA+SHA384:ECDSA+SHA512:RSA+SHA256:RSA+SHA384:RSA+SHA512:ECDSA+SHA224:RSA+SHA224:ECDSA+SHA1:RSA+SHA1
+Peer signing digest: SHA256
+Server Temp Key: ECDH, P-256, 256 bits
+---
+SSL handshake has read 4432 bytes and written 138 bytes
+---
+New, TLSv1/SSLv3, Cipher is ECDHE-RSA-AES256-GCM-SHA384
+Server public key is 2048 bit
+Secure Renegotiation IS supported
+Compression: NONE
+Expansion: NONE
+No ALPN negotiated
+SSL-Session:
+    Protocol  : TLSv1.2
+    Cipher    : ECDHE-RSA-AES256-GCM-SHA384
+    Session-ID: 
+    Session-ID-ctx: 
+    Master-Key: 6909E55C7DCA77DD0078341F17B7B90F286FEFA781D1C94E2A378FD0FEE1F482749B35BF8A21722B340B4184A7D8747A
+    Key-Arg   : None
+    Krb5 Principal: None
+    PSK identity: None
+    PSK identity hint: None
+    Start Time: 1775553318
+    Timeout   : 300 (sec)
+    Verify return code: 0 (ok)
+---
+[kgatimu@devmisc01 ~]$ 
+
+===========================================================================================================================================================
+
+
+Step 2: Create respective certificate files
+
+1. vi papss-server.crt
+
+Paste EXACTLY this block (entry 1):
+
+-----BEGIN CERTIFICATE-----
+MIIF1DCCBLygAwIBAgIQB3gHln54aV6rjL8/Dd3c/zANBgkqhkiG9w0BAQsFADA8
+MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRwwGgYDVQQDExNBbWF6b24g
+UlNBIDIwNDggTTA0MB4XDTI2MDQwMjAwMDAwMFoXDTI2MTAxNjIzNTk1OVowJTEj
+MCEGA1UEAxMacG0udGVzdC5wYXBzc25ldC5wYXBzcy5jb20wggEiMA0GCSqGSIb3
+DQEBAQUAA4IBDwAwggEKAoIBAQCk85hVRaEIIm0r61SB3E7wo2EtdF8WQ81a+wpb
+auOPdoTYfYnaHvFiAsiExAYVnYNoKGuXMjyyliREKTN7WFzzDVOc+j5K2/p4p/lb
+jr9iaq1OIIG/K8fiOwlhvPKbYav1UqnrTTzmxaNAHFoZKhdKHyRLPjF6XYlmVkZ7
+o5ztDOuy8QbOe0Q1RmGuyuWVx37ZIBFhdLkOq9s1s2CwbMZUZXNWoYqZGVZgfs/m
+E9tllCrkpWUD0dyzGv6+iBxXiV1oGNzkIjUzmpQNPASqeGR5rLJI9Y1nX2gAaA1R
+AlvGcDdigAiwzQ+SitPFZIMTNuxspmZr/7OP5qCAJ8NhCzQZAgMBAAGjggLnMIIC
+4zAfBgNVHSMEGDAWgBQfUpJhVoJUf4Fm2B09CqoyXIfdCDAdBgNVHQ4EFgQUiGtV
+JkQ2KfjIUEYijaSM5gNxRvwwJQYDVR0RBB4wHIIacG0udGVzdC5wYXBzc25ldC5w
+YXBzcy5jb20wEwYDVR0gBAwwCjAIBgZngQwBAgEwDgYDVR0PAQH/BAQDAgWgMBMG
+A1UdJQQMMAoGCCsGAQUFBwMBMDsGA1UdHwQ0MDIwMKAuoCyGKmh0dHA6Ly9jcmwu
+cjJtMDQuYW1hem9udHJ1c3QuY29tL3IybTA0LmNybDB1BggrBgEFBQcBAQRpMGcw
+LQYIKwYBBQUHMAGGIWh0dHA6Ly9vY3NwLnIybTA0LmFtYXpvbnRydXN0LmNvbTA2
+BggrBgEFBQcwAoYqaHR0cDovL2NydC5yMm0wNC5hbWF6b250cnVzdC5jb20vcjJt
+MDQuY2VyMAwGA1UdEwEB/wQCMAAwggF8BgorBgEEAdZ5AgQCBIIBbASCAWgBZgB2
+AMIxfldFGaNF7n843rKQQevHwiFaIr9/1bWtdprZDlLNAAABnU8Cw/IAAAQDAEcw
+RQIhAPnk2hscpuUuTsSCyy2Hnvypc+0Kb+hYqRo3cqb1AwHmAiB/CigbIeyjoMQe
+YnG3spcoAsOhGvtHyzEZKk57B5tgKQB1ANdtfRDRp/V3wsfpX9cAv/mCyTNaZeHQ
+swFzF8DIxWl3AAABnU8Cw+UAAAQDAEYwRAIgTENeDD75Wk96K5H/fIuaVowKxiit
+A2yGzmOHZoF8B8kCIFkChdOLfC575ilgQ46AtvSV7b4ncDe3ur7djxOf9Ft7AHUA
+lE5Dh/rswe+B8xkkJqgYZQHH0184AgE/cmd9VTcuGdgAAAGdTwLEAwAABAMARjBE
+AiAaJJ5jNB7d8jXX3zBNho9PyduayYEt1reLZvqZ35u3mwIgfKntb0WmcFA2apu+
+zLMnkwVM50Nudug5y+o7jlW+bm8wDQYJKoZIhvcNAQELBQADggEBAKzwWTtvdSho
+3N24jewuAx8yPKS6e7Q932nVwFWdjRfLhLgly9Lu4dh5XVkin6CuaNmRzpiS0e7H
+DbZZIc//BcLnVeQh/JjkLelR9hHMIKl1wNmriCnIKhFcQttXHudYxYAUQ5sDZF2q
+TyAtk0VL1Xzb4Y983Y4Am7gWZqARWp6rHielFC8cihXBNA2HDkPEGO1Vv7Auuc7d
+pMLF/uWshbSaV7UxMw1HvzJJSQ4ZWF2XVdmPtn7d+nbkacKoIvAVNwepxzFwtt29
+tkxnXLG5koPBDM6ol+VQok8mqx5aJ6wA+9hyQKWOSvf1aLiTkGhhBHuTE9CaDXYx
+crwktJgL4D8=
+-----END CERTIFICATE-----
+
+
+2: Amazon Intermediate → amazon-intermediate.crt
+
+Paste entry 2:
+
+-----BEGIN CERTIFICATE-----
+MIIEXjCCA0agAwIBAgITB3MSTyqVLj7Rili9uF0bwM5fJzANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTIyMDgyMzIyMjYzNVoXDTMwMDgyMzIyMjYzNVowPDEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEcMBoGA1UEAxMTQW1hem9uIFJT
+QSAyMDQ4IE0wNDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAM3pVR6A
+lQOp4xe776FdePXyejgA38mYx1ou9/jrpV6Sfn+/oqBKgwhY6ePsQHHQayWBJdBn
+v4Wz363qRI4XUh9swBFJ11TnZ3LqOMvHmWq2+loA0QPtOfXdJ2fHBLrBrngtJ/GB
+0p5olAVYrSZgvQGP16Rf8ddtNyxEEhYm3HuhmNi+vSeAq1tLYJPAvRCXonTpWdSD
+xY6hvdmxlqTYi82AtBXSfpGQ58HHM0hw0C6aQakghrwWi5fGslLOqzpimNMIsT7c
+qa0GJx6JfKqJqmQQNplO2h8n9ZsFJgBowof01ppdoLAWg6caMOM0om/VILKaa30F
+9W/r8Qjah7ltGVkCAwEAAaOCAVowggFWMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYD
+VR0PAQH/BAQDAgGGMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAdBgNV
+HQ4EFgQUH1KSYVaCVH+BZtgdPQqqMlyH3QgwHwYDVR0jBBgwFoAUhBjMhTTsvAyU
+lC4IWZzHshBOCggwewYIKwYBBQUHAQEEbzBtMC8GCCsGAQUFBzABhiNodHRwOi8v
+b2NzcC5yb290Y2ExLmFtYXpvbnRydXN0LmNvbTA6BggrBgEFBQcwAoYuaHR0cDov
+L2NydC5yb290Y2ExLmFtYXpvbnRydXN0LmNvbS9yb290Y2ExLmNlcjA/BgNVHR8E
+ODA2MDSgMqAwhi5odHRwOi8vY3JsLnJvb3RjYTEuYW1hem9udHJ1c3QuY29tL3Jv
+b3RjYTEuY3JsMBMGA1UdIAQMMAowCAYGZ4EMAQIBMA0GCSqGSIb3DQEBCwUAA4IB
+AQA+1O5UsAaNuW3lHzJtpNGwBnZd9QEYFtxpiAnIaV4qApnGS9OCw5ZPwie7YSlD
+ZF5yyFPsFhUC2Q9uJHY/CRV1b5hIiGH0+6+w5PgKiY1MWuWT8VAaJjFxvuhM7a/e
+fN2TIw1Wd6WCl6YRisunjQOrSP+unqC8A540JNyZ1JOE3jVqat3OZBGgMvihdj2w
+Y23EpwesrKiQzkHzmvSH67PVW4ycbPy08HVZnBxZ5NrlGG9bwXR3fNTaz+c+Ej6c
+5AnwI3qkOFgSkg3Y75cdFz6pO/olK+e3AqygAcv0WjzmkDPuBjssuZjCHMC56oH3
+GJkV29Di2j5prHJbwZjG1inU
+-----END CERTIFICATE-----
+
+
+3:Amazon Root → amazon-root.crt
+
+Paste entry 3:
+
+-----BEGIN CERTIFICATE-----
+MIIEkjCCA3qgAwIBAgITBn+USionzfP6wq4rAfkI7rnExjANBgkqhkiG9w0BAQsF
+ADCBmDELMAkGA1UEBhMCVVMxEDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcTClNj
+b3R0c2RhbGUxJTAjBgNVBAoTHFN0YXJmaWVsZCBUZWNobm9sb2dpZXMsIEluYy4x
+OzA5BgNVBAMTMlN0YXJmaWVsZCBTZXJ2aWNlcyBSb290IENlcnRpZmljYXRlIEF1
+dGhvcml0eSAtIEcyMB4XDTE1MDUyNTEyMDAwMFoXDTM3MTIzMTAxMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaOCATEwggEtMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/
+BAQDAgGGMB0GA1UdDgQWBBSEGMyFNOy8DJSULghZnMeyEE4KCDAfBgNVHSMEGDAW
+gBScXwDfqgHXMCs4iKK4bUqc8hGRgzB4BggrBgEFBQcBAQRsMGowLgYIKwYBBQUH
+MAGGImh0dHA6Ly9vY3NwLnJvb3RnMi5hbWF6b250cnVzdC5jb20wOAYIKwYBBQUH
+MAKGLGh0dHA6Ly9jcnQucm9vdGcyLmFtYXpvbnRydXN0LmNvbS9yb290ZzIuY2Vy
+MD0GA1UdHwQ2MDQwMqAwoC6GLGh0dHA6Ly9jcmwucm9vdGcyLmFtYXpvbnRydXN0
+LmNvbS9yb290ZzIuY3JsMBEGA1UdIAQKMAgwBgYEVR0gADANBgkqhkiG9w0BAQsF
+AAOCAQEAYjdCXLwQtT6LLOkMm2xF4gcAevnFWAu5CIw+7bMlPLVvUOTNNWqnkzSW
+MiGpSESrnO09tKpzbeR/FoCJbM8oAxiDR3mjEH4wW6w7sGDgd9QIpuEdfF7Au/ma
+eyKdpwAJfqxGF4PcnCZXmTA5YpaP7dreqsXMGz7KQ2hsVxa81Q4gLv7/wmpdLqBK
+bRRYh5TmOTFffHPLkIhqhBGWJ6bt2YFGpn6jcgAKUj6DiAdjd4lpFw85hdKrCEVN
+0FE6/V1dN2RMfjCyVSRCnTawXZwXgWHxyvkQAiSr6w10kY17RSlQOYiypok1JR4U
+akcjMS9cmvqtmg5iUaQqqcT5NJ0hGA==
+-----END CERTIFICATE-----
+
+
+Step 3: Create Truststore
+
+1. Import root
+
+keytool -importcert \
+  -alias amazon-root \
+  -file amazon-root.crt \
+  -keystore papss_truststore.p12 \
+  -storetype PKCS12 \
+  -storepass changeit \
+  -noprompt
+  
+ 2. Import Intermediate
+ 
+ keytool -importcert \
+  -alias amazon-intermediate \
+  -file amazon-intermediate.crt \
+  -keystore papss_truststore.p12 \
+  -storetype PKCS12 \
+  -storepass changeit \
+  -noprompt
+  
+  3. (Optional) Import Server Cert
+  
+  keytool -importcert \
+  -alias papss-server \
+  -file papss-server.crt \
+  -keystore papss_truststore.p12 \
+  -storetype PKCS12 \
+  -storepass changeit \
+  -noprompt
+  
+  
+ STEP 4: Verify
+ 
+ keytool -list -v -keystore papss_truststore.p12 -storepass changeit
+

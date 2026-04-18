@@ -1,0 +1,1506 @@
+function cietxn_det1_post_ONLOAD()
+{
+        var ObjForm = document.forms[0];
+
+        if(funcCode == "A"){
+                ObjForm.targetEntity.focus();
+		hideImage("rateCodeImg");
+		hideImage("treaRefNumImg");
+		fnDisableAmtFields();
+		fnOnloadDisableFields();
+		var acctCrncy = ObjForm.crAcctNumCcy.value;
+		var refCrncy = ObjForm.refCrncy.value;
+
+		showRateWrkClss();
+
+		if((!fnIsNull(acctCrncy)) && (!fnIsNull(refCrncy))){
+			if(acctCrncy == refCrncy){
+				hideImage("rateCodeImg");
+				hideImage("treaRefNumImg");
+				ObjForm.rateCode.value = "";
+				ObjForm.rate.value = "1.00";
+				ObjForm.rateCode.disabled = true;
+				ObjForm.rate.disabled = true;
+				ObjForm.treaRefNum.disabled = true;
+				ObjForm.treaRate.disabled = true;
+			}else{
+				showImage("rateCodeImg");
+				showImage("treaRefNumImg");
+			}
+		}
+
+        }
+        return true;
+}
+
+function showRateWrkClss(){
+
+	    var inputNameValues = "";
+        var outputNames = "";
+        var scriptName = "cietxnRate.scr";
+		var retVal = appFnExecuteScript(inputNameValues, outputNames, scriptName, false);
+		var ret = retVal.split("|");
+
+		if(ret[0] == "err")
+		{
+			var ObjForm = document.forms[0];
+			ObjForm.treaRate.disabled = true;
+			ObjForm.rate.disabled = true;
+		}
+		else
+		{
+			var ObjForm = document.forms[0];
+			ObjForm.treaRate.disabled = false;
+			ObjForm.rate.disabled = false;
+		}
+
+}
+
+function fnOnloadDisableFields(){
+	var ObjForm = document.forms[0];
+	ObjForm.targetEntityDesc.disabled = true;
+	ObjForm.crAcctNumEntityId.disabled = true;
+	ObjForm.crAcctNumSolId.disabled = true;
+	ObjForm.crAcctNumCcy.disabled = true;
+	ObjForm.crAcctName.disabled = true;
+	ObjForm.nostroAcct.disabled = true;
+	ObjForm.nostroAcctName.disabled = true;
+}
+
+function fnValidateData(){
+	var ObjForm = document.forms[0];
+	var targetEntity = ObjForm.targetEntity.value;
+	var crAcctNum = ObjForm.crAcctNum.value;
+	var crAcctNumEntityId = ObjForm.crAcctNumEntityId.value;
+	var acctCrncy = ObjForm.crAcctNumCcy.value.toUpperCase();
+	var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+	var refAmt = ObjForm.refAmt.value;
+	var rateCode = ObjForm.rateCode.value;
+	var rate = ObjForm.rate.value;
+	var refNo = ObjForm.refNo.value;
+	var tranParticularsCode = ObjForm.tranParticularsCode.value;
+	var tranParticular = ObjForm.tranParticular.value;
+	var tranRmks = ObjForm.tranRmks.value;
+	var tranRmks2 = ObjForm.tranRmks2.value;
+
+	if(fnIsNull(targetEntity))
+        {
+                alert("Enter the Credit A/c. Entity ID");
+                ObjForm.targetEntity.focus();
+                return false;
+        }
+
+	if(fnIsNull(crAcctNum))
+        {
+                alert("Enter the Credit Account ID");
+                ObjForm.crAcctNum.focus();
+                return false;
+        }
+        else
+        {
+        if (profileId=="11")
+        {
+    // Checking Document Expiry date --- Anderson
+    var acctNumber = ObjForm.crAcctNum.value;
+    if(!fnIsNull(crAcctNum))
+    {   
+        // alert("No 2");
+        var inputNameValues = "foracid|"+acctNumber;
+            var outputNames     = "msgFlg";
+            var scrName         = "checkDocExpDate.scr";
+            var retVal          = appFnExecuteScript(inputNameValues, outputNames, scrName, false);
+            var ret1 = retVal.split("|");
+            alert(ret1[1]);
+    }
+
+    // End of Document Expiry date checker --- Anderson
+    }
+
+}
+
+	if(fnIsNull(refCrncy))
+        {
+                alert("Enter the Ref. CCY");
+                ObjForm.refCrncy.focus();
+                return false;
+        }
+
+	if(fnIsNull(refAmt))
+        {
+                alert("Enter the Ref Amt");
+                ObjForm.refAmt.focus();
+                return false;
+        }
+
+	if(acctCrncy != refCrncy){
+		if(fnIsNull(rateCode))
+		{
+			alert("Enter the Rate Code");
+			ObjForm.rateCode.focus();
+                	return false;
+        	}
+	}
+
+	if(fnIsNull(rate))
+        {
+                alert("Enter the Rate");
+                ObjForm.rate.focus();
+                return false;
+        }
+
+	if(fnIsNull(refNo))
+        {
+                //alert("Enter the Ref. No.");
+                //ObjForm.refNo.focus();
+                //return false;
+        }
+
+	if(fnIsNull(tranParticularsCode))
+        {
+                //alert("Enter the Transaction Particulars Code");
+                //ObjForm.tranParticularsCode.focus();
+                //return false;
+        }
+
+	if(fnIsNull(tranParticular))
+        {
+                //alert("Enter the Transaction Particulars");
+                //ObjForm.tranParticular.focus();
+                //return false;
+        }
+
+	if(fnIsNull(tranRmks))
+        {
+                //alert("Enter the Remarks1");
+                //ObjForm.tranRmks.focus();
+                //return false;
+        }
+
+	if(fnIsNull(tranRmks2))
+        {
+                //alert("Enter the Remarks2");
+                //ObjForm.tranRmks2.focus();
+                //return false;
+        }
+
+	var retVal = "";
+	if ((retVal =  fnIsValidInput()) == false) {
+                return false;
+        }
+
+	if (!fnCheckMandatoryFields())
+	{
+		return false;
+	}
+	return true;
+}
+
+function getAcctIdList() {
+	var ObjForm = document.forms[0];
+	var targetEntity = ObjForm.targetEntity.value;
+	if(fnIsNull(targetEntity)){
+		alert("Enter the Credit A/c. Entity ID to search other entity accounts");
+		ObjForm.targetEntity.focus();
+	}else{
+if(fnGetBoxFlg())
+{
+cust_showAccountIdList(ObjForm.crAcctNum,null,null,'F');
+var crAcctNum = ObjForm.crAcctNum.value;
+	if(!fnIsNull(crAcctNum)){
+		fnGetAcctDetails();
+	}
+		
+	}
+
+	
+}
+}
+
+function showEntityList(){
+	var inputNameValues = "targetEntity| "
+	var outputNameValues = "targetEntity|targetEntityDesc|targetEntityHomeCcy";
+	var scriptName = "cietxndp019.scr";
+	var listHeading = "Entity List";
+	var colHeader = "Entity ID|Entity Description|Home Currency Code";
+	var retVal = fnExecuteScriptForList(inputNameValues,outputNameValues,scriptName,listHeading,colHeader,"1",true);
+	var ObjForm = document.forms[0];
+        var targetEntity = ObjForm.targetEntity.value;
+        if(!fnIsNull(targetEntity)){
+                ObjForm.crAcctNum.focus();
+        }
+}
+
+function fnGetEntityDesc(){
+	var retVal = "";
+        if ((retVal =  fnIsValidInput()) == false) {
+                return false;
+        }
+	var ObjForm = document.forms[0];
+        var targetEntity = ObjForm.targetEntity.value;
+
+	if(fnIsNull(targetEntity)){
+		ObjForm.targetEntityDesc.value = "";
+	}else{
+        	var inputNameValues = "targetEntity|"+targetEntity;
+		var outputNames = "errorFlg|errorMsg|targetEntity|targetEntityDesc|boxFlg";
+		var scriptName = "cietxndp018.scr"
+		var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+		var token = retVal.split("|");
+		if(token != undefined){
+			var errorFlg = token[1];
+			var errorMsg = token[3];
+			var targetEntity = token[5];
+			var targetEntityDesc = token[7];
+			var boxFlg= token[9];
+
+			if(errorFlg == "Y"){
+				alert(errorMsg);
+				setFieldFocus(ObjForm.targetEntity);
+				return false;
+                	}else{
+                        	ObjForm.targetEntity.value = targetEntity;
+				ObjForm.targetEntityDesc.value = targetEntityDesc;
+				ObjForm.crAcctNum.focus();
+if(boxFlg == "A")
+{
+//hideImage("crAcctNumImg");
+}
+if(boxFlg =="W")
+{
+//showImage("crAcctNumImg");
+}
+                	}
+        	}
+	}
+        return true;
+
+}
+function fnGetBoxFlg(){
+	var retVal = "";
+        if ((retVal =  fnIsValidInput()) == false) {
+                return false;
+        }
+	var ObjForm = document.forms[0];
+        var targetEntity = ObjForm.targetEntity.value;
+
+	if(fnIsNull(targetEntity)){
+		ObjForm.targetEntityDesc.value = "";
+	}else{
+        	var inputNameValues = "targetEntity|"+targetEntity;
+		var outputNames = "errorFlg|errorMsg|targetEntity|targetEntityDesc|boxFlg";
+		var scriptName = "cietxndp018.scr"
+		var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+		var token = retVal.split("|");
+		if(token != undefined){
+			var errorFlg = token[1];
+			var errorMsg = token[3];
+			var targetEntity = token[5];
+			var targetEntityDesc = token[7];
+			var boxFlg= token[9];
+
+			if(errorFlg == "Y"){
+				alert(errorMsg);
+				
+				return false;
+                	}else{
+           
+if(boxFlg == "A")
+{
+alert("Account No should be entered manually for accounts belonging to Other Box");
+return false;
+}
+                	}
+        	
+	}
+        
+
+}
+return true;
+}
+
+function fnGetCrAcctDetails(){
+	var ObjForm = document.forms[0];
+	var crAcctNum = ObjForm.crAcctNum.value;
+        if(!fnIsNull(crAcctNum)){
+                fnGetAcctDetails();
+        }else{
+		fnClearAcctDetails();
+	}
+	return true;
+}
+
+function fnGetAcctDetails(){
+	var retVal = "";
+        if ((retVal =  fnIsValidInput()) == false) {
+                return false;
+        }
+	var ObjForm = document.forms[0];
+	fnEnableAcctDetails();
+	var crAcctNum = ObjForm.crAcctNum.value;
+        var inputNameValues = "acctNum|"+crAcctNum+"|targetEntity|"+ObjForm.targetEntity.value;
+        var outputNames = "errorFlg|errorMsg|acctNumEntityId|acctNumSolId|acctNumCcy|acctName|acctNum";
+	var scriptName = "cietxndp011.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+	if(token != undefined){
+		var errorFlg = token[1];
+		var errorMsg = token[3];
+		var crAcctNumEntityId = token[5];
+		var crAcctNumSolId = token[7];
+		var crAcctNumCcy = token[9];
+		var crAcctName = token[11];
+		var crAcctNum = token[13];
+
+		if(errorFlg == "Y"){
+			alert(errorMsg);
+			fnClearAcctDetails();
+			setFieldFocus(ObjForm.crAcctNum);
+			return false;
+
+		}else{
+			if(fnIsNull(ObjForm.targetEntity.value)){
+				ObjForm.targetEntity.value = crAcctNumEntityId;
+				fnGetEntityDesc();
+			}
+			ObjForm.crAcctNumEntityId.value = crAcctNumEntityId;
+			ObjForm.crAcctNumSolId.value = crAcctNumSolId;
+			ObjForm.crAcctNumCcy.value = crAcctNumCcy;
+			ObjForm.crAcctName.value = crAcctName;
+			ObjForm.crAcctNum.value = crAcctNum;
+			fnDisableAcctDetails();
+			fnGetNostroVostroAccts();
+			 fnRefCrncyVal();
+			//fnShowMemoPadDetails();
+		}
+	}
+	return true;
+}
+
+function fnShowMemoPadDetails(){
+	var ObjForm = document.forms[0];
+	var inputNameValues = "acctNum|" + ObjForm.crAcctNum.value +"|mode|C";
+        var outputNames ="recordCount";
+        var scriptName  = "cietxndp031.scr";
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+	var recordCount = 0;
+	if(token != undefined){
+        	var recordCount = token[1];
+	}
+        if(parseInt(recordCount) > 0){
+		var inputNameValues = "recordCount|"+recordCount+"|acctNum|"+ObjForm.crAcctNum.value+"|entityId|"+ObjForm.crAcctNumEntityId.value+"|mode|R";
+                var outputNames = "mpTopic|mpMemoText|mpExceptionCode|mpExceptionCodeDesc";
+                var scriptName  = "cietxndp031.scr";
+                var listHeading = "Memopad Exception Code Details";
+		var colHeader = "Memo Pad Topic|Memo Pad Text|Memo Pad Exception Code|Description";
+		var retVal = fnExecuteScriptForList(inputNameValues,outputNames,scriptName,listHeading,colHeader,"0",true);
+        }
+}
+
+function fnGetNostroVostroAccts(){
+	var ObjForm = document.forms[0];
+        var acctNum = ObjForm.crAcctNum.value;
+	var acctNumEntityId = ObjForm.crAcctNumEntityId.value;
+
+
+        var inputNameValues = "acctNum|"+acctNum+"|targetEntity|"+acctNumEntityId+"|txnType|"+txnType+"|acctNumSolId|"+ObjForm.crAcctNumSolId.value+"|acctNumCcy|"+ObjForm.crAcctNumCcy.value;
+
+        var outputNames = "errorFlg|errorMsg|nostroAcct|nostroAcctFlg|vostroAcct|vostroAcctFlg|nostroAcctName";
+        var scriptName = "cietxndp014.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+                var errorFlg = token[1];
+                var errorMsg = token[3];
+		var nostroAcct = token[5];
+		var nostroAcctFlg = token[7];
+		var vostroAcct = token[9];
+		var vostroAcctFlg = token[11];
+		var nostroAcctName = token[13];
+
+                if(errorFlg == "Y"){
+                        alert(errorMsg);
+			if(errorMsg == "Same Entity Account Not Allowed"){
+				fnClearAcctDetails();
+				ObjForm.crAcctNum.value = "";
+				ObjForm.targetEntity.value = "";
+				ObjForm.targetEntityDesc.value = "";
+				return false;
+			}
+
+			if(nostroAcctFlg == "Y"){
+                                ObjForm.nostroAcct.value = nostroAcct;
+			}else{
+				ObjForm.nostroAcct.value = "";
+				ObjForm.nostroAcctName.value = "";
+			}
+
+			if(vostroAcctFlg == "Y"){
+                                ObjForm.vostroAcct.value = vostroAcct;
+			}else{
+				ObjForm.vostroAcct.value = "";
+			}
+
+                        return false;
+
+                }else{
+			ObjForm.nostroAcct.value = nostroAcct;
+			ObjForm.vostroAcct.value = vostroAcct;
+			ObjForm.nostroAcctName.value = nostroAcctName;
+                }
+        }
+        return true;
+}
+
+function fnEnableAcctDetails(){
+        var ObjForm = document.forms[0];
+        ObjForm.crAcctNumEntityId.disabled = false;
+        ObjForm.crAcctNumSolId.disabled = false;
+        ObjForm.crAcctNumCcy.disabled = false;
+        ObjForm.crAcctName.disabled = false;
+}
+
+function fnDisableAcctDetails(){
+	var ObjForm = document.forms[0];
+	ObjForm.crAcctNumEntityId.disabled = true;
+	ObjForm.crAcctNumSolId.disabled = true;
+	ObjForm.crAcctNumCcy.disabled = true;
+	ObjForm.crAcctName.disabled = true;
+}
+
+function fnClearAcctDetails(){
+	var ObjForm = document.forms[0];
+	ObjForm.crAcctNumEntityId.value = "";
+	ObjForm.crAcctNumSolId.value = "";
+	ObjForm.crAcctNumCcy.value = "";
+	ObjForm.crAcctName.value = "";
+	ObjForm.chargeAmt.value = "";
+	ObjForm.chargeAmtCcy.value = "";
+	ObjForm.chargeEventId.value = "";
+	ObjForm.refCrncy.value = "";
+	ObjForm.refAmt.value = "";
+	ObjForm.nostroAcct.value = "";
+	ObjForm.nostroAcctName.value = "";
+	ObjForm.vostroAcct.value = "";
+	fnClearAmtFields();
+	fnClearRateFields();
+}
+
+function fnDisableAmtFields(){
+	var ObjForm = document.forms[0];
+	ObjForm.tranAmt.disabled = true;
+	ObjForm.tranAmtCcy.disabled = true;
+	ObjForm.chargeAmt.disabled = true;
+	ObjForm.chargeAmtCcy.disabled = true;
+}
+function getRefCrncyList(){
+	var ObjForm = document.forms[0];
+	var oldValue = ObjForm.refCrncy.value;
+	var retVal = popModalWindow("../arjspmorph/"+applangcode+"/get_currency.jsp?wReturn=refCrncy&Currency="+oldValue,"CurrencyList");
+	if (retVal != null) {
+		var j = retVal.split("|");
+		ObjForm.refCrncy.value = j[0];
+		ObjForm.refAmt.focus();
+		fnComputeTranAmt(ObjForm.refCrncy);
+cietxn_det1_post_ONCHANGE(ObjForm.refCrncy);
+	}
+}
+
+function getRateCodeList() {
+	var frm = document.forms[0];
+        rateCode = frm.rateCode.value;
+        var retVal = popModalWindow("../arjspmorph/"+applangcode+"/rate_codes.jsp?wReturn=document.forms[0].rateCode&DebitCrncy="+frm.refCrncy.value+"&CreditCrncy="+frm.crAcctNumCcy.value,"RateCodes");
+        if (retVal != null)
+        {
+        	frm.rateCode.value = retVal;
+		fnComputeTranAmt(frm.rateCode);
+	}
+}
+
+function fnValidateRefCcy(){
+
+	 var ObjForm = document.forms[0];
+        var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+        var inputNameValues = "refCrncy|"+refCrncy;
+        var outputNames = "errorFlg|errorMsg";
+        var scriptName = "cietxndp013.scr";
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+                var errorFlg = token[1];
+                var errorMsg = token[3];
+
+                if(errorFlg == "Y"){
+                        alert(errorMsg);
+                        fnClearAmtFields();
+			fnClearRateFields();
+                        setFieldFocus(ObjForm.refCrncy);
+                        return false;
+                }
+        }
+        return true;
+}
+
+function fnClearRateFields(){
+
+	var ObjForm = document.forms[0];
+	ObjForm.rateCode.value = "";
+	ObjForm.rate.value = "";
+	return true;
+}
+
+function fnClearAmtFields(){
+	var ObjForm = document.forms[0];
+	ObjForm.tranAmt.value = "";
+	ObjForm.tranAmtCcy.value = "";
+	return true;
+}
+
+function fnFormatAmountField(obj){
+	var p1 = removeCommas(obj.value);
+	var ObjForm = document.forms[0];
+	var amountFormat = "Million";
+        var crncyCode = "";
+
+	crncyCode = ObjForm.crAcctNumCcy.value;
+	if(obj.id == "refAmt"){
+                if(fnIsNull(p1)){
+                        fnClearAmtFields();
+                        //fnClearRateFields();
+                        return false;
+                }
+                crncyCode = ObjForm.refCrncy.value;
+        }
+
+        var retValue = ""
+        retValue = newformatAmt(amountFormat,obj,crncyCode,'N');
+        if(retValue == false){
+                return false;
+        }
+
+        p1 = removeCommas(obj.value);
+        if(parseFloat(p1) <= parseFloat("0")){
+                alert("Amount should be greater than zero");
+                fnClearAmtFields();
+                fnClearRateFields();
+                setFieldFocus(ObjForm.refAmt);
+                return false;
+        }
+
+	if(fnIsNull(ObjForm.refCrncy.value)){
+		ObjForm.refCrncy.focus();
+		return false;
+	}
+
+	return true;
+}
+
+function fnClearAmtRateFields(){
+        var ObjForm = document.forms[0];
+        ObjForm.refCrncy.value = "";
+        ObjForm.refAmt.value = "";
+        ObjForm.rateCode.value = "";
+        ObjForm.rate.value = "";
+        ObjForm.tranAmt.value = "";
+        ObjForm.tranAmtCcy.value = "";
+
+}
+
+function fnComputeTranAmt(obj){
+
+	var ObjForm = document.forms[0];
+        var acctCrncy = ObjForm.crAcctNumCcy.value.toUpperCase();
+        var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+        var refAmtTmp = ObjForm.refAmt.value;
+        var refAmt = removeCommas(refAmtTmp);
+        var rateCode = ObjForm.rateCode.value.toUpperCase();
+        var rateTmp = ObjForm.rate.value;
+        var rate = removeCommas(rateTmp);
+	var treaRateTmp = ObjForm.treaRate.value;
+        var treaRate = removeCommas(treaRateTmp);
+
+        if(acctCrncy != refCrncy){
+        //        showImage("rateCodeImg");
+		showImage("treaRefNumImg");
+                //ObjForm.rate.disabled = false;
+                //ObjForm.rateCode.disabled = false;
+		ObjForm.treaRefNum.disabled = false;
+                //ObjForm.treaRate.disabled = false;
+				showRateWrkClss();
+        }else{
+                hideImage("rateCodeImg");
+		hideImage("treaRefNumImg");
+                ObjForm.rate.disabled = true;
+                ObjForm.rateCode.disabled = true;
+		ObjForm.treaRefNum.disabled = true;
+		ObjForm.treaRate.disabled = true;
+        }
+
+        var retVal = "";
+
+        if(obj.id == "refCrncy"){
+
+                if(fnIsNull(refCrncy)){
+                      fnClearAmtRateFields();
+                        hideImage("rateCodeImg");
+			hideImage("treaRefNumImg");
+                        ObjForm.rate.disabled = true;
+                        ObjForm.rateCode.disabled = true;
+			ObjForm.treaRefNum.disabled = true;
+			ObjForm.treaRate.disabled = true;
+			ObjForm.chargeEventId.value = "";
+			ObjForm.chargeAmt.value = "";
+			ObjForm.chargeAmtCcy.value = "";
+                        return false;
+                }
+
+                if ((retVal =  fnValidateRefCcy()) == false) {
+                        ObjForm.refAmt.value = "";
+                        ObjForm.rateCode.value = "";
+                        ObjForm.rate.value = "";
+			ObjForm.treaRefNum.value = "";
+			ObjForm.treaRate.value = "";
+                        ObjForm.tranAmt.value = "";
+                        ObjForm.tranAmtCcy.value = "";
+			ObjForm.chargeEventId.value = "";
+                        ObjForm.chargeAmt.value = "";
+                        ObjForm.chargeAmtCcy.value = "";
+                        hideImage("rateCodeImg");
+			hideImage("treaRefNumImg");
+                        return false;
+                }/*else{
+                        ObjForm.rateCode.value = "";
+                        ObjForm.rate.value = "";
+			ObjForm.treaRefNum.value = "";
+                        ObjForm.treaRate.value = "";
+                        ObjForm.tranAmt.value = "";
+                        ObjForm.tranAmtCcy.value = "";
+			ObjForm.chargeEventId.value = "";
+                        ObjForm.chargeAmt.value = "";
+                        ObjForm.chargeAmtCcy.value = "";
+                }*/
+        }
+
+        if(obj.id == "rateCode"){
+                rate = "";
+        }
+
+        var inputNameValues = "refCrncy|"+refCrncy+"|acctCrncy|"+acctCrncy+"|refAmt|"+refAmt+"|rateCode|"+rateCode+"|rate|"+rate+"|treaRate|"+treaRate;
+        var outputNames = "errorFlg|errorMsg|rate|treaRate|tranAmt|tranAmtCcy";
+        var scriptName = "cietxndp012.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+                var errorFlg = token[1];
+                var errorMsg = token[3];
+                var rate = token[5];
+		var treaRate = token[7];
+                var tranAmt = token[9];
+                var tranAmtCcy = token[11];
+
+                if(errorFlg == "Y"){
+                        alert(errorMsg);
+                        ObjForm.tranAmt.value = "";
+                        ObjForm.tranAmtCcy.value = "";
+                        ObjForm.rate.value = "";
+			ObjForm.treaRate.value = "";
+			ObjForm.chargeEventId.value = "";
+                        ObjForm.chargeAmt.value = "";
+                        ObjForm.chargeAmtCcy.value = "";
+                        setFieldFocus(ObjForm.refCrncy);
+                        return false;
+
+                }else{
+                        ObjForm.rate.value = rate;
+			ObjForm.treaRate.value = treaRate;
+                        ObjForm.tranAmt.value = tranAmt;
+                        ObjForm.tranAmtCcy.value = tranAmtCcy;
+			newformatAmt("Million",ObjForm.tranAmt,ObjForm.tranAmtCcy.value,'N');
+                }
+        }
+
+	fnGetChargeAmt();
+
+        return;
+}
+
+function fnGetChargeAmt(){
+	var ObjForm = document.forms[0];
+	var acctNumEntityId = ObjForm.crAcctNumEntityId.value;
+	var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+        var refAmtTmp = ObjForm.refAmt.value;
+        var refAmt = removeCommas(refAmtTmp);
+	var rateCode = ObjForm.rateCode.value;
+	var rateTmp = ObjForm.rate.value;
+	var rate = removeCommas(rateTmp);
+	var tranAmt = ObjForm.tranAmt.value;
+	var crAcctNum = ObjForm.crAcctNum.value;
+
+	if(fnIsNull(acctNumEntityId)){
+                ObjForm.chargeEventId.value = "";
+                ObjForm.chargeAmt.value = "";
+                ObjForm.chargeAmtCcy.value = "";
+                return;
+        }
+
+	if(fnIsNull(refAmt)){
+		ObjForm.chargeEventId.value = "";
+                ObjForm.chargeAmt.value = "";
+                ObjForm.chargeAmtCcy.value = "";
+		return;
+	}
+
+	if(fnIsNull(refCrncy)){
+                ObjForm.chargeEventId.value = "";
+                ObjForm.chargeAmt.value = "";
+                ObjForm.chargeAmtCcy.value = "";
+                return;
+        }
+
+	if(fnIsNull(rate)){
+                ObjForm.chargeEventId.value = "";
+                ObjForm.chargeAmt.value = "";
+                ObjForm.chargeAmtCcy.value = "";
+                return;
+        }
+
+	if(fnIsNull(tranAmt)){
+                ObjForm.chargeEventId.value = "";
+                ObjForm.chargeAmt.value = "";
+                ObjForm.chargeAmtCcy.value = "";
+                return;
+        }
+	var inputNameValues="targetEntity|"+acctNumEntityId+"|txnType|"+txnType+"|refCrncy|"+refCrncy+"|refAmt|"+refAmt+"|rateCode|"+rateCode+"|rate|"+rate+"|crAcctNum|"+crAcctNum+"|acctNumCcy|"+ObjForm.crAcctNumCcy.value;
+	var outputNames = "errorFlg|errorMsg|chargeAmt|chargeAmtFlg|chargeAmtCcy|chargeAmtCcyFlg|chargeEventId|chargeEventIdFlg";
+	var scriptName = "cietxndp047.scr";
+	var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+		var errorFlg = token[1];
+                var errorMsg = token[3];
+                var chargeAmt = token[5];
+                var chargeAmtFlg = token[7];
+                var chargeAmtCcy = token[9];
+                var chargeAmtCcyFlg = token[11];
+                var chargeEventId = token[13];
+                var chargeEventIdFlg = token[15];
+		if(errorFlg == "Y"){
+                        alert(errorMsg);
+
+                        if(chargeAmtFlg == "Y"){
+                                ObjForm.chargeAmt.value = chargeAmt;
+                        }else{
+                                ObjForm.chargeAmt.value = "";
+                        }
+
+                        if(chargeAmtCcyFlg == "Y"){
+                                ObjForm.chargeAmtCcy.value = chargeAmtCcy;
+                        }else{
+                                ObjForm.chargeAmtCcy.value = "";
+                        }
+
+                        if(chargeEventIdFlg == "Y"){
+                                ObjForm.chargeEventId.value = chargeEventId;
+                        }else{
+                                ObjForm.chargeEventId.value = "";
+                        }
+			return false;
+
+                }else{
+                        ObjForm.chargeAmt.value = chargeAmt;
+                        ObjForm.chargeAmtCcy.value = chargeAmtCcy;
+                        ObjForm.chargeEventId.value = chargeEventId;
+                }
+        }
+        return true;
+}
+
+function fnShowRefCodeTranCode(){
+	var ObjForm = document.forms[0];
+	showRefCode(ObjForm.tranParticularsCode,'DD','N','F');
+	var tranParticularsCode = ObjForm.tranParticularsCode.value;
+	if(!fnIsNull(tranParticularsCode)){
+		ObjForm.tranParticular.focus();
+	}else{
+		ObjForm.tranParticularsCode.focus();
+	}
+}
+
+function fnExplodeBalanceDetails(obj){
+    var ObjForm = document.forms[0];
+    var acctId = obj.value;
+    var sUrl = "";
+    var urlData = "";
+    if(!fnIsNull(acctId)){
+	var entityId = ObjForm.crAcctNumEntityId.value;
+        var inputNameValues = "acctId|"+acctId+"|entityId|"+entityId;
+        var outputNames = "errorFlg|errorMsg|acctId|solId|crncyCode|acctName|ledgerBal|availableBal|effAvailableBal|freezeStatus|freezeReasonCode|acctClosed|shadowBal|acctStatus|restrictAccess";
+        var scriptName = "cietxndp009.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+		var iIndex = 1;
+                var errorFlg = token[iIndex];
+                var errorMsg = token[iIndex+=2];
+		var acctId = token[iIndex+=2];
+                var solId = token[iIndex+=2];
+                var crncyCode = token[iIndex+=2];
+                var acctName = token[iIndex+=2];
+                var ledgerBal = token[iIndex+=2];
+		var availableBal = token[iIndex+=2];
+		var effAvailableBal = token[iIndex+=2];
+		var freezeStatus = token[iIndex+=2];
+		var freezeReasonCode = token[iIndex+=2];
+		var acctClosed = token[iIndex+=2];
+		var shadowBal = token[iIndex+=2];
+		var acctStatus = token[iIndex+=2];
+		var restrictAccess = token[iIndex+=2];
+
+                if(errorFlg == "Y"){
+                        alert(errorMsg);
+                        setFieldFocus(obj);
+                }else{
+		    if(restrictAccess == "Y"){
+                                ledgerBal = "**********";
+                                availableBal = "**********";
+                                effAvailableBal = "**********";
+                                shadowBal = "**********";
+                    }else{
+			var amountFormat = "Million";
+			var crDrIndicator = "";
+			var prec = getPrec(crncyCode);
+
+			// Ledger Balance
+                        var tmpAmt = parseFloat(ledgerBal);
+                        if(tmpAmt < 0){
+                                tmpAmt = tmpAmt * (-1);
+                                crDrIndicator = "Dr";
+                        }else{
+                                crDrIndicator = "Cr";
+                        }
+                        tmpAmt = tmpAmt.toFixed(prec);
+                        ObjForm.tmpAmtField.value = tmpAmt;
+                        newformatAmt(amountFormat,ObjForm.tmpAmtField,crncyCode,'N');
+                        ledgerBal = ObjForm.tmpAmtField.value + " " + crDrIndicator;
+
+			// Available Balance
+                        var tmpAmt = parseFloat(availableBal);
+                        if(tmpAmt < 0){
+                                tmpAmt = tmpAmt * (-1);
+                                crDrIndicator = "Dr";
+                        }else{
+                                crDrIndicator = "Cr";
+                        }
+                        tmpAmt = tmpAmt.toFixed(prec);
+                        ObjForm.tmpAmtField.value = tmpAmt;
+                        newformatAmt(amountFormat,ObjForm.tmpAmtField,crncyCode,'N');
+                        availableBal = ObjForm.tmpAmtField.value + " " + crDrIndicator;
+
+			// Effective Available Balance
+                        var tmpAmt = parseFloat(effAvailableBal);
+                        if(tmpAmt < 0){
+                                tmpAmt = tmpAmt * (-1);
+                                crDrIndicator = "Dr";
+                        }else{
+                                crDrIndicator = "Cr";
+                        }
+                        tmpAmt = tmpAmt.toFixed(prec);
+                        ObjForm.tmpAmtField.value = tmpAmt;
+                        newformatAmt(amountFormat,ObjForm.tmpAmtField,crncyCode,'N');
+                        effAvailableBal = ObjForm.tmpAmtField.value + " " + crDrIndicator;
+
+			// Shadow Balance
+                        var tmpAmt = parseFloat(shadowBal);
+                        if(tmpAmt < 0){
+                                tmpAmt = tmpAmt * (-1);
+                                crDrIndicator = "Dr";
+                        }else{
+                                crDrIndicator = "Cr";
+                        }
+                        tmpAmt = tmpAmt.toFixed(prec);
+                        ObjForm.tmpAmtField.value = tmpAmt;
+                        newformatAmt(amountFormat,ObjForm.tmpAmtField,crncyCode,'N');
+                        shadowBal = ObjForm.tmpAmtField.value + " " + crDrIndicator;
+		    }
+
+			var urlData = "";
+			urlData+= "&acctId="+acctId;
+			urlData+= "&solId="+solId;
+			urlData+= "&crncyCode="+crncyCode;
+			urlData+= "&acctName="+acctName;
+			urlData+= "&ledgerBal="+ledgerBal;
+			urlData+= "&availableBal="+availableBal;
+			urlData+= "&effAvailableBal="+effAvailableBal;
+			urlData+= "&freezeStatus="+freezeStatus;
+			urlData+= "&freezeReasonCode="+freezeReasonCode;
+			urlData+= "&acctClosed="+acctClosed;
+			urlData+= "&shadowBal="+shadowBal;
+			urlData+= "&acctStatus="+acctStatus;
+			urlData+= "&entityId="+document.forms[0].crAcctNumEntityId.value;
+			//alert(urlData);
+                }
+        }
+
+        var sUrl = "../custom/jsp/cietxn_acctBal.jsp?";
+	sUrl+= urlData;
+	//alert("sUrl = "+sUrl);
+        var xMax = screen.width, yMax = screen.height;
+        var xOffset = (xMax - 120), yOffset = (yMax - 150);
+        var params = "dialogWidth=800px;dialogHeight=50px;dialogLeft="+xOffset+"px;dialogTop="+yOffset+"px";
+        params += ";status=yes;toolbar=yes;menubar=yes;resizable=yes;help=yes;center=no";
+
+        var retVal = "";
+        if("Netscape" == browser_name)
+        {
+                window.open(sUrl,"title","width=10px,height=10px,modal=yes,top="+yOffset+"px,left="+xOffset+"px,scrollbars=yes,toolbar=no,menubar=no,help=no");
+        }
+        else
+        {
+                retVal = window.popModalWindow(sUrl,"",params);
+        }
+        if (retVal == null || retVal == undefined)
+	{
+                return retVal;
+	}
+    }
+    else{
+		alert("Enter the Credit Account ID");
+		ObjForm.crAcctNum.focus();
+    }
+}
+
+function fnRemoveCommas(){
+	var ObjForm = document.forms[0];
+	var refAmt = ObjForm.refAmt.value;
+	refAmt = removeCommas(refAmt);
+	ObjForm.refAmt.value = refAmt;
+
+	var tranAmt = ObjForm.tranAmt.value;
+        tranAmt = removeCommas(tranAmt);
+        ObjForm.tranAmt.value = tranAmt;
+
+	var chargeAmt = ObjForm.chargeAmt.value;
+        chargeAmt = removeCommas(chargeAmt);
+        ObjForm.chargeAmt.value = chargeAmt;
+}
+
+function fnIsValidInput(){
+	var ObjForm = document.forms[0];
+        var targetEntity = ObjForm.targetEntity.value;
+        var crAcctNum = ObjForm.crAcctNum.value;
+        var crAcctNumEntityId = ObjForm.crAcctNumEntityId.value;
+        var acctCrncy = ObjForm.crAcctNumCcy.value.toUpperCase();
+        var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+        var refAmt = ObjForm.refAmt.value;
+        var rateCode = ObjForm.rateCode.value;
+        var rate = ObjForm.rate.value;
+        var refNo = ObjForm.refNo.value;
+        var tranParticularsCode = ObjForm.tranParticularsCode.value;
+        var tranParticular = ObjForm.tranParticular.value;
+        var tranRmks = ObjForm.tranRmks.value;
+        var tranRmks2 = ObjForm.tranRmks2.value;
+
+	var retVal = "";
+
+	if ((retVal =  isEnglish(targetEntity)) == false) {
+                ObjForm.targetEntity.focus();
+                return false;
+        }
+
+	if ((retVal =  isEnglish(crAcctNum)) == false) {
+                ObjForm.crAcctNum.focus();
+                return false;
+        }
+
+	if ((retVal =  isEnglish(refCrncy)) == false) {
+                ObjForm.refCrncy.focus();
+                return false;
+        }
+
+	if ((retVal =  isEnglish(rateCode)) == false) {
+                ObjForm.refNo.focus();
+                return false;
+        }
+
+	if ((retVal =  isEnglish(refNo)) == false) {
+		ObjForm.refNo.focus();
+                return false;
+        }
+	if ((retVal =  isEnglish(tranParticularsCode)) == false) {
+                ObjForm.tranParticularsCode.focus();
+                return false;
+        }
+	if ((retVal =  isEnglish(tranParticular)) == false) {
+                ObjForm.tranParticular.focus();
+                return false;
+        }
+	if ((retVal =  isEnglish(tranRmks)) == false) {
+                ObjForm.tranRmks.focus();
+                return false;
+        }
+	if ((retVal =  isEnglish(tranRmks2)) == false) {
+                ObjForm.tranRmks2.focus();
+                return false;
+        }
+	return true;
+}
+
+function isEnglish(str){
+    for (i=0; i<str.length; i++)
+        {
+                var validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ ";
+                if((validChars.indexOf(str.charAt(i)) == -1))
+                {
+			alert("Invalid Characters Entered");
+                        return false;
+                }
+    }
+    return true;
+}
+
+function removeCommas(sNum){
+	sNew ="";
+	var sTemp = sNum.split(",");
+	for (i=0;i<sTemp.length;i++)
+	{
+		if (sTemp[i]!=null)
+			sNew = sNew + sTemp[i];
+	}
+	return sNew;
+}
+
+function fnValAndSubmit(btnObj){
+var ObjForm = document.forms[0];
+	if(fnValidateData()){
+		fnRemoveCommas();
+		if(fnsubmitchek()){
+			var retVal ;
+			if(btnObj.id=="Submit"){
+				var returnValue = ObjForm.returnValue.value;
+				if(fnIsNull(returnValue)){
+					if ((retVal =  denom_pop_up()) == false){
+						alert("Denom failed");
+						return false;
+					}else{
+						doSubmit(btnObj.id);
+					}
+				}
+				else{
+					doSubmit(btnObj.id);
+				}
+			}else{
+				 doSubmit(btnObj.id);
+			}
+		}
+	}
+}
+
+
+
+function fnsubmitchek(){
+
+	var ObjForm = document.forms[0];
+	var crAcctNum  = ObjForm.crAcctNum.value;
+	var crTranAmt  = ObjForm.tranAmt.value;
+	var crEntityId = ObjForm.targetEntity.value;
+	var crUserId = "FIVUSR"+ObjForm.targetEntity.value;
+	var TranPart  =  "CASH DEP THRU%";
+
+
+
+	//CREDIT TRANSFER THRU
+	var inputNameValues = "crAcctId|"+crAcctNum+"|crTranAmt|"+crTranAmt+"|crEntityId|"+crEntityId +"|crTranPart|"+TranPart+"|crEntryUsr|"+crUserId;
+	var outputNames = "errorFlg|errorMsg";
+	var scriptName = "cietxndp099.scr";
+	var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+                var errorFlg = token[1];
+                var errorMsg = token[3];
+
+
+				if (errorFlg!= "Y" )
+				{
+
+					var r=confirm(errorMsg);
+					if (r==true)
+					  {
+
+						 return true;
+					  }
+					else
+					  {
+
+						return false;
+					  }
+
+
+
+				}
+				return true;
+
+		}
+
+}
+
+
+function fnCheckInteger()
+{
+	var ObjForm = document.forms[0];
+
+	if (!fnIsAlphabetNum(document.forms[0].mWaivermnths.value))
+	{
+		alert("Only Positive Integers are allowed");
+		return false;
+	}
+
+        return true;
+}
+
+function fnIsAlphabetNum(str)
+{
+	var strReg = /^([0-9 ])+$/
+	if(!fnIsNull(str))
+	return(strReg.test(str));
+	return true;
+}
+
+function fnOnButtonClick(btnObj)
+{
+	if(confirm(finbranchResArr.get("FAT000925")))
+	{
+		var ObjForm = document.forms[0];
+		doSubmit(btnObj);
+	}
+}
+
+function low_isValidAmt(amt)
+{
+	var amtLen = amt.length;
+	var lastChar = (amt.charAt(amtLen - 1)).toUpperCase();
+	if (isNaN(lastChar) && lastChar != '.') {
+		alert("Enter a numeric value");
+		return false;
+	}
+	if (isNaN(amt)) {
+		alert("Enter a numeric value");
+		return false;
+	}
+	var regExp = /[Ee]/g;
+	if (regExp.test(amt)) {
+		alert("Enter a numeric value");
+		return false;
+	}
+	return true;
+}
+
+function fnGetFunctionCodeDesc(funcCode){
+	switch(funcCode){
+		case 'A': return "Add";
+		case 'I': return "Inquire";
+		default : return funcCode;
+	}
+
+}
+
+/***************************************************
+* This function is used to disable all the visible
+* controls in the screen.
+****************************************************/
+function fnCustDisableFormControls(objForm){
+
+		var obj=document.forms[0];
+		var len=obj.length;
+
+		//disable form visible data controls
+		for(i = 0; i < len; i++){
+			if(( obj[i].type == 'text' )||( obj[i].type == 'textarea' )) {
+				obj[i].readOnly = true;
+			} else if (obj[i].type == 'select-one'){
+				obj[i].disabled = true;
+			} else if ( obj[i].type == 'checkbox' || obj[i].type == 'radio') {
+				obj[i].disabled = true;
+			}
+		}
+
+		if((objForm.Validate != undefined) && (objForm.Validate != null)){
+		       objForm.Validate.disabled = true;
+		}
+}
+
+
+
+
+// Added for Testing Onload event
+function postEventCall(pageName,currObj,event){
+
+    var funcName="";
+
+    //This is to call the application level customization functions.
+    //which will be defined in finbranch/custom/javascripts/app_custom.js
+
+    funcName="this.app_post_"+event;
+
+        if(eval(funcName)!=undefined)
+        if(!eval(funcName).call(this,currObj))  return false;
+
+    //End of application level customization hook
+
+    funcName="this.post_usrhk_"+event;
+    if(eval(funcName)!=undefined)
+        if(!eval(funcName).call(this,currObj))  return false;
+
+    funcName="this." + pageName + "_post_"+event;
+
+        if(eval(funcName)!=undefined){
+
+//------------------------------------------------
+        //Following Code is altered
+//------------------------------------------------
+
+
+        if(this.WF_IN_PROGRESS == "Y" || this.WF_IN_PROGRESS == "PEAS"){
+            if(!eval(funcName).call(this,currObj))  {
+                fnSetFocusOnFirstField_postonload();
+                return true;
+            }
+        }
+
+        else{
+
+                if(!eval(funcName).call(this,currObj)) {
+                        return false;
+                }
+                else{
+                        fnSetFocusOnFirstField_postonload();
+                }
+
+                return true;
+        }
+
+     }
+}
+
+
+//Show Account Id list js function
+
+function cust_showAccountIdList(acctObj,solId,acctName,inPreceedence,currDesc,defCrncyCode,defSchemeCode,defSchemeType,defSolId,defCifId,defGLSubHead,defOwnership,defShortName,defAcctLbl,defPartn,doAutoSubmit,defMasterAcctId,searchLang,targetBankId,dispBankIDFldFlg){
+/* Function modified to add input parameters to default in Account Id Criteria.
+If these are not supplied, the list would continue working as before.
+Note that the arguments.length <5 should be modified with care. */
+
+        var sUrl = "";
+        var preceedence = 'B';
+        var strCrncyCode = "";
+        var strSchemeCode = "";
+        var strSchemeType = "";
+        var strSolId = "";
+        var strCifId = "";
+        var strsearchLang = "";
+        var strGLSubHead = "";
+        var strOwnership = "";
+        var strShortName = "";
+        var strAcctLbl = "";
+        var strPartn = "";
+        var strSubmit = "";
+        var strTargetBankId = "";
+        var acctIdVal = "";
+
+/* Assigning default if passed */
+        if(acctObj.value != ""){acctIdVal = acctObj.value;}
+        //if(targetBankId  == undefined){ strTargetBankId  = "";} else {strTargetBankId  = targetBankId.value;}
+	strTargetBankId = document.forms[0].targetEntity.value;
+    if(defCrncyCode  == undefined){ strCrncyCode  = "";} else { strCrncyCode  = defCrncyCode;}
+    if(defSchemeCode == undefined){ strSchemeCode = "";} else { strSchemeCode = defSchemeCode;}
+    if(defSchemeType == undefined){ strSchemeType = "";} else { strSchemeType = defSchemeType;}
+    if(defSolId      == undefined){ strSolId      = "";} else { strSolId      = defSolId;}
+    if(defCifId     == undefined){ strCifId     = "";} else { strCifId     = defCifId;}
+    if(searchLang     == undefined){ strsearchLang = "";} else { strsearchLang = searchLang;}
+    if(defGLSubHead  == undefined){ strGLSubHead  = "";} else { strGLSubHead  = defGLSubHead;}
+    if(defOwnership  == undefined){ strOwnership  = "";} else { strOwnership  = defOwnership;}
+//    if(defShortName  != undefined){ strShortName  = defShortName;}
+    if(defAcctLbl    == undefined){ strAcctLbl  = "";} else { strAcctLbl  = defAcctLbl;}
+    if(defPartn      == undefined){ strPartn = "";} else { strPartn = defPartn;}
+        if(defMasterAcctId  == undefined){ strMasterAcctId  = "";} else { strMasterAcctId  = defMasterAcctId;}
+        if(doAutoSubmit  == undefined){ strSubmit = "";} else { strSubmit = doAutoSubmit;}
+
+    if(arguments.length > 3)
+    {
+        preceedence = inPreceedence;
+    }
+        if (arguments.length < 5)
+        {
+                sUrl = "../arjspmorph/"+applangcode+"/search_accountId.jsp?wReturn="+acctObj.id+"&wReturnCrncy=NULL&wReturnSol=NULL&wReturnAcct=NULL&preceedence="+preceedence+"&defCrncyCode="+escape(strCrncyCode)+"&defSchemeCode="+escape(strSchemeCode)+"&defSchemeType="+escape(strSchemeType)+"&defSolId="+escape(strSolId)+"&defCifId="+escape(strCifId)+"&searchLang="+escape(strsearchLang)+"&defGLSubHead="+escape(strGLSubHead)+"&defOwnership="+strOwnership+"&defOwnership="+strOwnership+"&defShortName="+escape(strShortName)+"&defAcctLbl="+strAcctLbl+"&defPartn="+strPartn+"&defMasterAcctId="+escape(strMasterAcctId)+"&targetBankId="+escape(strTargetBankId)+"&dispBankIDFldFlg="+dispBankIDFldFlg+"&defacctIdVal="+acctIdVal+"&doAutoSubmit="+strSubmit;
+        }else
+        {
+                sUrl = "../arjspmorph/"+applangcode+"/search_accountId.jsp?wReturn="+acctObj.id+"&wReturnCrncy="+currDesc.id+"&wReturnSol="+solId.id+"&wReturnAcct="+acctName.id+"&preceedence="+preceedence+"&defCrncyCode="+escape(strCrncyCode)+"&defSchemeCode="+escape(strSchemeCode)+"&defSchemeType="+escape(strSchemeType)+"&defSolId="+escape(strSolId)+"&defCifId="+escape(strCifId)+"&searchLang="+escape(strsearchLang)+"&defGLSubHead="+escape(strGLSubHead)+"&defOwnership="+strOwnership+"&defShortName="+escape(strShortName)+"&defAcctLbl="+escape(strAcctLbl)+"&defPartn="+strPartn+"&defMasterAcctId="+escape(strMasterAcctId)+"&targetBankId="+escape(strTargetBankId)+"&dispBankIDFldFlg="+dispBankIDFldFlg+"&defacctIdVal="+acctIdVal+"&doAutoSubmit="+strSubmit;
+        }
+
+                if ("Microsoft Internet Explorer" == browser_name)
+                {
+                     var retVal = popModalWindow(sUrl,"");
+                if (retVal != null && retVal != undefined )
+                {
+                        //Array for taking the values after splitting the value with "|".
+                        var liarrBufArray = retVal.split("|");
+
+                if(acctObj!=null) acctObj.value = liarrBufArray[0];
+                        if(currDesc!=null) currDesc.value = liarrBufArray[1];
+                        if(solId!=null) solId.value = liarrBufArray[2];
+                        if(acctName!=null) acctName.value = liarrBufArray[3];
+                }
+                }else{
+                            popModalWindowMozillaFrame(sUrl,"");
+                }
+
+}
+
+function denom_pop_up(obj){
+	var ObjForm = document.forms[0];
+        var refAmt = removeCommas(ObjForm.refAmt.value);
+        var refCrncy = ObjForm.refCrncy.value.toUpperCase();
+	var chargeAmt = removeCommas(ObjForm.chargeAmt.value);
+	var chargeAmtCcy = ObjForm.chargeAmtCcy.value.toUpperCase();
+	var targetEntity = ObjForm.crAcctNumEntityId.value;
+	var crAcctNum = ObjForm.crAcctNum.value;
+	var inputNameValues="targetEntity|"+targetEntity+"|refCrncy|"+refCrncy+"|refAmt|"+refAmt+"|chargeAmt|"+chargeAmt+"|tranType|CD"+"|crAcctNum|"+crAcctNum+"|chargeAmtCcy|"+chargeAmtCcy;
+        var outputNames = "errorFlg|errorMsg|totalDenomAmt";
+        var scriptName = "cietxndp048.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+                var errorFlg = token[1];
+                var errorMsg = token[3];
+                var totalDenomAmt = token[5];
+                if(errorFlg == "Y"){
+                        alert(errorMsg);
+                        return false;
+
+                }
+        }else{
+		alert("Unable to get Charge Amount in Ref Ccy");
+		return false;
+	}
+
+	var retVal = cust_fndenompopup("A","C","NR","",refCrncy,totalDenomAmt,"C","","","P","Y","");
+
+        if(retVal == "cancel" || retVal == false){
+                return false;
+        }else{
+                ObjForm.returnValue.value = retVal;
+                return true;
+        }
+}
+
+function fnResetDenomVariable(){
+	var ObjForm = document.forms[0];
+	ObjForm.returnValue.value = "";
+	return;
+}
+
+function cust_callTrRefNoSearcher(obj){
+	callTrRefNoSearcher('S','10');
+	var ObjForm = document.forms[0];
+	var treaRefNum = ObjForm.treaRefNum.value;
+	if(!fnIsNull(treaRefNum)){
+		ObjForm.rateCode.disabled = true;
+		ObjForm.rate.disabled = true;
+		ObjForm.treaRate.disabled = true;
+		hideImage("rateCodeImg");
+	}
+}
+
+function callTrRefNoSearcher(trRefNumLoc,link){
+	var frm = document.forms[0];
+        //enableFields("rateCode","rate","treaRate");
+        //frm.rateCode.value="";
+        //frm.rate.value="";
+        //frm.treaRate.value="";
+        trRefNum = trRefNumLoc;
+        showDynCritSearcher('HTREFNO','tr_ref_num=:document.forms[0].treaRefNum',':document.forms[0].treaRefNum=tr_ref_num|:document.forms[0].rateCode=ratecode|:document.forms[0].rate=cust_rate|:document.forms[0].treaRate=treasury_rate');
+        if(!fnIsNull(frm.rateCode.value) && !fnIsNull(frm.rate.value) && !fnIsNull(frm.treaRate.value)){
+                disableFields("rateCode","rate","treaRate");
+                if(link == '9'){
+                        tmDisableLink("sLnk10");
+                }
+                if(link == '11'){
+                        tmDisableLink("sLnk12");
+                }
+        }
+
+	fnComputeTranAmt(frm.rate);
+}
+
+
+function cietxn_det1_post_ONCHANGE(obj)
+{
+if(obj.id == "refCrncy")
+{
+var acctCrncy = document.forms[0].crAcctNumCcy.value;
+var refCrncy = document.forms[0].refCrncy.value;
+var inputNames = "acctCrncy|" + acctCrncy +"|refCrncy|" + refCrncy;
+var outputNames = "rateCode|rate|treaRate|errorFlg|errorMsg";
+var scr="cietxnrefCrncy.scr";
+ var retVal = appFnExecuteScript(inputNames,outputNames,scr,false);
+                var result      = retVal.split("|");
+                var rateCode      = result[1];
+                var rate      = result[3];
+                var treaRate = result[5];
+				var errorFlg = result[7];
+				var errorMsg = result[9];
+
+if(errorFlg!="Y")
+{
+document.forms[0].rateCode.disabled=true;
+document.forms[0].rateCode.value=rateCode;
+document.forms[0].rate.value=rate;
+document.forms[0].rate.disabled=true;
+document.forms[0].treaRate.value=treaRate;
+hideImage("rateCodeImg");
+}
+else
+
+{
+document.forms[0].rate.value ='';
+document.forms[0].rateCode.value='';
+document.forms[0].rateCode.disabled=false;
+document.forms[0].rate.disabled=false;
+document.forms[0].treaRate.disabled=false;
+document.forms[0].treaRate.value='';
+showImage("rateCodeImg");
+}
+}
+return true;
+}
+
+function cietxn_det1_pre_ONCLICK(obj)
+{
+	if(obj.id == "Submit")
+	{
+		var treaRefNum = document.forms[0].treaRefNum.value;	
+		if(treaRefNum != "")
+		{
+			var rateCode = document.forms[0].rateCode.value;
+			var rate = document.forms[0].rate.value;
+			var treaRate = document.forms[0].treaRate.value;
+			var refCrncy = document.forms[0].refCrncy.value;
+			var crAcctNumCcy = document.forms[0].crAcctNumCcy.value;
+			var refAmtTmp = document.forms[0].refAmt.value;
+			var refAmt = removeCommas(refAmtTmp);
+			var inputNames = "acctCrncy|" + crAcctNumCcy +"|refCrncy|" + refCrncy + "|rateCode|"+rateCode+"|rate|"+rate+"|treaRate|"+treaRate+"|treaRefNum|"+treaRefNum+"|tranType|C"+"|refAmt|"+refAmt;
+			var outputNames = "errorFlg|errorMsg";
+			var scr="cietxntreasval.scr";
+ 			var retVal = appFnExecuteScript(inputNames,outputNames,scr,false);
+                	var result      = retVal.split("|");
+                	var errorFlg      = result[1];
+                	var errorMsg      = result[3];
+			if(errorFlg == "Y")
+			{
+				alert(errorMsg);
+				document.forms[0].treaRefNum.focus();
+				return false;
+			}
+		}
+		
+	}
+}

@@ -1,0 +1,414 @@
+// ─── Auth ────────────────────────────────────────────────────────────────────
+export interface AuthResponse {
+  accessToken: string
+  refreshToken: string
+  tokenType: string
+  expiresIn: number
+  user: UserDto
+  mfaRequired?: boolean
+  mfaSession?: string
+}
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface MfaVerifyRequest {
+  mfaSession: string
+  code: string
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'COORDINATOR'
+  | 'GROUP_COORDINATOR'
+  | 'APP_OWNER'
+  | 'DR_PARTICIPANT'
+  | 'MANAGEMENT'
+  | 'AUDITOR'
+  | 'EXTERNAL_PARTICIPANT'
+
+export interface UserDto {
+  id: string
+  email: string
+  displayName: string
+  role: UserRole
+  subsidiaryId?: string
+  lineManagerEmail?: string
+  isActive: boolean
+  lastLogin?: string
+  createdAt: string
+}
+
+// ─── Applications ─────────────────────────────────────────────────────────────
+export type AppTier = 'T1' | 'T2' | 'T3'
+
+export type DrCapability =
+  | 'FULL_FAILOVER' | 'APP_ONLY' | 'DB_ONLY' | 'APP_REPOINT'
+  | 'PARTIAL' | 'ACTIVE_ACTIVE' | 'ROLLBACK_DRILL' | 'COLD_STANDBY'
+  | 'TABLETOP' | 'EXTENDED_OPS'
+
+export interface CreateApplicationRequest {
+  code: string
+  name: string
+  tier: AppTier
+  subsidiaryId: string
+  hasDr: boolean
+  // Endpoints — stored as JSON arrays in dcServers/drServers; dcEndpoint = first item
+  dcEndpoint?: string
+  drEndpoint?: string
+  dcServers?: string    // JSON: ["url1","url2"]
+  drServers?: string    // JSON: ["url1","url2"]
+  techOwnerId?: string
+  businessOwner?: string
+  businessOwnerEmail?: string
+  techOwnerName?: string
+  techOwnerEmail?: string
+  description?: string
+  directCustomerImpact: boolean
+  hasInterdependency: boolean
+  drCapability?: string
+  vendor?: string
+  notes?: string
+  // Scheduling
+  scheduleHalf?: string
+  drQuarter?: string
+  preferredDrMonth?: string
+  preferredDrTime?: string
+}
+
+export interface ApplicationDto {
+  id: string
+  code: string
+  name: string
+  tier: AppTier
+  subsidiaryId: string
+  hasDr: boolean
+  dcEndpoint?: string
+  drEndpoint?: string
+  dcServers?: string    // JSON string: ["url1","url2"]
+  drServers?: string    // JSON string: ["url1","url2"]
+  techOwnerId?: string
+  businessOwner?: string
+  businessOwnerEmail?: string
+  techOwnerName?: string
+  techOwnerEmail?: string
+  description?: string
+  directCustomerImpact: boolean
+  hasInterdependency: boolean
+  hasDependency: boolean
+  drCapability?: string
+  vendor?: string
+  notes?: string
+  isActive: boolean
+  // Scheduling
+  scheduleHalf?: string       // H1 | H2
+  drQuarter?: string          // Q1 | Q2 | Q3 | Q4
+  preferredDrMonth?: string
+  preferredDrTime?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ─── Campaigns ───────────────────────────────────────────────────────────────
+export type CampaignStatus = 'DRAFT' | 'PRE_DR_OPEN' | 'APPROVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+
+export type DrActivityType =
+  | 'FULL_FAILOVER' | 'APP_ONLY' | 'DB_ONLY' | 'APP_REPOINT'
+  | 'PARTIAL' | 'ACTIVE_ACTIVE' | 'ROLLBACK_DRILL' | 'COLD_STANDBY'
+  | 'TABLETOP' | 'EXTENDED_OPS'
+
+export interface CampaignDto {
+  id: string
+  name: string
+  /** Q1–Q4 for quarterly campaigns, H1–H2 for half-year campaigns. */
+  quarter: string
+  year: number
+  /** Primary subsidiary (first in subsidiaryIds) — kept for backward compat. */
+  subsidiaryId: string
+  /** All participating subsidiaries. */
+  subsidiaryIds: string[]
+  /** Preferred DR start time in 24-hour EAT format, e.g. "22:00". */
+  preferredStartTime?: string
+  coordinatorId: string
+  status: CampaignStatus
+  plannedDrDate?: string
+  activityType?: DrActivityType
+  description?: string
+  preDrOpenedAt?: string
+  approvedAt?: string
+  createdAt: string
+  updatedAt: string
+  applications?: CampaignApplicationDto[]
+}
+
+export type CampaignApplicationStatus =
+  | 'PLANNED' | 'PRE_DR_OPEN' | 'APPROVED' | 'IN_EXECUTION'
+  | 'VALIDATION' | 'COMPLETED' | 'ROLLED_BACK' | 'DEFERRED' | 'CANCELLED'
+
+export interface CampaignApplicationDto {
+  id: string
+  campaignId: string
+  applicationId: string
+  applicationName?: string
+  applicationCode?: string
+  applicationTier?: AppTier
+  drActivityType?: DrActivityType
+  drDate?: string
+  status: CampaignApplicationStatus
+  warRoomLocation?: string
+  notes?: string
+  deferralReason?: string
+  runbookDeadline?: string
+  peerReviewDeadline?: string
+  itscmApprovalDeadline?: string
+  checklistDeadline?: string
+  createdAt: string
+}
+
+// ─── Checklist ───────────────────────────────────────────────────────────────
+export type ChecklistItemStatus =
+  | 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED' | 'CARRIED_FORWARD' | 'VERIFIED'
+
+export interface ChecklistItemDto {
+  id: string
+  campaignApplicationId: string
+  title: string
+  status: ChecklistItemStatus
+  notes?: string
+  carriedForwardFromId?: string
+  carriedForwardAt?: string
+  carriedForwardAgeDays: number
+  completedById?: string
+  completedAt?: string
+  autoGenerated: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChecklistSummaryDto {
+  campaignApplicationId: string
+  total: number
+  done: number
+  blocked: number
+  readinessPercent: number
+  signedOff: boolean
+  coordinatorAcknowledged: boolean
+}
+
+// ─── Dependencies & Conflicts ────────────────────────────────────────────────
+export type DependencyType =
+  | 'DATABASE' | 'MIDDLEWARE' | 'NETWORK' | 'API' | 'AUTH' | 'DNS' | 'VPN' | 'OTHER'
+
+export interface DependencyDto {
+  id: string
+  applicationId: string
+  dependsOnId?: string
+  dependencyType: DependencyType
+  isShared: boolean
+  resourceName?: string
+  description?: string
+  createdAt?: string
+  isActive: boolean
+}
+
+export interface DeactivateDependencyResult {
+  dependency: DependencyDto
+  warningApps: string[]
+  hasWarnings: boolean
+}
+
+export interface ArchiveDependencyResult {
+  warningApps: string[]
+  hasWarnings: boolean
+}
+
+export interface DependencyHistoryDto {
+  id: string
+  applicationId: string
+  dependencyType: string
+  isShared: boolean
+  resourceName?: string
+  description?: string
+  isActive: boolean
+  archivedAt: string
+  archivedByEmail?: string
+}
+
+export interface ApplicationHistoryDto {
+  id: string
+  code: string
+  name: string
+  tier: string
+  subsidiaryId: string
+  hasDr: boolean
+  drCapability?: string
+  vendor?: string
+  isActive: boolean
+  archivedAt: string
+  archivedById?: string
+  archivedByEmail?: string
+  originalCreatedAt?: string
+}
+
+export interface CreateDependencyRequest {
+  dependsOnId?: string
+  dependencyType: DependencyType
+  isShared: boolean
+  resourceName?: string
+  description?: string
+}
+
+export interface SharedResourceSummaryDto {
+  resourceName: string
+  dependencyType: DependencyType
+  applicationCount: number
+  applications: SharedResourceAppRef[]
+}
+
+export interface SharedResourceAppRef {
+  applicationId: string
+  applicationName: string
+  applicationCode: string
+  applicationTier?: string
+  dependencyId: string
+  description?: string
+}
+
+export interface ConflictDto {
+  id: string
+  campaignId: string
+  conflictType: string
+  description: string
+  recommendation?: string
+  applicationIds: string[]
+  resolution?: string
+  resolutionReason?: string
+  resolvedById?: string
+  resolvedAt?: string
+  createdAt: string
+}
+
+export interface ResolveConflictRequest {
+  resolution: string
+  reason: string
+}
+
+// ─── Shared Resource Registry ─────────────────────────────────────────────────
+export interface SharedResourceDto {
+  id: string
+  code: string
+  name: string
+  resourceType: DependencyType
+  description?: string
+  host?: string
+  environment: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface CreateSharedResourceRequest {
+  code: string
+  name: string
+  resourceType: DependencyType
+  description?: string
+  host?: string
+  environment?: string
+}
+
+export interface SharedResourceHistoryDto {
+  id: string
+  code: string
+  name: string
+  resourceType: DependencyType
+  description?: string
+  host?: string
+  environment: string
+  archivedAt: string
+  archivedByEmail: string
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+export interface DashboardDto {
+  activeCampaigns: CampaignProgressDto[]
+  upcomingEvents: UpcomingDrEventDto[]
+  blockerSummary: BlockerSummaryDto
+  runbookStatusSummary: RunbookStatusSummaryDto
+  unresolvedConflicts: number
+  activeCampaignCount: number
+}
+
+export interface CampaignProgressDto {
+  campaignId: string
+  campaignName: string
+  status: CampaignStatus
+  totalApps: number
+  completedApps: number
+  readinessPercent: number
+  unresolvedConflicts: number
+  plannedDrDate?: string
+}
+
+export interface UpcomingDrEventDto {
+  campaignApplicationId: string
+  campaignId: string
+  applicationId: string
+  applicationCode: string
+  applicationName: string
+  drDate: string
+  status: CampaignApplicationStatus
+  warRoomLocation?: string
+}
+
+export interface BlockerSummaryDto {
+  openBlockers: number
+  criticalBlockers: number
+  overdueItems: number
+}
+
+export interface RunbookStatusSummaryDto {
+  totalApps: number
+  runbookApproved: number
+  pendingReview: number
+  overdue: number
+}
+
+export interface TimelineEventDto {
+  date: string
+  eventType: string
+  applicationCode: string
+  applicationId: string
+  overdue: boolean
+}
+
+// ─── API wrappers ─────────────────────────────────────────────────────────────
+export interface ApiResponse<T> {
+  success: boolean
+  data: T
+  message?: string
+}
+
+export interface PagedResponse<T> {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+  first: boolean
+  last: boolean
+}
+
+export interface GateCheckResult {
+  passed: boolean
+  failureReasons: string[]
+}
+
+export type ImportResult = {
+  imported: number
+  updated: number
+  skipped: number
+  errors: string[]
+}

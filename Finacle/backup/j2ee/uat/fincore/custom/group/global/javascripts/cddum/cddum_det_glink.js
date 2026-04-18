@@ -1,0 +1,302 @@
+function printBlock()
+{
+	writeCustomHeader("cddum_det");
+	with (document){
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">DIRECT DEBIT PROCESSING MENU</td>');
+	write('</tr>');
+	write('</table>');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0">');
+	write('<tr>');
+	write('<td class="activetab3" width="100%"></td>');
+	write('</tr>');
+	write('</table>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="table">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellspacing="0" cellpadding="0" class="innertabletop">');
+	write('<tr>');
+	write('<a href="javascript:showHelpFile(\'cddum_det_help.htm\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" width="47" height="21"  vspace="1" border="0" align="right"></a>');
+	write('</tr>');
+
+write('<tr>');
+	write('<td class="textlabel">Function (P/U) <font color=red size=2>*</font></td>');
+	write('<td><SELECT name="' + subGroupName + '.Function" id="Function" ' + cddumProps.get("Function_ENABLED") + ' class="textfieldfont" onChange="javascript:return cddum_det_ONCHANGE1(this);">');
+       write('<OPTION value="">-SELECT-</OPTION>');
+	write('<OPTION value="P">P-Process</OPTION>');
+	write('<OPTION value="U">U-Upload</OPTION>');
+	write('</SELECT>');
+	write('</td>');
+	write('</tr>');
+
+
+write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT026337") + '<font color=red size=2>*</font></td>');
+    write('<td><input name="' + subGroupName + '.Originator" id="Originator" ' + cddumProps.get("Originator_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16" onChange="javascript:return cddum_det_ONCHANGE2(this);" onBlur="javascript:return cddum_det_ONBLUR1(this);" >');
+        write('<a href="javascript:fnCustSearcher1(); " id="chargeCodeList">');
+        write('<img id="benfList1" width="16" height="17" border="0"  hotKeyId="search1" src="../Renderer/images/search_icon.gif"></img> </a>');
+        write('</td>');
+    write('</tr>');
+  
+    write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT026338") + '<font color=red size=2>*</font></td>');
+    write('<td><input name="' + subGroupName + '.FileName" id="FileName" ' + cddumProps.get("FileName_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16">');
+	write('</td>');
+    write('</tr>');
+
+   write('<tr>');
+        write('<td class="textlabel">' + jspResArr.get("FLT026339") + '<font color=red size=2>*</font></td>');
+        write('<td><input name="' + subGroupName + '.Dracno" id="Dracno" ' + cddumProps.get("Dracno_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16" onChange="javascript:return cddum_det_ONCHANGE2(this);" onBlur="javascript:return cddum_det_ONBLUR1(this);" >');
+        write('<a href="javascript:fnshowAccountIdList(document.forms[0].Dracno);" id="sLnk2" >');
+        write('<img hotKeyId="search1" src="../Renderer/images/search_icon.gif" width="16" height="17" border="0"></img>');
+        write('</td>');
+	write('<tr>');
+/* 
+    write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT026339") + '<font color=red size=2>*</font></td>');
+    write('<td><input name="' + subGroupName + '.Dracno" id="Dracno" ' + cddumProps.get("Dracno_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16">');
+	write('</td>');
+    write('</tr>');
+*/
+
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT026340") +'<font color=red size=2>*</font></td>');
+	write('<td><input name="' + subGroupName + '.Test" id="Test" ' + cddumProps.get("Test_ENABLED") + ' type="radio" value = "Y">Yes<input name="' + subGroupName + '.Test" id="Test" ' + cddumProps.get("Test_ENABLED") + ' type="radio" value = "N">No');
+	//write('<td><input name="' + subGroupName + '.Test" id="Test" ' + cddumProps.get("Test_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16" >');
+	write('</td>');
+	write('</tr>');
+
+write('<tr>');
+    write('<td class="textlabel">' + jspResArr.get("FLT026341") + '<font color=red size=2>*</font></td>');
+    write('<td><input name="' + subGroupName + '.ChargeCode" id="ChargeCode" ' + cddumProps.get("ChargeCode_ENABLED") + ' type="text" class="textfieldfont" size="25" maxlength="16">');
+     write('<a href="javascript:fnCustSearcher(); " id="chargeCodeList">');
+	write('<img id="benfList1" width="16" height="17" border="0"  hotKeyId="search1" src="../Renderer/images/search_icon.gif"></img> </a>');
+
+	write('</td>');
+    write('</tr>');
+
+
+	
+	
+
+
+
+	write('</table></td>');
+	write('</tr>');
+	write('</table></td>');
+	write('</tr>');
+	write('</table></td>');
+	write('</tr>');
+	write('</table></td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="SUBMIT" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="CANCEL" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	if(funcCode !='I'){
+	write('<div class="ctable">');
+	write('<input name="Submit" type="button" class="button" onClick="javascript:return cddum_det_ONCLICK1(this,this);" id="Submit" value="Submit" hotKeyId="Submit">');
+	write('<input name="Clear" type="button" class="button" onClick="javascript:return cddum_det_ONCLICK2(this);" id="Clear" value="Clear">');
+	}else{
+	write('&nbsp;<input class="button" type="button" id="Back" value="OK" onClick="javascript:return doSubmit(this.id)" hotKeyId="Ok">');
+	}
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+
+
+
+function fnCustSearcher(){
+var inputNameValues = ""; 
+var outputNames = "ChargeCode|refDesc";
+var scrName     = "directdebitdp003.scr";
+var title  = "LIST OF CHARGE CODES";
+var literalNames="CHARGE CODE|CHARGE DESC ";
+var hyperLnks   = "1";
+var retVal = fnExecuteScriptForList(inputNameValues, outputNames, scrName, title, literalNames, hyperLnks, true);
+var retVal = "";
+}
+
+function fnCustSearcher1(){
+var inputNameValues = "Originator";
+var outputNames = "Originator|empName";
+var scrName     = "directdebitdp004.scr";
+var title  = "LIST OF EMPLOYES";
+var literalNames="EMPLOYEE  ID|EMPLOYEE NAME";
+var hyperLnks   = "1";
+var retVal = fnExecuteScriptForList(inputNameValues, outputNames, scrName, title, literalNames, hyperLnks, true);
+var retVal = "";
+}
+
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+
+	pre_ONLOAD('cddum_det',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+
+	if(funcCode =='V' || funcCode =='I' || funcCode =='D' || funcCode =='U' ||  funcCode =='X' || sReferralMode =='I' || sReferralMode =='S'){
+		fnDisableFormControls(ObjForm);
+	}
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+
+	post_ONLOAD('cddum_det',this);
+}
+
+function fnValidateData()
+{
+	var ObjForm = document.forms[0];
+
+	return true;
+}
+
+function fnPopulateControlValues() 
+{
+	var ObjForm = document.forms[0];
+       
+      ObjForm.Function.value=Function;
+     ObjForm.Originator.value=Originator;
+      ObjForm.FileName.value=FileName;
+      ObjForm.Dracno.value=Dracno;
+      ObjForm.Test.value=Test;
+    ObjForm.ChargeCode.value=ChargeCode;
+     element = document.forms[0].Test;
+        if(Test == "Y") {
+                element[0].checked=true;
+        }
+        else {
+                element[1].checked=true;
+        }
+
+
+	return true;
+}
+
+
+
+
+
+
+
+function cddum_det_ONCLICK1(obj,p1)
+{
+  
+var retVal = "";
+if (pre_ONCLICK('cddum_crit',obj) == false) { 
+        return false;
+    }
+    if ((retVal = fnValAndSubmit(p1)) == false) {
+        return false;
+    }
+    if (post_ONCLICK('cddum_crit',obj) == false) { 
+        return false;
+    }
+    return (retVal == undefined) ? true : retVal;
+
+
+}
+function cddum_det_ONCLICK2(obj)
+{
+	var retVal = "";
+	if ((retVal = fnClearFields()) == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function fnshowAccountIdList(obj){
+
+        showAccountIdList(obj,null,null,'F');
+}
+function cddum_det_ONCHANGE2(obj){
+        var retVal = "";
+        if (preEventCall('cddum_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        if ((retVal = fnGetCrAcctDetails()) == false) {
+                return false;
+        }
+        if (postEventCall('cddum_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function cddum_det_ONBLUR1(obj){
+        var retVal = "";
+        if (preEventCall('cddum_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        if ((retVal = fnGetCrAcctDetails()) == false) {
+                return false;
+        }
+        if (postEventCall('cddum_det',obj,'ONCHANGE') == false) {
+                return false;
+        }
+        return (retVal == undefined) ? true : retVal;
+}
+function fnGetCrAcctDetails(){
+        var ObjForm = document.forms[0];
+        var Originator = ObjForm.Originator.value;
+        var FunCode = ObjForm.Function.value;
+        if(Originator == ""){
+                alert("select Orginator Code");
+                ObjForm.Dracno.disabled = false;
+                return false;
+        }
+        var inputNameValues = "Originator|"+Originator+"|functionCode|"+FunCode;
+        var outputNames = "errorFlg|errorMsg|CrAcctId";
+        var scriptName = "vpcddumgetdata.scr"
+        var retVal = appFnExecuteScript(inputNameValues,outputNames,scriptName,false);
+        var token = retVal.split("|");
+        if(token != undefined){
+            var errorFlg = token[1];
+            var errorMsg = token[3];
+            var CrAcctId = token[5];
+            if(errorFlg == "Y"){
+                alert(errorMsg);
+                ObjForm.Dracno.disabled = false;
+                return false;
+            }else{
+                ObjForm.Dracno.value = CrAcctId;
+                ObjForm.Dracno.disabled = true;
+                }
+        }
+        return true;
+}
+

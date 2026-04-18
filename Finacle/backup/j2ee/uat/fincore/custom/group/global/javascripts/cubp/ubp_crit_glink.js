@@ -1,0 +1,395 @@
+function printBlock()
+{
+	writeCustomHeader("ubp_crit");
+	with (document){
+	write('<table border="0" cellspacing="0" cellpadding="0" class="ctable">');
+	write('<tr>');
+	write('<td>');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td class="page-heading">' + jspResArr.get("FLT031765") + '</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-BEGIN -->');
+	write('<table border="0" cellpadding="0" cellspacing="0" width="100%">');
+	write('<tr>');
+	write('<td valign="top">');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="tableborder">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertable">');
+	write('<tr>');
+	write('<td>');
+	write('<table width="100%" border="0" cellpadding="0" cellspacing="0" class="innertabletop1">');
+	write('<tr>');
+	write('<td height="25" colspan="5" align="right">');
+	write('<table border="0" cellspacing="0" cellpadding="0">');
+	write('<tr>');
+	write('<td align="right">');
+	write('<a href="javascript:getHelpFile(\'crit\');" id="sLnk1">');
+	write('<img  hotKeyId="finHelp" src="../Renderer/images/'+applangcode+'/help.gif" border="0" />');
+	write('</a>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+//NITHIN
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT700005") + '<script>setMandatory("Y");</script></td>');
+	write('<td class="textfield">');
+	write('<select name="' + subGroupName + '.funcCode" id="funcCode"  fmnd="' + ubpProps.get("funcCode_MANDATORY") + '" ' + ubpProps.get("funcCode_ENABLED") + ' class="listboxfont" onchange="javascript:return ubp_crit_ONCHANGE1(this);">');
+	write('<option value="">' + jspResArr.get("FLT021699") + '</option>');
+	write('<option value="C">' + jspResArr.get("FLT031767") + '</option>');
+	write('<option value="T">' + jspResArr.get("FLT031768") + '</option>');
+	write('<option value="R">' + jspResArr.get("FLT031807") + '</option>');
+	write('<option value="V">' + jspResArr.get("FLT031808") + '</option>');
+	write('</select>');
+	write('</td>');
+	write('</tr>');
+
+	if(profileId =="50")
+	{
+		write('<tr id = "A">');
+		write('<td class="textlabel">' + jspResArr.get("FLT031809") + '</td>');
+		write('<td class="textfield">');
+		write('<input hotKeyId="search1" type="text" class="textfieldfont" name="' + subGroupName + '.refNum" id="refNum" ' + ubpProps.get("refNum_ENABLED") + ' size="16" maxlength="16" onChange="javascript:fnFetchAcctBillerInfo(document.forms[0].refNum.value)" >&nbsp;');
+		write('<a href="javascript:refNumSercher()">');
+		write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+		write('</a>');
+		write('</td>');
+		write('</tr>');
+	}
+
+//END	
+	write('<tr>');
+        write('<td class="textlabel">' + jspResArr.get("FLT700037") + '</td>');
+        write('<td class="textfield">');
+        write('<input hotKeyId="search1" type="text" class="textfieldfont" name="' + subGroupName + '.AcctNum" id="AcctNum" ' + ubpProps.get("AcctNum_ENABLED") + ' size="16" maxlength="16" onChange="javascript:fnFetchAcctBillerInfo(document.forms[0].AcctNum.value)" >&nbsp;');
+        write('<a href="javascript:fnShowAccNumCrit()">');
+        write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+        write('</a>');
+        write('<br><input name="' + subGroupName + '.critSolId" id="critSolId" type="text" class="label" size="10" maxlength="8" readonly="readonly" disabled >');
+        write('<input name="' + subGroupName + '.critAcctCrncy" id="critAcctCrncy" type="text" class="label" size="2" maxlength="3" readonly="readonly" disabled >');
+        write('<input name="' + subGroupName + '.critAcctName" id="critAcctName" type="text" class="label" size="50" maxlength="80" readonly="readonly" disabled>');
+        write('</td>');
+        write('</tr>');
+
+	write('<tr>');
+	//write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel"></td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.billAcctId" id="billAcctId" ' + ubpProps.get("billAcctId_ENABLED") + ' readonly="readonly" style="visibility: hidden;">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel">' + jspResArr.get("FLT007530") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search1" type="text" class="textfieldfont" name="' + subGroupName + '.billerId" id="billerId" ' + ubpProps.get("billerId_ENABLED") + ' onblur="javascript:return ubp_crit_ONBLUR2(this);">&nbsp;');
+	write('<a href="javascript:fnBillerId()" id="billerIdSerch">');
+	write('<img border="0" height="17" hotKeyId="search1" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT031766") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search2" type="text" class="textfieldfont" name="' + subGroupName + '.payRefNum" id="payRefNum" ' + ubpProps.get("payRefNum_ENABLED") + ' onblur="javascript:return ubp_crit_ONBLUR3(this);" onchange="javascript:return ubp_crit_ONCHANGE4(this);">&nbsp;');
+	write('<a href="javascript:fnbillPayRefNumSrchr()" id="billPayRefSrch">');
+	write('<img border="0" height="17" hotKeyId="search2" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel" style="height: 15px">' + jspResArr.get("FLT018625") + '</td>');
+	write('<td class="textfield">');
+	write('<input explodeId="explode1" type="text" class="textfieldfont" name="' + subGroupName + '.payAcctId" onChange="javascript:fnFetchAcctDtls(this,\'acctName\',\'solId\',\'crncyCode\',true,\'VALCUSTACCTID\');" id="payAcctId" ' + ubpProps.get("payAcctId_ENABLED") + '>&nbsp;');
+	write('<a href="javascript:fnShwAcctList()" id="sLnk2">');
+	write('<img border="0" height="17" hotKeyId="search3" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>&nbsp;');
+	write('<a href="JavaScript:fnExplodeBalanceDetails(document.forms[0].payAcctId)" id="customExplodeButton">');
+	write('<img border="0" height="17" explodeId="explode1" src="../Renderer/images/'+applangcode+'/explode.gif" width="16">');
+	write('</a>');
+	write('&nbsp;<a id="payAcctIdSigImg" href="javascript:showFinacleSignature();">');
+        write('<img src="../Renderer/images/' + applangcode + '/sig_new1.gif" alt="' + jspResArr.get("FLT031808") + '" width="16" height="16" border="0"></a>');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel">' + jspResArr.get("FLT031836") + '</td>');
+	write('<td class="textfield">');
+	write('<input hotKeyId="search4" type="text" class="textfieldfont" name="' + subGroupName + '.typOfServ" id="typOfServ" ' + ubpProps.get("typOfServ_ENABLED") + '>&nbsp;');
+	write('<a href="javascript:fnTypOfServ()" id="typOfServiceSerchr">');
+	write('<img border="0" height="17" hotKeyId="search4" src="../Renderer/images/'+applangcode+'/search_icon.gif" width="16">');
+	write('</a>');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.tmpAmtField" id="tmpAmtField" ' + ubpProps.get("tmpAmtField_ENABLED") + ' readonly="readonly" style="visibility: hidden; width: 0px">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.valType" id="valType" ' + ubpProps.get("valType_ENABLED") + ' readonly="readonly" style="visibility: hidden; width: 0px">');
+	write('</td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td></td>');
+	write('<td>');
+	write('<input name="' + subGroupName + '.solId" id="solId" ' + ubpProps.get("solId_ENABLED") + ' type="text" class="label" size="6"   readonly="readonly" style="width: 36px" />');
+	write('<input name="' + subGroupName + '.crncyCode" id="crncyCode" ' + ubpProps.get("crncyCode_ENABLED") + ' type="text" class="label"   size="2" maxlength="3" readonly="readonly" style="width: 30px" />');
+	write('<input name="' + subGroupName + '.acctName" id="acctName" ' + ubpProps.get("acctName_ENABLED") + ' type="text" class="label"   size="50" maxlength="80" readonly="readonly" />');
+	write('</td>');
+	write('<td></td>');
+	write('<td></td>');
+	write('<td></td>');
+	write('</tr>');
+	write('<tr>');
+	write('<td class="textlabel"></td>');
+	write('<td class="textfield">');
+	write('<input type="text" class="textfieldfont" name="' + subGroupName + '.billerCode" id="billerCode" ' + ubpProps.get("billerCode_ENABLED") + ' readonly="readonly" style="visibility: hidden;">');
+	write('</td>');
+	write('<td class="columnwidth"> </td>');
+	write('<td class="textlabel"> </td>');
+	write('<td class="textfield">   </td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	write('<!-- DETAILSBLOCK-END -->');
+	write('</td>');
+	write('</tr>');
+	write('</table>');
+	} //End with()
+} //End function
+
+function printFooterBlock()
+{
+	with (document) {
+	if ((sReferralMode == 'I')||(sReferralMode == 'S')){
+	write('<div align="left" class="ctable">');
+	if (sReferralMode == 'S'){
+	write('<input type="button" class="Button" id="Submit" value="'+jspResArr.get("FLT000193")+ '" onClick="javascript:return doRefSubmit(this);" hotKeyId="Submit" >');
+	}
+	writeRefFooter();
+	write('<input type="button" class="Button" id="_BackRef_" value="'+jspResArr.get("FLT027575")+ '" onClick="javascript:return doSubmit(this.id);" hotKeyId="Cancel" >');
+	write('</div>');
+	}else{
+	write('<div class="ctable">');
+	write('<input id="Accept" name="Go" type="button" class="button"	onClick="javascript:return ubp_crit_ONCLICK5(this,this);"" value="' + jspResArr.get("FLT004977") + '" hotKeyId="Go">');
+	write('<input id="Clear" name="Clear" type="button" class="button" value="' + jspResArr.get("FLT001439") + '"	onClick="javascript:return ubp_crit_ONCLICK6(this);"">');
+	writeFooter();
+	write('</div>');
+	}
+	} //End with()
+}//End function
+
+function fnOnLoad()
+{
+	var ObjForm = document.forms[0];
+
+	pre_ONLOAD('ubp_crit',this);
+
+	var funcName = "this."+"locfnOnLoad";
+	if(eval(funcName) != undefined){
+		eval(funcName).call(this);
+	}
+
+	fnPopulateControlValues();
+
+	fnPopUpExceptionWindow(ObjForm.actionCode);
+	if((typeof(WF_IN_PROGRESS) != "undefined") && (WF_IN_PROGRESS == "PEAS")){
+		checkCustErrExecNextStep(Message);
+	}
+	post_ONLOAD('ubp_crit',this);
+
+	document.getElementById("A").style.display='none';
+
+	if(fnIsNull(ObjForm.refNum.value))
+	{
+		ObjForm.AcctNum.value = ""
+		ObjForm.billerId.value = ""
+		ObjForm.typOfServ.value = ""
+	}
+
+}
+
+function fnCheckMandatoryFields()
+{
+	var ObjForm = document.forms[0];
+
+	if (fnIsNull(ObjForm.funcCode.value))
+	{
+		alert(jspErrResArr.get("FAT123100"));
+		ObjForm.funcCode.focus();
+		return false;
+	}
+
+	if(ObjForm.funcCode.value == "V")
+	{
+		if(ObjForm.refNum.value == "")
+		{
+			alert("Enter value in the Field")
+			ObjForm.refNum.focus();
+			return false;
+		}
+
+		if(ObjForm.typOfServ.value == "")
+		{
+			alert("Enter value in the Field")
+			ObjForm.typOfServ.focus();
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function fnPopulateControlValues()
+{
+	var ObjForm = document.forms[0];
+
+	ObjForm.funcCode.value = funcCode;
+	ObjForm.billAcctId.value = billAcctId;
+	ObjForm.billerId.value = billerId;
+	ObjForm.payRefNum.value = payRefNum;
+	ObjForm.payAcctId.value = payAcctId;
+	ObjForm.solId.value = solId;
+	ObjForm.crncyCode.value = crncyCode;
+	ObjForm.acctName.value = acctName;
+	ObjForm.typOfServ.value = typOfServ;
+	ObjForm.tmpAmtField.value = tmpAmtField;
+	ObjForm.valType.value = valType;
+	ObjForm.billerCode.value = billerCode;
+	ObjForm.AcctNum.value = AcctNum;
+	ObjForm.critAcctName.value=critAcctName;
+	ObjForm.critSolId.value=critSolId;
+	ObjForm.critAcctCrncy.value=critAcctCrncy;
+	ObjForm.refNum.value=refNum;
+}
+
+
+function ubp_crit_ONCHANGE1(obj)
+{
+	var retVal = "";
+	var ObjForm = document.forms[0];
+
+	if(profileId =="50")
+        {
+                var inputNames = "";
+                var outputNames = "";
+                var scr = "workclassCheck.scr";
+                var retVal = appFnExecuteScript(inputNames, outputNames, scr, false);
+                var result = retVal.split("|");
+                var wrkclsFlg = result[5];
+
+                if((wrkclsFlg == "110") || (wrkclsFlg == "150"))
+                {
+                        if(document.forms[0].funcCode.value != "V")
+                        {
+                                document.forms[0].funcCode.value = "";
+                                document.forms[0].funcCode.focus();
+                        }
+                }
+                else
+                {
+			if(document.forms[0].funcCode.value == "V")
+                        {
+                                document.forms[0].funcCode.value = "";
+                                document.forms[0].funcCode.focus();
+                        }
+                }
+        }
+
+	if(ObjForm.funcCode.value == "V")
+	{
+		document.getElementById("A").style.display='block';
+	}
+	else
+	{
+		document.getElementById("A").style.display='none';
+	}
+
+	if (preEventCall('ubp_crit',obj,'ONCHANGE') == false) {
+		return false;
+	}
+	if ((retVal = fnModeOfPay()) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONCHANGE') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ubp_crit_ONBLUR2(obj)
+{
+	var retVal = "";
+	if (preEventCall('ubp_crit',obj,'ONBLUR') == false) {
+		return false;
+	}
+	if ((retVal = fnOnblurBillerId()) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONBLUR') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ubp_crit_ONBLUR3(obj)
+{
+	var retVal = "";
+	if (preEventCall('ubp_crit',obj,'ONBLUR') == false) {
+		return false;
+	}
+	if ((retVal = fnOnBlrBillPayRefNum()) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONBLUR') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ubp_crit_ONCHANGE4(obj)
+{
+	var retVal = "";
+	if (preEventCall('ubp_crit',obj,'ONCHANGE') == false) {
+		return false;
+	}
+	if ((retVal = fnOnBlrBillPayRefNum()) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONCHANGE') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ubp_crit_ONCLICK5(obj,p1)
+{
+	var retVal = "";
+	if (preEventCall('ubp_crit',obj,'ONCLICK') == false) {
+		return false;
+	}
+	if ((retVal =  fnValAndSubmit(p1)) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONCLICK') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
+
+function ubp_crit_ONCLICK6(obj)
+{
+	var retVal = "";
+	if (preEventCall('ubp_crit',obj,'ONCLICK') == false) {
+		return false;
+	}
+	if ((retVal =  fnClearFields()) == false) {
+		return false;
+	}
+	if (postEventCall('ubp_crit',obj,'ONCLICK') == false) {
+		return false;
+	}
+	return (retVal == undefined) ? true : retVal;
+}
