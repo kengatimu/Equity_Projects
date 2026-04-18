@@ -1,0 +1,88 @@
+A. Business-Service Synchronous Request Flow
+	I. Transaction Fetch 
+		1. Webhook Option
+			1. Create a GET endpoint for below webhooks
+				i. 	Heartbeat
+				ii. TransactionStart
+		
+		2. Crone Job Option
+			1. Create a crone job for every 2 mins to check in:
+				i. 	transations awaiting list
+				ii. transation status awaiting list
+			
+	II. Transaction Processing
+		1. If we get notified via webhook, or we query via crone job:
+		2. Call WR heartbeat 
+			i. If NOK, Do Not fetch the transactions
+			ii. Otherwise fetch the transactions in the batch
+		3. For each transaction:
+			i. Check if it exists in the DB:
+				a. If it exists, check the final status of the transaction and update transaction_status table with:
+					i.   Txn_Status_Final: <finalStatus|DUPLICATE> eg SUCCESS|DUPLICATE
+					ii.  Txn_Status_Final_Desc: DUP: Transaction Duplicated. Previous Transaction Status was SUCCESS
+					iii. CONTINUE to the next transaction
+				
+				b. If the transaction does NOT exist:
+					i.  Save it the DB with Txn_Status_Initial & Txn_Status_Final as PROCESSING 
+					ii. And Txn_Status_Initial_Desc & Txn_Status_Final_Desc Transaction Received. Processing Started
+						  a. If saving fails:
+						  		i. CONTINUE to the next transaction
+								
+					ii. Lock transactio after save success
+						  a. If Lock fails:
+						  		i.   Update DB with Lock_Status: FAILURE
+								ii.  Update DB with Lock_Status_Code: <NOT 200>
+								iii. update DB with Txn_Status_Final: NOT_PROCESSED
+								iv.  update DB with Txn_Status_Final_Desc: LOCK FAILED: Transaction Locking Failed. Transaction Could Not Be Processed Further
+								v.   Update DB with World_Remit_Final_Status: LOCK_FAILURE
+								vi.  CONTINUE to the next transaction
+								
+						  b. Otherwise:
+						  		i.   Update DB with Lock_Status: SUCCESS
+								ii.  Update DB with Lock_Status_Code: 200
+								
+					iii. Get the heartbeats for Technical-Service and Transaction-Processor-Service
+						  a. If heartbeat is NOK:
+						  		i. Set WR response with 0036: /transaction/set/acknowledged
+									a. If set/acknowledged is SUCCESS:
+						  				i.   Update DB Txn_Status_Initial: PENDING_TIMEOUT
+										ii.  Update DB Txn_Status_Initial_Desc: HeartBeat Failure: Transaction Marked As PENDING Due To MS Timeout
+										iii. Update DB World_Remit_Initial_Status: ACKNOWLEDGED
+										iv.  Update DB with World_Remit_Initial_Res_Code: 0036
+										v.   Update DB with World_Remit_Ack_Status_Code: 200
+										
+									b. Else, 
+										i.   Update DB Txn_Status_Initial: PENDING_TIMEOUT
+										ii.  Update DB Txn_Status_Initial_Desc: Setting Acknowledged Failed. Transaction To Be Processed via Crone Job
+										iii. Update DB with World_Remit_Ack_Status_Code: <NOT 200>
+										iv.  Update DB Txn_Status_Final_Desc: Setting Acknowledged Failed.
+
+								ii. CONTINUE to the next transaction
+								
+					iv. Send transaction to Kafka topic
+						  a. If Kafka fails:
+						  		i. Respond to WR with 0033: /transaction/set/failed
+									a. On new thread Update DB
+										i.   Update DB Txn_Status_Final: FAILURE
+										ii.  Update DB Txn_Status_Final_Desc: Kafka Failure: Transaction Not Sent To Kafka
+										iii. Update DB with World_Remit_Final_Status: FAILURE
+										iv.  Update DB with World_Remit_Final_Res_Code: 0033
+										
+								ii. CONTINUE to the next transaction
+								
+					iv.   CONTINUE to the next transaction
+					
+
+B. Business-Service Response Flow
+	1. Listen for transactions response from Technical-Service on a Kafka Topic
+	2. Check Lock Status.
+		i. If SUCCESS set/paid, set/failed, or set/acknowleged	
+		ii. Otherwise, set/lock 
+			a. if set/lock fails
+				i. set transaction as acknowledged
+				ii. From another thread, update transaction_status table with the received Txn_Status_Initial & Txn_Status_Final: PENDING_THIRD_PARTY, SUCCESS, Or, FAILURE
+			b. otherwise if set/lock succeeds
+				i. set transaction as set/paid, set/failed, or set/acknowleged	
+				ii. From another thread, update transaction_status table with the received Txn_Status_Initial & Txn_Status_Final: PENDING_THIRD_PARTY, SUCCESS, Or, FAILURE
+		
+	

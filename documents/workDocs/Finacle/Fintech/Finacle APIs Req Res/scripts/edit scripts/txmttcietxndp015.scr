@@ -1,0 +1,336 @@
+<--start
+trace on
+
+
+sv_a=urhk_B2k_PrintRepos("BANCS")
+
+
+
+
+
+
+	#===================================
+	# STEP 1 : INITIALIZE THE MTT. 
+	#===================================
+
+	BANCS.INPARAM.PostTranFlg 		= "X"
+	BANCS.INPARAM.CommitFlg 		= "Y"
+	BANCS.INPARAM.InsertTranWithValidnFlg 	= "N"
+	BANCS.INPARAM.ValidationFlag 		= "N"
+	BANCS.INPARAM.RestrictModifyInd 	= "FIRST_GROUP"
+	BANCS.INPARAM.ErrorCheckForLuw 		= "Y"
+	BANCS.INPARAM.CheckExceptions 		= "Y"
+
+	sv_u = urhk_MTTS_Initialize("")
+	print (sv_u)
+
+	IF (sv_u != 0) THEN
+	#{
+		sv_c = "Initialisation of MTT Failed"
+		MTT.Error.Description = sv_c
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+		GOTO END_OF_SCRIPT
+	#}
+	ENDIF
+
+	sv_r = urhk_MTTS_PopulateInputDetails("")
+	print(sv_r)
+	if(sv_r != 0) then
+	#{
+		MTT.Error.Description="Error in Populating Input details for MTT"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		exitscript
+	#}
+	endif
+
+
+	#-----------------------------------------------------------------------------------------------#
+	#####   Defining the Transaction
+	#-----------------------------------------------------------------------------------------------#
+
+	#--------------------------
+	# To get the tran Id
+	#--------------------------
+	MTT.TranDetails.TranDate	        = "0"
+	MTT.TranDetails.PostFlag 		= "X"
+	MTT.TranDetails.TranType 		= "T"
+	MTT.TranDetails.TranSubType 		= "CI"
+	MTT.TranDetails.Remarks 		= "TOD CHARGES"
+	MTT.TranDetails.IgnoreExcp		="Y"
+	MTT.TranDetails.Consolidate         	= "N"
+	MTT.TranDetails.ReversalFlg         	= "N"
+	MTT.TranDetails.PostTranFlg             = "Y"
+	MTT.TranDetails.ValidationFlag          = "N"
+	#MTT.TranDetails.RestrictModifyInd   	= "FIRST_GROUP"
+
+	sv_v = urhk_MTTS_DefineTransaction("DFCU")
+	print(sv_v)
+
+	if(sv_v != 0) then
+		MTT.Error.Description="Transaction definition could not be created"
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print(MTT.Error.Description)
+		goto ENDOFSCRIPT
+	endif
+
+	CUST.CIETXN.rateCodeCr = CUST.CIETXN.rateCode
+	CUST.CIETXN.rateCodeDr = CUST.CIETXN.rateCode
+	CUST.CIETXN.treaRateCr = CUST.CIETXN.treaRate
+	CUST.CIETXN.treaRateDr = CUST.CIETXN.treaRate
+	
+	IF(CUST.CIETXN.refCrncy == CUST.CIETXN.drAcctNumCcy)THEN
+	#{
+	        CUST.CIETXN.treaRateDr = "0"
+	        CUST.CIETXN.rateCodeDr = ""
+	#}
+	ENDIF
+	
+	#---------------------------------------------------------------------------
+	#For Testing Vasanth account is debited (10 INR)
+	#--------------------------------------------------------------------------
+	MTT.PartTranDetails.Account= CUST.CIETXN.drAcct1
+	MTT.PartTranDetails.RefAmount= -1 * CDOUBLE(CUST.CIETXN.refAmt)
+	MTT.PartTranDetails.RefCurrency= CUST.CIETXN.refCrncy
+	MTT.PartTranDetails.RateCode= CUST.CIETXN.rateCodeDr
+	MTT.PartTranDetails.Rate= CUST.CIETXN.rate
+	##MTT.PartTranDetails.ValueDate = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Remarks = CUST.CIETXN.tranRmksDr
+	MTT.PartTranDetails.RefNum = CUST.CIETXN.refNoDr
+	MTT.PartTranDetails.Particulars = CUST.CIETXN.tranParticularDr
+	MTT.PartTranDetails.Particulars2 = CUST.CIETXN.tranRmks2
+	MTT.PartTranDetails.TreaRate = CUST.CIETXN.treaRateDr
+	
+	******************************************************
+	MTT.PartTranDetails.Particulars2from = CUST.CIETXN.tranRmks
+	******************************************************
+
+
+	IF(CUST.CIETXN.treaRefNum != "")THEN
+	#{
+	         MTT.PartTranDetails.TreaRefNum = CUST.CIETXN.treaRefNum
+	#}
+	ENDIF
+
+	MTT.PartTranDetails.TODRefType      = "IN"
+	MTT.PartTranDetails.TodEntityType   = "TODIN"
+	MTT.PartTranDetails.TodEntityId     = CUST.CIETXN.drAcct1
+	MTT.PartTranDetails.TodLevIntFlg    = "N"
+	MTT.PartTranDetails.TodExpiryDate   = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.TodPenalDate    = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.TodPermittedBy  = "SYSTEM"
+	MTT.PartTranDetails.TodRemarks      = "Charges TOD"
+
+	sv_q = urhk_MTTS_DefinePartTran("DFCU1")
+	print(sv_q)
+
+	if (sv_q == 1) then
+	#{
+		#print(MTT.Error.Description)
+		print("Error while defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		goto ENDOFSCRIPT
+	#}
+	endif
+
+
+	IF(CUST.CIETXN.refCrncy == CUST.CIETXN.crAcctNumCcy)THEN
+	#{
+	        CUST.CIETXN.treaRateCr = "0"
+	        CUST.CIETXN.rateCodeCr = ""
+	#}
+	ENDIF
+
+	#---------------------------------------------------------------------------
+	#For Testing Prasanna Account is Credited (1 INR)
+	#---------------------------------------------------------------------------
+
+	MTT.PartTranDetails.Account= CUST.CIETXN.crAcct1
+	MTT.PartTranDetails.RefAmount= CDOUBLE(CUST.CIETXN.refAmt)
+	MTT.PartTranDetails.RefCurrency= CUST.CIETXN.refCrncy
+	MTT.PartTranDetails.RateCode= CUST.CIETXN.rateCodeCr
+	MTT.PartTranDetails.Rate= CUST.CIETXN.rate
+	#MTT.PartTranDetails.ValueDate = BANCS.STDIN.BODDate
+	MTT.PartTranDetails.ValueDateDiff = "0"
+	MTT.PartTranDetails.Consolidate="N"
+	MTT.PartTranDetails.TranIdentifier = "DFCU"
+	MTT.PartTranDetails.Remarks = CUST.CIETXN.tranRmksCr
+	MTT.PartTranDetails.RefNum = CUST.CIETXN.refNoCr
+	MTT.PartTranDetails.Particulars = CUST.CIETXN.tranParticularCr
+	MTT.PartTranDetails.Particulars2 = CUST.CIETXN.tranRmks2
+	MTT.PartTranDetails.TreaRate = CUST.CIETXN.treaRateCr
+	
+	******************************************************
+	MTT.PartTranDetails.Particulars2from = CUST.CIETXN.tranRmks
+	******************************************************
+
+	IF(CUST.CIETXN.treaRefNum != "")THEN
+	#{
+	         MTT.PartTranDetails.TreaRefNum = CUST.CIETXN.treaRefNum
+	#}
+	ENDIF
+	sv_v = urhk_MTTS_DefinePartTran("DFCU2")
+	print(sv_v)
+
+	if (sv_v == 1) then
+	#{
+		print(MTT.Error.Description)
+		print("Error while defining Part Tran")
+		BANCS.OUTPUT.successOrFailure = "F"
+		goto ENDOFSCRIPT
+	#}
+	endif
+
+	#-----------------------------------------------------------------------------
+	#End of MTT Definition
+	#-----------------------------------------------------------------------------
+	sv_v = urhk_MTTS_EndDefinition("")
+	print(sv_v)
+	if (sv_v == 1) then
+	#{
+		sv_r = urhk_MTTS_ReportErrorCondition("")
+		print (MTT.Error.Description)
+		BANCS.OUTPUT.successOrFailure = "F"
+		GOTO ENDOFSCRIPT
+	#}
+	ELSE
+	#{
+		sv_a = urhk_B2k_PrintRepos("BANCS")
+		IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+		#{
+			BANCS.OUTPARAM.MTTTranId = BANCS.OUTPARAM.MTTTranId
+			print(BANCS.OUTPARAM.MTTTranId)
+		#GOTO ENDOFSCRIPT
+		#}
+		ENDIF
+	#}
+	ENDIF
+	
+	sv_r = urhk_MTTS_HandleExceptions("POST")
+	print(sv_r)
+
+	sv_u = urhk_MTTS_Close("")
+	print(sv_u)
+
+	IF(sv_u != 0) THEN
+	#{
+		IF(FIELDEXISTS(MTT.Error.Description)) THEN
+		#{
+			print(MTT.Error.Description)
+		#}
+		ENDIF	
+		
+		BANCS.OUTPUT.successOrFailure = "F"
+		CUST.CIETXN.Response = "urhk_MTTS_Close returns FAILURE"
+		goto ENDOFSCRIPT
+	#}
+	ENDIF
+
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		print(BANCS.OUTPARAM.MTTTranId)
+		sv_t = BANCS.OUTPARAM.MTTTranId
+		print(sv_t)
+		
+	#}
+	ENDIF
+
+	IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+	#{
+		sv_h = BANCS.OUTPARAM.MTTPostingError
+		print(sv_h)
+
+		CUST.CIETXN.srvError = "Y"
+		print(CUST.CIETXN.srvError)
+	#}
+	ELSE
+	#{
+		BANCS.OUTPUT.successOrFailure = "S"
+		CUST.CIETXN.srvError = "N"
+		print(CUST.CIETXN.srvError)
+	#}
+	ENDIF
+
+	IF (FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+	#{
+		CUST.CIETXN.entity1TranId = BANCS.OUTPARAM.MTTTranId
+		print(CUST.CIETXN.entity1TranId)
+		CUST.CIETXN.srvError = "N"
+		print(CUST.CIETXN.srvError)
+
+			sv_h = mid$(BANCS.STDIN.BODDate,0,10)
+			sv_s = "getboddate|select to_char((to_date(?SVAR,'DD-MM-YYYY')),'DD-MON-YYYY') from dual"
+			BANCS.INPARAM.BINDVARS =  sv_h
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			##print(sv_d)
+			IF (sv_d =="0") THEN
+				CUST.CIETXN.getboddate = BANCS.OUTPARAM.getboddate
+				print(CUST.CIETXN.getboddate)
+			ENDIF
+			CUST.CIETXN.tranid = trim(CUST.CIETXN.entity1TranId)
+			print(CUST.CIETXN.tranid)
+			sv_s = "UPDATE TBAADM.DTD SET REF_NUM = ?SVAR WHERE TRAN_ID = LPAD(?SVAR,9)"
+			sv_s = sv_s + " AND TRAN_DATE = ?SVAR "
+			sv_s = sv_s + " AND BANK_ID = ?SVAR and PART_TRAN_TYPE='C' "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.refNoCr + "|" + CUST.CIETXN.tranid + "|" + CUST.CIETXN.getboddate
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w = urhk_dbSQLWithBind(sv_s)
+			print(sv_w)
+			sv_w = urhk_dbSQLWithBind("COMMIT")
+			IF(sv_w == 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				print(sv_d)
+			#}
+			ENDIF
+			
+			sv_s = "UPDATE TBAADM.DTD SET REF_NUM = ?SVAR WHERE TRAN_ID = LPAD(?SVAR,9)"
+			sv_s = sv_s + " AND TRAN_DATE = ?SVAR "
+			sv_s = sv_s + " AND BANK_ID = ?SVAR and PART_TRAN_TYPE='D' "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.refNoDr + "|" + CUST.CIETXN.tranid + "|" + CUST.CIETXN.getboddate
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w = urhk_dbSQLWithBind(sv_s)
+			print(sv_w)
+			sv_w = urhk_dbSQLWithBind("COMMIT")
+			IF(sv_w == 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				print(sv_d)
+			#}
+			ENDIF
+			
+
+			sv_s = "UPDATE TBAADM.DTD SET TRAN_PARTICULAR_2 = ?SVAR WHERE TRAN_ID = LPAD(?SVAR,9)"
+			sv_s = sv_s + " AND TRAN_DATE = ?SVAR "
+			sv_s = sv_s + " AND BANK_ID = ?SVAR "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.refNo + "|" + CUST.CIETXN.tranid + "|" + CUST.CIETXN.getboddate
+			BANCS.INPARAM.BINDVARS = BANCS.INPARAM.BINDVARS + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			sv_w = urhk_dbSQLWithBind(sv_s)
+			print(sv_w)
+			sv_w = urhk_dbSQLWithBind("COMMIT")
+			IF(sv_w == 0)THEN
+			#{
+				sv_d = urhk_dbSqlWithBind("COMMIT")
+				print(sv_d)
+			#}
+			ENDIF
+			
+	ELSE
+		CUST.CIETXN.srvError = "Y"
+		print(CUST.CIETXN.srvError)
+	#}
+	ENDIF
+	
+
+ENDOFSCRIPT:
+exitscript
+##trace off
+end-->

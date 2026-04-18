@@ -1,0 +1,674 @@
+#------------------------------------------------------------------------------------------------
+#   Name            : charge_mtt.scr
+#   Description     : Charges for all the trasaction  
+#   Date            : 04-06-2018
+#   Author          : Bhushan BS
+#   Input           : NA
+#   Output          : NA
+#   Called Script   : txcietxnmnrate2.scr
+#   Calling Script  : NA
+#   Menu Option     :
+#   Srl. No         Date            Author              Description.
+#   -------         ------          ------              ------------
+#   1.0             04-06-2018      Bhushan BS                     Original Version
+#-----------------------------------------------------------------------------------------------
+
+
+<--START
+TRACE ON
+
+        sv_r =  REPEXISTS("STDWFS")
+if ( sv_r == 0) then
+#{
+CREATEREP("STDWFS")
+#}
+ENDIF
+IF(CLASSEXISTS("STDWFS","GLBDATA") == 0) THEN
+#{
+CREATECLASS("STDWFS","GLBDATA",5)
+#}
+ENDIF
+
+IF (CLASSEXISTS("CUST","DATA") == 0) THEN
+#{
+    CREATECLASS("CUST","DATA",5)
+#}
+ENDIF
+
+STDWFS.GLBDATA.crncyCode="KES"
+
+sv_r =  REPEXISTS("MTT")
+if ( sv_r == 0) then
+#{
+CREATEREP("MTT")
+#}
+endif
+
+IF(CLASSEXISTS("MTT","TranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","TranDetails",5)
+#}
+ENDIF
+
+IF(CLASSEXISTS("MTT","PartTranDetails") == 0) THEN
+#{
+CREATECLASS("MTT","PartTranDetails",5)
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CUST Repository exists else create it
+###########################################################################################
+
+sv_r = REPEXISTS("CUST")
+
+IF(sv_r == 0) THEN
+#{
+        CREATEREP ("CUST")
+#}
+ENDIF
+
+###########################################################################################
+# Check whether CIETXN Class exists else create it
+###########################################################################################
+
+sv_r = CLASSEXISTS("CUST","CIETXN")
+
+IF(sv_r == 0) THEN
+#{
+        CREATECLASS ("CUST","CIETXN",5)
+#}
+ENDIF
+
+       # sv_a = urhk_b2k_printRepos("BANCS")
+CUST.CIETXN.totamt =""
+CUST.CIETXN.Debit_Acct=""
+CUST.CIETXN.Credit_Acct=""
+CUST.CIETXN.Amount=""
+
+
+
+IF((CUST.CIETXN.chargeAmt == "0") or (CUST.CIETXN.chargeAmt == "")) THEN
+#{
+	print("No charges for this Transaction")
+        CUST.CIETXN.TranID = ""
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+print(CUST.CIETXN.chargeAmt)
+print(CUST.CIETXN.drAcctNum)
+print(CUST.CIETXN.refAmt)
+
+
+CUST.CIETXN.totamt = CDOUBLE(CUST.CIETXN.chargeAmt) + CDOUBLE(CUST.CIETXN.refAmt)
+print(CUST.CIETXN.totamt)
+
+sv_h = urhk_getAcctDetailsInRepository(CUST.CIETXN.drAcctNum)
+                                                print(sv_h)
+                                                IF (sv_h==0) THEN
+						#{
+                                                        CUST.CIETXN.EffAvailableAmtdr = BANCS.OUTPARAM.EffAvailableAmt
+                                                        print(CUST.CIETXN.EffAvailableAmtdr)
+							CUST.CIETXN.EffAvailableAmtdr =TRIM(CUST.CIETXN.EffAvailableAmtdr)
+							print(CUST.CIETXN.EffAvailableAmtdr)
+                                                        print(CUST.CIETXN.chargeAmt)
+                                                        IF (CINT(CUST.CIETXN.EffAvailableAmtdr) < CINT(CUST.CIETXN.totamt)) THEN
+							#{
+
+                                                                 CUST.CIETXN.errorMsg="Insufficient funds"
+                                                                 print(CUST.CIETXN.errorMsg)
+                                                                 CUST.CIETXN.scriptSuccess = "N"
+                                                                 exitscript
+							#}
+                                                        ENDIF
+						#}
+                                                ENDIF
+
+sv_u=""
+sv_u = " dr_solId | select sol_id from tbaadm.gam where foracid =?SVAR and bank_id =?SVAR "
+BANCS.INPARAM.BINDVARS=CUST.CIETXN.drAcctNum + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+print(sv_u)
+
+sv_d = urhk_dbSelectWithBind(sv_u)
+PRINT(sv_d)
+
+        IF (sv_d == 0) THEN
+        #{
+
+                CUST.CIETXN.dr_solId = BANCS.OUTPARAM.dr_solId
+                PRINT(CUST.CIETXN.dr_solId)
+        #}
+
+##########################################################################################
+# Fetch Acct for chages to be credit
+##########################################################################################
+
+sv_q =""
+sv_q = " cr_chrg_acct | select foracid from tbaadm.gam where bacid = 'ECOCOMM' and sol_id =?SVAR and bank_id =?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.CIETXN.dr_solId + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+print(sv_q)
+
+sv_d = urhk_dbSelectWithBind(sv_q)
+PRINT(sv_d)
+
+        IF (sv_d == 0) THEN
+        #{
+
+                CUST.CIETXN.cr_chrg_acct = BANCS.OUTPARAM.cr_chrg_acct
+                PRINT(CUST.CIETXN.cr_chrg_acct)
+        #}
+        ELSE
+        #{
+                print("NOT able to fetch acct")
+                exitscript
+        #}
+        ENDIF
+
+##########################################################################################
+# Fetch Acct for TAX to be credit
+##########################################################################################
+
+sv_q =""
+sv_q = " cr_tax_acct | select foracid from tbaadm.gam where bacid = 'EXCISEDUTY' and sol_id =?SVAR and bank_id =?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.CIETXN.dr_solId + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+print(sv_q)
+
+sv_d = urhk_dbSelectWithBind(sv_q)
+PRINT(sv_d)
+
+        IF (sv_d == 0) THEN
+        #{
+
+                CUST.CIETXN.cr_tax_acct = BANCS.OUTPARAM.cr_tax_acct
+                PRINT(CUST.CIETXN.cr_tax_acct)
+        #}
+        ELSE
+        #{
+                print("NOT able to fetch acct")
+                exitscript
+        #}
+        ENDIF
+
+IF(CUST.CIETXN.service_name == "TRANSFER_WALLET_MPESA") THEN
+#{
+
+CUST.CIETXN.agent_amt1 ="22"
+print(CUST.CIETXN.chargeAmt)
+CUST.CIETXN.rev_chargeAmt1= CDOUBLE(CUST.CIETXN.chargeAmt) - CDOUBLE(CUST.CIETXN.agent_amt1)
+
+CUST.DATA.interfaceRequestID = "XferTrnAdd"
+CUST.DATA.interfaceRequestVersion = "10.2"
+CUST.DATA.RequestID = ""
+CUST.DATA.bankID = CUST.CIETXN.creditEntity
+CUST.DATA.channelID = "COR"
+CUST.DATA.tranType = "T"
+CUST.DATA.tranSubType = "CI"
+CUST.DATA.drAcctID = CUST.CIETXN.vostroAcct
+CUST.DATA.crAcctID = "0003000102996"
+CUST.DATA.tranAmtCr = CUST.CIETXN.chargeAmt
+CUST.DATA.tranCcyCr = "KES"
+CUST.DATA.tranAmtDr = CUST.CIETXN.chargeAmt
+CUST.DATA.tranCcyDr = "KES"
+CUST.DATA.tranParticularsCr = "MPEASA Charges"
+CUST.DATA.tranParticularsDr = "MPEASA Charges"
+CUST.DATA.tranRmksCr = "Charges"
+CUST.DATA.tranRmksDr = "Charges"
+CUST.DATA.tranParticulars2Dr = ""
+CUST.DATA.tranParticulars2Cr = ""
+CUST.DATA.refNumDr = "1234567"
+CUST.DATA.refNumCr = "1234567"
+CUST.DATA.drValueDate = ""
+CUST.DATA.crValueDate = ""
+CUST.DATA.rateCode = ""
+CUST.DATA.drRate = "1.00"
+CUST.DATA.crRate = "1.00"
+CUST.DATA.chkInstDetails = ""
+CUST.DATA.instDate = ""
+CUST.DATA.instAlpha = ""
+CUST.DATA.instNum = ""
+CUST.DATA.instType = ""
+CUST.DATA.crAcctID1 = "0006500105030"
+CUST.DATA.chargeTranAmt=""
+CUST.DATA.chargeTranCcy="KES"
+CUST.DATA.chargeTranParticulars="MPESA Charges"
+CUST.DATA.chargeTranRmks="Charges"
+
+print(CUST.CIETXN.chargeAmt)
+
+IF(CUST.CIETXN.chargeAmt <= "22") THEN
+#{
+
+	CUST.DATA.chargeAmtPartTran = "N"
+
+	call("otherentitytran.scr")
+	
+
+#}
+ELSE
+#{
+
+	CUST.DATA.chargeAmtPartTran = "Y"
+	CUST.DATA.tranAmtDr = CUST.CIETXN.chargeAmt
+	CUST.DATA.tranAmtCr = CUST.CIETXN.agent_amt1
+	CUST.DATA.chargeTranAmt = CUST.CIETXN.rev_chargeAmt1
+
+        call("otherentitytran.scr")
+
+#}
+ENDIF
+
+#-------------------------------------------------------------------------
+#Appending the header XML and body XML.
+#-------------------------------------------------------------------------
+CUST.DATA.reqXMLMsg = "MSG_TYPE=XML,MSG_SUB_TYPE=FIXML###"
+CUST.DATA.reqXMLMsg = CUST.DATA.reqXMLMsg + "<FIXML>"
+CUST.DATA.reqXMLMsg = CUST.DATA.reqXMLMsg + CUST.DATA.headerXML
+CUST.DATA.reqXMLMsg = CUST.DATA.reqXMLMsg + CUST.DATA.bodyXMLMsg
+CUST.DATA.reqXMLMsg = CUST.DATA.reqXMLMsg + "</FIXML>"
+
+#-------------------------------------------------------------------------------
+# Setting input values for urhk_ConnectToFIAndSendMsg userhook
+#-------------------------------------------------------------------------------
+BANCS.INPARAM.SERVICE_NAME              = "FIJCA"
+BANCS.INPARAM.SEND_RECV_FLG             = "R"
+sv_a = CUST.DATA.reqXMLMsg
+PRINT(sv_a)
+
+#-------------------------------------------------------------------------
+#- Executing the userhook to make the Outbound Call
+#-------------------------------------------------------------------------
+sv_l = urhk_ConnectToFIAndSendMsg(sv_a)
+print(sv_l)
+IF (sv_l != 0) THEN
+#{
+        print(BANCS.OUTPARAM.ErrMsg)
+        CUST.DATA.errorMsgFlg = "Y"
+        CUST.DATA.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+        CUST.DATA.errorMsgCode = "FIERR"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+IF (BANCS.OUTPARAM.ErrMsg != "") THEN
+#{
+        CUST.DATA.errorMsgFlg = "Y"
+        CUST.DATA.respXMLMsg = BANCS.OUTPARAM.RespMesg
+        CUST.DATA.errorMsgDesc = BANCS.OUTPARAM.ErrMsg
+        CUST.DATA.errorMsgCode = "FIERR"
+        GOTO ENDOFSCRIPT
+#}
+ELSE
+#{
+        CUST.DATA.respXMLMsg = BANCS.OUTPARAM.RespMesg
+        print(CUST.DATA.respXMLMsg)
+        CUST.DATA.errorMsgFlg = ""
+        CUST.DATA.errorMsgDesc = ""
+#}
+ENDIF
+
+
+
+#}
+ENDIF
+
+
+IF(CUST.CIETXN.service_name == "TRANSFER_WALLET_MPESA") THEN
+#{
+
+CUST.CIETXN.service_name_PT=""
+CUST.CIETXN.service_name_PT = MID$(CUST.CIETXN.service_name,16,5)
+print(CUST.CIETXN.service_name_PT)
+
+sv_q =""
+sv_q = " cr_mpesa_agnt_acct | select foracid from tbaadm.gam where bacid = 'AGENTCOMM' and sol_id =?SVAR and bank_id =?SVAR"
+BANCS.INPARAM.BINDVARS=CUST.CIETXN.dr_solId + "|" + BANCS.STDIN.contextBankId
+print(BANCS.INPARAM.BINDVARS)
+
+print(sv_q)
+
+sv_d = urhk_dbSelectWithBind(sv_q)
+PRINT(sv_d)
+
+        IF (sv_d == 0) THEN
+        #{
+
+                CUST.CIETXN.cr_mpesa_agnt_acct = BANCS.OUTPARAM.cr_mpesa_agnt_acct
+                PRINT(CUST.CIETXN.cr_mpesa_agnt_acct)
+        #}
+        ELSE
+        #{
+                print("NOT able to fetch acct")
+                exitscript
+        #}
+        ENDIF
+print(CUST.CIETXN.chargeAmt)
+
+IF(CUST.CIETXN.chargeAmt <= "22") THEN
+#{
+
+	CUST.CIETXN.Credit_Acct=CUST.CIETXN.cr_mpesa_agnt_acct
+	print(CUST.CIETXN.Credit_Acct)
+	CUST.CIETXN.Debit_Acct=CUST.CIETXN.drAcctNum
+	print(CUST.CIETXN.Debit_Acct)
+	CUST.CIETXN.Amount = CUST.CIETXN.chargeAmt
+	print(CUST.CIETXN.Amount)
+
+	call("sindbtsincrdt.scr")
+
+IF(CUST.CIETXN.scriptSuccess == "N") THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "F"
+        CUST.CIETXN.srvError = "Y"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#}
+ELSE
+#{
+
+##########################################################################################
+# Amount Calculation
+##########################################################################################
+
+CUST.CIETXN.agent_amt ="22"
+print(CUST.CIETXN.chargeAmt)
+CUST.CIETXN.rev_chargeAmt= CDOUBLE(CUST.CIETXN.chargeAmt) - CDOUBLE(CUST.CIETXN.agent_amt)
+CUST.CIETXN.taxAmt= CDOUBLE(CUST.CIETXN.rev_chargeAmt) * 0.12
+CUST.CIETXN.revenuAmt = CDOUBLE(CUST.CIETXN.rev_chargeAmt) - CDOUBLE(CUST.CIETXN.taxAmt)
+print(CUST.CIETXN.revenuAmt)
+print(CUST.CIETXN.taxAmt)
+
+CUST.CIETXN.Debit_Acct= CUST.CIETXN.drAcctNum
+print(CUST.CIETXN.Debit_Acct)
+CUST.CIETXN.Credit_Acct=CUST.CIETXN.cr_mpesa_agnt_acct
+print(CUST.CIETXN.Credit_Acct)
+CUST.CIETXN.Credit_Acct1=CUST.CIETXN.cr_chrg_acct
+print(CUST.CIETXN.Credit_Acct1)
+CUST.CIETXN.TOTAmount=CUST.CIETXN.chargeAmt
+print(CUST.CIETXN.TOTAmount)
+CUST.CIETXN.Amount=CUST.CIETXN.agent_amt
+print(CUST.CIETXN.Amount)
+CUST.CIETXN.Amount1=CUST.CIETXN.rev_chargeAmt
+print(CUST.CIETXN.Amount1)
+
+ call("sindebtmulcrdt.scr")
+
+IF(CUST.CIETXN.scriptSuccess == "N") THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "F"
+        CUST.CIETXN.srvError = "Y"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+
+CUST.CIETXN.Debit_Acct=""
+CUST.CIETXN.Credit_Acct=""
+CUST.CIETXN.Amount=""
+
+CUST.CIETXN.Debit_Acct = CUST.CIETXN.cr_chrg_acct
+print(CUST.CIETXN.Debit_Acct)
+CUST.CIETXN.Credit_Acct = CUST.CIETXN.cr_tax_acct
+print(CUST.CIETXN.Credit_Acct)
+CUST.CIETXN.Amount = CUST.CIETXN.taxAmt
+print(CUST.CIETXN.Amount)
+
+ call("sindbtsincrdt.scr")
+
+IF(CUST.CIETXN.scriptSuccess == "N") THEN
+#{
+	BANCS.OUTPUT.successOrFailure = "F"
+	CUST.CIETXN.srvError = "Y"
+	GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+#}
+ENDIF
+
+Print(CUST.CIETXN.TranID)
+
+GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+IF((CUST.CIETXN.service_name == "BILL_PAY") or (CUST.CIETXN.service_name == "BUY_GOODS") or (CUST.CIETXN.service_name == "AGENT")) THEN
+#{
+
+print(CUST.CIETXN.chargeAmt)
+CUST.CIETXN.taxAmt= CDOUBLE(CUST.CIETXN.chargeAmt) * 0.12
+CUST.CIETXN.taxAmt =FORMAT$(CDOUBLE(CUST.CIETXN.taxAmt),"%.2f")
+print(CUST.CIETXN.taxAmt)
+
+
+CUST.CIETXN.Debit_Acct = CUST.CIETXN.drAcctNum
+print(CUST.CIETXN.Debit_Acct)
+CUST.CIETXN.Credit_Acct = CUST.CIETXN.cr_chrg_acct
+print(CUST.CIETXN.Credit_Acct)
+CUST.CIETXN.Amount = CUST.CIETXN.chargeAmt
+print(CUST.CIETXN.Amount)
+
+ call("sindbtsincrdt.scr")
+
+IF(CUST.CIETXN.scriptSuccess == "N") THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "F"
+        CUST.CIETXN.srvError = "Y"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+
+CUST.CIETXN.Debit_Acct=""
+CUST.CIETXN.Credit_Acct=""
+CUST.CIETXN.Amount=""
+
+CUST.CIETXN.Debit_Acct = CUST.CIETXN.cr_chrg_acct
+print(CUST.CIETXN.Debit_Acct)
+CUST.CIETXN.Credit_Acct = CUST.CIETXN.cr_tax_acct
+print(CUST.CIETXN.Credit_Acct)
+CUST.CIETXN.Amount = CUST.CIETXN.taxAmt
+print(CUST.CIETXN.Amount)
+
+ call("sindbtsincrdt.scr")
+
+IF(CUST.CIETXN.scriptSuccess == "N") THEN
+#{
+        BANCS.OUTPUT.successOrFailure = "F"
+        CUST.CIETXN.srvError = "Y"
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+Print(CUST.CIETXN.TranID)
+
+GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+
+MTT.TranDetails.TranType="T"
+MTT.TranDetails.TranSubType="CI"
+BANCS.INPARAM.PostTranFlg               = "Y"
+BANCS.INPARAM.CommitFlg                 = "Y"
+BANCS.INPARAM.ValidationFlag            = "N"
+BANCS.INPARAM.InsertTranWithValidnFlg   = "Y"
+BANCS.INPARAM.RestrictModifyInd         = "FIRST_GROUP"
+BANCS.INPARAM.ErrorCheckForLuw          = "Y"
+BANCS.INPARAM.IgnoreExcp                = "I"
+
+sv_t = urhk_MTTS_initialize("CHRGTRAN")
+print(sv_t)
+
+IF (sv_t != 0) THEN
+#{
+sv_m = urhk_TBAF_DispMesg("MTT initialise has failed.")
+BANCS.OUTPUT.successOrFailure = "F"
+sv_a = urhk_SetOrbOut(sv_m)
+exitscript
+#}
+ENDIF
+
+#STDWFS.GLBDATA.depAmt="0"
+BANCS.STDIN.tran_id =""
+MTT.TranDetails.TranDate        =   "0"
+MTT.TranDetails.IgnoreExcp      =   "I"
+MTT.TranDetails.Consolidate     =   "N"
+MTT.TranDetails.Remarks         =   "CHRG TRAN"
+MTT.TranDetails.ReversalFlag    =   "N"
+MTT.TranDetails.PostFlag        =   "Y"
+MTT.TranDetails.CommitFlg       =   "Y"
+MTT.TranDetails.ValidationFlag  =   "N"
+MTT.TranDetails.PostTranFlg    =   "Y"
+print(MTT.TranDetails.PostTranFlg)
+MTT.TranDetails.flgPostTransaction= "Y"
+
+sv_r = urhk_MTTS_DefineTransaction("CHRGTRAN")
+print(sv_r)
+if (sv_r != 0) then
+#{
+STDWFS.GLBDATA.Error_Desc      = "Error In Creation of Transaction"
+exitscript
+#}
+endif
+
+################################## End of Header ################################
+
+################## Debit Transaction:####################################
+MTT.PartTranDetails.RefAmount="-"+CUST.CIETXN.chargeAmt
+MTT.PartTranDetails.Account=CUST.CIETXN.drAcctNum
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="CHRG TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars= CUST.CIETXN.service_name + " Charges"
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="CHRGTRAN"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.ICSANO
+
+
+sv_r = urhk_MTTS_DefinePartTran("DR")
+print(sv_r)
+IF (sv_r != 0) THEN
+#{
+STDWFS.GLBDATA.Error_Desc      = "Error In Creation of Dr Transaction"
+#sv_e = "Error_0|Error^Error In Creation of Dr Transaction -^idCode"
+#sv_x = urhk_SetOrbOut(sv_e)
+print(STDWFS.GLBDATA.Error_Desc)
+#print(MTT.Error.Description)
+exitscript
+#}
+ENDIF
+#############################
+
+############### Credit Transaction :############################################
+MTT.PartTranDetails.RefAmount=CUST.CIETXN.chargeAmt
+print(MTT.PartTranDetails.RefAmount)
+MTT.PartTranDetails.Account=CUST.CIETXN.cr_chrg_acct
+MTT.PartTranDetails.RefCurrency="KES"
+MTT.TranDetails.Remarks="CHRG TRAN"
+MTT.PartTranDetails.Consolidate="N"
+MTT.PartTranDetails.Particulars= CUST.CIETXN.service_name + " Charges"
+MTT.PartTranDetails.ValueDate="0"
+MTT.PartTranDetails.ValueDateDiff="0"
+MTT.PartTranDetails.TranIdentifier="CHRGTRAN"
+##--MTT.PartTranDetails.Refnum=STDWFS.GLBDATA.foracid   -- put the sno
+
+
+sv_r = urhk_MTTS_DefinePartTran("CR")
+print(sv_r)
+
+sv_r = urhk_MTTS_EndDefinition("")
+print(sv_r)
+
+IF(sv_r == 0) THEN
+#{
+        IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+        #{
+                IF(BANCS.OUTPARAM.MTTTranId != "") THEN
+                #{
+                        print(BANCS.OUTPARAM.MTTTranId)
+                        CUST.CIETXN.TranID = BANCS.OUTPARAM.MTTTranId
+                        print(CUST.CIETXN.TranID)
+                #}
+                ENDIF
+        #}
+        ENDIF
+#}
+else
+#{
+		sv_u = urhk_MTTS_ReportErrorCondition("")
+                print (MTT.Error.Description)
+                BANCS.OUTPUT.successOrFailure = "F"
+                GOTO ENDOFSCRIPT
+
+#}
+ENDIF
+
+	sv_u = urhk_MTTS_HandleExceptions("POST")
+        print(sv_u)
+
+sv_s = urhk_MTTS_Close("")
+print(sv_s)
+
+IF(sv_u != 0) THEN
+        #{
+                IF(FIELDEXISTS(MTT.Error.Description)) THEN
+                #{
+                        print(MTT.Error.Description)
+                #}
+                ENDIF
+
+                BANCS.OUTPUT.successOrFailure = "F"
+                CUST.CIETXN.Response = "urhk_MTTS_Close returns FAILURE"
+                goto ENDOFSCRIPT
+        #}
+        ENDIF
+
+	IF(FIELDEXISTS(BANCS.OUTPARAM.MTTTranId)) THEN
+        #{
+                print(BANCS.OUTPARAM.MTTTranId)
+                sv_t = BANCS.OUTPARAM.MTTTranId
+                print(sv_t)
+
+        #}
+        ENDIF
+
+	IF(BANCS.OUTPARAM.MTTPostingStatus == "F") THEN
+        #{
+                sv_h = BANCS.OUTPARAM.MTTPostingError
+                print(sv_h)
+                CUST.CIETXN.errorMsg = sv_h
+                print(CUST.CIETXN.errorMsg)
+		CUST.CIETXN.scriptSuccess = "N"
+                CUST.CIETXN.srvError = "Y"
+                print(CUST.CIETXN.srvError)
+                exitscript
+        #}
+        ELSE
+
+        #{
+                BANCS.OUTPUT.successOrFailure = "S"
+                CUST.CIETXN.srvError = "N"
+                print(CUST.CIETXN.srvError)
+        #}
+        ENDIF
+
+
+ENDOFSCRIPT:
+
+exitscript
+TRACE OFF
+end-->

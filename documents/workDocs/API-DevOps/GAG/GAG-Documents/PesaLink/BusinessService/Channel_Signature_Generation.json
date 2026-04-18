@@ -1,0 +1,137 @@
+CHANNEL SIGNATURE GENERATION
+
+1. Request
+    Channel will send below Request to business service
+    {
+      "requestId":"EQUITY10001112003136",
+      "channelId":"STK",
+      "sourceSystemId":"EQUITEL_STK",
+      "callbackURL":"http://localhost:8085/v1/callback/channel",
+      "sourceTranType":"1",
+      "sourceAccount":"1001008010940",
+      "sourceCountryCode":"54",
+      "sourceCurrency":"KES",
+      "senderName":"KATEIS & OLE NASHUU",
+      "senderInstitutionCode":"0068",
+      "senderPhone":"+254-720000000",
+      "receiverAccount":"0170197176640", 
+      "receiverInstitutionCode":"0012", 
+      "receiverCurrency":"KES",
+      "amount": "500",
+      "feeAmount":"0.00",
+      "paymentReason":"Payments",
+      "narration":"Pesalink's Transfer",
+      "signature":"Generate Signature"
+    }
+
+2. Channel ID and Source System ID
+    The following will be used for Channel Id and Source System ID
+
+        CHANNEL_ID     :   SOURCE_SYSTEM
+        1. STK         :   EQUITEL_STK        
+        2. APP         :   EQUITY_APP
+        3. WEB         :   EQUITY_WEB
+        4. USSD        :   EQUITY_USSD
+        5. EAZAPP      :   EAZZY_APP
+        6. EAZNET      :   EAZZY_NET
+        7. EAZBIZ      :   EAZZY_BIZ
+        8. EVA         :   CHATBOT_EVA        
+        9. OTC         :   BRANCH
+
+3. Generate Key Pairs and certificates
+    For each channel Id, the sending channel will generate a key pair and a certificate
+    Use KeyStore Type = PKCS12
+
+    Example: STK channel
+    i. KeyPair Generation
+        keytool -genkeypair -alias EquitelSTK_KeyPair -keyalg RSA -keysize 2048 -dname "CN=EquitelSTK" -validity 365 -storetype PKCS12 -keystore EquitelSTK.p12 -storepass 190875kLDDfwZE
+    
+    ii. Certificate generation
+        keytool -exportcert -alias EquitelSTK_KeyPair -storetype PKCS12 -keystore EquitelSTK.p12 -file EQUITEL_STK.cer -rfc -storepass 190875kLDDfwZE
+    
+4. Share the certiface with us once it's generated.
+
+5. Field Used To Generate Clear Text For Hashing
+    Channel will use the below request fields for hashing during signature generation;
+        clearText = requestId
+            + channelId
+            + sourceSystemId
+            + sourceAccount
+            + sourceCurrency
+            + senderName
+            + senderInstitutionCode
+            + receiverAccount
+            + receiverInstitutionCode
+            + receiverCurrency
+            + amount
+            + feeAmount
+
+6. Digital Signature Generation
+   i. Using the clearText, Private Key and algorithm, sign the request:
+
+    Where: 
+        a. clearText = clearText in step 5
+        b. privateKey = generated primary key in step 3
+        c. algorithm = SHA256withRSA
+
+            public class SignMsg {
+            private static final Logger log = LoggerFactory.getLogger(SignMsg.class);
+
+            @Value("${encrypt.key-store.algorithm}")
+            private String algorithm;
+
+            @Autowired
+            TelemetryClient telemetryClient;
+
+            public byte[] signMessage(String theXsumFields, PrivateKey privatekey, ErrorStatus errorStatus) {
+                byte[] messageBytes = theXsumFields.getBytes();
+                byte[] digitalSignature;
+                Signature signature;
+                try {
+                    signature = Signature.getInstance(algorithm);
+                    signature.initSign(privatekey);
+                    signature.update(messageBytes);
+                    digitalSignature = signature.sign();
+                } catch (SignatureException | NoSuchAlgorithmException | InvalidKeyException ex) {
+                    errorStatus.setStatus("Failed");
+                    errorStatus.setStatusCode("01");
+                    errorStatus.setStatusDesc("SignatureException Occurred");
+                    log.error("SignatureException: " + ex.getMessage());
+                    telemetryClient.trackTrace("SignatureException: " + ex.getMessage(), SeverityLevel.Error);
+                    return null;
+                }
+                return digitalSignature;
+            }
+        }
+
+    ii. Encode the signature with Base64
+            Base64 base64 = new Base64();
+            byte[] check = base64.encode(signed);
+            String returnSign = new String(check, "UTF8");
+
+7. Use the returned String (returnSign) on the signature field of the request
+    {
+      "requestId":"EQUITY10001112003136",
+      "channelId":"STK",
+      "sourceSystemId":"EQUITEL_STK",
+      "callbackURL":"http://localhost:8085/v1/callback/channel",
+      "sourceTranType":"1",
+      "sourceAccount":"1001008010940",
+      "sourceCountryCode":"54",
+      "sourceCurrency":"KES",
+      "senderName":"KATEIS & OLE NASHUU",
+      "senderInstitutionCode":"0068",
+      "senderPhone":"+254-720000000",
+      "receiverAccount":"0170197176640", 
+      "receiverInstitutionCode":"0012", 
+      "receiverCurrency":"KES",
+      "amount": "500",
+      "feeAmount":"0.00",
+      "paymentReason":"Payments",
+      "narration":"Pesalink's Transfer",
+     "signature":"CN6VYzTL94Krw35bOzVhXnsAHy837slOFDFpCTA+XYsI6q1m2d1XDqzxp9vzs9pmRSRKe3g/1ijt+5bs3cESKNW9CVRQGxU0tOM7reRzTDZ7OhgWZ4bZkcPfQmnAeGbP0W2ctwJafwyK6PGVQd9aeeVYXv3KudmWrBPx1Ai78Hzj5bDw+DbqDKKDO1TAdBk9SAFavv2cDTQADmb0jFA+JK0tUGe2KLe+LJS9pOgdEUs7ydXHns8xVlSwlu4fR0TVXfY7lAW1Wo5Xue8tc69miLQki8ncGryxa0qV32no7kxN4jSMuvnMUbNVw/IewxF4K0c9QJTte2bNuqi5QsZgGw=="
+    }
+    
+
+
+

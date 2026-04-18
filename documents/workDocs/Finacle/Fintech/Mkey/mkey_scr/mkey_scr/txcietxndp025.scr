@@ -1,0 +1,264 @@
+##########################################################################################
+# Source Name           : cietxndp025.scr
+# Date                  : 04-Mar-2013
+# Description           : Insert to IETD - Transfer Txn
+# Author                : Mohan Raghu Arudi
+# Modification History  :
+# <Serial No.>  <Date>        <Author Name>             <Description>
+# ------------  -----------   -----------------         --------------
+#      1        04-Mar-2013   Mohan Raghu Arudi         Base Version
+#       2       13-Aug-2013     Mohan Raghu Arudi       364934 Changes added
+###########################################################################################
+<--START
+TRACE ON
+
+IF (BANCS.STDIN.contextBankId!="11") THEN
+	IF ((CUST.CIETXN.txnType == "TF") OR (CUST.CIETXN.txnType == "PA_TT") OR (CUST.CIETXN.txnType == "CD") OR (CUST.CIETXN.txnType == "PA_CD")) THEN
+		sv_s = "limitamt|"
+		sv_s = sv_s + " select VAR_CRNCY_UNITS*1000 from tbaadm.rtl where  FXD_CRNCY_CODE='USD' "
+		sv_s = sv_s + " and bank_id=?SVAR and RATECODE='MEAN' and VAR_CRNCY_CODE=?SVAR and rownum<2 order by  RTLIST_NUM desc "
+		print(sv_s)
+		BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.homeCrncyCode
+		print(BANCS.INPARAM.BINDVARS)
+		sv_d = urhk_dbSelectWithBind(sv_s)
+		print(sv_d)
+		IF(sv_d == 0)THEN
+			CUST.CIETXN.limitamt = BANCS.OUTPARAM.limitamt
+			PRINT(CUST.CIETXN.limitamt)
+		ENDIF
+		IF (CUST.CIETXN.refCrncy=="USD") THEN
+			CUST.CIETXN.limitamtfor="1000"
+			print(CUST.CIETXN.limitamtfor)
+		ENDIF
+		IF (CUST.CIETXN.refCrncy!="USD") THEN
+			IF ((BANCS.STDIN.contextBankId != "11") AND (BANCS.STDIN.contextBankId != "54")) THEN			
+				#{
+					IF ((CUST.CIETXN.txnType == "CD") AND (CUST.CIETXN.refCrncy=="KES")) THEN
+					#{
+							sv_s = "limitcharge|"
+							sv_s = sv_s + " select VAR_CRNCY_UNITS*5 from tbaadm.rtl where  FXD_CRNCY_CODE='USD' "
+							sv_s = sv_s + " and bank_id=?SVAR and RATECODE='MEAN' and VAR_CRNCY_CODE=?SVAR and rownum<2 order by  RTLIST_NUM desc "
+							print(sv_s)
+							BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + BANCS.STDIN.homeCrncyCode
+							print(BANCS.INPARAM.BINDVARS)
+							sv_d = urhk_dbSelectWithBind(sv_s)
+							print(sv_d)
+							IF(sv_d == 0)THEN
+								CUST.CIETXN.limitcharge = BANCS.OUTPARAM.limitcharge
+								PRINT(CUST.CIETXN.limitcharge)
+								CUST.CIETXN.limitcharge1 = FORMAT$(CDOUBLE(CUST.CIETXN.limitcharge),"%.2f")
+
+								PRINT(CUST.CIETXN.limitcharge1)
+							ENDIF
+							
+							CUST.CIETXN.chargeAmt = CINT(CUST.CIETXN.refAmtInHomeCcy1) * 0.5/100
+							CUST.CIETXN.chargeAmt = FORMAT$(CDOUBLE(CUST.CIETXN.chargeAmt),"%.2f")
+							print(CUST.CIETXN.chargeAmt)
+
+						
+
+						IF ((CINT(CUST.CIETXN.chargeAmt)) < (CINT(CUST.CIETXN.limitcharge1)) )THEN
+						#}
+							print("less than limit")
+							CUST.CIETXN.chargeAmt=CUST.CIETXN.limitcharge1
+							print(CUST.CIETXN.chargeAmt)
+						#ELSE
+
+							#CUST.CIETXN.chargeAmt = (CDOUBLE(CUST.CIETXN.refAmtInHomeCcy1) * CDOUBLE("0.5")) / CDOUBLE("100")
+							#print(CUST.CIETXN.chargeAmt)
+						
+						#}
+						ENDIF
+					#}
+					ENDIF
+
+
+				#}
+				ENDIF
+			sv_s = "limitamtusd|"
+			sv_s = sv_s + " select VAR_CRNCY_UNITS*1000 from tbaadm.rtl where  FXD_CRNCY_CODE='USD' "
+			sv_s = sv_s + " and bank_id=?SVAR and RATECODE='MEAN' and VAR_CRNCY_CODE=?SVAR and rownum<2 order by  RTLIST_NUM desc "
+			print(sv_s)
+			BANCS.INPARAM.BINDVARS = BANCS.STDIN.contextBankId + "|" + CUST.CIETXN.refCrncy
+			print(BANCS.INPARAM.BINDVARS)
+			sv_d = urhk_dbSelectWithBind(sv_s)
+			print(sv_d)
+			IF(sv_d == 0)THEN
+				CUST.CIETXN.limitamtusd = BANCS.OUTPARAM.limitamtusd
+				PRINT(CUST.CIETXN.limitamtusd)
+				CUST.CIETXN.limitamtfor=CUST.CIETXN.limitamtusd
+				print(CUST.CIETXN.limitamtfor)
+			ENDIF
+		ENDIF
+
+		IF (CUST.CIETXN.refCrncy == BANCS.STDIN.homeCrncyCode) THEN
+			CUST.CIETXN.DccId=""
+			sv_a = urhk_GetChannelInfo("")
+			print(sv_a)
+			if (sv_a!=0) then
+			#{
+				sv_u = urhk_SRV_SetErr("Error: Channel ID is not passed/Incorrect")
+				BANCS.OUTPUT.successOrFailure="F"
+				GOTO ENDOFSCRIPT
+			#}
+			else
+			#{
+				CUST.CIETXN.DccId = BANCS.OUTPARAM.DccId
+				print(CUST.CIETXN.DccId)
+				IF ((CUST.CIETXN.DccId=="FNT") OR (CUST.CIETXN.DccId=="COR")) THEN
+					CUST.CIETXN.limitamt ="1"
+					CUST.CIETXN.limitamtfor ="1"
+				ENDIF
+			ENDIF
+			if (CINT(CUST.CIETXN.refAmt) < CUST.CIETXN.limitamt) then
+				CUST.CIETXN.chargeEventId="NULL"
+				CUST.CIETXN.chargeAmt="0"
+				CUST.CIETXN.chargeAmtCcy="000"
+				CUST.CIETXN.chargeTranId="NULL"
+				CUST.CIETXN.chargeTranDate = CUST.CIETXN.entity1TranDate
+			endif
+		ELSE
+			if (CINT(CUST.CIETXN.refAmt) < CUST.CIETXN.limitamtfor ) then
+				CUST.CIETXN.chargeEventId="NULL"
+				CUST.CIETXN.chargeAmt="0"
+				CUST.CIETXN.chargeAmtCcy="000"
+				CUST.CIETXN.chargeTranId="NULL"
+				CUST.CIETXN.chargeTranDate = CUST.CIETXN.entity1TranDate
+			endif
+		ENDIF
+	ENDIF
+ENDIF
+
+print(CUST.CIETXN.ieTxnRefNo)
+print("T")
+print("CI")
+print(CUST.CIETXN.entity1)
+print(CUST.CIETXN.entity2)
+print(CUST.CIETXN.entity1TranId)
+print(CUST.CIETXN.entity1TranDate)
+print(CUST.CIETXN.entity2TranId)
+print(CUST.CIETXN.entity2TranDate)
+print(CUST.CIETXN.chargeTranId)
+print(CUST.CIETXN.chargeTranDate)
+print(CUST.CIETXN.crAcctNum)
+print(CUST.CIETXN.drAcctNum)
+print(CUST.CIETXN.refAmt)
+print(CUST.CIETXN.refCrncy)
+print(CUST.CIETXN.rateCode)
+print(CUST.CIETXN.rate)
+print(CUST.CIETXN.treaRefNum)
+print(CUST.CIETXN.treaRate)
+print(CUST.CIETXN.tranAmt)
+print(CUST.CIETXN.tranAmtCcy)
+print(CUST.CIETXN.chargeEventId)
+print(CUST.CIETXN.chargeAmt)
+print(CUST.CIETXN.chargeAmtCcy)
+print(CUST.CIETXN.refNo)
+print(CUST.CIETXN.nostroAcct)
+print(CUST.CIETXN.vostroAcct)
+print(CUST.CIETXN.tranParticularsCode)
+print(CUST.CIETXN.tranParticular)
+print(CUST.CIETXN.tranRmks)
+print(CUST.CIETXN.tranRmks2)
+
+sv_s = "INSERT INTO CUSTOM.IETD VALUES("
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "'T',"
+sv_s = sv_s + "'CI',"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "TO_DATE(?SVAR,'DD-MM-YYYY'),"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "TO_DATE(?SVAR,'DD-MM-YYYY'),"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "TO_DATE(?SVAR,'DD-MM-YYYY'),"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'',"
+sv_s = sv_s + "'N',"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "sysdate,"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "sysdate,"
+sv_s = sv_s + "?SVAR" + ","
+sv_s = sv_s + "?SVAR)"
+print(sv_s)
+
+BANCS.INPARAM.BINDVARS = CUST.CIETXN.ieTxnRefNo + "|" + CUST.CIETXN.entity1 + "|" + CUST.CIETXN.entity2 + "|" + CUST.CIETXN.entity1TranId + "|" + CUST.CIETXN.entity1TranDate + "|" + CUST.CIETXN.entity2TranId + "|" + CUST.CIETXN.entity2TranDate + "|" + CUST.CIETXN.chargeTranId + "|" + CUST.CIETXN.chargeTranDate +"|" + CUST.CIETXN.crAcctNum + "|" + CUST.CIETXN.drAcctNum + "|" + CUST.CIETXN.refAmt + "|" + CUST.CIETXN.refCrncy + "|" + CUST.CIETXN.rateCode + "|" + CUST.CIETXN.rate + "|" + CUST.CIETXN.tranAmt + "|" + CUST.CIETXN.tranAmtCcy + "|" + CUST.CIETXN.chargeEventId + "|" + CUST.CIETXN.chargeAmt + "|" + CUST.CIETXN.chargeAmtCcy + "|" + CUST.CIETXN.refNo + "|" +  CUST.CIETXN.nostroAcct + "|" + CUST.CIETXN.vostroAcct + "|" + CUST.CIETXN.tranParticularsCode + "|" + CUST.CIETXN.tranParticular + "|" + CUST.CIETXN.tranRmks + "|" + CUST.CIETXN.tranRmks2 + "|" + BANCS.STDIN.userId + "|" + BANCS.STDIN.userId + "|" + CUST.CIETXN.treaRefNum + "|" + CUST.CIETXN.treaRate
+
+print(BANCS.INPARAM.BINDVARS)
+
+
+sv_d = urhk_dbSqlWithBind(sv_s)
+print(sv_d)
+
+IF(sv_d != 0)THEN
+#{
+        CUST.CIETXN.scriptSuccess = "N"
+        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+        print(sv_u)
+        sv_u = urhk_SetOrbOut("Error_1|Error^Database Insert Operation Failed On Custom Table^prodCode")
+        print(sv_u)
+        GOTO ENDOFSCRIPT
+#}
+ENDIF
+
+############################################################################################################################
+
+			print(CUST.CIETXN.tranRmks)
+			print(CUST.CIETXN.entity2TranDate)
+			print(CUST.CIETXN.entity2TranId)
+			print(CUST.CIETXN.ieTxnRefNo)
+			print(CUST.CIETXN.entity2)
+
+	
+			sv_s = " UPDATE TBAADM.DTD SET TRAN_PARTICULAR_2 = '" + CUST.CIETXN.tranRmks + "'  WHERE TRAN_DATE = to_char((to_date('" + CUST.CIETXN.entity2TranDate + "','DD-MM-YYYY')),'DD-MON-YYYY') "
+                        sv_s = sv_s + " AND TRAN_ID = '" + CUST.CIETXN.entity2TranId + "' AND REF_NUM = '" + CUST.CIETXN.ieTxnRefNo + "'"
+                        sv_s = sv_s + " AND BANK_ID = '" + CUST.CIETXN.entity2 + "' "
+
+			BANCS.INPARAM.BINDVARS = CUST.CIETXN.tranRmks + "|" + CUST.CIETXN.entity2TranId + "|" + CUST.CIETXN.ieTxnRefNo
+			print(BANCS.INPARAM.BINDVARS)
+
+                        print(sv_s)
+
+			sv_d = urhk_dbSqlWithBind(sv_s)
+                        print(sv_d)
+                        IF(sv_d == 0)THEN
+                        #{
+                                sv_d = urhk_dbSqlWithBind("COMMIT")
+                                print(sv_d)
+                        #}
+                        ENDIF
+
+
+#################################################################################################################################
+
+
+ENDOFSCRIPT:
+
+END-->
+

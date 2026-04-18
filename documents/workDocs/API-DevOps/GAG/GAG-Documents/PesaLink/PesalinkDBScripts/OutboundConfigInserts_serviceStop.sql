@@ -1,0 +1,2 @@
+INSERT INTO [dbo].[business_param_configs] (id, config_bin_value, config_desc, config_id, config_status, config_value)
+VALUES (3, 'Start', 'Service To Start Or Stop Application', 'pesalink.service.operation','ENABLEB','Start');

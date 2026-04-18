@@ -1,0 +1,66 @@
+STEP 1 — Receive
+    GET /papss/Message
+    if body empty → log "no messages" → return (Spring scheduler auto re-triggers after 5s)
+
+STEP 2 — Extract headers
+    seq  = X-PAPSSRTP-MessageSeq
+    type = X-PAPSSRTP-MessageType
+    duplicateFlag = X-PAPSSRTP-PossibleDuplicate (default=false)
+    remaining = X-PAPSSRTP-RemainingOutputs
+
+STEP 3 — Message filtering
+    if type not in (pacs.008, acmt.023):
+        log.info("Skipping unsupported message type {}", type)
+        POST /papss/MessageAck (seq)
+        return
+
+STEP 4 — Verify XML-DSig
+    verify XML signature only if (type == pacs.008 or acmt.023)
+    if invalid:
+        log.error("Invalid XML-DSig for message {}", seq)
+        POST /papss/MessageAck (seq)
+        return
+
+STEP 5 — Routing logic
+    switch(type):
+
+      ┌────────────────────────────────────────────┐
+      │ pacs.008 (Credit Transfer)                │
+      └────────────────────────────────────────────┘
+          if duplicateFlag == true:
+              entity = DB.lookup(seq, CREDIT_TRANSFER)
+              if entity found:
+                  // Compose acknowledgment based on stored status
+                  if entity.status == RJCT:
+                      responseXml = composePacs002FailureResponse(entity.map, "RJCT")
+                  else:
+                      responseXml = composePacs002SuccessResponse(entity.map)
+                  send pacs.002(responseXml)
+                  POST /papss/MessageAck(seq)
+                  return
+
+              else:
+                  log.warn("Duplicate pacs.008 {} not found in DB. Acknowledging to suppress redelivery.", seq)
+                  POST /papss/MessageAck(seq)
+                  return
+
+          else:
+              // New credit transfer
+              process inbound pacs.008 via dispatcher
+              outcome = processCreditTransfer(inboundXml)
+              if outcome == SUCCESS:
+                  send pacs.002(ACCP)
+              else:
+                  send pacs.002(RJCT)
+              POST /papss/MessageAck(seq)
+              return
+
+
+      ┌────────────────────────────────────────────┐
+      │ acmt.023 (NameCheck Request)              │
+      └────────────────────────────────────────────┘
+          // Always process fresh
+          responseXml = composeAcmt024Response(inboundXml)
+          send acmt.024(responseXml)
+          POST /papss/MessageAck(seq)
+          return

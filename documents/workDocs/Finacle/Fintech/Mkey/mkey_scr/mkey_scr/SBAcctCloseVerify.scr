@@ -1,0 +1,191 @@
+<--START
+
+	TRACE ON
+
+####----- "S" --> The Account successfully closed & Verified ---########
+	
+	sv_r = REPEXISTS("CUSTS")
+	IF (sv_r == 0) THEN
+	#{
+		CREATEREP("CUSTS")
+	#}
+	ENDIF
+	
+	sv_r = CLASSEXISTS("CUSTS", "GLBDATA")
+	IF (sv_r == 0) THEN
+	#{
+		CREATECLASS("CUSTS", "GLBDATA", 5)
+	#}
+	ENDIF
+	
+	sv_b = BANCS.STDIN.mySolId
+	print(sv_b)
+	
+	sv_a = urhk_b2k_printRepos("BANCS")
+
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("Foracid"))== 0) ) THEN
+   CUSTS.GLBDATA.errMsg="Provide Account No"
+   sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg) 
+   GOTO ENDOFSCRIPT
+ENDIF
+
+IF( (FIELDEXISTS(("BANCS").("INPUT").("bank_id"))== 0) ) THEN
+   CUSTS.GLBDATA.errMsg="Provide Bank id"
+   sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)  
+   GOTO ENDOFSCRIPT
+ENDIF
+
+			
+			print(BANCS.INPUT.Foracid)
+
+	sv_q="facid |"
+sv_q = sv_q + "select foracid from custom.SBA_CLS_DATA where foracid = '"+ BANCS.INPUT.Foracid +"' and bank_id = '"+BANCS.INPUT.bank_id+"' AND ENTITY_CRE_FLG='B' "
+	print(sv_q)
+	
+	sv_e=  urhk_dbSelectWithBind(sv_q)
+			print(sv_e)
+			
+			IF (sv_e==0) THEN
+			#{
+				CUSTS.GLBDATA.foracid=BANCS.OUTPARAM.facid
+				print(CUSTS.GLBDATA.foracid)
+			#}
+			else
+			#{
+				print("This account is not requested for Verification")
+                                CUSTS.GLBDATA.errMsg="This account is not requested for Verification, Kindly initiate request for close Account before Verification"
+                                        sv_e=urhk_SetOrbOut("Error|"+CUSTS.GLBDATA.errMsg)
+                                        sv_u = urhk_SetOrbOut("SuccessOrFailure|N")
+                                        print(sv_u)
+                                        GOTO ENDOFSCRIPT
+			#}
+			endif
+			
+			sv_u = "solid,acid,schmcode|"
+			sv_u = sv_u + "select sol_id,acid,schm_code from tbaadm.gam  "
+			sv_u = sv_u + "where foracid = '"+ CUSTS.GLBDATA.foracid +"' and bank_id = '"+BANCS.INPUT.bank_id+"'"
+			print(sv_u)
+			
+			BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+			print(BANCS.INPARAM.BINDVARS)
+			
+			sv_w =  urhk_dbSelectWithBind(sv_u)
+			print(sv_w)
+			
+			IF (sv_w==0) THEN
+			#{
+				CUSTS.GLBDATA.acid=BANCS.OUTPARAM.acid
+				print(CUSTS.GLBDATA.acid)
+				
+				CUSTS.GLBDATA.schmcode=BANCS.OUTPARAM.schmcode
+				print(CUSTS.GLBDATA.schmcode)
+				
+				CUSTS.GLBDATA.solid=BANCS.OUTPARAM.solid
+				print(CUSTS.GLBDATA.solid)
+				
+				IF(CUSTS.GLBDATA.solid != BANCS.STDIN.mySolId)THEN
+				#{
+					sv_u = urhk_SetUrhkInp("sol.solId|"+CUSTS.GLBDATA.solid)
+					print(sv_u)
+					sv_u = urhk_ExecSrv("SRV_ModifyContextSol")
+					print(sv_u)
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+			sv_a=urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+			
+			sv_a=urhk_SetUrhkInp("clsrProcCrit.xferBalFlg|N")
+			
+			sv_a=urhk_SetUrhkInp("clsrProcCrit.tranType.tranType| ")
+			
+			sv_u = urhk_ExecSrv("SRV_FetchOperAcctClsrDtlForVerify|retain_all_output = Y|same_user_verify = Y")
+			print(sv_u)
+			
+			IF (sv_u == 0 ) THEN
+			#{
+				sv_u = urhk_CopyOutToIn("")
+				PRINT(sv_u)
+				
+				sv_u = urhk_SetUrhkInp("acctBasic.foracid|" + CUSTS.GLBDATA.foracid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.acid|" + CUSTS.GLBDATA.acid)
+				PRINT(sv_u)
+				sv_u = urhk_SetUrhkInp("acctBasic.schmCode.schmCode|" + CUSTS.GLBDATA.schmcode)
+				PRINT(sv_u)
+				
+				sv_u = urhk_ExecSrv("SRV_VerifyOperAcctClsrDtl|retain_all_output = Y|same_user_verify = Y")
+				PRINT(sv_u)
+				
+				IF(sv_u == 0) THEN
+				#{
+					
+					sv_s = "UPDATE CUSTOM.SBA_CLS_DATA "
+					sv_s = sv_s + " SET SBA_CLS_DATA.entity_cre_flg = 'S'"
+					sv_s = sv_s + " WHERE SBA_CLS_DATA.foracid= ?SVAR"
+					sv_s = sv_s + " AND SBA_CLS_DATA.bank_id = ?SVAR"
+					print(sv_s)
+					BANCS.INPARAM.BINDVARS = CUSTS.GLBDATA.foracid + "|" + BANCS.STDIN.contextBankId
+					print(BANCS.INPARAM.BINDVARS)
+					
+					sv_d = urhk_dbSQLWithBind(sv_s)
+					IF (sv_d == 0) THEN
+					#{
+						sv_c = urhk_dbSQLWithBind("commit")
+						print(sv_c)
+					#}
+					ENDIF
+
+					CUSTS.GLBDATA.status="The Account successfully closed and Verified!"
+                                        sv_e=urhk_SetOrbOut("Status|"+CUSTS.GLBDATA.status)
+                                        sv_u = urhk_SetOrbOut("SuccessOrFailure|Y")
+                                        print(sv_u)
+				#}
+				ENDIF
+				
+			#}
+			ENDIF
+			
+			
+			IF (sv_u != 0) THEN
+			#{
+				IF(FIELDEXISTS(BANCS.OUTPARAM.Error_num) == 1) THEN
+				#{
+					print(BANCS.OUTPARAM.Error_num)
+					sv_v = BANCS.OUTPARAM.Error_num
+					#}
+				ELSE
+					#{
+					sv_v = 0
+				#}
+				ENDIF
+				
+				IF (sv_v > 0) THEN
+				#{
+					sv_u = system("echo 'Error for Acct:"+CUSTS.GLBDATA.foracid+" ' >>closed.log")
+					sv_i = 1
+					WHILE (sv_i <= sv_v)
+					#{
+						sv_f = FORMAT$(sv_i,"%d")
+						sv_e = ("BANCS").("OUTPARAM").("ErrorMesg_"+sv_f)
+						sv_e = sv_e + " " + ("BANCS").("OUTPARAM").("Tag_"+sv_f)
+						sv_e = sv_e + " Error Code:" + ("BANCS").("OUTPARAM").("ErrorCode_"+sv_f)
+						print(sv_e)
+						sv_i = sv_i + 1
+						sv_u = system("echo '"+sv_e+"' >>closed.log")
+						print(sv_u)
+					#}
+					DO
+				#}
+				ENDIF
+			#}
+			ENDIF
+			
+		print("ACCOUNTS CLOSED")
+
+ENDOFSCRIPT:
+	
+	TRACE OFF
+END-->
